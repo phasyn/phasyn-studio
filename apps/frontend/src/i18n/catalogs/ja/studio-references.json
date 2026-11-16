@@ -1,0 +1,7 @@
+{
+  "@{alias} 的檔名": "@{alias} のファイル名",
+  "Enter 儲存、Esc 取消 · {count}/{max} · 所有鏡頭共用這個檔名": "Enter で保存、Esc で取消 · {count}/{max} · このファイルを使うすべてのショットで共通",
+  "{name}（雙擊或按 F2 重新命名）": "{name}（ダブルクリックまたは F2 で名前を変更）",
+  "H3：{value}": "H3：{value}",
+  " · prompt 用了 {mentions} 次": " · プロンプトで {mentions} 回使用"
+}

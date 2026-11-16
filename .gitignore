@@ -1,0 +1,86 @@
+# ---------------------------------------------------------------------------
+# Phasyn Studio — files that must never be committed.
+# Weights, runtime data, local deployment configs, secrets and build output
+# stay on the machine that produced them.
+# ---------------------------------------------------------------------------
+
+# --- Local data and model weights ------------------------------------------
+/.data/
+/models/
+*.safetensors
+*.gguf
+*.ckpt
+*.pt
+*.pth
+*.onnx
+
+# --- Local deployment configuration ----------------------------------------
+# Copy an `*.example.json` template and edit the copy; only templates are tracked.
+/deploy/config/*.json
+!/deploy/config/*.example.json
+*.local.*
+.env
+.env.*
+!.env.example
+
+# --- Secrets ----------------------------------------------------------------
+*.pem
+*.key
+*.p12
+*.pfx
+*.kdbx
+id_rsa*
+id_ed25519*
+
+# --- External inputs (specification packs, archives) -------------------------
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+/spec/
+
+# --- Python -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.eggs/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# --- GPU runtime environments (one locked environment per GPU tuple) --------
+/deploy/runtimes/*/.venv/
+/deploy/runtimes/.uv-cache/
+
+# --- Frontend ---------------------------------------------------------------
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+.eslintcache
+coverage/
+.pnpm-store/
+
+# --- Logs, dumps and editor leftovers ----------------------------------------
+*.log
+*.tmp
+*.orig
+*.rej
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# --- Editors -----------------------------------------------------------------
+.idea/
+.vscode/
+
+# --- Rust editor compute build cache ----------------------------------------
+/packages/editor-kernel/target/

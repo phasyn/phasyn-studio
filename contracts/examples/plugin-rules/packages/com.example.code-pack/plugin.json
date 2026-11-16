@@ -1,0 +1,65 @@
+{
+  "manifest_version": 1,
+  "id": "com.example.code-pack",
+  "version": "0.9.0",
+  "name": {
+    "zh-Hant": "含程式碼的包",
+    "en": "Code pack"
+  },
+  "description": {
+    "zh-Hant": "共用插件規則案例使用的合成插件包。",
+    "en": "Synthetic package for the shared plugin rule vectors."
+  },
+  "author": {
+    "name": "Example"
+  },
+  "license": "Apache-2.0",
+  "engines": {
+    "phasyn": ">=1.0.0 <2.0.0",
+    "plugin_api": 1
+  },
+  "permissions": [
+    "project:read",
+    "project:write"
+  ],
+  "main": "main.js",
+  "contributes": {
+    "rules": [
+      {
+        "id": "tagged",
+        "kind": "effect",
+        "label": {
+          "zh-Hant": "已標記",
+          "en": "Tagged"
+        },
+        "inject": "Every cut is labelled."
+      }
+    ],
+    "commands": [
+      {
+        "id": "tag-shots",
+        "title": {
+          "zh-Hant": "替所有鏡頭加上分鏡標記",
+          "en": "Add cut markers to every shot"
+        },
+        "scope": "project"
+      }
+    ],
+    "panels": [
+      {
+        "id": "board",
+        "title": {
+          "zh-Hant": "分鏡表",
+          "en": "Storyboard"
+        },
+        "location": "generate.inspector"
+      }
+    ]
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "files": {
+      "main.js": "39daf4204b0c9728bad49d8c2a2c0af239ecf296a441cc34a81dbd4c16a2e143"
+    }
+  }
+}

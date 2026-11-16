@@ -1,0 +1,46 @@
+{
+  "component_id": "vae-gpu1-fp32-stream",
+  "label": "Video VAE 解碼（GPU 1，FP32 權重串流；只常駐 decoder 外殼，36 個 block 每次以 O_DIRECT 從 checkpoint 串流進 2 個 GPU 槽，顯存約 2 GB，與 vae-gpu0 逐位元相同）",
+  "provider_id": "h3.video_decode",
+  "runtime_id": "x86_64",
+  "autostart": false,
+  "folder": "生成/VAE 解碼",
+  "settings": {
+    "load": {
+      "model_path": "/path/to/models",
+      "device": {
+        "kind": "cuda",
+        "id": "GPU-REPLACE-1",
+        "resource_group": "gpu-1"
+      },
+      "part_overrides": [],
+      "precision": {
+        "compute_dtype": "native"
+      },
+      "offload": {
+        "mode": "none",
+        "after_use": "device"
+      },
+      "provider_options": {
+        "variant": "fl2va",
+        "shared_from": "ref2va",
+        "mode": "exact",
+        "encode_provider": "cpu_ffmpeg",
+        "video_codec": "h264",
+        "pixel_format": "yuv420p",
+        "quality": 18,
+        "video_vae_scope": "decode_only",
+        "weight_streaming": {
+          "enabled": true,
+          "source": "nvme",
+          "slots": 2,
+          "precision": "fp32"
+        }
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "mode": "detailed"
+    }
+  }
+}

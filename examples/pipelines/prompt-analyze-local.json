@@ -1,0 +1,83 @@
+{
+  "pipeline_id": "prompt-analyze-local",
+  "label": "圖片反推：caption → 八區段分析 → 編譯（GPU 1＋CPU）",
+  "inputs": [
+    {
+      "name": "image",
+      "type_id": "media.image.v1",
+      "required": true,
+      "transport": "file",
+      "description": "研究原圖（v-full）"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "caption",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "qimg-vision-gpu1",
+      "inputs": {
+        "image": {
+          "from_input": "image"
+        }
+      },
+      "parameters": {
+        "op": "caption",
+        "language": "zh-TW"
+      }
+    },
+    {
+      "step_id": "analyze",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "qimg-vision-gpu1",
+      "inputs": {
+        "image": {
+          "from_input": "image"
+        },
+        "caption": {
+          "from_step": "caption",
+          "output": "caption"
+        }
+      },
+      "parameters": {
+        "op": "analyze",
+        "language": "zh-TW",
+        "crops": []
+      }
+    },
+    {
+      "step_id": "compile",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "prompt-compile",
+      "inputs": {
+        "scene": {
+          "from_step": "analyze",
+          "output": "scene"
+        }
+      },
+      "parameters": {
+        "intentional_changes": [],
+        "views": [
+          "v-full"
+        ]
+      }
+    }
+  ],
+  "outputs": {
+    "caption_result": {
+      "from_step": "caption",
+      "output": "result"
+    },
+    "analyze_result": {
+      "from_step": "analyze",
+      "output": "result"
+    },
+    "scene": {
+      "from_step": "analyze",
+      "output": "scene"
+    },
+    "candidates": {
+      "from_step": "compile",
+      "output": "candidates"
+    }
+  }
+}

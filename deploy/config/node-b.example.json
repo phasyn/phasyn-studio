@@ -1,0 +1,348 @@
+{
+  "node_id": "00000000-0000-4000-8000-0000000000b1",
+  "label": "Node B（統一記憶體 GPU）",
+  "advertise_url": "http://127.0.0.1:8091",
+  "data_dir": "../../.data/node",
+  "port": 8091,
+  "bind_host": "127.0.0.1",
+  "controller_url": "http://127.0.0.1:8080",
+  "catalog_interval_seconds": 5,
+  "load_timeout_seconds": 1800,
+  "cancel_grace_seconds": 10,
+  "file_buffer_bytes": 8388608,
+  "file_transfer_concurrency": 2,
+  "recording": {
+    "device_sample_hz": 2,
+    "publish_interval_ms": 1000,
+    "batch_max_events": 256,
+    "batch_max_bytes": 262144,
+    "queue_max_events": 8192,
+    "queue_max_bytes": 16777216,
+    "segment_bytes": 67108864,
+    "max_detail_bytes_per_recording": 2147483648,
+    "cuda_pending_event_pairs": 4096,
+    "trace_steps": [
+      0,
+      1
+    ],
+    "trace_parts": [],
+    "record_shapes": false,
+    "with_stack": false,
+    "capture_prompt": true,
+    "tensor_dump": false,
+    "capture_stderr": true,
+    "finite_scan": false,
+    "gpu_event_timing": true,
+    "log_level": "info",
+    "parts": [],
+    "steps": [],
+    "mode": "detailed"
+  },
+  "runtimes": [
+    {
+      "runtime_id": "cpu",
+      "python": "../../.venv/bin/python",
+      "module": "phasyn_components.runtime_host",
+      "env": {}
+    },
+    {
+      "runtime_id": "aarch64-sm121",
+      "python": "../runtimes/aarch64-sm121/.venv/bin/python",
+      "module": "phasyn_components.runtime_host",
+      "env": {}
+    }
+  ],
+  "components": [
+    {
+      "component_id": "te-uma0",
+      "label": "H3 文字條件（Qwen3-VL TE，統一記憶體 GPU 常駐，BF16 原生精度）",
+      "provider_id": "h3.conditioning",
+      "runtime_id": "aarch64-sm121",
+      "autostart": false,
+      "folder": "生成/文字條件",
+      "settings": {
+        "load": {
+          "model_path": "/path/to/models",
+          "device": {
+            "kind": "cuda",
+            "id": "GPU-REPLACE-2",
+            "resource_group": "gpu-uma"
+          },
+          "part_overrides": [],
+          "precision": {
+            "compute_dtype": "native"
+          },
+          "offload": {
+            "mode": "none",
+            "after_use": "device"
+          },
+          "provider_options": {
+            "variant": "fl2va",
+            "shared_from": "ref2va",
+            "mode": "exact",
+            "encoder_max_tokens": 32768
+          }
+        },
+        "invoke": {
+          "task": "t2va",
+          "width": 768,
+          "height": 448,
+          "frames": 124
+        },
+        "recording": {
+          "mode": "detailed"
+        }
+      }
+    },
+    {
+      "component_id": "describe-uma0",
+      "label": "影片反推語意（Qwen3-VL 32B 生成路徑，統一記憶體 GPU；用 H3 文字編碼器，結果只能用來改進 H3，見 H3 授權 §V.3）",
+      "provider_id": "qwen_vl.describe",
+      "runtime_id": "aarch64-sm121",
+      "autostart": false,
+      "folder": "語意與資料集",
+      "settings": {
+        "load": {
+          "model_path": "/path/to/models/MiniMax-H3/Ref2VA/text_encoder",
+          "device": {
+            "kind": "cuda",
+            "id": "GPU-REPLACE-2",
+            "resource_group": "gpu-uma"
+          },
+          "part_overrides": [],
+          "precision": {
+            "compute_dtype": "bf16",
+            "quantization": {
+              "scheme": "none"
+            }
+          },
+          "offload": {
+            "mode": "none"
+          },
+          "provider_options": {
+            "attn_implementation": "sdpa"
+          }
+        },
+        "invoke": {
+          "sampling_fps": 4,
+          "max_frames": 64,
+          "language": "zh-Hant"
+        },
+        "recording": {
+          "device_sample_hz": 2,
+          "publish_interval_ms": 1000,
+          "batch_max_events": 256,
+          "batch_max_bytes": 262144,
+          "queue_max_events": 8192,
+          "queue_max_bytes": 16777216,
+          "segment_bytes": 67108864,
+          "max_detail_bytes_per_recording": 2147483648,
+          "cuda_pending_event_pairs": 4096,
+          "trace_steps": [
+            0,
+            1
+          ],
+          "trace_parts": [],
+          "record_shapes": false,
+          "with_stack": false,
+          "capture_prompt": true,
+          "tensor_dump": false,
+          "capture_stderr": true,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "parts": [],
+          "steps": [],
+          "mode": "detailed"
+        }
+      }
+    },
+    {
+      "component_id": "mux",
+      "label": "影音封裝（CPU）",
+      "provider_id": "media.mux",
+      "runtime_id": "cpu",
+      "autostart": false,
+      "folder": "媒體處理",
+      "settings": {
+        "load": {
+          "device": {
+            "kind": "cpu",
+            "id": "cpu",
+            "resource_group": "cpu-media"
+          },
+          "provider_options": {}
+        },
+        "invoke": {},
+        "recording": {
+          "device_sample_hz": 2,
+          "publish_interval_ms": 1000,
+          "batch_max_events": 256,
+          "batch_max_bytes": 262144,
+          "queue_max_events": 8192,
+          "queue_max_bytes": 16777216,
+          "segment_bytes": 67108864,
+          "max_detail_bytes_per_recording": 2147483648,
+          "cuda_pending_event_pairs": 4096,
+          "trace_steps": [
+            0,
+            1
+          ],
+          "trace_parts": [],
+          "record_shapes": false,
+          "with_stack": false,
+          "capture_prompt": true,
+          "tensor_dump": false,
+          "capture_stderr": true,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "parts": [],
+          "steps": [],
+          "mode": "detailed"
+        }
+      }
+    },
+    {
+      "component_id": "probe",
+      "label": "媒體探測（CPU）",
+      "provider_id": "media.probe",
+      "runtime_id": "cpu",
+      "autostart": false,
+      "folder": "媒體處理",
+      "settings": {
+        "load": {
+          "device": {
+            "kind": "cpu",
+            "id": "cpu",
+            "resource_group": "cpu-probe"
+          },
+          "provider_options": {}
+        },
+        "invoke": {},
+        "recording": {
+          "device_sample_hz": 2,
+          "publish_interval_ms": 1000,
+          "batch_max_events": 256,
+          "batch_max_bytes": 262144,
+          "queue_max_events": 8192,
+          "queue_max_bytes": 16777216,
+          "segment_bytes": 67108864,
+          "max_detail_bytes_per_recording": 2147483648,
+          "cuda_pending_event_pairs": 4096,
+          "trace_steps": [
+            0,
+            1
+          ],
+          "trace_parts": [],
+          "record_shapes": false,
+          "with_stack": false,
+          "capture_prompt": true,
+          "tensor_dump": false,
+          "capture_stderr": true,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "parts": [],
+          "steps": [],
+          "mode": "detailed"
+        }
+      }
+    },
+    {
+      "component_id": "caption",
+      "label": "Caption 組裝（CPU）",
+      "provider_id": "caption.compile",
+      "runtime_id": "cpu",
+      "autostart": false,
+      "folder": "語意與資料集",
+      "settings": {
+        "load": {
+          "device": {
+            "kind": "cpu",
+            "id": "cpu",
+            "resource_group": "cpu-text"
+          },
+          "provider_options": {}
+        },
+        "invoke": {
+          "language": "zh-Hant",
+          "include_uncertain": false
+        },
+        "recording": {
+          "device_sample_hz": 2,
+          "publish_interval_ms": 1000,
+          "batch_max_events": 256,
+          "batch_max_bytes": 262144,
+          "queue_max_events": 8192,
+          "queue_max_bytes": 16777216,
+          "segment_bytes": 67108864,
+          "max_detail_bytes_per_recording": 2147483648,
+          "cuda_pending_event_pairs": 4096,
+          "trace_steps": [
+            0,
+            1
+          ],
+          "trace_parts": [],
+          "record_shapes": false,
+          "with_stack": false,
+          "capture_prompt": true,
+          "tensor_dump": false,
+          "capture_stderr": true,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "parts": [],
+          "steps": [],
+          "mode": "detailed"
+        }
+      }
+    },
+    {
+      "component_id": "dataset",
+      "label": "訓練資料匯出（CPU）",
+      "provider_id": "dataset.export",
+      "runtime_id": "cpu",
+      "autostart": false,
+      "folder": "語意與資料集",
+      "settings": {
+        "load": {
+          "device": {
+            "kind": "cpu",
+            "id": "cpu",
+            "resource_group": "cpu-dataset"
+          },
+          "provider_options": {}
+        },
+        "invoke": {},
+        "recording": {
+          "device_sample_hz": 2,
+          "publish_interval_ms": 1000,
+          "batch_max_events": 256,
+          "batch_max_bytes": 262144,
+          "queue_max_events": 8192,
+          "queue_max_bytes": 16777216,
+          "segment_bytes": 67108864,
+          "max_detail_bytes_per_recording": 2147483648,
+          "cuda_pending_event_pairs": 4096,
+          "trace_steps": [
+            0,
+            1
+          ],
+          "trace_parts": [],
+          "record_shapes": false,
+          "with_stack": false,
+          "capture_prompt": true,
+          "tensor_dump": false,
+          "capture_stderr": true,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "parts": [],
+          "steps": [],
+          "mode": "detailed"
+        }
+      }
+    }
+  ]
+}

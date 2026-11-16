@@ -1,0 +1,83 @@
+{
+  "pipeline_id": "prompt-compare-local",
+  "label": "圖片反推：原圖 vs 生成圖逐區段比較 → 加權損失（GPU 1＋CPU）",
+  "inputs": [
+    {
+      "name": "image",
+      "type_id": "media.image.v1",
+      "required": true,
+      "transport": "file",
+      "description": "研究原圖（v-full）"
+    },
+    {
+      "name": "generated",
+      "type_id": "media.image.v1",
+      "required": true,
+      "transport": "file",
+      "description": "生成圖（白底版）"
+    },
+    {
+      "name": "scene",
+      "type_id": "prompt.scene.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "任務開始時凍結的場景"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "compare",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "qimg-vision-gpu1",
+      "inputs": {
+        "image": {
+          "from_input": "image"
+        },
+        "generated": {
+          "from_input": "generated"
+        },
+        "scene": {
+          "from_input": "scene"
+        }
+      },
+      "parameters": {
+        "op": "compare",
+        "language": "zh-TW",
+        "intentional_changes": []
+      }
+    },
+    {
+      "step_id": "score",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "prompt-score",
+      "inputs": {
+        "comparison": {
+          "from_step": "compare",
+          "output": "comparison"
+        },
+        "scene": {
+          "from_input": "scene"
+        }
+      },
+      "parameters": {
+        "op": "loss",
+        "intentional_changes": [],
+        "rubric_sha256": null
+      }
+    }
+  ],
+  "outputs": {
+    "compare_result": {
+      "from_step": "compare",
+      "output": "result"
+    },
+    "comparison": {
+      "from_step": "compare",
+      "output": "comparison"
+    },
+    "score": {
+      "from_step": "score",
+      "output": "score"
+    }
+  }
+}

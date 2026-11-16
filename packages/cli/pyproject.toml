@@ -1,0 +1,37 @@
+[project]
+name = "phasyn-cli"
+version = "1.0.0"
+description = "Phasyn Studio CLI: phasyn-studio controller | node | records | service | doctor | install | up | status"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+authors = [{ name = "Phasyn Studio authors" }]
+# The CLI assembles the application: controller, Node and the CPU media components (phasyn-media).
+dependencies = [
+    "phasyn-components",
+    "phasyn-media",
+    "phasyn-node",
+    "phasyn-controller",
+    "httpx>=0.28",
+]
+
+[project.scripts]
+phasyn-studio = "phasyn_cli.main:main"
+phasyn = "phasyn_cli.main:main"
+
+[project.urls]
+Homepage = "https://github.com/phasyn/phasyn-studio"
+Repository = "https://github.com/phasyn/phasyn-studio"
+
+[tool.uv.sources]
+phasyn-components = { workspace = true }
+phasyn-media = { workspace = true }
+phasyn-node = { workspace = true }
+phasyn-controller = { workspace = true }
+
+[build-system]
+requires = ["hatchling>=1.33.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/phasyn_cli"]

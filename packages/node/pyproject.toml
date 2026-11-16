@@ -1,0 +1,35 @@
+[project]
+name = "phasyn-node"
+version = "1.0.0"
+description = "Phasyn Studio NodeGateway: component processes, file endpoints, device sampling, recording upload (no torch)"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+authors = [{ name = "Phasyn Studio authors" }]
+dependencies = [
+    "phasyn-components",
+    "phasyn-server",
+    "fastapi>=0.162",
+    "uvicorn>=0.54",
+    "httpx>=0.28",
+    "psutil>=7.2",
+]
+
+[project.optional-dependencies]
+# NVML device sampling and `phasyn-studio doctor` GPU listing; without it GPU metrics are reported as unavailable.
+gpu = ["nvidia-ml-py>=13.615"]
+
+[project.urls]
+Homepage = "https://github.com/phasyn/phasyn-studio"
+Repository = "https://github.com/phasyn/phasyn-studio"
+
+[tool.uv.sources]
+phasyn-components = { workspace = true }
+phasyn-server = { workspace = true }
+
+[build-system]
+requires = ["hatchling>=1.33.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/phasyn_node"]

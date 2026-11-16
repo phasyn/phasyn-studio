@@ -1,0 +1,60 @@
+{
+  "pipeline_id": "model-preview-example",
+  "label": "只更換解碼元件的完整草稿示例",
+  "inputs": [
+    {
+      "name": "prompt",
+      "type_id": "text.prompt.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "prompt"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "conditioning",
+      "node_id": "20000000-0000-4000-8000-000000000002",
+      "component_id": "te",
+      "inputs": {
+        "prompt": {
+          "from_input": "prompt"
+        }
+      },
+      "parameters": {}
+    },
+    {
+      "step_id": "denoise",
+      "node_id": "20000000-0000-4000-8000-000000000001",
+      "component_id": "dit",
+      "inputs": {
+        "conditioning": {
+          "from_step": "conditioning",
+          "output": "conditioning"
+        }
+      },
+      "parameters": {}
+    },
+    {
+      "step_id": "video",
+      "node_id": "20000000-0000-4000-8000-000000000001",
+      "component_id": "decode-preview",
+      "inputs": {
+        "latent": {
+          "from_step": "denoise",
+          "output": "video_latent"
+        }
+      },
+      "parameters": {}
+    }
+  ],
+  "outputs": {
+    "video": {
+      "from_step": "video",
+      "output": "asset"
+    },
+    "latent": {
+      "from_step": "denoise",
+      "output": "video_latent"
+    }
+  }
+}

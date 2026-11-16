@@ -1,0 +1,36 @@
+{
+  "pipeline_id": "upscale-take-2x",
+  "label": "影片超分 2×：take → Anime4K v4 VL（GPU 1）→ 新的完整 MP4（原 fps、幀數與音訊）",
+  "inputs": [
+    {
+      "name": "video",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": "要超分的影片（例如一個 take 的 MP4）；每幀最多 2048×1088、最多 7200 幀，固定 fps"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "upscale",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "upscale-anime4k-gpu1",
+      "inputs": {
+        "video_file": {
+          "from_input": "video"
+        }
+      },
+      "parameters": {
+        "scale": 2,
+        "target": "2x",
+        "crf": 16
+      }
+    }
+  ],
+  "outputs": {
+    "final": {
+      "from_step": "upscale",
+      "output": "asset"
+    }
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "pipeline_id": "video-semantics",
+  "label": "反推語意再編譯caption",
+  "inputs": [
+    {
+      "name": "video",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": "video"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "describe",
+      "node_id": "20000000-0000-4000-8000-000000000002",
+      "component_id": "video-describe",
+      "inputs": {
+        "video": {
+          "from_input": "video"
+        }
+      },
+      "parameters": {
+        "sampling_fps": 4,
+        "preserve_endpoints": true
+      }
+    },
+    {
+      "step_id": "caption",
+      "node_id": "20000000-0000-4000-8000-000000000001",
+      "component_id": "caption-compile",
+      "inputs": {
+        "scene": {
+          "from_step": "describe",
+          "output": "scene"
+        }
+      },
+      "parameters": {
+        "language": "en",
+        "include_uncertain": false
+      }
+    }
+  ],
+  "outputs": {
+    "scene": {
+      "from_step": "describe",
+      "output": "scene"
+    },
+    "caption": {
+      "from_step": "caption",
+      "output": "caption"
+    }
+  }
+}

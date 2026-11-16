@@ -1,0 +1,113 @@
+{
+  "recording_id": "60000000-0000-4000-8000-000000000001",
+  "state": "succeeded",
+  "metrics": {
+    "host_wall_ms": {
+      "value": 1200,
+      "unit": "ms",
+      "quality": "synthetic",
+      "scope": "call",
+      "method": "synthetic",
+      "reason": "合成示例，非GPU量測"
+    },
+    "torch_allocated_peak_bytes": {
+      "value": 8589934592,
+      "unit": "bytes",
+      "quality": "synthetic",
+      "scope": "process_device_call",
+      "method": "synthetic",
+      "reason": "合成示例，非GPU量測"
+    },
+    "torch_reserved_peak_bytes": {
+      "value": 9663676416,
+      "unit": "bytes",
+      "quality": "synthetic",
+      "scope": "process_device_call",
+      "method": "synthetic",
+      "reason": "合成示例，非GPU量測"
+    },
+    "scheduler_steps_completed": {
+      "value": 2,
+      "unit": "count",
+      "quality": "synthetic",
+      "scope": "call",
+      "method": "synthetic",
+      "reason": "合成示例，非GPU量測"
+    },
+    "denoiser_forwards_completed": {
+      "value": 4,
+      "unit": "count",
+      "quality": "synthetic",
+      "scope": "call",
+      "method": "synthetic",
+      "reason": "合成示例，非GPU量測"
+    },
+    "weight_h2d_completed_bytes": {
+      "value": 16777216,
+      "unit": "bytes",
+      "quality": "synthetic",
+      "scope": "instrumented_copies",
+      "method": "synthetic",
+      "reason": "合成示例，非GPU量測"
+    },
+    "weight_d2h_completed_bytes": {
+      "value": 0,
+      "unit": "bytes",
+      "quality": "synthetic",
+      "scope": "instrumented_copies",
+      "method": "synthetic",
+      "reason": "合成示例，非GPU量測"
+    },
+    "weight_h2d_completed_count": {
+      "value": 2,
+      "unit": "count",
+      "quality": "synthetic",
+      "scope": "instrumented_copies",
+      "method": "synthetic",
+      "reason": "合成示例，非GPU量測"
+    },
+    "offload_cycle_count": {
+      "value": 2,
+      "unit": "count",
+      "quality": "synthetic",
+      "scope": "weight_group_lifecycle",
+      "method": "synthetic",
+      "reason": "合成示例，非GPU量測"
+    },
+    "paired_roundtrip_count": {
+      "value": 0,
+      "unit": "count",
+      "quality": "synthetic",
+      "scope": "completed_paired_copies",
+      "method": "synthetic",
+      "reason": "合成示例，非GPU量測"
+    },
+    "api_exit_to_kernel_start_ms": {
+      "value": null,
+      "unit": "ms",
+      "quality": "unavailable",
+      "scope": "trace_correlation",
+      "method": "none",
+      "reason": "本例未錄製kernel trace"
+    }
+  },
+  "transfer_totals": {
+    "weight_h2d": {
+      "completed_bytes": 16777216,
+      "completed_count": 2
+    },
+    "weight_d2h": {
+      "completed_bytes": 0,
+      "completed_count": 0
+    }
+  },
+  "part_totals": {},
+  "coverage": "full",
+  "dropped_events": 0,
+  "dropped_bytes": 0,
+  "detail_truncated": false,
+  "notes": [
+    "全部數字為合成示例。"
+  ],
+  "context_available": true
+}

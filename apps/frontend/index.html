@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-Hant" data-theme="noir" style="color-scheme: dark; background-color: #070b14">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#070b14" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="application-name" content="Phasyn Studio" />
+    <meta name="apple-mobile-web-app-title" content="Phasyn Studio" />
+    <meta name="description" content="Phasyn Studio：AI 影音生成工作台——從分鏡到合成（From storyboard to synthesis.）" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Phasyn Studio" />
+    <meta property="og:title" content="Phasyn Studio" />
+    <meta property="og:description" content="AI-native filmmaking platform. From storyboard to synthesis." />
+    <meta property="og:image" content="/brand/og-1200x630.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <!-- 圖示（標誌的深色圓角磚版本：分頁、主畫面、PWA；淺色或未知背景也清楚；來源見 src/assets/icons/ASSETS.md） -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/brand/icon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/brand/icon-16.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/brand/icon-48.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/brand/icon-180.png" />
+    <link rel="manifest" href="/brand/manifest.json" />
+    <!-- 啟動畫面用的透明標誌先預載，JS 還沒執行前就畫得出來 -->
+    <link rel="preload" as="image" href="/brand/mark-128.webp" type="image/webp" />
+    <title>Phasyn Studio</title>
+    <script>
+      // 介面語言（與 src/i18n/locale.ts 的 resolveLocale 同一套規則，改一邊要同步改另一邊）：
+      // 偏好設定 phasyn.locale → 瀏覽器語言清單中第一個支援的（zh-* → zh-Hant、ja-* → ja、en-* → en；都不支援＝en）→ 沒有語言資訊＝zh-Hant。
+      // 在第一次繪製前設定 <html lang>，:lang() 字體與載入畫面一開始就是正確語言。
+      (function () {
+        var lang = "zh-Hant";
+        try {
+          var stored = null;
+          try {
+            stored = window.localStorage.getItem("phasyn.locale");
+          } catch (e) {}
+          if (stored === "zh-Hant" || stored === "ja" || stored === "en") {
+            lang = stored;
+          } else {
+            var list = navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || ""];
+            var tags = [];
+            for (var i = 0; i < list.length; i++) if (list[i] && String(list[i]).trim()) tags.push(String(list[i]).trim().toLowerCase());
+            var found = null;
+            for (var j = 0; j < tags.length && !found; j++) {
+              var tag = tags[j];
+              if (tag === "zh" || tag.indexOf("zh-") === 0) found = "zh-Hant";
+              else if (tag === "ja" || tag.indexOf("ja-") === 0) found = "ja";
+              else if (tag === "en" || tag.indexOf("en-") === 0) found = "en";
+            }
+            lang = found || (tags.length ? "en" : "zh-Hant");
+          }
+        } catch (e) {}
+        document.documentElement.lang = lang;
+      })();
+    </script>
+    <style>
+      html, body { margin: 0; background-color: #070b14; color: #eef3ff; }
+      .ps-boot {
+        min-height: 100vh; display: grid; place-items: center; align-content: center; gap: 14px;
+        font: 13px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+        color: #b5bfd9;
+        background: radial-gradient(120% 70% at 50% -10%, rgb(62 137 255 / 0.16), transparent 62%), #070b14;
+      }
+      .ps-boot img { width: 64px; height: 64px; filter: drop-shadow(0 0 16px rgb(62 137 255 / 0.45)); animation: ps-breathe 2.8s ease-in-out infinite; }
+      .ps-boot b { font-weight: 600; letter-spacing: 0.32em; color: #eef3ff; font-size: 12px; }
+      .ps-noscript { padding: 16px 24px; border-bottom: 1px solid #34446c; background: #0b1120; color: #ebc07a; font: 14px/1.6 system-ui, sans-serif; }
+      @keyframes ps-breathe { 0%, 100% { opacity: 0.72; } 50% { opacity: 1; } }
+      @media (prefers-reduced-motion: reduce) { .ps-boot img { animation: none; } }
+    </style>
+  </head>
+  <body>
+    <noscript>
+      <div class="ps-noscript">
+        <p lang="zh-Hant">Phasyn Studio 需要啟用 JavaScript 才能連線主控（Controller）。</p>
+        <p lang="ja">Phasyn Studio を使うには JavaScript を有効にしてください（コントローラに接続するために必要です）。</p>
+        <p lang="en">Phasyn Studio needs JavaScript to connect to the controller.</p>
+      </div>
+    </noscript>
+    <div id="root">
+      <div class="ps-boot" role="status">
+        <img src="/brand/mark-128.webp" alt="" width="64" height="64" />
+        <b>PHASYN STUDIO</b>
+        <span>正在載入…</span>
+      </div>
+    </div>
+    <script>
+      // 載入畫面的文字跟著 <html lang>（React 掛上後整個 #root 會被取代）。
+      (function () {
+        var text = { ja: "読み込み中…", en: "Loading…" }[document.documentElement.lang];
+        var node = document.querySelector("#root .ps-boot span");
+        if (text && node) node.textContent = text;
+      })();
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,788 @@
+{
+  "items": [
+    {
+      "plugin_id": "com.example.broken-pack",
+      "source": "installed",
+      "disabled": false,
+      "revision": 1,
+      "installed_at": "2026-01-01T00:00:00.000Z",
+      "updated_at": "2026-01-01T00:00:00.000Z",
+      "status": "invalid",
+      "problems": [
+        {
+          "code": "digest_mismatch",
+          "message": "包的內容與安裝時記錄的 digest 不同",
+          "path": null,
+          "details": {}
+        }
+      ],
+      "version": "0.3.0",
+      "name": {
+        "en": "com.example.broken-pack"
+      },
+      "description": null,
+      "author": null,
+      "license": null,
+      "engines": null,
+      "permissions": [],
+      "has_code": false,
+      "digest": "13c25e8bda0b740abfbfd01f8321c941bbbdbc26067a714fdfef2b6a9c14c223",
+      "size_bytes": 0,
+      "file_count": 0,
+      "contributes": {
+        "rules": [],
+        "presets": [],
+        "generation": [],
+        "commands": [],
+        "panels": []
+      }
+    },
+    {
+      "plugin_id": "com.example.code-pack",
+      "source": "installed",
+      "disabled": false,
+      "revision": 1,
+      "installed_at": "2026-01-01T00:00:00.000Z",
+      "updated_at": "2026-01-01T00:00:00.000Z",
+      "status": "incompatible",
+      "problems": [
+        {
+          "code": "code_unsupported",
+          "message": "這個版本還不能執行插件程式碼",
+          "path": "main",
+          "details": {
+            "plugin_api": 1,
+            "supported": []
+          }
+        }
+      ],
+      "version": "0.9.0",
+      "name": {
+        "zh-Hant": "含程式碼的包",
+        "en": "Code pack"
+      },
+      "description": {
+        "zh-Hant": "共用插件規則案例使用的合成插件包。",
+        "en": "Synthetic package for the shared plugin rule vectors."
+      },
+      "author": {
+        "name": "Example",
+        "url": null
+      },
+      "license": "Apache-2.0",
+      "engines": {
+        "phasyn": ">=1.0.0 <2.0.0",
+        "plugin_api": 1
+      },
+      "permissions": [
+        "project:read",
+        "project:write"
+      ],
+      "has_code": true,
+      "digest": "0c1e29905416ff58b262df7302ae4373a665ee2b850bd884984b956e60ff0eb3",
+      "size_bytes": 1478,
+      "file_count": 2,
+      "contributes": {
+        "rules": [
+          {
+            "ref": "com.example.code-pack/tagged",
+            "rev": "d485fb316bac",
+            "rule": {
+              "id": "tagged",
+              "kind": "effect",
+              "label": {
+                "zh-Hant": "已標記",
+                "en": "Tagged"
+              },
+              "inject": "Every cut is labelled."
+            }
+          }
+        ],
+        "presets": [],
+        "generation": [],
+        "commands": [
+          {
+            "id": "tag-shots",
+            "title": {
+              "zh-Hant": "替所有鏡頭加上分鏡標記",
+              "en": "Add cut markers to every shot"
+            },
+            "scope": "project"
+          }
+        ],
+        "panels": [
+          {
+            "id": "board",
+            "title": {
+              "zh-Hant": "分鏡表",
+              "en": "Storyboard"
+            },
+            "location": "generate.inspector"
+          }
+        ]
+      }
+    },
+    {
+      "plugin_id": "com.example.disabled-pack",
+      "source": "installed",
+      "disabled": true,
+      "revision": 2,
+      "installed_at": "2026-01-01T00:00:00.000Z",
+      "updated_at": "2026-01-01T00:00:00.000Z",
+      "status": "disabled",
+      "problems": [],
+      "version": "1.0.0",
+      "name": {
+        "zh-Hant": "已停用的包",
+        "en": "Disabled pack"
+      },
+      "description": {
+        "zh-Hant": "共用插件規則案例使用的合成插件包。",
+        "en": "Synthetic package for the shared plugin rule vectors."
+      },
+      "author": {
+        "name": "Example",
+        "url": null
+      },
+      "license": "Apache-2.0",
+      "engines": {
+        "phasyn": ">=1.0.0 <2.0.0",
+        "plugin_api": null
+      },
+      "permissions": [],
+      "has_code": false,
+      "digest": "d62b1347843528420512bfc44925cd3bc9bed7eb5787d358f5d5fe1da44b915e",
+      "size_bytes": 754,
+      "file_count": 1,
+      "contributes": {
+        "rules": [
+          {
+            "ref": "com.example.disabled-pack/soft-light",
+            "rev": "c6be4d17278c",
+            "rule": {
+              "id": "soft-light",
+              "kind": "effect",
+              "label": {
+                "zh-Hant": "柔光",
+                "en": "Soft light"
+              },
+              "inject": "Soft, diffuse light."
+            }
+          }
+        ],
+        "presets": [],
+        "generation": [],
+        "commands": [],
+        "panels": []
+      }
+    },
+    {
+      "plugin_id": "com.example.future-pack",
+      "source": "installed",
+      "disabled": false,
+      "revision": 1,
+      "installed_at": "2026-01-01T00:00:00.000Z",
+      "updated_at": "2026-01-01T00:00:00.000Z",
+      "status": "incompatible",
+      "problems": [
+        {
+          "code": "host_version",
+          "message": "這個版本的 Phasyn Studio 不在插件宣告的相容範圍內",
+          "path": "engines/phasyn",
+          "details": {
+            "required": ">=99.0.0 <100.0.0",
+            "host": "1.0.0"
+          }
+        }
+      ],
+      "version": "2.0.0",
+      "name": {
+        "zh-Hant": "未來版本的包",
+        "en": "Future pack"
+      },
+      "description": {
+        "zh-Hant": "共用插件規則案例使用的合成插件包。",
+        "en": "Synthetic package for the shared plugin rule vectors."
+      },
+      "author": {
+        "name": "Example",
+        "url": null
+      },
+      "license": "Apache-2.0",
+      "engines": {
+        "phasyn": ">=99.0.0 <100.0.0",
+        "plugin_api": null
+      },
+      "permissions": [],
+      "has_code": false,
+      "digest": "1e1d38c2d640e0296207054db338856f21c9207344ba9b72a6641f11cd6ca168",
+      "size_bytes": 774,
+      "file_count": 1,
+      "contributes": {
+        "rules": [
+          {
+            "ref": "com.example.future-pack/future-rule",
+            "rev": "f9a3470240be",
+            "rule": {
+              "id": "future-rule",
+              "kind": "effect",
+              "label": {
+                "zh-Hant": "未來的規則",
+                "en": "Future rule"
+              },
+              "inject": "A rule for a later version."
+            }
+          }
+        ],
+        "presets": [],
+        "generation": [],
+        "commands": [],
+        "panels": []
+      }
+    },
+    {
+      "plugin_id": "com.example.staging-pack",
+      "source": "installed",
+      "disabled": false,
+      "revision": 3,
+      "installed_at": "2026-01-01T00:00:00.000Z",
+      "updated_at": "2026-01-01T00:00:00.000Z",
+      "status": "ok",
+      "problems": [],
+      "version": "1.2.0",
+      "name": {
+        "zh-Hant": "站位規則包",
+        "en": "Staging pack",
+        "ja": "配置ルールパック"
+      },
+      "description": {
+        "zh-Hant": "共用插件規則案例使用的合成插件包。",
+        "en": "Synthetic package for the shared plugin rule vectors."
+      },
+      "author": {
+        "name": "Example",
+        "url": null
+      },
+      "license": "Apache-2.0",
+      "engines": {
+        "phasyn": ">=1.0.0 <2.0.0",
+        "plugin_api": null
+      },
+      "permissions": [],
+      "has_code": false,
+      "digest": "87f3cebdca20e1444904d7e47b4b0c156df58d2d523d5190c3b6bf5274723eba",
+      "size_bytes": 9090,
+      "file_count": 1,
+      "contributes": {
+        "rules": [
+          {
+            "ref": "com.example.staging-pack/no-side-view",
+            "rev": "06f3d817b3b5",
+            "rule": {
+              "id": "no-side-view",
+              "kind": "constraint",
+              "label": {
+                "zh-Hant": "禁止側面視角",
+                "en": "No side view"
+              },
+              "description": {
+                "zh-Hant": "擋下側面構圖並要求景深站位。",
+                "en": "Blocks side-on staging and asks for depth."
+              },
+              "forbid": [
+                {
+                  "id": "side",
+                  "terms": [
+                    "side view",
+                    "side-on",
+                    "in profile"
+                  ],
+                  "word": true,
+                  "message": {
+                    "zh-Hant": "側面視角",
+                    "en": "side view"
+                  }
+                }
+              ],
+              "require": [
+                {
+                  "id": "depth",
+                  "any_terms": [
+                    "foreground",
+                    "background"
+                  ],
+                  "message": {
+                    "zh-Hant": "需要景深站位",
+                    "en": "needs depth staging"
+                  }
+                }
+              ],
+              "inject": "Staging: the action moves along the depth axis."
+            }
+          },
+          {
+            "ref": "com.example.staging-pack/no-realism",
+            "rev": "dfe6343b100b",
+            "rule": {
+              "id": "no-realism",
+              "kind": "constraint",
+              "label": {
+                "zh-Hant": "禁止寫實",
+                "en": "No realism"
+              },
+              "forbid": [
+                {
+                  "id": "realism",
+                  "terms": [
+                    "realis",
+                    "3d"
+                  ],
+                  "message": {
+                    "zh-Hant": "寫實或 3D 的字眼",
+                    "en": "realistic or 3D wording"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "ref": "com.example.staging-pack/whole-words",
+            "rev": "32c4b5e4e262",
+            "rule": {
+              "id": "whole-words",
+              "kind": "constraint",
+              "label": {
+                "zh-Hant": "整詞比對",
+                "en": "Whole words"
+              },
+              "forbid": [
+                {
+                  "id": "words",
+                  "terms": [
+                    "cg",
+                    "bird's eye",
+                    "kodak"
+                  ],
+                  "word": true,
+                  "message": {
+                    "zh-Hant": "清單內的詞",
+                    "en": "a listed word"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "ref": "com.example.staging-pack/shot-staging",
+            "rev": "776fb3e90306",
+            "rule": {
+              "id": "shot-staging",
+              "kind": "constraint",
+              "label": {
+                "zh-Hant": "逐鏡站位",
+                "en": "Per-shot staging"
+              },
+              "shots": {
+                "forbid": [
+                  {
+                    "id": "side",
+                    "terms": [
+                      "side view",
+                      "in profile"
+                    ],
+                    "word": true,
+                    "message": {
+                      "zh-Hant": "鏡頭裡的側面視角",
+                      "en": "a side view in a shot"
+                    }
+                  }
+                ],
+                "require": [
+                  {
+                    "id": "depth",
+                    "any_terms": [
+                      "foreground",
+                      "background"
+                    ],
+                    "message": {
+                      "zh-Hant": "點名角色的鏡頭需要景深站位",
+                      "en": "a shot that names a subject needs depth staging"
+                    }
+                  }
+                ],
+                "every_subject": {
+                  "id": "cast",
+                  "message": {
+                    "zh-Hant": "每個角色都要在某一鏡出場",
+                    "en": "every subject appears in some shot"
+                  }
+                }
+              }
+            }
+          },
+          {
+            "ref": "com.example.staging-pack/watercolor",
+            "rev": "a1ab67fde0ea",
+            "rule": {
+              "id": "watercolor",
+              "kind": "style",
+              "group": "style",
+              "label": {
+                "zh-Hant": "水彩",
+                "en": "Watercolour"
+              },
+              "inject": "Painted in loose watercolour washes on textured paper."
+            }
+          },
+          {
+            "ref": "com.example.staging-pack/padded",
+            "rev": "504a37cd98a5",
+            "rule": {
+              "id": "padded",
+              "kind": "effect",
+              "label": {
+                "zh-Hant": "前後留白的文字",
+                "en": "Padded text"
+              },
+              "inject": "\n  Soft rim light on every figure.  \n"
+            }
+          },
+          {
+            "ref": "com.example.staging-pack/heavy-a",
+            "rev": "872154995ccb",
+            "rule": {
+              "id": "heavy-a",
+              "kind": "effect",
+              "label": {
+                "zh-Hant": "長文字 A",
+                "en": "Long text A"
+              },
+              "inject": "畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，"
+            }
+          },
+          {
+            "ref": "com.example.staging-pack/heavy-b",
+            "rev": "a35444367f17",
+            "rule": {
+              "id": "heavy-b",
+              "kind": "effect",
+              "label": {
+                "zh-Hant": "長文字 B",
+                "en": "Long text B"
+              },
+              "inject": "鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，"
+            }
+          }
+        ],
+        "presets": [
+          {
+            "preset": {
+              "id": "staging-set",
+              "label": {
+                "zh-Hant": "站位組合",
+                "en": "Staging set"
+              },
+              "rules": [
+                "no-side-view"
+              ]
+            },
+            "refs": [
+              "com.example.staging-pack/no-side-view"
+            ]
+          }
+        ],
+        "generation": [],
+        "commands": [],
+        "panels": []
+      }
+    },
+    {
+      "plugin_id": "com.example.stale-pack",
+      "source": "installed",
+      "disabled": false,
+      "revision": 1,
+      "installed_at": "2026-01-01T00:00:00.000Z",
+      "updated_at": "2026-01-01T00:00:00.000Z",
+      "status": "incompatible",
+      "problems": [
+        {
+          "code": "preset_rule_missing",
+          "message": "推薦組合引用了找不到的規則",
+          "path": "contributes/presets/0/rules",
+          "details": {
+            "preset": "old-set",
+            "rule": "retired-rule"
+          }
+        }
+      ],
+      "version": "1.0.0",
+      "name": {
+        "zh-Hant": "過時的包",
+        "en": "Stale pack"
+      },
+      "description": {
+        "zh-Hant": "共用插件規則案例使用的合成插件包。",
+        "en": "Synthetic package for the shared plugin rule vectors."
+      },
+      "author": {
+        "name": "Example",
+        "url": null
+      },
+      "license": "Apache-2.0",
+      "engines": {
+        "phasyn": ">=1.0.0 <2.0.0",
+        "plugin_api": null
+      },
+      "permissions": [],
+      "has_code": false,
+      "digest": "27d5a3c219f2bfb45f0fd252b85b886ff7125de890b3140d2b3563276c79dfd3",
+      "size_bytes": 992,
+      "file_count": 1,
+      "contributes": {
+        "rules": [
+          {
+            "ref": "com.example.stale-pack/still-here",
+            "rev": "76d7f89d84e5",
+            "rule": {
+              "id": "still-here",
+              "kind": "effect",
+              "label": {
+                "zh-Hant": "還在的規則",
+                "en": "Still here"
+              },
+              "inject": "A rule that still exists."
+            }
+          }
+        ],
+        "presets": [
+          {
+            "preset": {
+              "id": "old-set",
+              "label": {
+                "zh-Hant": "舊組合",
+                "en": "Old set"
+              },
+              "rules": [
+                "still-here",
+                "retired-rule"
+              ]
+            },
+            "refs": [
+              "com.example.stale-pack/still-here"
+            ]
+          }
+        ],
+        "generation": [],
+        "commands": [],
+        "panels": []
+      }
+    },
+    {
+      "plugin_id": "com.example.dev-pack",
+      "source": "dev",
+      "disabled": false,
+      "revision": 0,
+      "installed_at": null,
+      "updated_at": null,
+      "status": "ok",
+      "problems": [],
+      "version": "0.1.0",
+      "name": {
+        "zh-Hant": "生成設定（開發中）",
+        "en": "Generation settings (development)"
+      },
+      "description": {
+        "zh-Hant": "共用插件規則案例使用的合成插件包。",
+        "en": "Synthetic package for the shared plugin rule vectors."
+      },
+      "author": {
+        "name": "Example",
+        "url": null
+      },
+      "license": "Apache-2.0",
+      "engines": {
+        "phasyn": ">=1.0.0 <2.0.0",
+        "plugin_api": null
+      },
+      "permissions": [],
+      "has_code": false,
+      "digest": "b721665104239bb4e5bafa97ba6fc5f7f11d6df9872bab90a3df5f2aa3a2db24",
+      "size_bytes": 3436,
+      "file_count": 1,
+      "contributes": {
+        "rules": [],
+        "presets": [],
+        "generation": [
+          {
+            "ref": "com.example.dev-pack/tv-720p",
+            "rev": "0641dda2dfe9",
+            "generation": {
+              "id": "tv-720p",
+              "label": {
+                "zh-Hant": "720P 直出",
+                "en": "720p output"
+              },
+              "defaults": {
+                "format": {
+                  "width": 1280,
+                  "height": 736
+                },
+                "frames": 141
+              },
+              "require": [
+                {
+                  "id": "size",
+                  "field": "format",
+                  "in": [
+                    {
+                      "width": 1280,
+                      "height": 736
+                    }
+                  ],
+                  "message": {
+                    "zh-Hant": "畫面須為 1280×736",
+                    "en": "the frame must be 1280x736"
+                  }
+                },
+                {
+                  "id": "length",
+                  "field": "frames",
+                  "in": [
+                    124,
+                    141
+                  ],
+                  "message": {
+                    "zh-Hant": "影格數須為 124 或 141",
+                    "en": "124 or 141 frames"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "ref": "com.example.dev-pack/fast-sampling",
+            "rev": "dce64390e1ec",
+            "generation": {
+              "id": "fast-sampling",
+              "label": {
+                "zh-Hant": "8 步採樣",
+                "en": "Eight-step sampling"
+              },
+              "defaults": {
+                "steps": 8,
+                "video_shift": 3,
+                "audio_shift": 3
+              },
+              "require": [
+                {
+                  "id": "steps",
+                  "field": "steps",
+                  "in": [
+                    8
+                  ],
+                  "message": {
+                    "zh-Hant": "步數須為 8",
+                    "en": "8 steps"
+                  }
+                },
+                {
+                  "id": "video-shift",
+                  "field": "video_shift",
+                  "in": [
+                    3,
+                    5.5
+                  ],
+                  "message": {
+                    "zh-Hant": "video shift 須為 3 或 5.5",
+                    "en": "video shift 3 or 5.5"
+                  }
+                },
+                {
+                  "id": "audio-shift",
+                  "field": "audio_shift",
+                  "in": [
+                    3
+                  ],
+                  "message": {
+                    "zh-Hant": "audio shift 須為 3",
+                    "en": "audio shift 3"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "ref": "com.example.dev-pack/reference-route",
+            "rev": "c83394b2be70",
+            "generation": {
+              "id": "reference-route",
+              "label": {
+                "zh-Hant": "參考素材路由",
+                "en": "Reference route"
+              },
+              "require": [
+                {
+                  "id": "capability",
+                  "field": "route_capability",
+                  "in": [
+                    "ref2va"
+                  ],
+                  "message": {
+                    "zh-Hant": "需要 ref2va 元件組合",
+                    "en": "needs a ref2va route"
+                  }
+                },
+                {
+                  "id": "short-edge",
+                  "field": "reference_video_short_edge",
+                  "in": [
+                    768
+                  ],
+                  "message": {
+                    "zh-Hant": "參考影片短邊須為 768",
+                    "en": "reference video short edge 768"
+                  }
+                }
+              ]
+            }
+          }
+        ],
+        "commands": [],
+        "panels": []
+      }
+    }
+  ],
+  "limits": {
+    "max_package_bytes": 16777216,
+    "max_files": 256,
+    "max_file_bytes": 8388608,
+    "max_unpacked_bytes": 67108864,
+    "max_manifest_bytes": 131072,
+    "max_main_bytes": 2097152,
+    "max_compression_ratio": 100,
+    "max_path_depth": 4,
+    "max_path_length": 200,
+    "max_packages": 64,
+    "max_total_bytes": 536870912,
+    "max_project_plugins": 8,
+    "max_inject_chars": 2000,
+    "max_project_inject_bytes": 4096,
+    "file_extensions": [
+      ".json",
+      ".js",
+      ".md",
+      ".txt",
+      ".png",
+      ".jpg",
+      ".webp",
+      ".cube"
+    ]
+  },
+  "host": {
+    "version": "1.0.0",
+    "manifest_version": 1,
+    "plugin_api": []
+  },
+  "install": "api",
+  "problems": []
+}

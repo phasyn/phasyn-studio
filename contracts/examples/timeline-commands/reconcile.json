@@ -1,0 +1,1900 @@
+{
+ "op": "reconcile",
+ "about": "Conformance vectors of the reconcile timeline command.",
+ "vectors": [
+  {
+   "name": "by shot: clips beyond the shorter take are ripple-trimmed to it, then the source is bound",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [
+     {
+      "source_id": "media-44049758-e7955212",
+      "name": "S1",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000031", "size_bytes": 1031, "sha256": "000000000000000000000000000000000000000000000000000000000000001f", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 124,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "shot_id": "s1",
+      "take_id": "t1",
+      "pending_take_id": "t2"
+     },
+     {
+      "source_id": "media-c07d275a-5c20228",
+      "name": "S2",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000033", "size_bytes": 1033, "sha256": "0000000000000000000000000000000000000000000000000000000000000021", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 124,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "shot_id": "s2",
+      "take_id": "u1"
+     }
+    ],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {
+      "clip_id": "v-media-44049758-e7955212",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "video-1",
+      "name": "S1",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-44049758-e7955212",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "a-media-44049758-e7955212",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "audio-1",
+      "name": "S1",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-44049758-e7955212",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "v-media-c07d275a-5c20228",
+      "source_id": "media-c07d275a-5c20228",
+      "track_id": "video-1",
+      "name": "S2",
+      "start_frame": 124,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-c07d275a-5c20228",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "a-media-c07d275a-5c20228",
+      "source_id": "media-c07d275a-5c20228",
+      "track_id": "audio-1",
+      "name": "S2",
+      "start_frame": 124,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-c07d275a-5c20228",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     }
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": ["s1", "s2"]
+   },
+   "command": {"op": "reconcile", "shot_id": "s1"},
+   "project": {
+    "format": {"width": 768, "height": 448, "fps": {"num": 24, "den": 1}},
+    "shots": [
+     {
+      "shot_id": "s1",
+      "title": "S1",
+      "prompt": "",
+      "frames": 124,
+      "seed": 1,
+      "seed_locked": false,
+      "route": "route-a",
+      "steps": null,
+      "video_shift": null,
+      "audio_shift": null,
+      "enabled": true,
+      "in_frame": 0,
+      "out_frame": null,
+      "takes": [
+       {
+        "take_id": "t1",
+        "run_id": "00000000-0000-4000-8000-000000000931",
+        "output_key": "final",
+        "created_at": "2026-11-01T00:00:00.000Z",
+        "state": "succeeded",
+        "prompt": "",
+        "seed": 1,
+        "frames": 124,
+        "width": 768,
+        "height": 448,
+        "route": "route-a",
+        "steps": null,
+        "asset": {
+         "asset_id": "00000000-0000-4000-8000-000000000531",
+         "kind": "final",
+         "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000031", "size_bytes": 1031, "sha256": "000000000000000000000000000000000000000000000000000000000000001f", "media_type": "video/mp4", "metadata": {}},
+         "source_latent": null,
+         "frame_count": 124,
+         "fps": {"num": 24, "den": 1},
+         "width": 768,
+         "height": 448,
+         "complete": true,
+         "actual_settings": {}
+        },
+        "video_latent": null,
+        "error": null,
+        "timings_ms": {}
+       },
+       {
+        "take_id": "t2",
+        "run_id": "00000000-0000-4000-8000-000000000932",
+        "output_key": "final",
+        "created_at": "2026-11-01T00:00:00.000Z",
+        "state": "succeeded",
+        "prompt": "",
+        "seed": 1,
+        "frames": 100,
+        "width": 768,
+        "height": 448,
+        "route": "route-a",
+        "steps": null,
+        "asset": {
+         "asset_id": "00000000-0000-4000-8000-000000000532",
+         "kind": "final",
+         "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000032", "size_bytes": 1032, "sha256": "0000000000000000000000000000000000000000000000000000000000000020", "media_type": "video/mp4", "metadata": {}},
+         "source_latent": null,
+         "frame_count": 100,
+         "fps": {"num": 24, "den": 1},
+         "width": 768,
+         "height": 448,
+         "complete": true,
+         "actual_settings": {}
+        },
+        "video_latent": null,
+        "error": null,
+        "timings_ms": {}
+       }
+      ],
+      "active_take_id": "t2",
+      "note": ""
+     },
+     {
+      "shot_id": "s2",
+      "title": "S2",
+      "prompt": "",
+      "frames": 124,
+      "seed": 1,
+      "seed_locked": false,
+      "route": "route-a",
+      "steps": null,
+      "video_shift": null,
+      "audio_shift": null,
+      "enabled": true,
+      "in_frame": 0,
+      "out_frame": null,
+      "takes": [
+       {
+        "take_id": "u1",
+        "run_id": "00000000-0000-4000-8000-000000000933",
+        "output_key": "final",
+        "created_at": "2026-11-01T00:00:00.000Z",
+        "state": "succeeded",
+        "prompt": "",
+        "seed": 1,
+        "frames": 124,
+        "width": 768,
+        "height": 448,
+        "route": "route-a",
+        "steps": null,
+        "asset": {
+         "asset_id": "00000000-0000-4000-8000-000000000533",
+         "kind": "final",
+         "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000033", "size_bytes": 1033, "sha256": "0000000000000000000000000000000000000000000000000000000000000021", "media_type": "video/mp4", "metadata": {}},
+         "source_latent": null,
+         "frame_count": 124,
+         "fps": {"num": 24, "den": 1},
+         "width": 768,
+         "height": 448,
+         "complete": true,
+         "actual_settings": {}
+        },
+        "video_latent": null,
+        "error": null,
+        "timings_ms": {}
+       }
+      ],
+      "active_take_id": "u1",
+      "note": ""
+     }
+    ]
+   },
+   "after": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [
+     {
+      "source_id": "media-44049758-e7955212",
+      "name": "S1",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000032", "size_bytes": 1032, "sha256": "0000000000000000000000000000000000000000000000000000000000000020", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 100,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "shot_id": "s1",
+      "take_id": "t2"
+     },
+     {
+      "source_id": "media-c07d275a-5c20228",
+      "name": "S2",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000033", "size_bytes": 1033, "sha256": "0000000000000000000000000000000000000000000000000000000000000021", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 124,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "shot_id": "s2",
+      "take_id": "u1"
+     }
+    ],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {
+      "clip_id": "v-media-44049758-e7955212",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "video-1",
+      "name": "S1",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 100,
+      "linked_id": "link-media-44049758-e7955212",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "a-media-44049758-e7955212",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "audio-1",
+      "name": "S1",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 100,
+      "linked_id": "link-media-44049758-e7955212",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "v-media-c07d275a-5c20228",
+      "source_id": "media-c07d275a-5c20228",
+      "track_id": "video-1",
+      "name": "S2",
+      "start_frame": 100,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-c07d275a-5c20228",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "a-media-c07d275a-5c20228",
+      "source_id": "media-c07d275a-5c20228",
+      "track_id": "audio-1",
+      "name": "S2",
+      "start_frame": 100,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-c07d275a-5c20228",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     }
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": ["s1", "s2"]
+   }
+  },
+  {
+   "name": "by source",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [
+     {
+      "source_id": "media-44049758-e7955212",
+      "name": "S1",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000031", "size_bytes": 1031, "sha256": "000000000000000000000000000000000000000000000000000000000000001f", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 124,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "shot_id": "s1",
+      "take_id": "t1",
+      "pending_take_id": "t2"
+     },
+     {
+      "source_id": "media-c07d275a-5c20228",
+      "name": "S2",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000033", "size_bytes": 1033, "sha256": "0000000000000000000000000000000000000000000000000000000000000021", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 124,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "shot_id": "s2",
+      "take_id": "u1"
+     }
+    ],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {
+      "clip_id": "v-media-44049758-e7955212",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "video-1",
+      "name": "S1",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-44049758-e7955212",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "a-media-44049758-e7955212",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "audio-1",
+      "name": "S1",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-44049758-e7955212",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "v-media-c07d275a-5c20228",
+      "source_id": "media-c07d275a-5c20228",
+      "track_id": "video-1",
+      "name": "S2",
+      "start_frame": 124,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-c07d275a-5c20228",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "a-media-c07d275a-5c20228",
+      "source_id": "media-c07d275a-5c20228",
+      "track_id": "audio-1",
+      "name": "S2",
+      "start_frame": 124,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-c07d275a-5c20228",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     }
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": ["s1", "s2"]
+   },
+   "command": {"op": "reconcile", "source_id": "media-44049758-e7955212"},
+   "project": {
+    "format": {"width": 768, "height": 448, "fps": {"num": 24, "den": 1}},
+    "shots": [
+     {
+      "shot_id": "s1",
+      "title": "S1",
+      "prompt": "",
+      "frames": 124,
+      "seed": 1,
+      "seed_locked": false,
+      "route": "route-a",
+      "steps": null,
+      "video_shift": null,
+      "audio_shift": null,
+      "enabled": true,
+      "in_frame": 0,
+      "out_frame": null,
+      "takes": [
+       {
+        "take_id": "t1",
+        "run_id": "00000000-0000-4000-8000-000000000931",
+        "output_key": "final",
+        "created_at": "2026-11-01T00:00:00.000Z",
+        "state": "succeeded",
+        "prompt": "",
+        "seed": 1,
+        "frames": 124,
+        "width": 768,
+        "height": 448,
+        "route": "route-a",
+        "steps": null,
+        "asset": {
+         "asset_id": "00000000-0000-4000-8000-000000000531",
+         "kind": "final",
+         "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000031", "size_bytes": 1031, "sha256": "000000000000000000000000000000000000000000000000000000000000001f", "media_type": "video/mp4", "metadata": {}},
+         "source_latent": null,
+         "frame_count": 124,
+         "fps": {"num": 24, "den": 1},
+         "width": 768,
+         "height": 448,
+         "complete": true,
+         "actual_settings": {}
+        },
+        "video_latent": null,
+        "error": null,
+        "timings_ms": {}
+       },
+       {
+        "take_id": "t2",
+        "run_id": "00000000-0000-4000-8000-000000000932",
+        "output_key": "final",
+        "created_at": "2026-11-01T00:00:00.000Z",
+        "state": "succeeded",
+        "prompt": "",
+        "seed": 1,
+        "frames": 100,
+        "width": 768,
+        "height": 448,
+        "route": "route-a",
+        "steps": null,
+        "asset": {
+         "asset_id": "00000000-0000-4000-8000-000000000532",
+         "kind": "final",
+         "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000032", "size_bytes": 1032, "sha256": "0000000000000000000000000000000000000000000000000000000000000020", "media_type": "video/mp4", "metadata": {}},
+         "source_latent": null,
+         "frame_count": 100,
+         "fps": {"num": 24, "den": 1},
+         "width": 768,
+         "height": 448,
+         "complete": true,
+         "actual_settings": {}
+        },
+        "video_latent": null,
+        "error": null,
+        "timings_ms": {}
+       }
+      ],
+      "active_take_id": "t2",
+      "note": ""
+     },
+     {
+      "shot_id": "s2",
+      "title": "S2",
+      "prompt": "",
+      "frames": 124,
+      "seed": 1,
+      "seed_locked": false,
+      "route": "route-a",
+      "steps": null,
+      "video_shift": null,
+      "audio_shift": null,
+      "enabled": true,
+      "in_frame": 0,
+      "out_frame": null,
+      "takes": [
+       {
+        "take_id": "u1",
+        "run_id": "00000000-0000-4000-8000-000000000933",
+        "output_key": "final",
+        "created_at": "2026-11-01T00:00:00.000Z",
+        "state": "succeeded",
+        "prompt": "",
+        "seed": 1,
+        "frames": 124,
+        "width": 768,
+        "height": 448,
+        "route": "route-a",
+        "steps": null,
+        "asset": {
+         "asset_id": "00000000-0000-4000-8000-000000000533",
+         "kind": "final",
+         "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000033", "size_bytes": 1033, "sha256": "0000000000000000000000000000000000000000000000000000000000000021", "media_type": "video/mp4", "metadata": {}},
+         "source_latent": null,
+         "frame_count": 124,
+         "fps": {"num": 24, "den": 1},
+         "width": 768,
+         "height": 448,
+         "complete": true,
+         "actual_settings": {}
+        },
+        "video_latent": null,
+        "error": null,
+        "timings_ms": {}
+       }
+      ],
+      "active_take_id": "u1",
+      "note": ""
+     }
+    ]
+   },
+   "after": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [
+     {
+      "source_id": "media-44049758-e7955212",
+      "name": "S1",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000032", "size_bytes": 1032, "sha256": "0000000000000000000000000000000000000000000000000000000000000020", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 100,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "shot_id": "s1",
+      "take_id": "t2"
+     },
+     {
+      "source_id": "media-c07d275a-5c20228",
+      "name": "S2",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000033", "size_bytes": 1033, "sha256": "0000000000000000000000000000000000000000000000000000000000000021", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 124,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "shot_id": "s2",
+      "take_id": "u1"
+     }
+    ],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {
+      "clip_id": "v-media-44049758-e7955212",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "video-1",
+      "name": "S1",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 100,
+      "linked_id": "link-media-44049758-e7955212",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "a-media-44049758-e7955212",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "audio-1",
+      "name": "S1",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 100,
+      "linked_id": "link-media-44049758-e7955212",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "v-media-c07d275a-5c20228",
+      "source_id": "media-c07d275a-5c20228",
+      "track_id": "video-1",
+      "name": "S2",
+      "start_frame": 100,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-c07d275a-5c20228",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "a-media-c07d275a-5c20228",
+      "source_id": "media-c07d275a-5c20228",
+      "track_id": "audio-1",
+      "name": "S2",
+      "start_frame": 100,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-c07d275a-5c20228",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     }
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": ["s1", "s2"]
+   }
+  },
+  {
+   "name": "a clip that lies wholly beyond the new media is ripple-deleted",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [
+     {
+      "source_id": "media-44049758-e7955212",
+      "name": "S1",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000031", "size_bytes": 1031, "sha256": "000000000000000000000000000000000000000000000000000000000000001f", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 124,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "shot_id": "s1",
+      "take_id": "t1",
+      "pending_take_id": "t2"
+     },
+     {
+      "source_id": "media-c07d275a-5c20228",
+      "name": "S2",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000033", "size_bytes": 1033, "sha256": "0000000000000000000000000000000000000000000000000000000000000021", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 124,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "shot_id": "s2",
+      "take_id": "u1"
+     }
+    ],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {
+      "clip_id": "v-media-c07d275a-5c20228",
+      "source_id": "media-c07d275a-5c20228",
+      "track_id": "video-1",
+      "name": "S2",
+      "start_frame": 124,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-c07d275a-5c20228",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "a-media-c07d275a-5c20228",
+      "source_id": "media-c07d275a-5c20228",
+      "track_id": "audio-1",
+      "name": "S2",
+      "start_frame": 124,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-c07d275a-5c20228",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "v-media-44049758-e7955212",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "video-1",
+      "name": "S1",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-44049758-e7955212",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}},
+      "output_window": {"start_frame": 0, "end_frame": 100}
+     },
+     {
+      "clip_id": "clip-1",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "video-1",
+      "name": "S1",
+      "start_frame": 100,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-2",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}},
+      "output_window": {"start_frame": 100, "end_frame": 124}
+     },
+     {
+      "clip_id": "a-media-44049758-e7955212",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "audio-1",
+      "name": "S1",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-44049758-e7955212",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}},
+      "output_window": {"start_frame": 0, "end_frame": 100}
+     },
+     {
+      "clip_id": "clip-3",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "audio-1",
+      "name": "S1",
+      "start_frame": 100,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-2",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}},
+      "output_window": {"start_frame": 100, "end_frame": 124}
+     }
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": ["s1", "s2"]
+   },
+   "command": {"op": "reconcile", "shot_id": "s1"},
+   "project": {
+    "format": {"width": 768, "height": 448, "fps": {"num": 24, "den": 1}},
+    "shots": [
+     {
+      "shot_id": "s1",
+      "title": "S1",
+      "prompt": "",
+      "frames": 124,
+      "seed": 1,
+      "seed_locked": false,
+      "route": "route-a",
+      "steps": null,
+      "video_shift": null,
+      "audio_shift": null,
+      "enabled": true,
+      "in_frame": 0,
+      "out_frame": null,
+      "takes": [
+       {
+        "take_id": "t1",
+        "run_id": "00000000-0000-4000-8000-000000000931",
+        "output_key": "final",
+        "created_at": "2026-11-01T00:00:00.000Z",
+        "state": "succeeded",
+        "prompt": "",
+        "seed": 1,
+        "frames": 124,
+        "width": 768,
+        "height": 448,
+        "route": "route-a",
+        "steps": null,
+        "asset": {
+         "asset_id": "00000000-0000-4000-8000-000000000531",
+         "kind": "final",
+         "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000031", "size_bytes": 1031, "sha256": "000000000000000000000000000000000000000000000000000000000000001f", "media_type": "video/mp4", "metadata": {}},
+         "source_latent": null,
+         "frame_count": 124,
+         "fps": {"num": 24, "den": 1},
+         "width": 768,
+         "height": 448,
+         "complete": true,
+         "actual_settings": {}
+        },
+        "video_latent": null,
+        "error": null,
+        "timings_ms": {}
+       },
+       {
+        "take_id": "t2",
+        "run_id": "00000000-0000-4000-8000-000000000932",
+        "output_key": "final",
+        "created_at": "2026-11-01T00:00:00.000Z",
+        "state": "succeeded",
+        "prompt": "",
+        "seed": 1,
+        "frames": 100,
+        "width": 768,
+        "height": 448,
+        "route": "route-a",
+        "steps": null,
+        "asset": {
+         "asset_id": "00000000-0000-4000-8000-000000000532",
+         "kind": "final",
+         "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000032", "size_bytes": 1032, "sha256": "0000000000000000000000000000000000000000000000000000000000000020", "media_type": "video/mp4", "metadata": {}},
+         "source_latent": null,
+         "frame_count": 100,
+         "fps": {"num": 24, "den": 1},
+         "width": 768,
+         "height": 448,
+         "complete": true,
+         "actual_settings": {}
+        },
+        "video_latent": null,
+        "error": null,
+        "timings_ms": {}
+       }
+      ],
+      "active_take_id": "t2",
+      "note": ""
+     },
+     {
+      "shot_id": "s2",
+      "title": "S2",
+      "prompt": "",
+      "frames": 124,
+      "seed": 1,
+      "seed_locked": false,
+      "route": "route-a",
+      "steps": null,
+      "video_shift": null,
+      "audio_shift": null,
+      "enabled": true,
+      "in_frame": 0,
+      "out_frame": null,
+      "takes": [
+       {
+        "take_id": "u1",
+        "run_id": "00000000-0000-4000-8000-000000000933",
+        "output_key": "final",
+        "created_at": "2026-11-01T00:00:00.000Z",
+        "state": "succeeded",
+        "prompt": "",
+        "seed": 1,
+        "frames": 124,
+        "width": 768,
+        "height": 448,
+        "route": "route-a",
+        "steps": null,
+        "asset": {
+         "asset_id": "00000000-0000-4000-8000-000000000533",
+         "kind": "final",
+         "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000033", "size_bytes": 1033, "sha256": "0000000000000000000000000000000000000000000000000000000000000021", "media_type": "video/mp4", "metadata": {}},
+         "source_latent": null,
+         "frame_count": 124,
+         "fps": {"num": 24, "den": 1},
+         "width": 768,
+         "height": 448,
+         "complete": true,
+         "actual_settings": {}
+        },
+        "video_latent": null,
+        "error": null,
+        "timings_ms": {}
+       }
+      ],
+      "active_take_id": "u1",
+      "note": ""
+     }
+    ]
+   },
+   "after": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [
+     {
+      "source_id": "media-44049758-e7955212",
+      "name": "S1",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000032", "size_bytes": 1032, "sha256": "0000000000000000000000000000000000000000000000000000000000000020", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 100,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "shot_id": "s1",
+      "take_id": "t2"
+     },
+     {
+      "source_id": "media-c07d275a-5c20228",
+      "name": "S2",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000033", "size_bytes": 1033, "sha256": "0000000000000000000000000000000000000000000000000000000000000021", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 124,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "shot_id": "s2",
+      "take_id": "u1"
+     }
+    ],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {
+      "clip_id": "v-media-c07d275a-5c20228",
+      "source_id": "media-c07d275a-5c20228",
+      "track_id": "video-1",
+      "name": "S2",
+      "start_frame": 100,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-c07d275a-5c20228",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "a-media-c07d275a-5c20228",
+      "source_id": "media-c07d275a-5c20228",
+      "track_id": "audio-1",
+      "name": "S2",
+      "start_frame": 100,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-c07d275a-5c20228",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "v-media-44049758-e7955212",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "video-1",
+      "name": "S1",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 100,
+      "linked_id": "link-media-44049758-e7955212",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "a-media-44049758-e7955212",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "audio-1",
+      "name": "S1",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 100,
+      "linked_id": "link-media-44049758-e7955212",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     }
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": ["s1", "s2"]
+   }
+  },
+  {
+   "name": "frames the clip already hid are cut without moving anything",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [
+     {
+      "source_id": "media-44049758-e7955212",
+      "name": "S1",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000031", "size_bytes": 1031, "sha256": "000000000000000000000000000000000000000000000000000000000000001f", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 124,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "shot_id": "s1",
+      "take_id": "t1",
+      "pending_take_id": "t2"
+     },
+     {
+      "source_id": "media-c07d275a-5c20228",
+      "name": "S2",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000033", "size_bytes": 1033, "sha256": "0000000000000000000000000000000000000000000000000000000000000021", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 124,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "shot_id": "s2",
+      "take_id": "u1"
+     }
+    ],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {
+      "clip_id": "v-media-44049758-e7955212",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "video-1",
+      "name": "S1",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-44049758-e7955212",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}},
+      "output_window": {"start_frame": 0, "end_frame": 94}
+     },
+     {
+      "clip_id": "a-media-44049758-e7955212",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "audio-1",
+      "name": "S1",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-44049758-e7955212",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}},
+      "output_window": {"start_frame": 0, "end_frame": 94}
+     },
+     {
+      "clip_id": "v-media-c07d275a-5c20228",
+      "source_id": "media-c07d275a-5c20228",
+      "track_id": "video-1",
+      "name": "S2",
+      "start_frame": 94,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-c07d275a-5c20228",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "a-media-c07d275a-5c20228",
+      "source_id": "media-c07d275a-5c20228",
+      "track_id": "audio-1",
+      "name": "S2",
+      "start_frame": 94,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-c07d275a-5c20228",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     }
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": ["s1", "s2"]
+   },
+   "command": {"op": "reconcile", "shot_id": "s1"},
+   "project": {
+    "format": {"width": 768, "height": 448, "fps": {"num": 24, "den": 1}},
+    "shots": [
+     {
+      "shot_id": "s1",
+      "title": "S1",
+      "prompt": "",
+      "frames": 124,
+      "seed": 1,
+      "seed_locked": false,
+      "route": "route-a",
+      "steps": null,
+      "video_shift": null,
+      "audio_shift": null,
+      "enabled": true,
+      "in_frame": 0,
+      "out_frame": null,
+      "takes": [
+       {
+        "take_id": "t1",
+        "run_id": "00000000-0000-4000-8000-000000000931",
+        "output_key": "final",
+        "created_at": "2026-11-01T00:00:00.000Z",
+        "state": "succeeded",
+        "prompt": "",
+        "seed": 1,
+        "frames": 124,
+        "width": 768,
+        "height": 448,
+        "route": "route-a",
+        "steps": null,
+        "asset": {
+         "asset_id": "00000000-0000-4000-8000-000000000531",
+         "kind": "final",
+         "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000031", "size_bytes": 1031, "sha256": "000000000000000000000000000000000000000000000000000000000000001f", "media_type": "video/mp4", "metadata": {}},
+         "source_latent": null,
+         "frame_count": 124,
+         "fps": {"num": 24, "den": 1},
+         "width": 768,
+         "height": 448,
+         "complete": true,
+         "actual_settings": {}
+        },
+        "video_latent": null,
+        "error": null,
+        "timings_ms": {}
+       },
+       {
+        "take_id": "t2",
+        "run_id": "00000000-0000-4000-8000-000000000932",
+        "output_key": "final",
+        "created_at": "2026-11-01T00:00:00.000Z",
+        "state": "succeeded",
+        "prompt": "",
+        "seed": 1,
+        "frames": 100,
+        "width": 768,
+        "height": 448,
+        "route": "route-a",
+        "steps": null,
+        "asset": {
+         "asset_id": "00000000-0000-4000-8000-000000000532",
+         "kind": "final",
+         "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000032", "size_bytes": 1032, "sha256": "0000000000000000000000000000000000000000000000000000000000000020", "media_type": "video/mp4", "metadata": {}},
+         "source_latent": null,
+         "frame_count": 100,
+         "fps": {"num": 24, "den": 1},
+         "width": 768,
+         "height": 448,
+         "complete": true,
+         "actual_settings": {}
+        },
+        "video_latent": null,
+        "error": null,
+        "timings_ms": {}
+       }
+      ],
+      "active_take_id": "t2",
+      "note": ""
+     },
+     {
+      "shot_id": "s2",
+      "title": "S2",
+      "prompt": "",
+      "frames": 124,
+      "seed": 1,
+      "seed_locked": false,
+      "route": "route-a",
+      "steps": null,
+      "video_shift": null,
+      "audio_shift": null,
+      "enabled": true,
+      "in_frame": 0,
+      "out_frame": null,
+      "takes": [
+       {
+        "take_id": "u1",
+        "run_id": "00000000-0000-4000-8000-000000000933",
+        "output_key": "final",
+        "created_at": "2026-11-01T00:00:00.000Z",
+        "state": "succeeded",
+        "prompt": "",
+        "seed": 1,
+        "frames": 124,
+        "width": 768,
+        "height": 448,
+        "route": "route-a",
+        "steps": null,
+        "asset": {
+         "asset_id": "00000000-0000-4000-8000-000000000533",
+         "kind": "final",
+         "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000033", "size_bytes": 1033, "sha256": "0000000000000000000000000000000000000000000000000000000000000021", "media_type": "video/mp4", "metadata": {}},
+         "source_latent": null,
+         "frame_count": 124,
+         "fps": {"num": 24, "den": 1},
+         "width": 768,
+         "height": 448,
+         "complete": true,
+         "actual_settings": {}
+        },
+        "video_latent": null,
+        "error": null,
+        "timings_ms": {}
+       }
+      ],
+      "active_take_id": "u1",
+      "note": ""
+     }
+    ]
+   },
+   "after": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [
+     {
+      "source_id": "media-44049758-e7955212",
+      "name": "S1",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000032", "size_bytes": 1032, "sha256": "0000000000000000000000000000000000000000000000000000000000000020", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 100,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "shot_id": "s1",
+      "take_id": "t2"
+     },
+     {
+      "source_id": "media-c07d275a-5c20228",
+      "name": "S2",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000033", "size_bytes": 1033, "sha256": "0000000000000000000000000000000000000000000000000000000000000021", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 124,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "shot_id": "s2",
+      "take_id": "u1"
+     }
+    ],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {
+      "clip_id": "v-media-44049758-e7955212",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "video-1",
+      "name": "S1",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 100,
+      "linked_id": "link-media-44049758-e7955212",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}},
+      "output_window": {"start_frame": 0, "end_frame": 94}
+     },
+     {
+      "clip_id": "a-media-44049758-e7955212",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "audio-1",
+      "name": "S1",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 100,
+      "linked_id": "link-media-44049758-e7955212",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}},
+      "output_window": {"start_frame": 0, "end_frame": 94}
+     },
+     {
+      "clip_id": "v-media-c07d275a-5c20228",
+      "source_id": "media-c07d275a-5c20228",
+      "track_id": "video-1",
+      "name": "S2",
+      "start_frame": 94,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-c07d275a-5c20228",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "a-media-c07d275a-5c20228",
+      "source_id": "media-c07d275a-5c20228",
+      "track_id": "audio-1",
+      "name": "S2",
+      "start_frame": 94,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-c07d275a-5c20228",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     }
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": ["s1", "s2"]
+   }
+  },
+  {
+   "name": "no take is waiting",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [
+     {
+      "source_id": "media-44049758-e7955212",
+      "name": "S1",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000031", "size_bytes": 1031, "sha256": "000000000000000000000000000000000000000000000000000000000000001f", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 124,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "shot_id": "s1",
+      "take_id": "t1"
+     },
+     {
+      "source_id": "media-c07d275a-5c20228",
+      "name": "S2",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000033", "size_bytes": 1033, "sha256": "0000000000000000000000000000000000000000000000000000000000000021", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 124,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "shot_id": "s2",
+      "take_id": "u1"
+     }
+    ],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {
+      "clip_id": "v-media-44049758-e7955212",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "video-1",
+      "name": "S1",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-44049758-e7955212",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "a-media-44049758-e7955212",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "audio-1",
+      "name": "S1",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-44049758-e7955212",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "v-media-c07d275a-5c20228",
+      "source_id": "media-c07d275a-5c20228",
+      "track_id": "video-1",
+      "name": "S2",
+      "start_frame": 124,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-c07d275a-5c20228",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "a-media-c07d275a-5c20228",
+      "source_id": "media-c07d275a-5c20228",
+      "track_id": "audio-1",
+      "name": "S2",
+      "start_frame": 124,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-c07d275a-5c20228",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     }
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": ["s1", "s2"]
+   },
+   "command": {"op": "reconcile", "shot_id": "s1"},
+   "project": {
+    "format": {"width": 768, "height": 448, "fps": {"num": 24, "den": 1}},
+    "shots": [
+     {
+      "shot_id": "s1",
+      "title": "S1",
+      "prompt": "",
+      "frames": 124,
+      "seed": 1,
+      "seed_locked": false,
+      "route": "route-a",
+      "steps": null,
+      "video_shift": null,
+      "audio_shift": null,
+      "enabled": true,
+      "in_frame": 0,
+      "out_frame": null,
+      "takes": [
+       {
+        "take_id": "t1",
+        "run_id": "00000000-0000-4000-8000-000000000931",
+        "output_key": "final",
+        "created_at": "2026-11-01T00:00:00.000Z",
+        "state": "succeeded",
+        "prompt": "",
+        "seed": 1,
+        "frames": 124,
+        "width": 768,
+        "height": 448,
+        "route": "route-a",
+        "steps": null,
+        "asset": {
+         "asset_id": "00000000-0000-4000-8000-000000000531",
+         "kind": "final",
+         "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000031", "size_bytes": 1031, "sha256": "000000000000000000000000000000000000000000000000000000000000001f", "media_type": "video/mp4", "metadata": {}},
+         "source_latent": null,
+         "frame_count": 124,
+         "fps": {"num": 24, "den": 1},
+         "width": 768,
+         "height": 448,
+         "complete": true,
+         "actual_settings": {}
+        },
+        "video_latent": null,
+        "error": null,
+        "timings_ms": {}
+       }
+      ],
+      "active_take_id": "t1",
+      "note": ""
+     },
+     {
+      "shot_id": "s2",
+      "title": "S2",
+      "prompt": "",
+      "frames": 124,
+      "seed": 1,
+      "seed_locked": false,
+      "route": "route-a",
+      "steps": null,
+      "video_shift": null,
+      "audio_shift": null,
+      "enabled": true,
+      "in_frame": 0,
+      "out_frame": null,
+      "takes": [
+       {
+        "take_id": "u1",
+        "run_id": "00000000-0000-4000-8000-000000000933",
+        "output_key": "final",
+        "created_at": "2026-11-01T00:00:00.000Z",
+        "state": "succeeded",
+        "prompt": "",
+        "seed": 1,
+        "frames": 124,
+        "width": 768,
+        "height": 448,
+        "route": "route-a",
+        "steps": null,
+        "asset": {
+         "asset_id": "00000000-0000-4000-8000-000000000533",
+         "kind": "final",
+         "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000033", "size_bytes": 1033, "sha256": "0000000000000000000000000000000000000000000000000000000000000021", "media_type": "video/mp4", "metadata": {}},
+         "source_latent": null,
+         "frame_count": 124,
+         "fps": {"num": 24, "den": 1},
+         "width": 768,
+         "height": 448,
+         "complete": true,
+         "actual_settings": {}
+        },
+        "video_latent": null,
+        "error": null,
+        "timings_ms": {}
+       }
+      ],
+      "active_take_id": "u1",
+      "note": ""
+     }
+    ]
+   },
+   "reject_reason": "nothing_pending"
+  },
+  {
+   "name": "an unknown source",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [
+     {
+      "source_id": "media-44049758-e7955212",
+      "name": "S1",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000031", "size_bytes": 1031, "sha256": "000000000000000000000000000000000000000000000000000000000000001f", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 124,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "shot_id": "s1",
+      "take_id": "t1",
+      "pending_take_id": "t2"
+     },
+     {
+      "source_id": "media-c07d275a-5c20228",
+      "name": "S2",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000033", "size_bytes": 1033, "sha256": "0000000000000000000000000000000000000000000000000000000000000021", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 124,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "shot_id": "s2",
+      "take_id": "u1"
+     }
+    ],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {
+      "clip_id": "v-media-44049758-e7955212",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "video-1",
+      "name": "S1",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-44049758-e7955212",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "a-media-44049758-e7955212",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "audio-1",
+      "name": "S1",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-44049758-e7955212",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "v-media-c07d275a-5c20228",
+      "source_id": "media-c07d275a-5c20228",
+      "track_id": "video-1",
+      "name": "S2",
+      "start_frame": 124,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-c07d275a-5c20228",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "a-media-c07d275a-5c20228",
+      "source_id": "media-c07d275a-5c20228",
+      "track_id": "audio-1",
+      "name": "S2",
+      "start_frame": 124,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-c07d275a-5c20228",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     }
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": ["s1", "s2"]
+   },
+   "command": {"op": "reconcile", "source_id": "nope"},
+   "project": {
+    "format": {"width": 768, "height": 448, "fps": {"num": 24, "den": 1}},
+    "shots": [
+     {
+      "shot_id": "s1",
+      "title": "S1",
+      "prompt": "",
+      "frames": 124,
+      "seed": 1,
+      "seed_locked": false,
+      "route": "route-a",
+      "steps": null,
+      "video_shift": null,
+      "audio_shift": null,
+      "enabled": true,
+      "in_frame": 0,
+      "out_frame": null,
+      "takes": [
+       {
+        "take_id": "t1",
+        "run_id": "00000000-0000-4000-8000-000000000931",
+        "output_key": "final",
+        "created_at": "2026-11-01T00:00:00.000Z",
+        "state": "succeeded",
+        "prompt": "",
+        "seed": 1,
+        "frames": 124,
+        "width": 768,
+        "height": 448,
+        "route": "route-a",
+        "steps": null,
+        "asset": {
+         "asset_id": "00000000-0000-4000-8000-000000000531",
+         "kind": "final",
+         "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000031", "size_bytes": 1031, "sha256": "000000000000000000000000000000000000000000000000000000000000001f", "media_type": "video/mp4", "metadata": {}},
+         "source_latent": null,
+         "frame_count": 124,
+         "fps": {"num": 24, "den": 1},
+         "width": 768,
+         "height": 448,
+         "complete": true,
+         "actual_settings": {}
+        },
+        "video_latent": null,
+        "error": null,
+        "timings_ms": {}
+       },
+       {
+        "take_id": "t2",
+        "run_id": "00000000-0000-4000-8000-000000000932",
+        "output_key": "final",
+        "created_at": "2026-11-01T00:00:00.000Z",
+        "state": "succeeded",
+        "prompt": "",
+        "seed": 1,
+        "frames": 100,
+        "width": 768,
+        "height": 448,
+        "route": "route-a",
+        "steps": null,
+        "asset": {
+         "asset_id": "00000000-0000-4000-8000-000000000532",
+         "kind": "final",
+         "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000032", "size_bytes": 1032, "sha256": "0000000000000000000000000000000000000000000000000000000000000020", "media_type": "video/mp4", "metadata": {}},
+         "source_latent": null,
+         "frame_count": 100,
+         "fps": {"num": 24, "den": 1},
+         "width": 768,
+         "height": 448,
+         "complete": true,
+         "actual_settings": {}
+        },
+        "video_latent": null,
+        "error": null,
+        "timings_ms": {}
+       }
+      ],
+      "active_take_id": "t2",
+      "note": ""
+     },
+     {
+      "shot_id": "s2",
+      "title": "S2",
+      "prompt": "",
+      "frames": 124,
+      "seed": 1,
+      "seed_locked": false,
+      "route": "route-a",
+      "steps": null,
+      "video_shift": null,
+      "audio_shift": null,
+      "enabled": true,
+      "in_frame": 0,
+      "out_frame": null,
+      "takes": [
+       {
+        "take_id": "u1",
+        "run_id": "00000000-0000-4000-8000-000000000933",
+        "output_key": "final",
+        "created_at": "2026-11-01T00:00:00.000Z",
+        "state": "succeeded",
+        "prompt": "",
+        "seed": 1,
+        "frames": 124,
+        "width": 768,
+        "height": 448,
+        "route": "route-a",
+        "steps": null,
+        "asset": {
+         "asset_id": "00000000-0000-4000-8000-000000000533",
+         "kind": "final",
+         "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000033", "size_bytes": 1033, "sha256": "0000000000000000000000000000000000000000000000000000000000000021", "media_type": "video/mp4", "metadata": {}},
+         "source_latent": null,
+         "frame_count": 124,
+         "fps": {"num": 24, "den": 1},
+         "width": 768,
+         "height": 448,
+         "complete": true,
+         "actual_settings": {}
+        },
+        "video_latent": null,
+        "error": null,
+        "timings_ms": {}
+       }
+      ],
+      "active_take_id": "u1",
+      "note": ""
+     }
+    ]
+   },
+   "reject_reason": "source_not_found"
+  },
+  {
+   "name": "an unknown shot",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [
+     {
+      "source_id": "media-44049758-e7955212",
+      "name": "S1",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000031", "size_bytes": 1031, "sha256": "000000000000000000000000000000000000000000000000000000000000001f", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 124,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "shot_id": "s1",
+      "take_id": "t1",
+      "pending_take_id": "t2"
+     },
+     {
+      "source_id": "media-c07d275a-5c20228",
+      "name": "S2",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000033", "size_bytes": 1033, "sha256": "0000000000000000000000000000000000000000000000000000000000000021", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 124,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "shot_id": "s2",
+      "take_id": "u1"
+     }
+    ],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {
+      "clip_id": "v-media-44049758-e7955212",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "video-1",
+      "name": "S1",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-44049758-e7955212",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "a-media-44049758-e7955212",
+      "source_id": "media-44049758-e7955212",
+      "track_id": "audio-1",
+      "name": "S1",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-44049758-e7955212",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "v-media-c07d275a-5c20228",
+      "source_id": "media-c07d275a-5c20228",
+      "track_id": "video-1",
+      "name": "S2",
+      "start_frame": 124,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-c07d275a-5c20228",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "a-media-c07d275a-5c20228",
+      "source_id": "media-c07d275a-5c20228",
+      "track_id": "audio-1",
+      "name": "S2",
+      "start_frame": 124,
+      "in_frame": 0,
+      "out_frame": 124,
+      "linked_id": "link-media-c07d275a-5c20228",
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     }
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": ["s1", "s2"]
+   },
+   "command": {"op": "reconcile", "shot_id": "nope"},
+   "project": {
+    "format": {"width": 768, "height": 448, "fps": {"num": 24, "den": 1}},
+    "shots": [
+     {
+      "shot_id": "s1",
+      "title": "S1",
+      "prompt": "",
+      "frames": 124,
+      "seed": 1,
+      "seed_locked": false,
+      "route": "route-a",
+      "steps": null,
+      "video_shift": null,
+      "audio_shift": null,
+      "enabled": true,
+      "in_frame": 0,
+      "out_frame": null,
+      "takes": [
+       {
+        "take_id": "t1",
+        "run_id": "00000000-0000-4000-8000-000000000931",
+        "output_key": "final",
+        "created_at": "2026-11-01T00:00:00.000Z",
+        "state": "succeeded",
+        "prompt": "",
+        "seed": 1,
+        "frames": 124,
+        "width": 768,
+        "height": 448,
+        "route": "route-a",
+        "steps": null,
+        "asset": {
+         "asset_id": "00000000-0000-4000-8000-000000000531",
+         "kind": "final",
+         "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000031", "size_bytes": 1031, "sha256": "000000000000000000000000000000000000000000000000000000000000001f", "media_type": "video/mp4", "metadata": {}},
+         "source_latent": null,
+         "frame_count": 124,
+         "fps": {"num": 24, "den": 1},
+         "width": 768,
+         "height": 448,
+         "complete": true,
+         "actual_settings": {}
+        },
+        "video_latent": null,
+        "error": null,
+        "timings_ms": {}
+       },
+       {
+        "take_id": "t2",
+        "run_id": "00000000-0000-4000-8000-000000000932",
+        "output_key": "final",
+        "created_at": "2026-11-01T00:00:00.000Z",
+        "state": "succeeded",
+        "prompt": "",
+        "seed": 1,
+        "frames": 100,
+        "width": 768,
+        "height": 448,
+        "route": "route-a",
+        "steps": null,
+        "asset": {
+         "asset_id": "00000000-0000-4000-8000-000000000532",
+         "kind": "final",
+         "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000032", "size_bytes": 1032, "sha256": "0000000000000000000000000000000000000000000000000000000000000020", "media_type": "video/mp4", "metadata": {}},
+         "source_latent": null,
+         "frame_count": 100,
+         "fps": {"num": 24, "den": 1},
+         "width": 768,
+         "height": 448,
+         "complete": true,
+         "actual_settings": {}
+        },
+        "video_latent": null,
+        "error": null,
+        "timings_ms": {}
+       }
+      ],
+      "active_take_id": "t2",
+      "note": ""
+     },
+     {
+      "shot_id": "s2",
+      "title": "S2",
+      "prompt": "",
+      "frames": 124,
+      "seed": 1,
+      "seed_locked": false,
+      "route": "route-a",
+      "steps": null,
+      "video_shift": null,
+      "audio_shift": null,
+      "enabled": true,
+      "in_frame": 0,
+      "out_frame": null,
+      "takes": [
+       {
+        "take_id": "u1",
+        "run_id": "00000000-0000-4000-8000-000000000933",
+        "output_key": "final",
+        "created_at": "2026-11-01T00:00:00.000Z",
+        "state": "succeeded",
+        "prompt": "",
+        "seed": 1,
+        "frames": 124,
+        "width": 768,
+        "height": 448,
+        "route": "route-a",
+        "steps": null,
+        "asset": {
+         "asset_id": "00000000-0000-4000-8000-000000000533",
+         "kind": "final",
+         "file": {"node_id": "00000000-0000-4000-8000-0000000000a1", "file_id": "00000000-0000-4000-8000-000000000033", "size_bytes": 1033, "sha256": "0000000000000000000000000000000000000000000000000000000000000021", "media_type": "video/mp4", "metadata": {}},
+         "source_latent": null,
+         "frame_count": 124,
+         "fps": {"num": 24, "den": 1},
+         "width": 768,
+         "height": 448,
+         "complete": true,
+         "actual_settings": {}
+        },
+        "video_latent": null,
+        "error": null,
+        "timings_ms": {}
+       }
+      ],
+      "active_take_id": "u1",
+      "note": ""
+     }
+    ]
+   },
+   "reject_reason": "shot_not_found"
+  }
+ ]
+}

@@ -1,0 +1,41 @@
+{
+  "component_id": "venc-gpu1-fp32-stream",
+  "label": "Video VAE Encode（GPU 1，FP32 因果串流；參考影片留在 host、每次 2 格送進 encoder，低解析層權重只在需要時上 GPU，配置峰值約 1 GiB，參考圖照舊）",
+  "provider_id": "h3.video_encode",
+  "runtime_id": "x86_64",
+  "autostart": false,
+  "folder": "生成/VAE 編碼",
+  "settings": {
+    "load": {
+      "model_path": "/path/to/models",
+      "device": {
+        "kind": "cuda",
+        "id": "GPU-REPLACE-1",
+        "resource_group": "gpu-1"
+      },
+      "part_overrides": [],
+      "precision": {
+        "compute_dtype": "native"
+      },
+      "offload": {
+        "mode": "none",
+        "after_use": "device"
+      },
+      "provider_options": {
+        "variant": "fl2va",
+        "shared_from": "ref2va",
+        "mode": "exact",
+        "video_vae_scope": "encode_only",
+        "frame_streaming": {
+          "enabled": true,
+          "frames_per_pass": 2,
+          "precision": "fp32"
+        }
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "mode": "detailed"
+    }
+  }
+}

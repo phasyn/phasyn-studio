@@ -1,0 +1,37 @@
+{
+  "manifest_version": 1,
+  "id": "com.example.disabled-pack",
+  "version": "1.0.0",
+  "name": {
+    "zh-Hant": "已停用的包",
+    "en": "Disabled pack"
+  },
+  "description": {
+    "zh-Hant": "共用插件規則案例使用的合成插件包。",
+    "en": "Synthetic package for the shared plugin rule vectors."
+  },
+  "author": {
+    "name": "Example"
+  },
+  "license": "Apache-2.0",
+  "engines": {
+    "phasyn": ">=1.0.0 <2.0.0"
+  },
+  "contributes": {
+    "rules": [
+      {
+        "id": "soft-light",
+        "kind": "effect",
+        "label": {
+          "zh-Hant": "柔光",
+          "en": "Soft light"
+        },
+        "inject": "Soft, diffuse light."
+      }
+    ]
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "files": {}
+  }
+}

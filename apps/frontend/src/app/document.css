@@ -1,0 +1,25 @@
+/*
+ * 工作台是固定在視窗大小的應用程式外殼：文件（html／body）本身永遠不捲動，捲動只發生在各面板的內容區。
+ * 原因（2026-10-17「追蹤設定」頁整個 app 往上捲、下半部空白）：沒有任何祖先是 positioned 時，
+ * 表格儲存格裡的 sr-only（position: absolute）以初始包含區塊定位，不受面板 overflow 裁切，
+ * 把文件的可捲動範圍撐到表格最後一列的位置；之後滾輪連鎖或焦點捲動就把整個 app 捲上去。
+ * AppShell 另外以 relative＋overflow-clip 包住所有內容；這裡確保文件層沒有可捲動的空間、垂直方向也不回彈。
+ * 不放 token（token 只在 index.css）；未分層的規則只作用在 html／body／#root。
+ */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+/* index.css 的 body min-height: 100vh 在行動瀏覽器（網址列可收合）會比可視高度高；外殼已固定為 100%／100dvh。 */
+body {
+  min-height: 0;
+}
+
+html,
+body {
+  overflow: hidden;
+  /* 面板捲到底時不把垂直捲動連鎖／回彈到文件；水平方向保留瀏覽器的上一頁手勢。 */
+  overscroll-behavior-y: none;
+}

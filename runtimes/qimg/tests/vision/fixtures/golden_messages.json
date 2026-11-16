@@ -1,0 +1,1080 @@
+{
+ "source": "reference messages (fixed golden values; regenerate only for a deliberate template change)",
+ "template_fingerprints": {
+  "qwen_caption": "b5e68f73b04d2947f94fbad3fde7621f0e975d44f25070f7d2add13664f5bc04",
+  "qwen_analyze": "af59b1d573002ea552d413927e786f4025b45814938fce89a21cfa4dd03b6557",
+  "qwen_compare": "3eadb9e31b17dbb53ea93112089cb62de2dbb1dfc435979b32eab1dcbfb998ec",
+  "qwen_pairwise": "33c8f3960c08c130577efcb25586c7c604b6ea43d333a614e5cee9044fb2157f",
+  "qwen_revise": "92aba1a6cbd94de34525ace43fad751df5cffa74980d5d5b4caca1cff821d374",
+  "qwen_repair": "33d3417f0d162a3d1b5bcacbf069d1c54a37fa257c1d4f3c34ed8ff1b1396e33",
+  "qwen_scene_inline": "63026da4bcd50dcf5731103f3e7e009401905cc6e4e8d618d745644fe6b2e9f1",
+  "qwen_scene_inline_repair": "584ec693413f619db76ee51b73e04a2f00cd383f4031b7a197e4218f3324cff1",
+  "qwen_compare_flat": "e084589d1cffb51ae0e1c611a4fd831a4f51ad4170035c80bf5f684206720fbb",
+  "qwen_compare_flat_repair": "b06a3074374e04b3060958bf2fd22c8371d18da02b2af83172ab0741e9638fe2",
+  "qwen_pairwise_4b": "dd672f8fec26fad0c2ec4f49ba80137110c6a12188419063d4ad8561ac5da2ac",
+  "qwen_pairwise_4b_repair": "d967062982091a04865bbc1b46fe59e90515e3f8b2faf2a3133775e41d7a4d20"
+ },
+ "schema_fingerprints": {
+  "SceneDraft": "427b6f73b91b12ddc26a99618364688075c779aaf7c13700e7027d567ac56850",
+  "Comparison": "9729cb6df5a3dd738762e9d61ecc2cb031df99d2948132ae4c21d6ea0aace10a",
+  "Pairwise": "38e2d87a0d5b63e6f186e6bd6e8552a3d885833259c393bafdf840dfed4912ae",
+  "CompactScene": "8c1ea604b14dd825145475211156886495dad91482ca0c50845f47835cc2bb5f",
+  "CompactComparison": "0a6fe35b66e04e276a4afc4304d0fc1d9666d9e3adc61f3d3fa0504e1bf68d6e"
+ },
+ "cases": [
+  {
+   "name": "caption_en_4b",
+   "op": "caption",
+   "output_format": "compact",
+   "views": [
+    {
+     "view_id": "v-full",
+     "crop": null
+    }
+   ],
+   "payload": {
+    "prompt_language": "en",
+    "caption": "",
+    "scene": null,
+    "instruction": "",
+    "comparison": null,
+    "intentional_changes": []
+   },
+   "repair": null,
+   "omit_previous_output": false,
+   "system_chars": 1224,
+   "system_sha256": "5f9f21fc3d72c103b1118db313452140f37c663202f409d06ef01badb03df11f",
+   "user_sha256": [
+    "9d5c9df8eb9208d0b9e864f56c8af85a24af8844632c1a49d83955224675dcd4",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "50b6dc22f6f52ff3015df05ab2726cd9395b3256fd1034f19519ac2f1f9c14cc"
+   ]
+  },
+  {
+   "name": "caption_zh_4b",
+   "op": "caption",
+   "output_format": "compact",
+   "views": [
+    {
+     "view_id": "v-full",
+     "crop": null
+    }
+   ],
+   "payload": {
+    "prompt_language": "zh-TW",
+    "caption": "",
+    "scene": null,
+    "instruction": "",
+    "comparison": null,
+    "intentional_changes": []
+   },
+   "repair": null,
+   "omit_previous_output": false,
+   "system_chars": 1253,
+   "system_sha256": "e50a4780b69144a983c7e4717896d8e62494dc065fbf814f7d23bc16c5b7461d",
+   "user_sha256": [
+    "9d5c9df8eb9208d0b9e864f56c8af85a24af8844632c1a49d83955224675dcd4",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "6d7799f129bada66612653991cfd7768094d0ef6f6dee091901a41c1b36420de"
+   ]
+  },
+  {
+   "name": "analyze_zh_4b_crops",
+   "op": "analyze",
+   "output_format": "compact",
+   "views": [
+    {
+     "view_id": "v-full",
+     "crop": null
+    },
+    {
+     "view_id": "v-crop-1",
+     "crop": {
+      "view_id": "v-crop-1",
+      "x0": 0.5,
+      "y0": 0.0,
+      "x1": 1.0,
+      "y1": 0.75
+     }
+    },
+    {
+     "view_id": "v-crop-2",
+     "crop": {
+      "view_id": "v-crop-2",
+      "x0": 0.0,
+      "y0": 0.25,
+      "x1": 0.5,
+      "y1": 1.0
+     }
+    }
+   ],
+   "payload": {
+    "prompt_language": "zh-TW",
+    "caption": "A red teapot on a table.",
+    "scene": null,
+    "instruction": "",
+    "comparison": null,
+    "intentional_changes": []
+   },
+   "repair": null,
+   "omit_previous_output": false,
+   "system_chars": 6306,
+   "system_sha256": "6f5429d34cea2a267638bae28e3f5801c1bfbaa9fca27401f9cf2fee1e32ccc6",
+   "user_sha256": [
+    "9d5c9df8eb9208d0b9e864f56c8af85a24af8844632c1a49d83955224675dcd4",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "51ac61a87b44da2477d40584aa94e47cb13643a210a1cbfafd65b80eaaeb15e2",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "beb70e20c92e1d3ff9a0849ef6b27a268ad43ab04b561aa2b8eba5f19a2b2f9c",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "776547796a1b06cdc0316bd5f38d99505dc54b288188e185e457e3ec20d6d7b7"
+   ]
+  },
+  {
+   "name": "analyze_en_8b",
+   "op": "analyze",
+   "output_format": "full",
+   "views": [
+    {
+     "view_id": "v-full",
+     "crop": null
+    }
+   ],
+   "payload": {
+    "prompt_language": "en",
+    "caption": "A red teapot.",
+    "scene": null,
+    "instruction": "",
+    "comparison": null,
+    "intentional_changes": []
+   },
+   "repair": null,
+   "omit_previous_output": false,
+   "system_chars": 5042,
+   "system_sha256": "5334383c9ced634bdc2f7db399d1dc384c102f41af13216463f904b72f19060a",
+   "user_sha256": [
+    "9d5c9df8eb9208d0b9e864f56c8af85a24af8844632c1a49d83955224675dcd4",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "4a16da00acf37d7950f680b6614f280ec3d34bb883b1d99c6968746c4f1c1060"
+   ]
+  },
+  {
+   "name": "revise_zh_4b_instruction",
+   "op": "revise",
+   "output_format": "compact",
+   "views": [
+    {
+     "view_id": "v-full",
+     "crop": null
+    },
+    {
+     "view_id": "v-crop-1",
+     "crop": {
+      "view_id": "v-crop-1",
+      "x0": 0.5,
+      "y0": 0.0,
+      "x1": 1.0,
+      "y1": 0.75
+     }
+    },
+    {
+     "view_id": "v-crop-2",
+     "crop": {
+      "view_id": "v-crop-2",
+      "x0": 0.0,
+      "y0": 0.25,
+      "x1": 0.5,
+      "y1": 1.0
+     }
+    }
+   ],
+   "payload": {
+    "prompt_language": "zh-TW",
+    "caption": "",
+    "scene": {
+     "$ref": "scene_1"
+    },
+    "instruction": "壺嘴應該在左邊",
+    "comparison": null,
+    "intentional_changes": [
+     "subject"
+    ]
+   },
+   "repair": null,
+   "omit_previous_output": false,
+   "system_chars": 6306,
+   "system_sha256": "6f5429d34cea2a267638bae28e3f5801c1bfbaa9fca27401f9cf2fee1e32ccc6",
+   "user_sha256": [
+    "9d5c9df8eb9208d0b9e864f56c8af85a24af8844632c1a49d83955224675dcd4",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "51ac61a87b44da2477d40584aa94e47cb13643a210a1cbfafd65b80eaaeb15e2",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "beb70e20c92e1d3ff9a0849ef6b27a268ad43ab04b561aa2b8eba5f19a2b2f9c",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "d38eaece60e3a66c3a5a079973dba318f287c079e7877d6d0cbc1d45341ad62d",
+    "2868f6e2a8bb195d932edb268d581d7c910a4ba5815a62273fd7d84329898765"
+   ]
+  },
+  {
+   "name": "revise_zh_4b_comparison",
+   "op": "revise",
+   "output_format": "compact",
+   "views": [
+    {
+     "view_id": "v-full",
+     "crop": null
+    }
+   ],
+   "payload": {
+    "prompt_language": "zh-TW",
+    "caption": "",
+    "scene": {
+     "$ref": "scene_1"
+    },
+    "instruction": "只優先修正比較中前三個可見差異，遵循凍結意圖並逐字保留所有鎖定區段及其證據。",
+    "comparison": {
+     "$ref": "comparison_1"
+    },
+    "intentional_changes": [
+     "subject"
+    ]
+   },
+   "repair": null,
+   "omit_previous_output": false,
+   "system_chars": 6306,
+   "system_sha256": "6f5429d34cea2a267638bae28e3f5801c1bfbaa9fca27401f9cf2fee1e32ccc6",
+   "user_sha256": [
+    "9d5c9df8eb9208d0b9e864f56c8af85a24af8844632c1a49d83955224675dcd4",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "ce88cc7880c063242917c88234e2b6df5d62588c71f7345cf7df87719eec4ca2",
+    "53f96bb9bb01a8fd748a6d0fd6ed2741dd482c57ac598b1586799cc039fd9fd8"
+   ]
+  },
+  {
+   "name": "revise_en_8b",
+   "op": "revise",
+   "output_format": "full",
+   "views": [
+    {
+     "view_id": "v-full",
+     "crop": null
+    }
+   ],
+   "payload": {
+    "prompt_language": "en",
+    "caption": "",
+    "scene": {
+     "$ref": "scene_2"
+    },
+    "instruction": "Fix the lighting.",
+    "comparison": null,
+    "intentional_changes": []
+   },
+   "repair": null,
+   "omit_previous_output": false,
+   "system_chars": 4190,
+   "system_sha256": "2e2b22146360c18dc020903162e9104d50650b99b97cdc1dc7c84f7b995f3472",
+   "user_sha256": [
+    "9d5c9df8eb9208d0b9e864f56c8af85a24af8844632c1a49d83955224675dcd4",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "949513e0c26216267bda74a055f724f61199cfb08c2d9615f88ef0b046eaca6e"
+   ]
+  },
+  {
+   "name": "compare_zh_4b",
+   "op": "compare",
+   "output_format": "compact",
+   "views": [
+    {
+     "view_id": "v-full",
+     "crop": null
+    },
+    {
+     "view_id": "v-generated",
+     "crop": null
+    }
+   ],
+   "payload": {
+    "prompt_language": "zh-TW",
+    "caption": "",
+    "scene": {
+     "$ref": "scene_1"
+    },
+    "instruction": "",
+    "comparison": null,
+    "intentional_changes": [
+     "subject"
+    ]
+   },
+   "repair": null,
+   "omit_previous_output": false,
+   "system_chars": 5696,
+   "system_sha256": "bcc81f542b7c44dfaa84f5eb025cde7893ad11a3b2ba5ed3a3ed0758f30d5095",
+   "user_sha256": [
+    "9d5c9df8eb9208d0b9e864f56c8af85a24af8844632c1a49d83955224675dcd4",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "8fb4c3992b2d4997828b0600592f1a8352e552fb448aea753a646f150e41be85",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "e73624e805bdfce09c0de47cf7813a8bb0d377c08c9fc72c9b9a99e229d3aacf"
+   ]
+  },
+  {
+   "name": "compare_en_8b",
+   "op": "compare",
+   "output_format": "full",
+   "views": [
+    {
+     "view_id": "v-full",
+     "crop": null
+    },
+    {
+     "view_id": "v-generated",
+     "crop": null
+    }
+   ],
+   "payload": {
+    "prompt_language": "en",
+    "caption": "",
+    "scene": {
+     "$ref": "scene_2"
+    },
+    "instruction": "",
+    "comparison": null,
+    "intentional_changes": []
+   },
+   "repair": null,
+   "omit_previous_output": false,
+   "system_chars": 3965,
+   "system_sha256": "b60c8b889be740a66b445b5d1c9ee4aacc601fdbe48ad967b9455f0ceadd1ccd",
+   "user_sha256": [
+    "9d5c9df8eb9208d0b9e864f56c8af85a24af8844632c1a49d83955224675dcd4",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "8fb4c3992b2d4997828b0600592f1a8352e552fb448aea753a646f150e41be85",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "5beff43f01f89e85de7fbfd8174e91db9baa16110ed670e7a5802bad35d12b21"
+   ]
+  },
+  {
+   "name": "pairwise_zh_4b",
+   "op": "pairwise",
+   "output_format": "compact",
+   "views": [
+    {
+     "view_id": "v-full",
+     "crop": null
+    },
+    {
+     "view_id": "v-A",
+     "crop": null
+    },
+    {
+     "view_id": "v-B",
+     "crop": null
+    }
+   ],
+   "payload": {
+    "prompt_language": "zh-TW",
+    "caption": "",
+    "scene": {
+     "$ref": "scene_1"
+    },
+    "instruction": "",
+    "comparison": null,
+    "intentional_changes": [
+     "subject"
+    ]
+   },
+   "repair": null,
+   "omit_previous_output": false,
+   "system_chars": 1977,
+   "system_sha256": "853c171dad1501158457ecef9d10ce74e1026cc1fedd92e89776542b94c656d0",
+   "user_sha256": [
+    "9d5c9df8eb9208d0b9e864f56c8af85a24af8844632c1a49d83955224675dcd4",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "9de9ceef8de0d9c41fcb2d4162d42d7a1b669794362a957d6bc04c0020ea348c",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "4b8676f53281dba5d50b750c0f937120b9a0ad3f40145927fd9fc8e908077b3a",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "e73624e805bdfce09c0de47cf7813a8bb0d377c08c9fc72c9b9a99e229d3aacf"
+   ]
+  },
+  {
+   "name": "pairwise_en_8b",
+   "op": "pairwise",
+   "output_format": "full",
+   "views": [
+    {
+     "view_id": "v-full",
+     "crop": null
+    },
+    {
+     "view_id": "v-A",
+     "crop": null
+    },
+    {
+     "view_id": "v-B",
+     "crop": null
+    }
+   ],
+   "payload": {
+    "prompt_language": "en",
+    "caption": "",
+    "scene": {
+     "$ref": "scene_2"
+    },
+    "instruction": "",
+    "comparison": null,
+    "intentional_changes": []
+   },
+   "repair": null,
+   "omit_previous_output": false,
+   "system_chars": 1484,
+   "system_sha256": "3e034774267b2eddee967bcfe456f6affc5ce333ac5e9632f398bc82b0048423",
+   "user_sha256": [
+    "9d5c9df8eb9208d0b9e864f56c8af85a24af8844632c1a49d83955224675dcd4",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "9de9ceef8de0d9c41fcb2d4162d42d7a1b669794362a957d6bc04c0020ea348c",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "4b8676f53281dba5d50b750c0f937120b9a0ad3f40145927fd9fc8e908077b3a",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "5beff43f01f89e85de7fbfd8174e91db9baa16110ed670e7a5802bad35d12b21"
+   ]
+  },
+  {
+   "name": "analyze_zh_4b_repair_full",
+   "op": "analyze",
+   "output_format": "compact",
+   "views": [
+    {
+     "view_id": "v-full",
+     "crop": null
+    },
+    {
+     "view_id": "v-crop-1",
+     "crop": {
+      "view_id": "v-crop-1",
+      "x0": 0.5,
+      "y0": 0.0,
+      "x1": 1.0,
+      "y1": 0.75
+     }
+    },
+    {
+     "view_id": "v-crop-2",
+     "crop": {
+      "view_id": "v-crop-2",
+      "x0": 0.0,
+      "y0": 0.25,
+      "x1": 0.5,
+      "y1": 1.0
+     }
+    }
+   ],
+   "payload": {
+    "prompt_language": "zh-TW",
+    "caption": "A red teapot on a table.",
+    "scene": null,
+    "instruction": "",
+    "comparison": null,
+    "intentional_changes": []
+   },
+   "repair": {
+    "raw": "{\"sections\": {}}",
+    "errors": [
+     "sections.subject: Field required",
+     "uncertainty_notes: Field required"
+    ]
+   },
+   "omit_previous_output": false,
+   "system_chars": 6980,
+   "system_sha256": "14f26b43d305e092e0276b3c7a847a19a6e0889ad68936e72fb8f05ac045f889",
+   "user_sha256": [
+    "9d5c9df8eb9208d0b9e864f56c8af85a24af8844632c1a49d83955224675dcd4",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "51ac61a87b44da2477d40584aa94e47cb13643a210a1cbfafd65b80eaaeb15e2",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "beb70e20c92e1d3ff9a0849ef6b27a268ad43ab04b561aa2b8eba5f19a2b2f9c",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "776547796a1b06cdc0316bd5f38d99505dc54b288188e185e457e3ec20d6d7b7",
+    "d68a7001742ea658dadb850a75cfff840224f4c8b8abb4aa0ee75b98afa701fb",
+    "b4e0aebe86f1b61448d4a831c40c6e67d4b2da1c87d144ca1b78ba5b4df623fc"
+   ]
+  },
+  {
+   "name": "analyze_zh_4b_repair_omitted",
+   "op": "analyze",
+   "output_format": "compact",
+   "views": [
+    {
+     "view_id": "v-full",
+     "crop": null
+    },
+    {
+     "view_id": "v-crop-1",
+     "crop": {
+      "view_id": "v-crop-1",
+      "x0": 0.5,
+      "y0": 0.0,
+      "x1": 1.0,
+      "y1": 0.75
+     }
+    },
+    {
+     "view_id": "v-crop-2",
+     "crop": {
+      "view_id": "v-crop-2",
+      "x0": 0.0,
+      "y0": 0.25,
+      "x1": 0.5,
+      "y1": 1.0
+     }
+    }
+   ],
+   "payload": {
+    "prompt_language": "zh-TW",
+    "caption": "A red teapot on a table.",
+    "scene": null,
+    "instruction": "",
+    "comparison": null,
+    "intentional_changes": []
+   },
+   "repair": {
+    "raw": "{\"sections\": {}}",
+    "errors": [
+     "sections.subject: Field required",
+     "uncertainty_notes: Field required"
+    ]
+   },
+   "omit_previous_output": true,
+   "system_chars": 6980,
+   "system_sha256": "14f26b43d305e092e0276b3c7a847a19a6e0889ad68936e72fb8f05ac045f889",
+   "user_sha256": [
+    "9d5c9df8eb9208d0b9e864f56c8af85a24af8844632c1a49d83955224675dcd4",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "51ac61a87b44da2477d40584aa94e47cb13643a210a1cbfafd65b80eaaeb15e2",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "beb70e20c92e1d3ff9a0849ef6b27a268ad43ab04b561aa2b8eba5f19a2b2f9c",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "776547796a1b06cdc0316bd5f38d99505dc54b288188e185e457e3ec20d6d7b7",
+    "d56767d5e1e09e924be2cf5bc588ec3ce93b9003cad2052a94748489e4145f50",
+    "b4e0aebe86f1b61448d4a831c40c6e67d4b2da1c87d144ca1b78ba5b4df623fc"
+   ]
+  },
+  {
+   "name": "analyze_en_8b_repair_full",
+   "op": "analyze",
+   "output_format": "full",
+   "views": [
+    {
+     "view_id": "v-full",
+     "crop": null
+    }
+   ],
+   "payload": {
+    "prompt_language": "en",
+    "caption": "A red teapot.",
+    "scene": null,
+    "instruction": "",
+    "comparison": null,
+    "intentional_changes": []
+   },
+   "repair": {
+    "raw": "{\"sections\": {}}",
+    "errors": [
+     "sections.subject: Field required",
+     "uncertainty_notes: Field required"
+    ]
+   },
+   "omit_previous_output": false,
+   "system_chars": 6564,
+   "system_sha256": "0b37f2c20995e46a097b479db6b17c5e89496002b5c781c10fc5482c005ad7ad",
+   "user_sha256": [
+    "9d5c9df8eb9208d0b9e864f56c8af85a24af8844632c1a49d83955224675dcd4",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "4a16da00acf37d7950f680b6614f280ec3d34bb883b1d99c6968746c4f1c1060",
+    "d68a7001742ea658dadb850a75cfff840224f4c8b8abb4aa0ee75b98afa701fb",
+    "364a0a98e71f94291f8fa1957af1f46eae8911612f4e673dffcf6294334bed60"
+   ]
+  },
+  {
+   "name": "compare_zh_4b_repair",
+   "op": "compare",
+   "output_format": "compact",
+   "views": [
+    {
+     "view_id": "v-full",
+     "crop": null
+    },
+    {
+     "view_id": "v-generated",
+     "crop": null
+    }
+   ],
+   "payload": {
+    "prompt_language": "zh-TW",
+    "caption": "",
+    "scene": {
+     "$ref": "scene_1"
+    },
+    "instruction": "",
+    "comparison": null,
+    "intentional_changes": [
+     "subject"
+    ]
+   },
+   "repair": {
+    "raw": "{\"metrics\": []}",
+    "errors": [
+     "metrics: List should have at least 8 items"
+    ]
+   },
+   "omit_previous_output": false,
+   "system_chars": 6787,
+   "system_sha256": "9334d6d37559a365888ae2b17d990876a277504d70725c68b11eafd0189371f5",
+   "user_sha256": [
+    "9d5c9df8eb9208d0b9e864f56c8af85a24af8844632c1a49d83955224675dcd4",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "8fb4c3992b2d4997828b0600592f1a8352e552fb448aea753a646f150e41be85",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "e73624e805bdfce09c0de47cf7813a8bb0d377c08c9fc72c9b9a99e229d3aacf",
+    "2bde80e1c913d0fa46296ead35d0f359878c6720fd29c22cabe1c4c2de8ecd1a",
+    "824650ea026c60d997c3762927c07ce24e1dbadf88c5a5ef5bef0dca95c22187"
+   ]
+  },
+  {
+   "name": "pairwise_zh_4b_repair",
+   "op": "pairwise",
+   "output_format": "compact",
+   "views": [
+    {
+     "view_id": "v-full",
+     "crop": null
+    },
+    {
+     "view_id": "v-A",
+     "crop": null
+    },
+    {
+     "view_id": "v-B",
+     "crop": null
+    }
+   ],
+   "payload": {
+    "prompt_language": "zh-TW",
+    "caption": "",
+    "scene": {
+     "$ref": "scene_1"
+    },
+    "instruction": "",
+    "comparison": null,
+    "intentional_changes": [
+     "subject"
+    ]
+   },
+   "repair": {
+    "raw": "{\"winner\": \"C\"}",
+    "errors": [
+     "winner: Input should be 'A', 'B', 'tie' or 'uncertain'"
+    ]
+   },
+   "omit_previous_output": false,
+   "system_chars": 2742,
+   "system_sha256": "5ed152e4738f8d82acb9e4c57fe09405be5f36f0a0eb76fba6e1e731c77ba3a7",
+   "user_sha256": [
+    "9d5c9df8eb9208d0b9e864f56c8af85a24af8844632c1a49d83955224675dcd4",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "9de9ceef8de0d9c41fcb2d4162d42d7a1b669794362a957d6bc04c0020ea348c",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "4b8676f53281dba5d50b750c0f937120b9a0ad3f40145927fd9fc8e908077b3a",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "e73624e805bdfce09c0de47cf7813a8bb0d377c08c9fc72c9b9a99e229d3aacf",
+    "842b15d6020c088aa4b9c36ef75d021ad5789563ad75a5ca794370138f542e93",
+    "60dd770fbeb93d57e16875a5e94fda0cc22ec07f82745b949b59b447b42c8123"
+   ]
+  },
+  {
+   "name": "revise_zh_4b_repair_omitted",
+   "op": "revise",
+   "output_format": "compact",
+   "views": [
+    {
+     "view_id": "v-full",
+     "crop": null
+    },
+    {
+     "view_id": "v-crop-1",
+     "crop": {
+      "view_id": "v-crop-1",
+      "x0": 0.5,
+      "y0": 0.0,
+      "x1": 1.0,
+      "y1": 0.75
+     }
+    },
+    {
+     "view_id": "v-crop-2",
+     "crop": {
+      "view_id": "v-crop-2",
+      "x0": 0.0,
+      "y0": 0.25,
+      "x1": 0.5,
+      "y1": 1.0
+     }
+    }
+   ],
+   "payload": {
+    "prompt_language": "zh-TW",
+    "caption": "",
+    "scene": {
+     "$ref": "scene_1"
+    },
+    "instruction": "壺嘴應該在左邊",
+    "comparison": null,
+    "intentional_changes": [
+     "subject"
+    ]
+   },
+   "repair": {
+    "raw": "{\"sections\": {}}",
+    "errors": [
+     "sections.subject: Field required",
+     "uncertainty_notes: Field required"
+    ]
+   },
+   "omit_previous_output": true,
+   "system_chars": 6980,
+   "system_sha256": "14f26b43d305e092e0276b3c7a847a19a6e0889ad68936e72fb8f05ac045f889",
+   "user_sha256": [
+    "9d5c9df8eb9208d0b9e864f56c8af85a24af8844632c1a49d83955224675dcd4",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "51ac61a87b44da2477d40584aa94e47cb13643a210a1cbfafd65b80eaaeb15e2",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "beb70e20c92e1d3ff9a0849ef6b27a268ad43ab04b561aa2b8eba5f19a2b2f9c",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "d38eaece60e3a66c3a5a079973dba318f287c079e7877d6d0cbc1d45341ad62d",
+    "2868f6e2a8bb195d932edb268d581d7c910a4ba5815a62273fd7d84329898765",
+    "d56767d5e1e09e924be2cf5bc588ec3ce93b9003cad2052a94748489e4145f50",
+    "b4e0aebe86f1b61448d4a831c40c6e67d4b2da1c87d144ca1b78ba5b4df623fc"
+   ]
+  },
+  {
+   "name": "compare_en_8b_repair",
+   "op": "compare",
+   "output_format": "full",
+   "views": [
+    {
+     "view_id": "v-full",
+     "crop": null
+    },
+    {
+     "view_id": "v-generated",
+     "crop": null
+    }
+   ],
+   "payload": {
+    "prompt_language": "en",
+    "caption": "",
+    "scene": {
+     "$ref": "scene_2"
+    },
+    "instruction": "",
+    "comparison": null,
+    "intentional_changes": []
+   },
+   "repair": {
+    "raw": "not json",
+    "errors": [
+     "Expecting value: line 1 column 1 (char 0)"
+    ]
+   },
+   "omit_previous_output": false,
+   "system_chars": 5487,
+   "system_sha256": "d8e5e58e9860b2e46aac3862ff63cac3064af56f0f266ebffea55a1e291bf916",
+   "user_sha256": [
+    "9d5c9df8eb9208d0b9e864f56c8af85a24af8844632c1a49d83955224675dcd4",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "8fb4c3992b2d4997828b0600592f1a8352e552fb448aea753a646f150e41be85",
+    "65d875da764988977185e976395086245747aa820a91fa8c4d914af30ee3ddcd",
+    "5beff43f01f89e85de7fbfd8174e91db9baa16110ed670e7a5802bad35d12b21",
+    "8fcbd00ab7015ccf86385dcb0e531a43a7c2f28c55e5d78d049f5be56c089a24",
+    "364a0a98e71f94291f8fa1957af1f46eae8911612f4e673dffcf6294334bed60"
+   ]
+  }
+ ],
+ "shared": {
+  "scene_1": {
+   "prompt_language": "zh-TW",
+   "schema_version": 1,
+   "sections": {
+    "subject": {
+     "text_en": "A blue ceramic teapot with a curved spout on the viewer's left.",
+     "text_zh_tw": "一個藍色陶瓷茶壺，壺嘴彎曲朝向觀者左側。",
+     "explanation_zh_tw": "茶壺輪廓清楚可見",
+     "observation_ids": [
+      "o001"
+     ],
+     "locked": true
+    },
+    "action": {
+     "text_en": "",
+     "text_zh_tw": "",
+     "explanation_zh_tw": "",
+     "observation_ids": [],
+     "locked": false
+    },
+    "composition": {
+     "text_en": "The teapot sits slightly left of center and fills about half of the frame.",
+     "text_zh_tw": "茶壺位於畫面中央偏左，約佔畫面一半。",
+     "explanation_zh_tw": "主體位置與佔比",
+     "observation_ids": [
+      "o002"
+     ],
+     "locked": false
+    },
+    "environment": {
+     "text_en": "",
+     "text_zh_tw": "",
+     "explanation_zh_tw": "",
+     "observation_ids": [],
+     "locked": false
+    },
+    "lighting": {
+     "text_en": "Soft window light from the right.",
+     "text_zh_tw": "來自右側的柔和窗光。",
+     "explanation_zh_tw": "右側柔光",
+     "observation_ids": [
+      "o003"
+     ],
+     "locked": false
+    },
+    "appearance": {
+     "text_en": "",
+     "text_zh_tw": "",
+     "explanation_zh_tw": "",
+     "observation_ids": [],
+     "locked": false
+    },
+    "style": {
+     "text_en": "A photograph with shallow depth of field.",
+     "text_zh_tw": "淺景深的攝影作品。",
+     "explanation_zh_tw": "攝影質感",
+     "observation_ids": [
+      "o004"
+     ],
+     "locked": false
+    },
+    "visible_text": {
+     "text_en": "",
+     "text_zh_tw": "",
+     "explanation_zh_tw": "",
+     "observation_ids": [],
+     "locked": true
+    }
+   },
+   "observations": [
+    {
+     "id": "o001",
+     "view_id": "v-full",
+     "section": "subject",
+     "claim_en": "A red teapot with a spout on the left.",
+     "certainty": "observed"
+    },
+    {
+     "id": "o002",
+     "view_id": "v-full",
+     "section": "composition",
+     "claim_en": "The teapot is left of center.",
+     "certainty": "observed"
+    },
+    {
+     "id": "o003",
+     "view_id": "v-crop-1",
+     "section": "lighting",
+     "claim_en": "Highlights fall on the right side.",
+     "certainty": "observed"
+    },
+    {
+     "id": "o004",
+     "view_id": "v-full",
+     "section": "style",
+     "claim_en": "The background is blurred like a photograph.",
+     "certainty": "observed"
+    },
+    {
+     "id": "o005",
+     "view_id": "v-full",
+     "section": "environment",
+     "claim_en": "The table material is unclear.",
+     "certainty": "uncertain"
+    }
+   ],
+   "uncertainty_notes": [
+    "桌面材質無法確認。"
+   ]
+  },
+  "comparison_1": {
+   "schema_version": 1,
+   "sections": {
+    "subject": {
+     "label": "major",
+     "evidence_zh_tw": "subject 判定 major"
+    },
+    "action": {
+     "label": "match",
+     "evidence_zh_tw": "action 一致"
+    },
+    "composition": {
+     "label": "match",
+     "evidence_zh_tw": "composition 一致"
+    },
+    "environment": {
+     "label": "match",
+     "evidence_zh_tw": "environment 一致"
+    },
+    "lighting": {
+     "label": "match",
+     "evidence_zh_tw": "lighting 一致"
+    },
+    "appearance": {
+     "label": "match",
+     "evidence_zh_tw": "appearance 一致"
+    },
+    "style": {
+     "label": "match",
+     "evidence_zh_tw": "style 一致"
+    },
+    "visible_text": {
+     "label": "match",
+     "evidence_zh_tw": "visible_text 一致"
+    }
+   },
+   "unexpected_elements": [
+    "多了一個杯子"
+   ],
+   "differences": [
+    {
+     "section": "subject",
+     "description_zh_tw": "壺嘴方向相反",
+     "suggested_change_en": "Put the spout on the left."
+    },
+    {
+     "section": "composition",
+     "description_zh_tw": "主體太小",
+     "suggested_change_en": "Make the teapot fill half the frame."
+    }
+   ],
+   "text_transcription": "",
+   "unjudgeable_reason": null
+  },
+  "scene_2": {
+   "prompt_language": "en",
+   "schema_version": 1,
+   "sections": {
+    "subject": {
+     "text_en": "A red ceramic teapot with a curved spout on the viewer's left.",
+     "text_zh_tw": "",
+     "explanation_zh_tw": "茶壺輪廓清楚可見",
+     "observation_ids": [
+      "o001"
+     ],
+     "locked": false
+    },
+    "action": {
+     "text_en": "",
+     "text_zh_tw": "",
+     "explanation_zh_tw": "",
+     "observation_ids": [],
+     "locked": false
+    },
+    "composition": {
+     "text_en": "The teapot sits slightly left of center and fills about half of the frame.",
+     "text_zh_tw": "",
+     "explanation_zh_tw": "主體位置與佔比",
+     "observation_ids": [
+      "o002"
+     ],
+     "locked": false
+    },
+    "environment": {
+     "text_en": "",
+     "text_zh_tw": "",
+     "explanation_zh_tw": "",
+     "observation_ids": [],
+     "locked": false
+    },
+    "lighting": {
+     "text_en": "Soft window light from the right.",
+     "text_zh_tw": "",
+     "explanation_zh_tw": "右側柔光",
+     "observation_ids": [
+      "o003"
+     ],
+     "locked": false
+    },
+    "appearance": {
+     "text_en": "",
+     "text_zh_tw": "",
+     "explanation_zh_tw": "",
+     "observation_ids": [],
+     "locked": false
+    },
+    "style": {
+     "text_en": "A photograph with shallow depth of field.",
+     "text_zh_tw": "",
+     "explanation_zh_tw": "攝影質感",
+     "observation_ids": [
+      "o004"
+     ],
+     "locked": false
+    },
+    "visible_text": {
+     "text_en": "",
+     "text_zh_tw": "",
+     "explanation_zh_tw": "",
+     "observation_ids": [],
+     "locked": false
+    }
+   },
+   "observations": [
+    {
+     "id": "o001",
+     "view_id": "v-full",
+     "section": "subject",
+     "claim_en": "A red teapot with a spout on the left.",
+     "certainty": "observed"
+    },
+    {
+     "id": "o002",
+     "view_id": "v-full",
+     "section": "composition",
+     "claim_en": "The teapot is left of center.",
+     "certainty": "observed"
+    },
+    {
+     "id": "o003",
+     "view_id": "v-crop-1",
+     "section": "lighting",
+     "claim_en": "Highlights fall on the right side.",
+     "certainty": "observed"
+    },
+    {
+     "id": "o004",
+     "view_id": "v-full",
+     "section": "style",
+     "claim_en": "The background is blurred like a photograph.",
+     "certainty": "observed"
+    },
+    {
+     "id": "o005",
+     "view_id": "v-full",
+     "section": "environment",
+     "claim_en": "The table material is unclear.",
+     "certainty": "uncertain"
+    }
+   ],
+   "uncertainty_notes": [
+    "桌面材質無法確認。"
+   ]
+  }
+ }
+}

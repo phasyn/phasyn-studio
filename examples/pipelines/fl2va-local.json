@@ -1,0 +1,132 @@
+{
+  "pipeline_id": "fl2va-local",
+  "label": "fl2va：TE（GPU 0 逐層串流）→ Video VAE Encode（GPU 0）→ DiT FL2VA FP8・PAI 8 步（GPU 0）→ Video VAE（GPU 0）‖ Audio VAE（GPU 1）→ mux",
+  "inputs": [
+    {
+      "name": "prompt",
+      "type_id": "text.prompt.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "生成 prompt"
+    },
+    {
+      "name": "first_frame",
+      "type_id": "media.image.v1",
+      "required": true,
+      "transport": "file",
+      "description": "首幀圖片（第一張關鍵幀會被拉伸到畫布）"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "te",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "te-gpu0",
+      "inputs": {
+        "prompt": {
+          "from_input": "prompt"
+        },
+        "first_frame": {
+          "from_input": "first_frame"
+        }
+      },
+      "parameters": {
+        "task": "fl2va",
+        "width": 768,
+        "height": 448,
+        "frames": 124
+      }
+    },
+    {
+      "step_id": "venc",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "venc-gpu0",
+      "inputs": {
+        "prepared": {
+          "from_step": "te",
+          "output": "prepared"
+        },
+        "job": {
+          "from_step": "te",
+          "output": "job"
+        }
+      },
+      "parameters": {}
+    },
+    {
+      "step_id": "dit",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "dit-fl2va-fp8-pai8",
+      "inputs": {
+        "conditioning": {
+          "from_step": "te",
+          "output": "conditioning"
+        },
+        "job": {
+          "from_step": "te",
+          "output": "job"
+        },
+        "prepared": {
+          "from_step": "te",
+          "output": "prepared"
+        },
+        "video_references": {
+          "from_step": "venc",
+          "output": "video_references"
+        }
+      },
+      "parameters": {
+        "seed": 42,
+        "steps": 8,
+        "video_shift": 12.0,
+        "audio_shift": 3.0
+      }
+    },
+    {
+      "step_id": "video",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "vae-gpu0",
+      "inputs": {
+        "latent": {
+          "from_step": "dit",
+          "output": "video_latent"
+        }
+      },
+      "parameters": {}
+    },
+    {
+      "step_id": "audio",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "audio-gpu1",
+      "inputs": {
+        "latent": {
+          "from_step": "dit",
+          "output": "audio_latent"
+        }
+      },
+      "parameters": {}
+    },
+    {
+      "step_id": "mux",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "mux",
+      "inputs": {
+        "video": {
+          "from_step": "video",
+          "output": "asset"
+        },
+        "audio": {
+          "from_step": "audio",
+          "output": "audio"
+        }
+      },
+      "parameters": {}
+    }
+  ],
+  "outputs": {
+    "final": {
+      "from_step": "mux",
+      "output": "asset"
+    }
+  }
+}

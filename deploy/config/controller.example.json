@@ -1,0 +1,43 @@
+{
+  "instance_id": "00000000-0000-4000-8000-0000000000c1",
+  "label": "Phasyn Studio controller",
+  "bind_host": "127.0.0.1",
+  "port": 8080,
+  "advertise_url": "http://127.0.0.1:8080",
+  "data_dir": "../../.data/controller",
+  "static_dir": "../../apps/frontend/dist",
+  "max_active_runs": 1,
+  "node_stale_seconds": 15,
+  "plugins": {
+    "install": "api",
+    "dev_dirs": [],
+    "max_package_bytes": 16777216
+  },
+  "recording": {
+    "device_sample_hz": 2,
+    "publish_interval_ms": 1000,
+    "batch_max_events": 256,
+    "batch_max_bytes": 262144,
+    "queue_max_events": 8192,
+    "queue_max_bytes": 16777216,
+    "segment_bytes": 67108864,
+    "max_detail_bytes_per_recording": 2147483648,
+    "cuda_pending_event_pairs": 4096,
+    "trace_steps": [
+      0,
+      1
+    ],
+    "trace_parts": [],
+    "record_shapes": false,
+    "with_stack": false,
+    "capture_prompt": true,
+    "tensor_dump": false,
+    "capture_stderr": true,
+    "finite_scan": false,
+    "gpu_event_timing": true,
+    "log_level": "info",
+    "parts": [],
+    "steps": [],
+    "mode": "detailed"
+  }
+}

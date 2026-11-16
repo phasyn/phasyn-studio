@@ -1,0 +1,390 @@
+{
+ "op": "caption",
+ "about": "Conformance vectors of the caption timeline command.",
+ "vectors": [
+  {
+   "name": "add without an end lasts three seconds",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [{"source_id": "src-a", "name": "SRC-A", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}, {"source_id": "src-b", "name": "SRC-B", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {"clip_id": "v1", "source_id": "src-a", "track_id": "video-1", "name": "V1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a1", "source_id": "src-a", "track_id": "audio-1", "name": "A1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "v2", "source_id": "src-b", "track_id": "video-1", "name": "V2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a2", "source_id": "src-b", "track_id": "audio-1", "name": "A2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}}
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "command": {"op": "caption", "action": "add", "text": "hello", "start_frame": 10},
+   "after": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [{"source_id": "src-a", "name": "SRC-A", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}, {"source_id": "src-b", "name": "SRC-B", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {"clip_id": "v1", "source_id": "src-a", "track_id": "video-1", "name": "V1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a1", "source_id": "src-a", "track_id": "audio-1", "name": "A1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "v2", "source_id": "src-b", "track_id": "video-1", "name": "V2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a2", "source_id": "src-b", "track_id": "audio-1", "name": "A2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}}
+    ],
+    "captions": [{"caption_id": "caption-1", "start_frame": 10, "end_frame": 82, "text": "hello", "position": "bottom", "size": "medium"}],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   }
+  },
+  {
+   "name": "add with every field",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [{"source_id": "src-a", "name": "SRC-A", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}, {"source_id": "src-b", "name": "SRC-B", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {"clip_id": "v1", "source_id": "src-a", "track_id": "video-1", "name": "V1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a1", "source_id": "src-a", "track_id": "audio-1", "name": "A1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "v2", "source_id": "src-b", "track_id": "video-1", "name": "V2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a2", "source_id": "src-b", "track_id": "audio-1", "name": "A2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}}
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "command": {"op": "caption", "action": "add", "text": "top", "start_frame": 0, "end_frame": 24, "position": "top", "size": "large"},
+   "after": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [{"source_id": "src-a", "name": "SRC-A", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}, {"source_id": "src-b", "name": "SRC-B", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {"clip_id": "v1", "source_id": "src-a", "track_id": "video-1", "name": "V1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a1", "source_id": "src-a", "track_id": "audio-1", "name": "A1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "v2", "source_id": "src-b", "track_id": "video-1", "name": "V2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a2", "source_id": "src-b", "track_id": "audio-1", "name": "A2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}}
+    ],
+    "captions": [{"caption_id": "caption-1", "start_frame": 0, "end_frame": 24, "text": "top", "position": "top", "size": "large"}],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   }
+  },
+  {
+   "name": "update takes the fields flat or nested",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [{"source_id": "src-a", "name": "SRC-A", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}, {"source_id": "src-b", "name": "SRC-B", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {"clip_id": "v1", "source_id": "src-a", "track_id": "video-1", "name": "V1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a1", "source_id": "src-a", "track_id": "audio-1", "name": "A1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "v2", "source_id": "src-b", "track_id": "video-1", "name": "V2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a2", "source_id": "src-b", "track_id": "audio-1", "name": "A2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}}
+    ],
+    "captions": [{"caption_id": "c1", "start_frame": 10, "end_frame": 40, "text": "hello", "position": "bottom", "size": "medium"}],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "command": {"op": "caption", "action": "update", "caption_id": "c1", "end_frame": 48, "fields": {"text": "changed"}},
+   "after": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [{"source_id": "src-a", "name": "SRC-A", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}, {"source_id": "src-b", "name": "SRC-B", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {"clip_id": "v1", "source_id": "src-a", "track_id": "video-1", "name": "V1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a1", "source_id": "src-a", "track_id": "audio-1", "name": "A1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "v2", "source_id": "src-b", "track_id": "video-1", "name": "V2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a2", "source_id": "src-b", "track_id": "audio-1", "name": "A2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}}
+    ],
+    "captions": [{"caption_id": "c1", "start_frame": 10, "end_frame": 48, "text": "changed", "position": "bottom", "size": "medium"}],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   }
+  },
+  {
+   "name": "remove",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [{"source_id": "src-a", "name": "SRC-A", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}, {"source_id": "src-b", "name": "SRC-B", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {"clip_id": "v1", "source_id": "src-a", "track_id": "video-1", "name": "V1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a1", "source_id": "src-a", "track_id": "audio-1", "name": "A1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "v2", "source_id": "src-b", "track_id": "video-1", "name": "V2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a2", "source_id": "src-b", "track_id": "audio-1", "name": "A2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}}
+    ],
+    "captions": [{"caption_id": "c1", "start_frame": 10, "end_frame": 40, "text": "hello", "position": "bottom", "size": "medium"}],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "command": {"op": "caption", "action": "remove", "caption_id": "c1"},
+   "after": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [{"source_id": "src-a", "name": "SRC-A", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}, {"source_id": "src-b", "name": "SRC-B", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {"clip_id": "v1", "source_id": "src-a", "track_id": "video-1", "name": "V1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a1", "source_id": "src-a", "track_id": "audio-1", "name": "A1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "v2", "source_id": "src-b", "track_id": "video-1", "name": "V2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a2", "source_id": "src-b", "track_id": "audio-1", "name": "A2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}}
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   }
+  },
+  {
+   "name": "import_srt appends the captions of the file",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [{"source_id": "src-a", "name": "SRC-A", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}, {"source_id": "src-b", "name": "SRC-B", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {"clip_id": "v1", "source_id": "src-a", "track_id": "video-1", "name": "V1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a1", "source_id": "src-a", "track_id": "audio-1", "name": "A1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "v2", "source_id": "src-b", "track_id": "video-1", "name": "V2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a2", "source_id": "src-b", "track_id": "audio-1", "name": "A2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}}
+    ],
+    "captions": [{"caption_id": "c1", "start_frame": 10, "end_frame": 40, "text": "hello", "position": "bottom", "size": "medium"}],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "command": {"op": "caption", "action": "import_srt", "srt": "1\n00:00:01,000 --> 00:00:02,500\nFirst line\n\n2\n00:00:03,000 --> 00:00:04,000\nSecond\nline\n"},
+   "after": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [{"source_id": "src-a", "name": "SRC-A", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}, {"source_id": "src-b", "name": "SRC-B", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {"clip_id": "v1", "source_id": "src-a", "track_id": "video-1", "name": "V1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a1", "source_id": "src-a", "track_id": "audio-1", "name": "A1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "v2", "source_id": "src-b", "track_id": "video-1", "name": "V2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a2", "source_id": "src-b", "track_id": "audio-1", "name": "A2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}}
+    ],
+    "captions": [
+     {"caption_id": "c1", "start_frame": 10, "end_frame": 40, "text": "hello", "position": "bottom", "size": "medium"},
+     {"caption_id": "caption-1", "start_frame": 24, "end_frame": 60, "text": "First line", "position": "bottom", "size": "medium"},
+     {"caption_id": "caption-2", "start_frame": 72, "end_frame": 96, "text": "Second\nline", "position": "bottom", "size": "medium"}
+    ],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   }
+  },
+  {
+   "name": "clear removes every caption",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [{"source_id": "src-a", "name": "SRC-A", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}, {"source_id": "src-b", "name": "SRC-B", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {"clip_id": "v1", "source_id": "src-a", "track_id": "video-1", "name": "V1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a1", "source_id": "src-a", "track_id": "audio-1", "name": "A1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "v2", "source_id": "src-b", "track_id": "video-1", "name": "V2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a2", "source_id": "src-b", "track_id": "audio-1", "name": "A2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}}
+    ],
+    "captions": [{"caption_id": "c1", "start_frame": 10, "end_frame": 40, "text": "hello", "position": "bottom", "size": "medium"}],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "command": {"op": "caption", "action": "clear"},
+   "after": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [{"source_id": "src-a", "name": "SRC-A", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}, {"source_id": "src-b", "name": "SRC-B", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {"clip_id": "v1", "source_id": "src-a", "track_id": "video-1", "name": "V1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a1", "source_id": "src-a", "track_id": "audio-1", "name": "A1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "v2", "source_id": "src-b", "track_id": "video-1", "name": "V2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a2", "source_id": "src-b", "track_id": "audio-1", "name": "A2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}}
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   }
+  },
+  {
+   "name": "an unknown caption",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [{"source_id": "src-a", "name": "SRC-A", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}, {"source_id": "src-b", "name": "SRC-B", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {"clip_id": "v1", "source_id": "src-a", "track_id": "video-1", "name": "V1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a1", "source_id": "src-a", "track_id": "audio-1", "name": "A1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "v2", "source_id": "src-b", "track_id": "video-1", "name": "V2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a2", "source_id": "src-b", "track_id": "audio-1", "name": "A2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}}
+    ],
+    "captions": [{"caption_id": "c1", "start_frame": 10, "end_frame": 40, "text": "hello", "position": "bottom", "size": "medium"}],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "command": {"op": "caption", "action": "update", "caption_id": "nope", "text": "x"},
+   "reject_reason": "caption_not_found"
+  },
+  {
+   "name": "an SRT block without a time line",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [{"source_id": "src-a", "name": "SRC-A", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}, {"source_id": "src-b", "name": "SRC-B", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {"clip_id": "v1", "source_id": "src-a", "track_id": "video-1", "name": "V1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a1", "source_id": "src-a", "track_id": "audio-1", "name": "A1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "v2", "source_id": "src-b", "track_id": "video-1", "name": "V2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a2", "source_id": "src-b", "track_id": "audio-1", "name": "A2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}}
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "command": {"op": "caption", "action": "import_srt", "srt": "1\nno time here\n"},
+   "reject_reason": "srt_invalid"
+  },
+  {
+   "name": "a caption must end after it starts",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [{"source_id": "src-a", "name": "SRC-A", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}, {"source_id": "src-b", "name": "SRC-B", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {"clip_id": "v1", "source_id": "src-a", "track_id": "video-1", "name": "V1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a1", "source_id": "src-a", "track_id": "audio-1", "name": "A1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "v2", "source_id": "src-b", "track_id": "video-1", "name": "V2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a2", "source_id": "src-b", "track_id": "audio-1", "name": "A2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}}
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "command": {"op": "caption", "action": "add", "text": "x", "start_frame": 50, "end_frame": 40},
+   "reject_reason": "caption_range"
+  },
+  {
+   "name": "add needs text",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [{"source_id": "src-a", "name": "SRC-A", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}, {"source_id": "src-b", "name": "SRC-B", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true}],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-2", "kind": "audio", "name": "A2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {"clip_id": "v1", "source_id": "src-a", "track_id": "video-1", "name": "V1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a1", "source_id": "src-a", "track_id": "audio-1", "name": "A1", "start_frame": 0, "in_frame": 0, "out_frame": 48, "linked_id": "l1", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "v2", "source_id": "src-b", "track_id": "video-1", "name": "V2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "a2", "source_id": "src-b", "track_id": "audio-1", "name": "A2", "start_frame": 48, "in_frame": 10, "out_frame": 58, "linked_id": "l2", "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}}
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "command": {"op": "caption", "action": "add", "start_frame": 10},
+   "reject_reason": "invalid_command"
+  }
+ ]
+}

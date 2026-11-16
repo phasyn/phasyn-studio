@@ -1,0 +1,70 @@
+{
+  "schema_version": "4.0",
+  "source": {
+    "node_id": "20000000-0000-4000-8000-000000000001",
+    "file_id": "30000000-0000-4000-8000-000000000001",
+    "size_bytes": 56,
+    "sha256": "75fe90a0ed4086f241090c89226c6a0e4728e84080153c74296c432e429032e6",
+    "media_type": "text/plain",
+    "metadata": {
+      "synthetic": true,
+      "purpose": "contract only"
+    }
+  },
+  "duration_seconds": 5.0,
+  "entities": [
+    {
+      "entity_id": "person1",
+      "kind": "person",
+      "description": "合成描述：灰衣人物"
+    }
+  ],
+  "initial_state": "合成示例：手在杯旁。",
+  "final_state": "合成示例：杯子放回桌上。",
+  "events": [
+    {
+      "event_id": "e1",
+      "entity_ids": [
+        "person1"
+      ],
+      "start_seconds": 0.5,
+      "end_seconds": 3.0,
+      "description": "合成示例：拿起杯子。",
+      "evidence_frame_ids": [
+        "f0",
+        "f1"
+      ],
+      "certainty": "observed"
+    }
+  ],
+  "camera": "合成示例：固定鏡頭。",
+  "evidence": [
+    {
+      "frame_id": "f0",
+      "source_pts": 0,
+      "time_base": {
+        "num": 1,
+        "den": 1000
+      },
+      "time_seconds": 0,
+      "file": null
+    },
+    {
+      "frame_id": "f1",
+      "source_pts": 4999,
+      "time_base": {
+        "num": 1,
+        "den": 1000
+      },
+      "time_seconds": 4.999,
+      "file": null
+    }
+  ],
+  "unknowns": [],
+  "generation_edits": [
+    "將灰衣改為紅衣（僅生成）"
+  ],
+  "caption_model": {
+    "synthetic": true
+  }
+}

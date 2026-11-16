@@ -1,0 +1,71 @@
+{
+  "component_id": "qimg-vision-uma0",
+  "label": "圖片反推 Qwen3-VL-4B（整合記憶體 GPU，BF16）",
+  "provider_id": "qimg.vision",
+  "runtime_id": "aarch64-sm121",
+  "autostart": false,
+  "folder": "語意與資料集/圖片反推",
+  "settings": {
+    "load": {
+      "model_path": "/path/to/models/Qwen3-VL-4B-Instruct",
+      "device": {
+        "kind": "cuda",
+        "id": "GPU-REPLACE-2",
+        "resource_group": "gpu-uma"
+      },
+      "precision": {
+        "compute_dtype": "bf16",
+        "quantization": {
+          "scheme": "none"
+        }
+      },
+      "offload": {
+        "mode": "none"
+      },
+      "part_overrides": [],
+      "provider_options": {
+        "attn_implementation": "sdpa",
+        "output_format": "compact",
+        "max_context_tokens": 8192,
+        "max_new_tokens": 3072,
+        "caption_max_new_tokens": 768,
+        "min_pixels": 65536,
+        "max_pixels": 262144,
+        "capacity_check": "enforce",
+        "activation_reserve_bytes": 1073741824,
+        "reserve_bytes": 1073741824
+      }
+    },
+    "invoke": {
+      "op": "caption",
+      "language": "zh-TW"
+    },
+    "recording": {
+      "device_sample_hz": 2,
+      "publish_interval_ms": 1000,
+      "batch_max_events": 256,
+      "batch_max_bytes": 262144,
+      "queue_max_events": 8192,
+      "queue_max_bytes": 16777216,
+      "segment_bytes": 67108864,
+      "max_detail_bytes_per_recording": 2147483648,
+      "cuda_pending_event_pairs": 4096,
+      "trace_steps": [
+        0,
+        1
+      ],
+      "trace_parts": [],
+      "record_shapes": false,
+      "with_stack": false,
+      "capture_prompt": true,
+      "tensor_dump": false,
+      "capture_stderr": true,
+      "finite_scan": false,
+      "gpu_event_timing": true,
+      "log_level": "info",
+      "parts": [],
+      "steps": [],
+      "mode": "detailed"
+    }
+  }
+}

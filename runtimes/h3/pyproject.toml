@@ -1,0 +1,41 @@
+[project]
+name = "phasyn-h3"
+version = "1.0.0"
+description = "MiniMax H3 component providers for Phasyn Studio (conditioning, reference encode, DiT, video/audio decode) over the pinned SGLang numeric recipe"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+authors = [{ name = "Phasyn Studio authors" }]
+# Only torch-free dependencies. torch, SGLang and the rest of the numeric stack come from the GPU runtime
+# environment (deploy/runtimes/<tuple>); describe() reports what is missing (PROVIDER_NOT_INSTALLED).
+dependencies = [
+    "phasyn-components",
+    "phasyn-media",
+    "jsonschema>=4.26",
+    "referencing>=0.37",
+    "numpy>=1.26",
+]
+
+[project.entry-points."phasyn.providers"]
+"h3.conditioning" = "phasyn_h3.providers:ConditioningProvider"
+"h3.reference" = "phasyn_h3.providers:ReferenceProvider"
+"h3.video_encode" = "phasyn_h3.providers:VideoEncodeProvider"
+"h3.audio_encode" = "phasyn_h3.providers:AudioEncodeProvider"
+"h3.dit" = "phasyn_h3.providers:DitProvider"
+"h3.video_decode" = "phasyn_h3.providers:VideoDecodeProvider"
+"h3.audio_decode" = "phasyn_h3.providers:AudioDecodeProvider"
+
+[project.scripts]
+# GPU runtime tools (run them with the tuple's interpreter, e.g. deploy/runtimes/x86_64/.venv/bin/…)
+phasyn-h3-adaln-sidecar = "phasyn_h3.recipe.runtime.adaln_sidecar:main"
+phasyn-h3-importcheck = "phasyn_h3.recipe.runtime.importcheck:main"
+
+[project.urls]
+Homepage = "https://github.com/phasyn/phasyn-studio"
+Repository = "https://github.com/phasyn/phasyn-studio"
+
+[build-system]
+requires = ["hatchling>=1.33.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/phasyn_h3"]

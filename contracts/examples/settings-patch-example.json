@@ -1,0 +1,21 @@
+{
+  "expected_revision": 1,
+  "patch": {
+    "load": {
+      "precision": {
+        "compute_dtype": "bf16"
+      },
+      "part_overrides": [
+        {
+          "selector": "transformer.blocks.*.norm",
+          "settings": {
+            "compute_dtype": "fp32"
+          }
+        }
+      ]
+    },
+    "recording": {
+      "mode": "detailed"
+    }
+  }
+}

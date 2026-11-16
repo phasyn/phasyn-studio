@@ -1,0 +1,113 @@
+{
+  "manifest_version": 1,
+  "id": "com.example.depth-staging",
+  "version": "1.0.0",
+  "name": {
+    "zh-Hant": "景深站位（範例）",
+    "en": "Depth staging (example)",
+    "ja": "奥行きの配置（サンプル）"
+  },
+  "description": {
+    "zh-Hant": "範例插件包：以詞組清單寫成的站位規則、一個手持鏡頭效果，以及一個推薦組合。不含程式碼。",
+    "en": "Example package: a staging rule written as phrase lists, a handheld-camera effect and a recommended set. No code.",
+    "ja": "サンプルパッケージ：語句リストで書いた配置ルール、手持ちカメラのエフェクト、おすすめセット。コードは含みません。"
+  },
+  "author": {
+    "name": "Phasyn Studio authors"
+  },
+  "license": "Apache-2.0",
+  "engines": {
+    "phasyn": ">=1.0.0 <2.0.0"
+  },
+  "contributes": {
+    "rules": [
+      {
+        "id": "no-flat-staging",
+        "kind": "constraint",
+        "label": {
+          "zh-Hant": "禁止平面站位",
+          "en": "No flat staging",
+          "ja": "平面的な配置を禁止"
+        },
+        "description": {
+          "zh-Hant": "擋下側面與並排的寫法，並要求寫出前景、中景或背景。",
+          "en": "Blocks side-on and side-by-side wording and asks for a foreground, midground or background.",
+          "ja": "側面や横並びの書き方を止め、前景・中景・背景のいずれかを書くよう求めます。"
+        },
+        "forbid": [
+          {
+            "id": "side-on",
+            "terms": [
+              "side view",
+              "side-on",
+              "in profile",
+              "side by side"
+            ],
+            "word": true,
+            "message": {
+              "zh-Hant": "側面或並排的寫法（改寫成過肩、低角度或朝鏡頭的動作）",
+              "en": "side-on or side-by-side wording (write an over-the-shoulder, low-angle or toward-the-lens shot instead)",
+              "ja": "側面や横並びの書き方（肩越し・ローアングル・レンズへ向かう動きに書き換えてください）"
+            }
+          }
+        ],
+        "require": [
+          {
+            "id": "depth",
+            "any_terms": [
+              "foreground",
+              "midground",
+              "background"
+            ],
+            "message": {
+              "zh-Hant": "需要景深站位：寫出誰在前景、誰在中景或背景",
+              "en": "needs depth staging: say who is in the foreground and who in the midground or background",
+              "ja": "奥行きの配置が必要です：誰が前景で誰が中景・背景かを書いてください"
+            }
+          }
+        ],
+        "inject": "Staging: the action moves along the depth axis of the frame, one subject close to the lens in the foreground and the other in the midground or background."
+      },
+      {
+        "id": "handheld",
+        "kind": "effect",
+        "label": {
+          "zh-Hant": "手持鏡頭",
+          "en": "Handheld camera",
+          "ja": "手持ちカメラ"
+        },
+        "description": {
+          "zh-Hant": "加上手持鏡頭的描述：自然的輕微晃動與每個節拍的快速重新取景。",
+          "en": "Adds a handheld-camera description: slight natural shake and quick reframing on every beat.",
+          "ja": "手持ちカメラの描写を加えます：自然な小さな揺れと、拍ごとの素早いリフレーミング。"
+        },
+        "inject": "Handheld camera: slight natural shake, quick reframing on every beat, the horizon never perfectly level."
+      }
+    ],
+    "presets": [
+      {
+        "id": "depth-action",
+        "label": {
+          "zh-Hant": "景深動作組合",
+          "en": "Depth action set",
+          "ja": "奥行きアクションセット"
+        },
+        "description": {
+          "zh-Hant": "景深站位加上手持鏡頭。",
+          "en": "Depth staging and the handheld camera.",
+          "ja": "奥行きの配置と手持ちカメラ。"
+        },
+        "rules": [
+          "no-flat-staging",
+          "handheld"
+        ]
+      }
+    ]
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "files": {
+      "README.md": "c6c1412970f69f6c1fd486a937e11bd98c38a39dd0282de419120ee43277d464"
+    }
+  }
+}

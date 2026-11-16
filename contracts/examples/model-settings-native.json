@@ -1,0 +1,59 @@
+{
+  "load": {
+    "model_path": "/absolute/path/to/already-installed-model",
+    "model_revision": null,
+    "device": {
+      "kind": "cuda",
+      "id": "GPU-REPLACE-WITH-ACTUAL-UUID",
+      "resource_group": "gpu-REPLACE"
+    },
+    "precision": {
+      "weight_format": "native",
+      "weight_dtype": "native",
+      "compute_dtype": "native",
+      "autocast_dtype": null,
+      "accumulation_dtype": null,
+      "matmul_tf32": null,
+      "cudnn_tf32": null,
+      "reduced_precision_reduction": null,
+      "output_dtype": "native",
+      "quantization": {}
+    },
+    "offload": {
+      "mode": "none",
+      "resident_layers": 0,
+      "prefetch_depth": 0,
+      "max_pinned_bytes": 0
+    },
+    "part_overrides": [],
+    "provider_options": {}
+  },
+  "invoke": {},
+  "recording": {
+    "mode": "detailed",
+    "log_level": "info",
+    "device_sample_hz": 2,
+    "publish_interval_ms": 1000,
+    "batch_max_events": 256,
+    "batch_max_bytes": 262144,
+    "queue_max_events": 8192,
+    "queue_max_bytes": 16777216,
+    "segment_bytes": 67108864,
+    "max_detail_bytes_per_recording": 2147483648,
+    "cuda_pending_event_pairs": 4096,
+    "trace_steps": [
+      0,
+      1
+    ],
+    "trace_parts": [],
+    "record_shapes": false,
+    "with_stack": false,
+    "capture_prompt": true,
+    "tensor_dump": false,
+    "capture_stderr": true,
+    "finite_scan": false,
+    "gpu_event_timing": true,
+    "parts": [],
+    "steps": []
+  }
+}

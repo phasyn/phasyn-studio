@@ -1,0 +1,153 @@
+{
+  "pipeline_id": "ref2va-local-ref1024",
+  "label": "ref2va（參考圖短邊 1024）：同 ref2va-local，TE 步驟固定 reference_image_short_edge=1024（建議用於短邊 1024 px 以內的參考圖）",
+  "inputs": [
+    {
+      "name": "prompt",
+      "type_id": "text.prompt.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "生成 prompt，原樣送進模型。參考素材用 H3 標籤 <Picture n>／<Video n>／<Audio n> 指稱，依 materials 中同類素材的順序編號（有原聲的參考影片另佔一個 <Audio n>）；Studio 會把 @Image1 這類名稱換成這些標籤，直接執行這條接線時不會轉換"
+    },
+    {
+      "name": "materials",
+      "type_id": "h3.materials.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "ref2va 參考素材 [{file, role, start_seconds?, end_seconds?}]（圖片 ≤9、影片 ≤3、聲音 ≤3、合計 1–12，不能只有聲音）"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "te",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "te-gpu0",
+      "inputs": {
+        "prompt": {
+          "from_input": "prompt"
+        },
+        "materials": {
+          "from_input": "materials"
+        }
+      },
+      "parameters": {
+        "task": "ref2va",
+        "width": 768,
+        "height": 448,
+        "frames": 124,
+        "reference_image_short_edge": 1024
+      }
+    },
+    {
+      "step_id": "venc",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "venc-gpu0",
+      "inputs": {
+        "prepared": {
+          "from_step": "te",
+          "output": "prepared"
+        },
+        "job": {
+          "from_step": "te",
+          "output": "job"
+        }
+      },
+      "parameters": {}
+    },
+    {
+      "step_id": "aenc",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "aenc-gpu1",
+      "inputs": {
+        "prepared": {
+          "from_step": "te",
+          "output": "prepared"
+        },
+        "job": {
+          "from_step": "te",
+          "output": "job"
+        }
+      },
+      "parameters": {}
+    },
+    {
+      "step_id": "dit",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "dit-ref2va-fp8-pai8",
+      "inputs": {
+        "conditioning": {
+          "from_step": "te",
+          "output": "conditioning"
+        },
+        "job": {
+          "from_step": "te",
+          "output": "job"
+        },
+        "prepared": {
+          "from_step": "te",
+          "output": "prepared"
+        },
+        "video_references": {
+          "from_step": "venc",
+          "output": "video_references"
+        },
+        "audio_references": {
+          "from_step": "aenc",
+          "output": "audio_references"
+        }
+      },
+      "parameters": {
+        "seed": 42,
+        "steps": 8,
+        "video_shift": 12.0,
+        "audio_shift": 3.0
+      }
+    },
+    {
+      "step_id": "video",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "vae-gpu0",
+      "inputs": {
+        "latent": {
+          "from_step": "dit",
+          "output": "video_latent"
+        }
+      },
+      "parameters": {}
+    },
+    {
+      "step_id": "audio",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "audio-gpu1",
+      "inputs": {
+        "latent": {
+          "from_step": "dit",
+          "output": "audio_latent"
+        }
+      },
+      "parameters": {}
+    },
+    {
+      "step_id": "mux",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "mux",
+      "inputs": {
+        "video": {
+          "from_step": "video",
+          "output": "asset"
+        },
+        "audio": {
+          "from_step": "audio",
+          "output": "audio"
+        }
+      },
+      "parameters": {}
+    }
+  ],
+  "outputs": {
+    "final": {
+      "from_step": "mux",
+      "output": "asset"
+    }
+  }
+}

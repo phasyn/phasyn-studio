@@ -1,0 +1,37 @@
+{
+  "component_id": "venc-gpu0",
+  "label": "Video VAE Encode（GPU 0，FP32；只讀 encoder＋quant_conv 0.72 GB，pinned 在 host，每次編碼前搬上 GPU、用完釋放）",
+  "provider_id": "h3.video_encode",
+  "runtime_id": "x86_64",
+  "autostart": false,
+  "folder": "生成/VAE 編碼",
+  "settings": {
+    "load": {
+      "model_path": "/path/to/models",
+      "device": {
+        "kind": "cuda",
+        "id": "GPU-REPLACE-0",
+        "resource_group": "gpu-0"
+      },
+      "part_overrides": [],
+      "precision": {
+        "compute_dtype": "native"
+      },
+      "offload": {
+        "mode": "component",
+        "max_pinned_bytes": 1073741824,
+        "after_use": "host"
+      },
+      "provider_options": {
+        "variant": "fl2va",
+        "shared_from": "ref2va",
+        "mode": "exact",
+        "video_vae_scope": "encode_only"
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "mode": "detailed"
+    }
+  }
+}

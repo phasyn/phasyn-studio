@@ -1,0 +1,61 @@
+# Phasyn Studio GPU runtime environment — Qwen-Image 2.1 (runtime_id qimg-x86_64)
+#
+# Linux x86_64; one environment for every sm86 … sm120 discrete GPU (the PyTorch cu130 wheel covers them).
+# Non-package project: it only pins the immutable environment the phasyn_qimg providers run in; it is NOT a
+# member of the repo-root uv workspace.  Lock and install it from this directory.
+#
+# Inference stack pinned to the diffusers commit that ships QwenImage21Pipeline (git 578c9b2) and the
+# matching transformers / accelerate / peft / gguf / safetensors / pillow releases; torch / torchvision come
+# from the same PyTorch cu130 index as the H3 environments.
+
+[project]
+name = "phasyn-gpu-runtime-qimg-x86-64"
+version = "1.0.0"
+license = "Apache-2.0"
+description = "Phasyn Studio Qwen-Image 2.1 runtime env: linux x86_64, sm120+sm86, torch 2.14.1+cu130, diffusers 578c9b2, transformers 5.18.0"
+requires-python = "==3.12.*"
+dependencies = [
+    "torch==2.14.1",
+    "torchvision==0.29.1",
+    # pinned commit (the version that ships QwenImage21Pipeline / AutoencoderKLQwenImage21 / QwenImage21Transformer2DModel)
+    "diffusers",
+    "transformers==5.18.0",
+    "accelerate==1.15.0",
+    "peft==0.21.2",
+    "gguf==0.19.0",
+    "safetensors==0.8.0",
+    # decodes the images people upload: pinned exactly (13.0.0 fixes the known memory-safety advisories of 12.x)
+    "pillow==13.0.0",
+    # pinned: the tokenizer decides the Qwen3-VL token sequence; numpy affects PIL <-> array conversion
+    "tokenizers==0.23.2",
+    "numpy==2.5.3",
+    # Phasyn Studio packages (path dependencies; see [tool.uv.sources])
+    "phasyn-components",
+    "phasyn-media",
+    "phasyn-qimg",
+]
+
+[dependency-groups]
+# pytest, to run runtimes/qimg/tests inside this environment; production installs skip it with
+# `uv sync --frozen --no-dev`.
+dev = ["pytest"]
+
+[tool.uv]
+package = false
+environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+required-environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu130" }
+torchvision = { index = "pytorch-cu130" }
+diffusers = { git = "https://github.com/huggingface/diffusers.git", rev = "578c9b2c6636ab2424a0e56186268b83623656b2" }
+# This repo's packages are editable path installs (restart a component process to pick up code changes;
+# torch / diffusers stay pinned by this lock).
+phasyn-components = { path = "../../../packages/components", editable = true }
+phasyn-media = { path = "../../../packages/media", editable = true }
+phasyn-qimg = { path = "../../../runtimes/qimg", editable = true }
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true

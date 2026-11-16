@@ -1,0 +1,321 @@
+{
+  "$comment": "Synthetic. Shared cases for the two evaluators of plugin rules (the web UI and the reference evaluator). registry.json in this directory is the registry (contract StudioPluginList) every case is evaluated against; a case with \"registry\": \"unavailable\" is evaluated without one. Input: plugins (the project's prompt_plugins), prompt and settings (the values the shot would render with; null = cannot be determined). expect: problems (references that cannot be used), forbidden and missing (prompt rules), unmet (generation requirements), the prompt to send, and blocked. These files are ASCII: every other character is written as a JSON Unicode escape, so that a reader sees which character a case is about. tools/contracts/sync_studio_plugins.py --check verifies every case with the reference evaluator.",
+  "registry": "registry.json",
+  "cases": [
+    {
+      "name": "every requirement holds",
+      "plugins": [
+        "com.example.dev-pack/tv-720p",
+        "com.example.dev-pack/fast-sampling"
+      ],
+      "prompt": "A duel on a rooftop.",
+      "settings": {
+        "format": {
+          "width": 1280,
+          "height": 736
+        },
+        "frames": 141,
+        "steps": 8,
+        "video_shift": 3,
+        "audio_shift": 3,
+        "route_capability": "t2va",
+        "reference_video_short_edge": 768
+      },
+      "expect": {
+        "problems": [],
+        "forbidden": [],
+        "missing": [],
+        "unmet": [],
+        "prompt": "A duel on a rooftop.",
+        "blocked": false
+      }
+    },
+    {
+      "name": "frame size and frame count are not among the allowed values",
+      "plugins": [
+        "com.example.dev-pack/tv-720p"
+      ],
+      "prompt": "A duel on a rooftop.",
+      "settings": {
+        "format": {
+          "width": 1920,
+          "height": 1088
+        },
+        "frames": 107,
+        "steps": 8,
+        "video_shift": 3,
+        "audio_shift": 3,
+        "route_capability": "t2va",
+        "reference_video_short_edge": 768
+      },
+      "expect": {
+        "problems": [],
+        "forbidden": [],
+        "missing": [],
+        "unmet": [
+          {
+            "ref": "com.example.dev-pack/tv-720p",
+            "check": "size"
+          },
+          {
+            "ref": "com.example.dev-pack/tv-720p",
+            "check": "length"
+          }
+        ],
+        "prompt": "A duel on a rooftop.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "a frame size matches only when width and height both match",
+      "plugins": [
+        "com.example.dev-pack/tv-720p"
+      ],
+      "prompt": "A duel on a rooftop.",
+      "settings": {
+        "format": {
+          "width": 1280,
+          "height": 704
+        },
+        "frames": 141,
+        "steps": 8,
+        "video_shift": 3,
+        "audio_shift": 3,
+        "route_capability": "t2va",
+        "reference_video_short_edge": 768
+      },
+      "expect": {
+        "problems": [],
+        "forbidden": [],
+        "missing": [],
+        "unmet": [
+          {
+            "ref": "com.example.dev-pack/tv-720p",
+            "check": "size"
+          }
+        ],
+        "prompt": "A duel on a rooftop.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "numbers compare by value: 3.0 is 3, 5.5 is allowed",
+      "plugins": [
+        "com.example.dev-pack/fast-sampling"
+      ],
+      "prompt": "A duel on a rooftop.",
+      "settings": {
+        "format": {
+          "width": 1280,
+          "height": 736
+        },
+        "frames": 141,
+        "steps": 8,
+        "video_shift": 5.5,
+        "audio_shift": 3.0,
+        "route_capability": "t2va",
+        "reference_video_short_edge": 768
+      },
+      "expect": {
+        "problems": [],
+        "forbidden": [],
+        "missing": [],
+        "unmet": [],
+        "prompt": "A duel on a rooftop.",
+        "blocked": false
+      }
+    },
+    {
+      "name": "a value that cannot be determined never satisfies a requirement",
+      "plugins": [
+        "com.example.dev-pack/fast-sampling"
+      ],
+      "prompt": "A duel on a rooftop.",
+      "settings": {
+        "format": {
+          "width": 1280,
+          "height": 736
+        },
+        "frames": 141,
+        "steps": null,
+        "video_shift": 3,
+        "audio_shift": null,
+        "route_capability": "t2va",
+        "reference_video_short_edge": 768
+      },
+      "expect": {
+        "problems": [],
+        "forbidden": [],
+        "missing": [],
+        "unmet": [
+          {
+            "ref": "com.example.dev-pack/fast-sampling",
+            "check": "steps"
+          },
+          {
+            "ref": "com.example.dev-pack/fast-sampling",
+            "check": "audio-shift"
+          }
+        ],
+        "prompt": "A duel on a rooftop.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "sampling values outside the list",
+      "plugins": [
+        "com.example.dev-pack/fast-sampling"
+      ],
+      "prompt": "A duel on a rooftop.",
+      "settings": {
+        "format": {
+          "width": 1280,
+          "height": 736
+        },
+        "frames": 141,
+        "steps": 50,
+        "video_shift": 4,
+        "audio_shift": 3,
+        "route_capability": "t2va",
+        "reference_video_short_edge": 768
+      },
+      "expect": {
+        "problems": [],
+        "forbidden": [],
+        "missing": [],
+        "unmet": [
+          {
+            "ref": "com.example.dev-pack/fast-sampling",
+            "check": "steps"
+          },
+          {
+            "ref": "com.example.dev-pack/fast-sampling",
+            "check": "video-shift"
+          }
+        ],
+        "prompt": "A duel on a rooftop.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "route capability and reference video short edge hold",
+      "plugins": [
+        "com.example.dev-pack/reference-route"
+      ],
+      "prompt": "A duel on a rooftop.",
+      "settings": {
+        "format": {
+          "width": 1280,
+          "height": 736
+        },
+        "frames": 141,
+        "steps": 8,
+        "video_shift": 3,
+        "audio_shift": 3,
+        "route_capability": "ref2va",
+        "reference_video_short_edge": 768
+      },
+      "expect": {
+        "problems": [],
+        "forbidden": [],
+        "missing": [],
+        "unmet": [],
+        "prompt": "A duel on a rooftop.",
+        "blocked": false
+      }
+    },
+    {
+      "name": "route capability and reference video short edge do not hold",
+      "plugins": [
+        "com.example.dev-pack/reference-route"
+      ],
+      "prompt": "A duel on a rooftop.",
+      "settings": {
+        "format": {
+          "width": 1280,
+          "height": 736
+        },
+        "frames": 141,
+        "steps": 8,
+        "video_shift": 3,
+        "audio_shift": 3,
+        "route_capability": "t2va",
+        "reference_video_short_edge": 448
+      },
+      "expect": {
+        "problems": [],
+        "forbidden": [],
+        "missing": [],
+        "unmet": [
+          {
+            "ref": "com.example.dev-pack/reference-route",
+            "check": "capability"
+          },
+          {
+            "ref": "com.example.dev-pack/reference-route",
+            "check": "short-edge"
+          }
+        ],
+        "prompt": "A duel on a rooftop.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "unknown generation setting",
+      "plugins": [
+        "com.example.dev-pack/no-such-setting"
+      ],
+      "prompt": "A duel on a rooftop.",
+      "settings": {
+        "format": {
+          "width": 1280,
+          "height": 736
+        },
+        "frames": 141,
+        "steps": 8,
+        "video_shift": 3,
+        "audio_shift": 3,
+        "route_capability": "t2va",
+        "reference_video_short_edge": 768
+      },
+      "expect": {
+        "problems": [
+          {
+            "code": "unknown",
+            "ref": "com.example.dev-pack/no-such-setting"
+          }
+        ],
+        "forbidden": [],
+        "missing": [],
+        "unmet": [],
+        "prompt": "A duel on a rooftop.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "nothing selected: settings are not checked",
+      "plugins": [],
+      "prompt": "A duel on a rooftop.",
+      "settings": {
+        "format": {
+          "width": 1280,
+          "height": 736
+        },
+        "frames": 107,
+        "steps": 8,
+        "video_shift": 3,
+        "audio_shift": 3,
+        "route_capability": "t2va",
+        "reference_video_short_edge": 768
+      },
+      "expect": {
+        "problems": [],
+        "forbidden": [],
+        "missing": [],
+        "unmet": [],
+        "prompt": "A duel on a rooftop.",
+        "blocked": false
+      }
+    }
+  ]
+}

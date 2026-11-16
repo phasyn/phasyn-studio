@@ -1,0 +1,27 @@
+[project]
+name = "phasyn-server"
+version = "1.0.0"
+description = "Phasyn Studio shared HTTP layer for the controller and the NodeGateway: errors, limits, uploads, data_dir lock, uvicorn server"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+authors = [{ name = "Phasyn Studio authors" }]
+dependencies = [
+    "phasyn-components",
+    "fastapi>=0.162",
+    "uvicorn>=0.54",
+]
+
+[project.urls]
+Homepage = "https://github.com/phasyn/phasyn-studio"
+Repository = "https://github.com/phasyn/phasyn-studio"
+
+[tool.uv.sources]
+phasyn-components = { workspace = true }
+
+[build-system]
+requires = ["hatchling>=1.33.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/phasyn_server"]

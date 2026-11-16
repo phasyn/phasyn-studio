@@ -1,0 +1,599 @@
+{
+ "analyze_compact": {
+  "sections": {
+   "subject": {
+    "text_en": "A red teapot.",
+    "text_zh_tw": "一個紅色茶壺。",
+    "explanation_zh_tw": "可見茶壺",
+    "observations": [
+     {
+      "view_id": "v-full",
+      "claim_en": "A red teapot is visible.",
+      "certainty": "observed"
+     }
+    ]
+   },
+   "action": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observations": []
+   },
+   "composition": {
+    "text_en": "The teapot is centered.",
+    "text_zh_tw": "茶壺置中。",
+    "explanation_zh_tw": "位置",
+    "observations": [
+     {
+      "view_id": "v-crop-1",
+      "claim_en": "The teapot is in the middle.",
+      "certainty": "observed"
+     }
+    ]
+   },
+   "environment": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observations": []
+   },
+   "lighting": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observations": []
+   },
+   "appearance": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observations": []
+   },
+   "style": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "媒材不明",
+    "observations": [
+     {
+      "view_id": "v-full",
+      "claim_en": "The medium is unclear.",
+      "certainty": "uncertain"
+     }
+    ]
+   },
+   "visible_text": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observations": []
+   }
+  },
+  "uncertainty_notes": [
+   "媒材無法確認。"
+  ]
+ },
+ "analyze_draft": {
+  "sections": {
+   "subject": {
+    "text_en": "A red teapot.",
+    "text_zh_tw": "一個紅色茶壺。",
+    "explanation_zh_tw": "可見茶壺",
+    "observation_ids": [
+     "o001"
+    ]
+   },
+   "action": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observation_ids": []
+   },
+   "composition": {
+    "text_en": "The teapot is centered.",
+    "text_zh_tw": "茶壺置中。",
+    "explanation_zh_tw": "位置",
+    "observation_ids": [
+     "o002"
+    ]
+   },
+   "environment": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observation_ids": []
+   },
+   "lighting": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observation_ids": []
+   },
+   "appearance": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observation_ids": []
+   },
+   "style": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "媒材不明",
+    "observation_ids": [
+     "o003"
+    ]
+   },
+   "visible_text": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observation_ids": []
+   }
+  },
+  "observations": [
+   {
+    "id": "o001",
+    "view_id": "v-full",
+    "section": "subject",
+    "claim_en": "A red teapot is visible.",
+    "certainty": "observed"
+   },
+   {
+    "id": "o002",
+    "view_id": "v-crop-1",
+    "section": "composition",
+    "claim_en": "The teapot is in the middle.",
+    "certainty": "observed"
+   },
+   {
+    "id": "o003",
+    "view_id": "v-full",
+    "section": "style",
+    "claim_en": "The medium is unclear.",
+    "certainty": "uncertain"
+   }
+  ],
+  "uncertainty_notes": [
+   "媒材無法確認。"
+  ]
+ },
+ "analysis_scene": {
+  "prompt_language": "zh-TW",
+  "schema_version": 1,
+  "sections": {
+   "subject": {
+    "text_en": "A red teapot.",
+    "text_zh_tw": "一個紅色茶壺。",
+    "explanation_zh_tw": "可見茶壺",
+    "observation_ids": [
+     "o001"
+    ],
+    "locked": false
+   },
+   "action": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observation_ids": [],
+    "locked": false
+   },
+   "composition": {
+    "text_en": "The teapot is centered.",
+    "text_zh_tw": "茶壺置中。",
+    "explanation_zh_tw": "位置",
+    "observation_ids": [
+     "o002"
+    ],
+    "locked": false
+   },
+   "environment": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observation_ids": [],
+    "locked": false
+   },
+   "lighting": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observation_ids": [],
+    "locked": false
+   },
+   "appearance": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observation_ids": [],
+    "locked": false
+   },
+   "style": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "媒材不明",
+    "observation_ids": [
+     "o003"
+    ],
+    "locked": false
+   },
+   "visible_text": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observation_ids": [],
+    "locked": false
+   }
+  },
+  "observations": [
+   {
+    "id": "o001",
+    "view_id": "v-full",
+    "section": "subject",
+    "claim_en": "A red teapot is visible.",
+    "certainty": "observed"
+   },
+   {
+    "id": "o002",
+    "view_id": "v-crop-1",
+    "section": "composition",
+    "claim_en": "The teapot is in the middle.",
+    "certainty": "observed"
+   },
+   {
+    "id": "o003",
+    "view_id": "v-full",
+    "section": "style",
+    "claim_en": "The medium is unclear.",
+    "certainty": "uncertain"
+   }
+  ],
+  "uncertainty_notes": [
+   "媒材無法確認。"
+  ]
+ },
+ "revise_compact": {
+  "sections": {
+   "subject": {
+    "text_en": "A blue ceramic teapot with a curved spout on the viewer's left.",
+    "text_zh_tw": "一個藍色陶瓷茶壺，壺嘴彎曲朝向觀者左側。",
+    "explanation_zh_tw": "茶壺輪廓清楚可見",
+    "observations": []
+   },
+   "action": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observations": []
+   },
+   "composition": {
+    "text_en": "The teapot is centered.",
+    "text_zh_tw": "茶壺置中。",
+    "explanation_zh_tw": "位置",
+    "observations": [
+     {
+      "view_id": "v-crop-1",
+      "claim_en": "The teapot is in the middle.",
+      "certainty": "observed"
+     }
+    ]
+   },
+   "environment": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observations": []
+   },
+   "lighting": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observations": []
+   },
+   "appearance": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observations": []
+   },
+   "style": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "媒材不明",
+    "observations": [
+     {
+      "view_id": "v-full",
+      "claim_en": "The medium is unclear.",
+      "certainty": "uncertain"
+     }
+    ]
+   },
+   "visible_text": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observations": []
+   }
+  },
+  "uncertainty_notes": [
+   "媒材無法確認。"
+  ]
+ },
+ "revise_draft": {
+  "sections": {
+   "subject": {
+    "text_en": "A blue ceramic teapot with a curved spout on the viewer's left.",
+    "text_zh_tw": "一個藍色陶瓷茶壺，壺嘴彎曲朝向觀者左側。",
+    "explanation_zh_tw": "茶壺輪廓清楚可見",
+    "observation_ids": [
+     "o001"
+    ]
+   },
+   "action": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observation_ids": []
+   },
+   "composition": {
+    "text_en": "The teapot is centered.",
+    "text_zh_tw": "茶壺置中。",
+    "explanation_zh_tw": "位置",
+    "observation_ids": [
+     "o006"
+    ]
+   },
+   "environment": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observation_ids": []
+   },
+   "lighting": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observation_ids": []
+   },
+   "appearance": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observation_ids": []
+   },
+   "style": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "媒材不明",
+    "observation_ids": [
+     "o007"
+    ]
+   },
+   "visible_text": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observation_ids": []
+   }
+  },
+  "observations": [
+   {
+    "id": "o001",
+    "view_id": "v-full",
+    "section": "subject",
+    "claim_en": "A red teapot with a spout on the left.",
+    "certainty": "observed"
+   },
+   {
+    "id": "o006",
+    "view_id": "v-crop-1",
+    "section": "composition",
+    "claim_en": "The teapot is in the middle.",
+    "certainty": "observed"
+   },
+   {
+    "id": "o007",
+    "view_id": "v-full",
+    "section": "style",
+    "claim_en": "The medium is unclear.",
+    "certainty": "uncertain"
+   }
+  ],
+  "uncertainty_notes": [
+   "媒材無法確認。"
+  ]
+ },
+ "revise_merged": {
+  "prompt_language": "zh-TW",
+  "schema_version": 1,
+  "sections": {
+   "subject": {
+    "text_en": "A blue ceramic teapot with a curved spout on the viewer's left.",
+    "text_zh_tw": "一個藍色陶瓷茶壺，壺嘴彎曲朝向觀者左側。",
+    "explanation_zh_tw": "茶壺輪廓清楚可見",
+    "observation_ids": [
+     "o001"
+    ],
+    "locked": true
+   },
+   "action": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observation_ids": [],
+    "locked": false
+   },
+   "composition": {
+    "text_en": "The teapot is centered.",
+    "text_zh_tw": "茶壺置中。",
+    "explanation_zh_tw": "位置",
+    "observation_ids": [
+     "o006"
+    ],
+    "locked": false
+   },
+   "environment": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observation_ids": [],
+    "locked": false
+   },
+   "lighting": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observation_ids": [],
+    "locked": false
+   },
+   "appearance": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observation_ids": [],
+    "locked": false
+   },
+   "style": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "媒材不明",
+    "observation_ids": [
+     "o007"
+    ],
+    "locked": false
+   },
+   "visible_text": {
+    "text_en": "",
+    "text_zh_tw": "",
+    "explanation_zh_tw": "",
+    "observation_ids": [],
+    "locked": true
+   }
+  },
+  "observations": [
+   {
+    "id": "o001",
+    "view_id": "v-full",
+    "section": "subject",
+    "claim_en": "A red teapot with a spout on the left.",
+    "certainty": "observed"
+   },
+   {
+    "id": "o006",
+    "view_id": "v-crop-1",
+    "section": "composition",
+    "claim_en": "The teapot is in the middle.",
+    "certainty": "observed"
+   },
+   {
+    "id": "o007",
+    "view_id": "v-full",
+    "section": "style",
+    "claim_en": "The medium is unclear.",
+    "certainty": "uncertain"
+   }
+  ],
+  "uncertainty_notes": [
+   "媒材無法確認。"
+  ]
+ },
+ "compare_flat": {
+  "metrics": [
+   {
+    "section": "subject",
+    "label": "minor",
+    "evidence_zh_tw": "subject 說明"
+   },
+   {
+    "section": "action",
+    "label": "match",
+    "evidence_zh_tw": "action 說明"
+   },
+   {
+    "section": "composition",
+    "label": "match",
+    "evidence_zh_tw": "composition 說明"
+   },
+   {
+    "section": "environment",
+    "label": "match",
+    "evidence_zh_tw": "environment 說明"
+   },
+   {
+    "section": "lighting",
+    "label": "match",
+    "evidence_zh_tw": "lighting 說明"
+   },
+   {
+    "section": "appearance",
+    "label": "match",
+    "evidence_zh_tw": "appearance 說明"
+   },
+   {
+    "section": "style",
+    "label": "match",
+    "evidence_zh_tw": "style 說明"
+   },
+   {
+    "section": "visible_text",
+    "label": "match",
+    "evidence_zh_tw": "visible_text 說明"
+   }
+  ],
+  "unexpected_elements": [],
+  "differences": [
+   {
+    "section": "subject",
+    "description_zh_tw": "顏色不同",
+    "suggested_change_en": "Make it red."
+   }
+  ],
+  "text_transcription": "",
+  "unjudgeable_reason": null
+ },
+ "compare_public": {
+  "schema_version": 1,
+  "sections": {
+   "subject": {
+    "label": "minor",
+    "evidence_zh_tw": "subject 說明"
+   },
+   "action": {
+    "label": "match",
+    "evidence_zh_tw": "action 說明"
+   },
+   "composition": {
+    "label": "match",
+    "evidence_zh_tw": "composition 說明"
+   },
+   "environment": {
+    "label": "match",
+    "evidence_zh_tw": "environment 說明"
+   },
+   "lighting": {
+    "label": "match",
+    "evidence_zh_tw": "lighting 說明"
+   },
+   "appearance": {
+    "label": "match",
+    "evidence_zh_tw": "appearance 說明"
+   },
+   "style": {
+    "label": "match",
+    "evidence_zh_tw": "style 說明"
+   },
+   "visible_text": {
+    "label": "match",
+    "evidence_zh_tw": "visible_text 說明"
+   }
+  },
+  "unexpected_elements": [],
+  "differences": [
+   {
+    "section": "subject",
+    "description_zh_tw": "顏色不同",
+    "suggested_change_en": "Make it red."
+   }
+  ],
+  "text_transcription": "",
+  "unjudgeable_reason": null
+ }
+}

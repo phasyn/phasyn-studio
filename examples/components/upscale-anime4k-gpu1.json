@@ -1,0 +1,29 @@
+{
+  "component_id": "upscale-anime4k-gpu1",
+  "label": "影片超分 Anime4K v4 VL 2×（GPU 1，FP16；權重內建、常駐，分塊 512×512，PyTorch 上限 1 GiB）",
+  "provider_id": "media.upscale",
+  "runtime_id": "x86_64",
+  "autostart": false,
+  "folder": "生成/影片/超分",
+  "settings": {
+    "load": {
+      "device": {
+        "kind": "cuda",
+        "id": "GPU-REPLACE-1",
+        "resource_group": "gpu-1"
+      },
+      "precision": {
+        "compute_dtype": "fp16"
+      },
+      "provider_options": {
+        "tile_pixels": 262144,
+        "max_frames": 7200,
+        "cuda_memory_cap_bytes": 1073741824
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "mode": "detailed"
+    }
+  }
+}

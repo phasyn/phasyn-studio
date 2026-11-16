@@ -1,0 +1,35 @@
+{
+  "component_id": "aenc-gpu1",
+  "label": "Audio VAE Encode（GPU 1 常駐 FP32）",
+  "provider_id": "h3.audio_encode",
+  "runtime_id": "x86_64",
+  "autostart": false,
+  "folder": "生成/VAE 編碼",
+  "settings": {
+    "load": {
+      "model_path": "/path/to/models",
+      "device": {
+        "kind": "cuda",
+        "id": "GPU-REPLACE-1",
+        "resource_group": "gpu-1"
+      },
+      "part_overrides": [],
+      "precision": {
+        "compute_dtype": "native"
+      },
+      "offload": {
+        "mode": "none",
+        "after_use": "device"
+      },
+      "provider_options": {
+        "variant": "fl2va",
+        "shared_from": "ref2va",
+        "mode": "exact"
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "mode": "detailed"
+    }
+  }
+}

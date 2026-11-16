@@ -1,0 +1,79 @@
+# Phasyn Studio — Python workspace (uv workspace, virtual root)
+#
+# The control-plane environment (Controller, Node, CPU components) never imports PyTorch. GPU runtime
+# environments are not workspace members: each GPU tuple in deploy/runtimes/<tuple>/ locks its own
+# PyTorch and SGLang versions and installs phasyn-components and the runtimes/* packages from this
+# repository as path dependencies.
+
+[tool.uv.workspace]
+members = [
+    "packages/components",
+    "packages/media",
+    "packages/server",
+    "packages/node",
+    "packages/controller",
+    "packages/cli",
+]
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2",
+    "ruff>=0.17.4",
+    "mypy>=2.4.1",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["deploy/runtimes", "apps"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "S", "RUF", "SIM", "PL"]
+ignore = [
+    "E501",     # the formatter owns line length; Chinese messages are not wrapped
+    "PLC0415",  # deferred imports are deliberate (no PyTorch in the control plane, NVML is optional)
+    "PLR0911", "PLR0912", "PLR0913", "PLR0915", "PLR0917", "PLR2004", "PLW0603",
+    "S101", "S603", "S607", "S608",
+    "RUF001", "RUF002", "RUF003",
+    "SIM105", "SIM108",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S", "PLR", "B011"]
+
+[tool.pytest.ini_options]
+testpaths = [
+    "packages/components/tests",
+    "packages/media/tests",
+    "packages/server/tests",
+    "packages/node/tests",
+    "packages/controller/tests",
+    "packages/cli/tests",
+    "runtimes/h3/tests",
+    "runtimes/captioner/tests",
+    "runtimes/qimg/tests",
+    "tools/i18n",
+    "tools/arch",
+    "tools/contracts",
+]
+# GPU runtime packages are not installed in the control-plane environment; tests import their
+# PyTorch-free parts from source through pythonpath.
+pythonpath = [
+    "runtimes/h3/src",
+    "runtimes/captioner/src",
+    "runtimes/qimg/src",
+]
+addopts = "-q -p no:cacheprovider -m 'not gpu'"
+markers = [
+    "gpu: needs a real GPU runtime environment (not part of the core checks)",
+    "static: repository checks that read source, pins or generated files (layering, pins, drift); run after every Python change",
+]
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_unused_ignores = true
+check_untyped_defs = true

@@ -1,0 +1,42 @@
+{
+  "$comment": "Synthetic. The packages of the registry that the shared plugin rule vectors are evaluated against: registry.json is generated from this file, the built-in packages and packages/ by tools/contracts/sync_studio_plugins.py. limits overrides a field of phasyn_components.plugin_manifest.PluginLimits, so that an evaluator which hard-codes a limit instead of reading it from the registry fails a case.",
+  "at": "2026-01-01T00:00:00.000Z",
+  "limits": {
+    "project_inject_bytes": 4096
+  },
+  "packages": [
+    {
+      "directory": "com.example.staging-pack",
+      "source": "installed",
+      "revision": 3
+    },
+    {
+      "directory": "com.example.disabled-pack",
+      "source": "installed",
+      "disabled": true,
+      "revision": 2
+    },
+    {
+      "directory": "com.example.future-pack",
+      "source": "installed"
+    },
+    {
+      "directory": "com.example.stale-pack",
+      "source": "installed"
+    },
+    {
+      "directory": "com.example.code-pack",
+      "source": "installed"
+    },
+    {
+      "plugin_id": "com.example.broken-pack",
+      "source": "installed",
+      "version": "0.3.0",
+      "unreadable": "digest_mismatch"
+    },
+    {
+      "directory": "com.example.dev-pack",
+      "source": "dev"
+    }
+  ]
+}

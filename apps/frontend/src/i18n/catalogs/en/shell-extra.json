@@ -1,0 +1,10 @@
+{
+  "固定側欄": "Pin Sidebar",
+  "固定側欄（不再自動收起）": "Pin sidebar (stop hiding it automatically)",
+  "全收側欄": "Hide Sidebar",
+  "全收側欄（指標停在螢幕左緣 1 秒後滑出）": "Hide sidebar (rest the pointer on the left screen edge for 1 second to slide it out)",
+  "顯示側欄": "Show Sidebar",
+  "顯示側欄（指標停在螢幕左緣 1 秒後滑出）": "Show sidebar (or rest the pointer on the left screen edge for 1 second)",
+  "自訂…": "Custom…",
+  "寬高都必須是 {multiple} 的倍數、介於 {min}–{max}；按 Enter 或離開欄位後套用。": "Width and height must both be multiples of {multiple} within {min}–{max}; applied on Enter or when you leave the field."
+}

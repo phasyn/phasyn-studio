@@ -1,0 +1,94 @@
+{
+  "synthetic": true,
+  "examples": [
+    {
+      "path": "examples/controller.json",
+      "definition": "ControllerConfig"
+    },
+    {
+      "path": "examples/node-a.json",
+      "definition": "NodeConfig"
+    },
+    {
+      "path": "examples/node-b.json",
+      "definition": "NodeConfig"
+    },
+    {
+      "path": "examples/model-settings-native.json",
+      "definition": "InstanceSettings"
+    },
+    {
+      "path": "examples/settings-patch-example.json",
+      "definition": "SettingsPatch"
+    },
+    {
+      "path": "examples/pipeline-echo.json",
+      "definition": "Pipeline"
+    },
+    {
+      "path": "examples/run-echo.json",
+      "definition": "RunRequest"
+    },
+    {
+      "path": "examples/pipeline-generation.json",
+      "definition": "Pipeline"
+    },
+    {
+      "path": "examples/pipeline-preview.json",
+      "definition": "Pipeline"
+    },
+    {
+      "path": "examples/pipeline-final.json",
+      "definition": "Pipeline"
+    },
+    {
+      "path": "examples/pipeline-semantics.json",
+      "definition": "Pipeline"
+    },
+    {
+      "path": "examples/file-ref.json",
+      "definition": "FileRef"
+    },
+    {
+      "path": "examples/recording-context.json",
+      "definition": "RecordingContext"
+    },
+    {
+      "path": "examples/recording-summary.json",
+      "definition": "RecordingSummary"
+    },
+    {
+      "path": "examples/event-batch.json",
+      "definition": "EventBatch"
+    },
+    {
+      "path": "examples/scene.json",
+      "definition": "SceneDocument"
+    },
+    {
+      "path": "examples/caption-pair.json",
+      "definition": "CaptionPair"
+    },
+    {
+      "path": "examples/dataset-manifest.json",
+      "definition": "DatasetManifest"
+    },
+    {
+      "path": "examples/plugin-rules/registry.json",
+      "definition": "StudioPluginList"
+    },
+    {
+      "path": "examples/plugin-rules/packages/com.example.staging-pack/plugin.json",
+      "definition": "StudioPluginManifest"
+    },
+    {
+      "path": "examples/plugin-rules/packages/com.example.dev-pack/plugin.json",
+      "definition": "StudioPluginManifest"
+    },
+    {
+      "path": "examples/events.jsonl",
+      "definition": "Event",
+      "format": "jsonl"
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "node_id": "20000000-0000-4000-8000-000000000001",
+  "file_id": "30000000-0000-4000-8000-000000000001",
+  "size_bytes": 56,
+  "sha256": "75fe90a0ed4086f241090c89226c6a0e4728e84080153c74296c432e429032e6",
+  "media_type": "text/plain",
+  "metadata": {
+    "synthetic": true,
+    "purpose": "contract only"
+  }
+}

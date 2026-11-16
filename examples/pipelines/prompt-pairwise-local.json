@@ -1,0 +1,116 @@
+{
+  "pipeline_id": "prompt-pairwise-local",
+  "label": "圖片反推：現任 vs 挑戰者 A/B＋B/A 雙順序確認（GPU 1＋CPU）",
+  "inputs": [
+    {
+      "name": "image",
+      "type_id": "media.image.v1",
+      "required": true,
+      "transport": "file",
+      "description": "研究原圖（v-full）"
+    },
+    {
+      "name": "incumbent",
+      "type_id": "media.image.v1",
+      "required": true,
+      "transport": "file",
+      "description": "現任候選的代表圖"
+    },
+    {
+      "name": "challenger",
+      "type_id": "media.image.v1",
+      "required": true,
+      "transport": "file",
+      "description": "挑戰者的代表圖（同一 seed）"
+    },
+    {
+      "name": "scene",
+      "type_id": "prompt.scene.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "任務開始時凍結的場景"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "ab",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "qimg-vision-gpu1",
+      "inputs": {
+        "image": {
+          "from_input": "image"
+        },
+        "candidate_a": {
+          "from_input": "incumbent"
+        },
+        "candidate_b": {
+          "from_input": "challenger"
+        },
+        "scene": {
+          "from_input": "scene"
+        }
+      },
+      "parameters": {
+        "op": "pairwise",
+        "language": "zh-TW",
+        "intentional_changes": []
+      }
+    },
+    {
+      "step_id": "ba",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "qimg-vision-gpu1",
+      "inputs": {
+        "image": {
+          "from_input": "image"
+        },
+        "candidate_a": {
+          "from_input": "challenger"
+        },
+        "candidate_b": {
+          "from_input": "incumbent"
+        },
+        "scene": {
+          "from_input": "scene"
+        }
+      },
+      "parameters": {
+        "op": "pairwise",
+        "language": "zh-TW",
+        "intentional_changes": []
+      }
+    },
+    {
+      "step_id": "confirm",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "prompt-score",
+      "inputs": {
+        "pairwise_ab": {
+          "from_step": "ab",
+          "output": "pairwise"
+        },
+        "pairwise_ba": {
+          "from_step": "ba",
+          "output": "pairwise"
+        }
+      },
+      "parameters": {
+        "op": "confirm"
+      }
+    }
+  ],
+  "outputs": {
+    "ab_result": {
+      "from_step": "ab",
+      "output": "result"
+    },
+    "ba_result": {
+      "from_step": "ba",
+      "output": "result"
+    },
+    "confirmation": {
+      "from_step": "confirm",
+      "output": "confirmation"
+    }
+  }
+}

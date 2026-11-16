@@ -1,0 +1,692 @@
+{
+  "$comment": "Synthetic. Shared cases for the two evaluators of plugin rules (the web UI and the reference evaluator). registry.json in this directory is the registry (contract StudioPluginList) every case is evaluated against; a case with \"registry\": \"unavailable\" is evaluated without one. Input: plugins (the project's prompt_plugins), prompt. expect: problems (references that cannot be used), forbidden and missing (prompt rules; a finding of a per-shot check also names its shot, and a subject that no shot names its subject), the prompt to send, and blocked. These files are ASCII: every other character is written as a JSON Unicode escape, so that a reader sees which character a case is about. tools/contracts/sync_studio_plugins.py --check verifies every case with the reference evaluator.",
+  "registry": "registry.json",
+  "cases": [
+    {
+      "name": "nothing selected: the prompt is sent as written",
+      "plugins": [],
+      "prompt": "A fox runs through fresh snow.",
+      "expect": {
+        "problems": [],
+        "forbidden": [],
+        "missing": [],
+        "prompt": "A fox runs through fresh snow.",
+        "blocked": false
+      }
+    },
+    {
+      "name": "nothing selected and no registry: there is nothing to apply",
+      "registry": "unavailable",
+      "plugins": [],
+      "prompt": "A fox runs through fresh snow.",
+      "expect": {
+        "problems": [],
+        "forbidden": [],
+        "missing": [],
+        "prompt": "A fox runs through fresh snow.",
+        "blocked": false
+      }
+    },
+    {
+      "name": "unknown built-in reference",
+      "plugins": [
+        "no-such-rule"
+      ],
+      "prompt": "A fox runs through fresh snow.",
+      "expect": {
+        "problems": [
+          {
+            "code": "unknown",
+            "ref": "no-such-rule"
+          }
+        ],
+        "forbidden": [],
+        "missing": [],
+        "prompt": "A fox runs through fresh snow.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "reference into a package that is not installed",
+      "plugins": [
+        "com.example.missing/some-rule"
+      ],
+      "prompt": "A fox runs through fresh snow.",
+      "expect": {
+        "problems": [
+          {
+            "code": "unknown",
+            "ref": "com.example.missing/some-rule"
+          }
+        ],
+        "forbidden": [],
+        "missing": [],
+        "prompt": "A fox runs through fresh snow.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "installed package without that contribution",
+      "plugins": [
+        "com.example.staging-pack/no-such-rule"
+      ],
+      "prompt": "A fox runs through fresh snow.",
+      "expect": {
+        "problems": [
+          {
+            "code": "unknown",
+            "ref": "com.example.staging-pack/no-such-rule"
+          }
+        ],
+        "forbidden": [],
+        "missing": [],
+        "prompt": "A fox runs through fresh snow.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "rule of a disabled package: blocked, its text is not added",
+      "plugins": [
+        "com.example.disabled-pack/soft-light"
+      ],
+      "prompt": "A fox runs through fresh snow.",
+      "expect": {
+        "problems": [
+          {
+            "code": "plugin_disabled",
+            "ref": "com.example.disabled-pack/soft-light",
+            "plugin_id": "com.example.disabled-pack"
+          }
+        ],
+        "forbidden": [],
+        "missing": [],
+        "prompt": "A fox runs through fresh snow.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "rule of a package for another host version",
+      "plugins": [
+        "com.example.future-pack/future-rule"
+      ],
+      "prompt": "A fox runs through fresh snow.",
+      "expect": {
+        "problems": [
+          {
+            "code": "plugin_incompatible",
+            "ref": "com.example.future-pack/future-rule",
+            "plugin_id": "com.example.future-pack"
+          }
+        ],
+        "forbidden": [],
+        "missing": [],
+        "prompt": "A fox runs through fresh snow.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "rule of a package with code this version cannot run",
+      "plugins": [
+        "com.example.code-pack/tagged"
+      ],
+      "prompt": "A fox runs through fresh snow.",
+      "expect": {
+        "problems": [
+          {
+            "code": "plugin_incompatible",
+            "ref": "com.example.code-pack/tagged",
+            "plugin_id": "com.example.code-pack"
+          }
+        ],
+        "forbidden": [],
+        "missing": [],
+        "prompt": "A fox runs through fresh snow.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "rule of a package whose set names a missing rule",
+      "plugins": [
+        "com.example.stale-pack/still-here"
+      ],
+      "prompt": "A fox runs through fresh snow.",
+      "expect": {
+        "problems": [
+          {
+            "code": "plugin_incompatible",
+            "ref": "com.example.stale-pack/still-here",
+            "plugin_id": "com.example.stale-pack"
+          }
+        ],
+        "forbidden": [],
+        "missing": [],
+        "prompt": "A fox runs through fresh snow.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "reference into a package whose content cannot be read",
+      "plugins": [
+        "com.example.broken-pack/anything"
+      ],
+      "prompt": "A fox runs through fresh snow.",
+      "expect": {
+        "problems": [
+          {
+            "code": "plugin_invalid",
+            "ref": "com.example.broken-pack/anything",
+            "plugin_id": "com.example.broken-pack"
+          }
+        ],
+        "forbidden": [],
+        "missing": [],
+        "prompt": "A fox runs through fresh snow.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "text to add is trimmed first",
+      "plugins": [
+        "com.example.staging-pack/padded"
+      ],
+      "prompt": "detailed_description:\nA duel on a rooftop.",
+      "expect": {
+        "problems": [],
+        "forbidden": [],
+        "missing": [],
+        "prompt": "detailed_description:\nSoft rim light on every figure.\nA duel on a rooftop.",
+        "blocked": false
+      }
+    },
+    {
+      "name": "phrase: found as a whole word, reported as written in the list",
+      "plugins": [
+        "com.example.staging-pack/no-side-view"
+      ],
+      "prompt": "A side view of the bridge, with rocks in the foreground.",
+      "expect": {
+        "problems": [],
+        "forbidden": [
+          {
+            "ref": "com.example.staging-pack/no-side-view",
+            "check": "side",
+            "match": "side view"
+          }
+        ],
+        "missing": [],
+        "prompt": "Staging: the action moves along the depth axis.\n\nA side view of the bridge, with rocks in the foreground.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "phrase: a run of spaces, line breaks and hyphens is one separator",
+      "plugins": [
+        "com.example.staging-pack/no-side-view"
+      ],
+      "prompt": "A SIDE - \n VIEW of the bridge, foreground rocks.",
+      "expect": {
+        "problems": [],
+        "forbidden": [
+          {
+            "ref": "com.example.staging-pack/no-side-view",
+            "check": "side",
+            "match": "side view"
+          }
+        ],
+        "missing": [],
+        "prompt": "Staging: the action moves along the depth axis.\n\nA SIDE - \n VIEW of the bridge, foreground rocks.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "phrase: a tab is a separator",
+      "plugins": [
+        "com.example.staging-pack/no-side-view"
+      ],
+      "prompt": "A side\tview of the bridge, foreground rocks.",
+      "expect": {
+        "problems": [],
+        "forbidden": [
+          {
+            "ref": "com.example.staging-pack/no-side-view",
+            "check": "side",
+            "match": "side view"
+          }
+        ],
+        "missing": [],
+        "prompt": "Staging: the action moves along the depth axis.\n\nA side\tview of the bridge, foreground rocks.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "phrase: a carriage return and line feed is a separator",
+      "plugins": [
+        "com.example.staging-pack/no-side-view"
+      ],
+      "prompt": "A side\r\nview of the bridge, foreground rocks.",
+      "expect": {
+        "problems": [],
+        "forbidden": [
+          {
+            "ref": "com.example.staging-pack/no-side-view",
+            "check": "side",
+            "match": "side view"
+          }
+        ],
+        "missing": [],
+        "prompt": "Staging: the action moves along the depth axis.\n\nA side\r\nview of the bridge, foreground rocks.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "phrase: a no-break space is a separator",
+      "plugins": [
+        "com.example.staging-pack/no-side-view"
+      ],
+      "prompt": "A side\u00a0view of the bridge, foreground rocks.",
+      "expect": {
+        "problems": [],
+        "forbidden": [
+          {
+            "ref": "com.example.staging-pack/no-side-view",
+            "check": "side",
+            "match": "side view"
+          }
+        ],
+        "missing": [],
+        "prompt": "Staging: the action moves along the depth axis.\n\nA side\u00a0view of the bridge, foreground rocks.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "phrase: an ideographic space is a separator",
+      "plugins": [
+        "com.example.staging-pack/no-side-view"
+      ],
+      "prompt": "A side\u3000view of the bridge, foreground rocks.",
+      "expect": {
+        "problems": [],
+        "forbidden": [
+          {
+            "ref": "com.example.staging-pack/no-side-view",
+            "check": "side",
+            "match": "side view"
+          }
+        ],
+        "missing": [],
+        "prompt": "Staging: the action moves along the depth axis.\n\nA side\u3000view of the bridge, foreground rocks.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "phrase: a hyphen (U+2010) is a separator",
+      "plugins": [
+        "com.example.staging-pack/no-side-view"
+      ],
+      "prompt": "A side\u2010on of the bridge, foreground rocks.",
+      "expect": {
+        "problems": [],
+        "forbidden": [
+          {
+            "ref": "com.example.staging-pack/no-side-view",
+            "check": "side",
+            "match": "side-on"
+          }
+        ],
+        "missing": [],
+        "prompt": "Staging: the action moves along the depth axis.\n\nA side\u2010on of the bridge, foreground rocks.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "phrase: a non-breaking hyphen (U+2011) is a separator",
+      "plugins": [
+        "com.example.staging-pack/no-side-view"
+      ],
+      "prompt": "A side\u2011on of the bridge, foreground rocks.",
+      "expect": {
+        "problems": [],
+        "forbidden": [
+          {
+            "ref": "com.example.staging-pack/no-side-view",
+            "check": "side",
+            "match": "side-on"
+          }
+        ],
+        "missing": [],
+        "prompt": "Staging: the action moves along the depth axis.\n\nA side\u2011on of the bridge, foreground rocks.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "phrase: an en dash (U+2013) is a separator",
+      "plugins": [
+        "com.example.staging-pack/no-side-view"
+      ],
+      "prompt": "A side\u2013on of the bridge, foreground rocks.",
+      "expect": {
+        "problems": [],
+        "forbidden": [
+          {
+            "ref": "com.example.staging-pack/no-side-view",
+            "check": "side",
+            "match": "side-on"
+          }
+        ],
+        "missing": [],
+        "prompt": "Staging: the action moves along the depth axis.\n\nA side\u2013on of the bridge, foreground rocks.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "phrase: a hyphen in the list matches a space in the prompt",
+      "plugins": [
+        "com.example.staging-pack/no-side-view"
+      ],
+      "prompt": "A side on shot of the bridge, foreground rocks.",
+      "expect": {
+        "problems": [],
+        "forbidden": [
+          {
+            "ref": "com.example.staging-pack/no-side-view",
+            "check": "side",
+            "match": "side-on"
+          }
+        ],
+        "missing": [],
+        "prompt": "Staging: the action moves along the depth axis.\n\nA side on shot of the bridge, foreground rocks.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "phrase: em dash, underscore, full stop and slash are not separators",
+      "plugins": [
+        "com.example.staging-pack/no-side-view"
+      ],
+      "prompt": "side\u2014view, side_view, side.view and side/view over foreground rocks.",
+      "expect": {
+        "problems": [],
+        "forbidden": [],
+        "missing": [],
+        "prompt": "Staging: the action moves along the depth axis.\n\nside\u2014view, side_view, side.view and side/view over foreground rocks.",
+        "blocked": false
+      }
+    },
+    {
+      "name": "phrase: the first phrase of the list that matches is reported",
+      "plugins": [
+        "com.example.staging-pack/no-side-view"
+      ],
+      "prompt": "Shown in profile and then side-on, foreground rocks.",
+      "expect": {
+        "problems": [],
+        "forbidden": [
+          {
+            "ref": "com.example.staging-pack/no-side-view",
+            "check": "side",
+            "match": "side-on"
+          }
+        ],
+        "missing": [],
+        "prompt": "Staging: the action moves along the depth axis.\n\nShown in profile and then side-on, foreground rocks.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "phrase: nothing between the words is not a separator",
+      "plugins": [
+        "com.example.staging-pack/no-side-view"
+      ],
+      "prompt": "A sideview of the bridge, inprofile, foreground rocks.",
+      "expect": {
+        "problems": [],
+        "forbidden": [],
+        "missing": [],
+        "prompt": "Staging: the action moves along the depth axis.\n\nA sideview of the bridge, inprofile, foreground rocks.",
+        "blocked": false
+      }
+    },
+    {
+      "name": "phrase: a required phrase may sit inside a word and in any case",
+      "plugins": [
+        "com.example.staging-pack/no-side-view"
+      ],
+      "prompt": "The city BACKGROUNDS blur past.",
+      "expect": {
+        "problems": [],
+        "forbidden": [],
+        "missing": [],
+        "prompt": "Staging: the action moves along the depth axis.\n\nThe city BACKGROUNDS blur past.",
+        "blocked": false
+      }
+    },
+    {
+      "name": "phrase: none of the required phrases",
+      "plugins": [
+        "com.example.staging-pack/no-side-view"
+      ],
+      "prompt": "A fox runs through fresh snow.",
+      "expect": {
+        "problems": [],
+        "forbidden": [],
+        "missing": [
+          {
+            "ref": "com.example.staging-pack/no-side-view",
+            "check": "depth"
+          }
+        ],
+        "prompt": "Staging: the action moves along the depth axis.\n\nA fox runs through fresh snow.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "phrase without word: matches inside a word",
+      "plugins": [
+        "com.example.staging-pack/no-realism"
+      ],
+      "prompt": "A photorealistic city in 3D.",
+      "expect": {
+        "problems": [],
+        "forbidden": [
+          {
+            "ref": "com.example.staging-pack/no-realism",
+            "check": "realism",
+            "match": "realis"
+          }
+        ],
+        "missing": [],
+        "prompt": "A photorealistic city in 3D.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "phrase with word: letters, digits and underscore around it are not a boundary",
+      "plugins": [
+        "com.example.staging-pack/whole-words"
+      ],
+      "prompt": "A cgi render, cg_pass and cg2 are fine.",
+      "expect": {
+        "problems": [],
+        "forbidden": [],
+        "missing": [],
+        "prompt": "A cgi render, cg_pass and cg2 are fine.",
+        "blocked": false
+      }
+    },
+    {
+      "name": "phrase with word: punctuation is a boundary",
+      "plugins": [
+        "com.example.staging-pack/whole-words"
+      ],
+      "prompt": "Lit like (cg).",
+      "expect": {
+        "problems": [],
+        "forbidden": [
+          {
+            "ref": "com.example.staging-pack/whole-words",
+            "check": "words",
+            "match": "cg"
+          }
+        ],
+        "missing": [],
+        "prompt": "Lit like (cg).",
+        "blocked": true
+      }
+    },
+    {
+      "name": "phrase with word: the start of the text is a boundary",
+      "plugins": [
+        "com.example.staging-pack/whole-words"
+      ],
+      "prompt": "CG lighting on the towers.",
+      "expect": {
+        "problems": [],
+        "forbidden": [
+          {
+            "ref": "com.example.staging-pack/whole-words",
+            "check": "words",
+            "match": "cg"
+          }
+        ],
+        "missing": [],
+        "prompt": "CG lighting on the towers.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "phrase with word: the end of the text is a boundary",
+      "plugins": [
+        "com.example.staging-pack/whole-words"
+      ],
+      "prompt": "The towers are rendered in cg",
+      "expect": {
+        "problems": [],
+        "forbidden": [
+          {
+            "ref": "com.example.staging-pack/whole-words",
+            "check": "words",
+            "match": "cg"
+          }
+        ],
+        "missing": [],
+        "prompt": "The towers are rendered in cg",
+        "blocked": true
+      }
+    },
+    {
+      "name": "phrase: a typographic apostrophe reads as an apostrophe",
+      "plugins": [
+        "com.example.staging-pack/whole-words"
+      ],
+      "prompt": "A bird\u2019s eye shot of the harbour.",
+      "expect": {
+        "problems": [],
+        "forbidden": [
+          {
+            "ref": "com.example.staging-pack/whole-words",
+            "check": "words",
+            "match": "bird's eye"
+          }
+        ],
+        "missing": [],
+        "prompt": "A bird\u2019s eye shot of the harbour.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "phrase: only ASCII letters fold case (the Kelvin sign is not k)",
+      "plugins": [
+        "com.example.staging-pack/whole-words"
+      ],
+      "prompt": "Shot on \u212aodak stock.",
+      "expect": {
+        "problems": [],
+        "forbidden": [],
+        "missing": [],
+        "prompt": "Shot on \u212aodak stock.",
+        "blocked": false
+      }
+    },
+    {
+      "name": "phrase rule: its text is added like any other",
+      "plugins": [
+        "com.example.staging-pack/no-side-view"
+      ],
+      "prompt": "detailed_description:\nRocks in the foreground, a bridge beyond.",
+      "expect": {
+        "problems": [],
+        "forbidden": [],
+        "missing": [],
+        "prompt": "detailed_description:\nStaging: the action moves along the depth axis.\nRocks in the foreground, a bridge beyond.",
+        "blocked": false
+      }
+    },
+    {
+      "name": "added text is limited in bytes, read from the registry: one long text fits",
+      "plugins": [
+        "com.example.staging-pack/heavy-a"
+      ],
+      "prompt": "A fox runs through fresh snow.",
+      "expect": {
+        "problems": [],
+        "forbidden": [],
+        "missing": [],
+        "prompt": "\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\n\nA fox runs through fresh snow.",
+        "blocked": false
+      }
+    },
+    {
+      "name": "added text is limited in bytes, read from the registry: two long texts do not",
+      "plugins": [
+        "com.example.staging-pack/heavy-a",
+        "com.example.staging-pack/heavy-b"
+      ],
+      "prompt": "A fox runs through fresh snow.",
+      "expect": {
+        "problems": [
+          {
+            "code": "inject_too_large",
+            "bytes": 4200,
+            "limit": 4096
+          }
+        ],
+        "forbidden": [],
+        "missing": [],
+        "prompt": "\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\u756b\u9762\u4fdd\u6301\u624b\u7e6a\u6c34\u5f69\u7684\u67d4\u548c\u8cea\u611f\uff0c\n\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\u93e1\u982d\u6cbf\u8457\u666f\u6df1\u65b9\u5411\u7de9\u6162\u5411\u524d\u63a8\uff0c\n\nA fox runs through fresh snow.",
+        "blocked": true
+      }
+    },
+    {
+      "name": "per shot: phrase lists of an installed package; a full-width colon; subjects compare by number",
+      "plugins": [
+        "com.example.staging-pack/shot-staging"
+      ],
+      "prompt": "subject_definitions:\n<Subject 1> is the knight in @Image1.\n<Subject 3> is the dragon in @Image2.\n<Subject 01> is the knight again.\n\ndetailed_description\uff1a\n[Shot 1] <Subject 1> stands in the\nFOREGROUND.\n[Shot 2] At 00:02.000, a SIDE   VIEW of <Subject 01>.\n",
+      "expect": {
+        "problems": [],
+        "forbidden": [
+          {
+            "ref": "com.example.staging-pack/shot-staging",
+            "check": "side",
+            "match": "side view",
+            "shot": 2
+          }
+        ],
+        "missing": [
+          {
+            "ref": "com.example.staging-pack/shot-staging",
+            "check": "depth",
+            "shot": 2
+          },
+          {
+            "ref": "com.example.staging-pack/shot-staging",
+            "check": "cast",
+            "subject": 3
+          }
+        ],
+        "prompt": "subject_definitions:\n<Subject 1> is the knight in @Image1.\n<Subject 3> is the dragon in @Image2.\n<Subject 01> is the knight again.\n\ndetailed_description\uff1a\n[Shot 1] <Subject 1> stands in the\nFOREGROUND.\n[Shot 2] At 00:02.000, a SIDE   VIEW of <Subject 01>.\n",
+        "blocked": true
+      }
+    }
+  ]
+}

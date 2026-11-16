@@ -1,0 +1,56 @@
+Phasyn Studio
+Copyright 2026 The Phasyn Studio Authors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes software adapted from the following projects. Each
+adapted file keeps an SPDX licence identifier and a provenance header that
+names the upstream project, revision, original file and copyright holders.
+
+  * SGLang (https://github.com/sgl-project/sglang), revision de487f8,
+    Apache License 2.0.
+    Copyright 2023-2024 SGLang Team.
+    Some of the adapted SGLang code is itself marked by SGLang as adapted
+    from FastVideo (https://github.com/hao-ai-lab/FastVideo), Apache License 2.0.
+
+  * MiniMax-H3 video VAE source code (https://huggingface.co/MiniMaxAI/MiniMax-H3),
+    revision 42ed227, files marked "SPDX-License-Identifier: Apache-2.0".
+    Original work by MiniMax. The SGLang MiniMax-H3 video VAE code is derived
+    from these files; the adapted portions in
+    runtimes/h3/src/phasyn_h3/recipe/runtime/stages/vae_streaming.py,
+    vae_frame_streaming.py and vae_weight_streaming.py originate from
+    Ref2VA/video_vae/klvae.py, vae_vit.py, vae_cnn.py and conv.py (for example
+    klvae.py:571 AutoencoderKL._decode_temporal_streaming). The MiniMax-H3
+    weights are not included (MiniMax H3 Community License Agreement).
+
+  * Hugging Face Diffusers (https://github.com/huggingface/diffusers),
+    revision 578c9b2, Apache License 2.0.
+    Copyright 2026 Qwen-Image Team, The HuggingFace Team.
+    Copyright 2026 The HuggingFace Team.
+    Copyright 2025 Stability AI, Katherine Crowson and The HuggingFace Team.
+
+  * shadcn/ui (https://github.com/shadcn-ui/ui), MIT License.
+    Copyright (c) 2023 shadcn.
+
+  * Anime4K v4.0 (https://github.com/bloc97/Anime4K), MIT License: the
+    Upscale_CNN_x2_VL, Restore_CNN_Soft_VL and Clamp_Highlights shaders,
+    vendored unchanged in
+    runtimes/captioner/src/phasyn_captioner/upscale/third_party/anime4k/.
+    Copyright (c) 2019-2021 bloc97.
+
+  * CPython "fnmatch" module (https://github.com/python/cpython),
+    Python Software Foundation License Version 2.
+    Copyright (c) 2001-2023 Python Software Foundation; All Rights Reserved.
+
+The names "Phasyn" and "Phasyn Studio", the Phasyn logos, the wordmark and the
+other brand assets (some of them generated with an AI image model) are not
+licensed under the Apache License. You may use the names to refer to the
+project; a modified version distributed to others must use another name and
+replace the logos and brand assets.
+
+Model weights (for example MiniMax-H3 and Qwen-Image) and LoRA files are not
+part of this product and are not distributed with it. They are subject to
+their own licences; see THIRD_PARTY_NOTICES.md in the Phasyn Studio repository
+(https://github.com/phasyn/phasyn-studio).
+
+Full licence texts and the per-file list are in THIRD_PARTY_NOTICES.md.

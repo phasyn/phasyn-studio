@@ -1,0 +1,48 @@
+{
+ "schema_version": "1.0",
+ "lora_id": "lx-h3-ref2v-turbo8-v1.0-768p",
+ "family": "minimax_h3",
+ "label": "lightx2v Ref2V Turbo 8 步 v1.0 768p",
+ "source_repo": "lightx2v/Minimax-h3-Turbo",
+ "source_revision": "3ec17a324ced54151364f24f8b5fb6bf7e26414f",
+ "license_url": "https://www.apache.org/licenses/LICENSE-2.0",
+ "base_model_license_url": "https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/42ed227ee7df40d41602854ae760620d6eb651fe/LICENSE",
+ "file": {
+  "relative_path": "loras/lightx2v-turbo/minimax_h3_ref2v_turbo_8step_v1.0_768p_bf16.safetensors",
+  "sha256": "9bac880b1a5d7ac052171cf6cce769f0cceaaa42ffa51de4b8e41143a2bdd2d2",
+  "size_bytes": 1383677808
+ },
+ "format": "peft_diffusers",
+ "variants": [
+  "ref2va"
+ ],
+ "rank": 128,
+ "alpha": 8.0,
+ "alpha_source": "file_metadata",
+ "alpha_note": null,
+ "touches_adaln": false,
+ "targets": [
+  "to_q",
+  "to_k",
+  "to_v",
+  "to_out.0",
+  "ff.net.0.proj",
+  "ff.net.2"
+ ],
+ "pdd": null,
+ "sampling_contract": {
+  "steps": [
+   8
+  ],
+  "video_shift": 12.0,
+  "audio_shift": 3.0,
+  "scheduler": "h3_euler"
+ },
+ "fixed_scale": null,
+ "notes_zh": [
+  "lightx2v discussion #51：8 步、video shift 12、audio shift 3；≤768p",
+  "作者以 match（依目標面積）縮放參考圖訓練；釘版 SGLang 走短邊 2048，分佈不同（品質風險）"
+ ],
+ "status": "registered",
+ "is_fixture": false
+}

@@ -1,0 +1,57 @@
+{
+  "component_id": "dit-ref2va-bf16-base",
+  "label": "H3 DiT Ref2VA・BF16 原生・原版 50 步・AdaLN online（逐層串流）",
+  "provider_id": "h3.dit",
+  "runtime_id": "x86_64",
+  "autostart": false,
+  "folder": "生成/H3 DiT/Ref2VA/原版",
+  "exclusive_group": "dit",
+  "settings": {
+    "load": {
+      "model_path": "/path/to/models",
+      "device": {
+        "kind": "cuda",
+        "id": "GPU-REPLACE-0",
+        "resource_group": "gpu-0"
+      },
+      "part_overrides": [],
+      "precision": {
+        "compute_dtype": "native",
+        "quantization": {
+          "scheme": "none"
+        }
+      },
+      "offload": {
+        "mode": "block",
+        "prefetch_depth": 1,
+        "resident_layers": 0,
+        "max_pinned_bytes": 25769803776,
+        "after_use": "host"
+      },
+      "provider_options": {
+        "variant": "ref2va",
+        "shared_from": null,
+        "mode": "exact",
+        "attention": {
+          "provider": "auto_exact",
+          "reject_quadratic_materialization": true
+        },
+        "adaln": {
+          "mode": "online",
+          "host_cache_bytes": 8589934592
+        },
+        "lora": null,
+        "bounded_fp8_load": false
+      }
+    },
+    "invoke": {
+      "seed": 42,
+      "steps": 50,
+      "video_shift": 12.0,
+      "audio_shift": 3.0
+    },
+    "recording": {
+      "mode": "detailed"
+    }
+  }
+}

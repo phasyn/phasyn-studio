@@ -1,0 +1,41 @@
+{
+  "component_id": "vae-gpu0",
+  "label": "Video VAE 解碼（GPU 0，FP32；只讀 decoder 9.69 GB，pinned 在 host，每次解碼前搬上 GPU、用完釋放）",
+  "provider_id": "h3.video_decode",
+  "runtime_id": "x86_64",
+  "autostart": false,
+  "folder": "生成/VAE 解碼",
+  "settings": {
+    "load": {
+      "model_path": "/path/to/models",
+      "device": {
+        "kind": "cuda",
+        "id": "GPU-REPLACE-0",
+        "resource_group": "gpu-0"
+      },
+      "part_overrides": [],
+      "precision": {
+        "compute_dtype": "native"
+      },
+      "offload": {
+        "mode": "component",
+        "max_pinned_bytes": 11811160064,
+        "after_use": "host"
+      },
+      "provider_options": {
+        "variant": "fl2va",
+        "shared_from": "ref2va",
+        "mode": "exact",
+        "encode_provider": "cpu_ffmpeg",
+        "video_codec": "h264",
+        "pixel_format": "yuv420p",
+        "quality": 18,
+        "video_vae_scope": "decode_only"
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "mode": "detailed"
+    }
+  }
+}

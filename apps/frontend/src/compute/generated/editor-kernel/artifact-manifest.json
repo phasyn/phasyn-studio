@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "sources": {
+    "packages/editor-kernel/Cargo.toml": "88e5c26c6f411928418cdb474e8ddadf9fd36e35a919d35fc577f1f2aada4db9",
+    "packages/editor-kernel/Cargo.lock": "56654d56b09578c43ee219919a3af3df3dce8de8a1c426488da0bcf71ad1f8d2",
+    "packages/editor-kernel/rust-toolchain.toml": "1bfdb988c976a2649721229548e6d8b827475b23e65671d889789b594182fe97",
+    "packages/editor-kernel/src/lib.rs": "61541a06490215680539e1e8cf18a1b63be6184ae8a44c6677c43c553af88f56",
+    "packages/editor-kernel/src/peaks.rs": "84e857e4ae6cb089b84950abfd1b7a2db915bf8618077fc64e3bf3d7892eba70",
+    "apps/frontend/scripts/build-editor-kernel.mjs": "6792d22797661b70da657251fa9a8127102c8731ea1e65d4b16d29eda15144f6",
+    "apps/frontend/scripts/kernel-artifacts.mjs": "f95f3f93d4dde6420530538098302e8193297c121e3858f5e6e2f109d11f0e1e",
+    "apps/frontend/scripts/check-editor-kernel.mjs": "5d7b2b5486df1c46a1ab852b617a34625c7cbdc6dbd96ddeba92b16f2fb4ee7e"
+  },
+  "outputs": {
+    "editor_kernel.js": "c11a18a2425bac455aa59515d723a7538742b8f228a6835c09bd9ab527869741",
+    "editor_kernel.d.ts": "7eca123bb292cdf8c0493fff4a2d04c352effafcf607c8dd9b396402b73b65b4",
+    "editor_kernel_bg.wasm": "c15880cdf07f58c11c14b00e07533f6750d51ffdc0f971315bc320f842dc28ba",
+    "editor_kernel_bg.wasm.d.ts": "a0916140f9552f3e9797453b824d8303938d2051f2b8619e6ca438ac232b9424"
+  }
+}

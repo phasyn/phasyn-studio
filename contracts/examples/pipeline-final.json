@@ -1,0 +1,32 @@
+{
+  "pipeline_id": "same-source-final",
+  "label": "從既有final latent正式解碼；不含DiT",
+  "inputs": [
+    {
+      "name": "latent",
+      "type_id": "video.final-latent.v1",
+      "required": true,
+      "transport": "file",
+      "description": "latent"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "final",
+      "node_id": "20000000-0000-4000-8000-000000000002",
+      "component_id": "decode-final",
+      "inputs": {
+        "latent": {
+          "from_input": "latent"
+        }
+      },
+      "parameters": {}
+    }
+  ],
+  "outputs": {
+    "video": {
+      "from_step": "final",
+      "output": "asset"
+    }
+  }
+}

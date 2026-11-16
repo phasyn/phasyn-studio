@@ -1,0 +1,20 @@
+{
+  "name": "phasyn-studio-workspace",
+  "private": true,
+  "description": "Phasyn Studio monorepo: frontend pnpm workspace (Python packages are managed by the uv workspace)",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/phasyn/phasyn-studio.git"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint"
+  },
+  "engines": {
+    "node": ">=22.22.2"
+  },
+  "packageManager": "pnpm@12.21.0"
+}

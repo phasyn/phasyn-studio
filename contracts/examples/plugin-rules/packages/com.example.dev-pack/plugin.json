@@ -1,0 +1,149 @@
+{
+  "manifest_version": 1,
+  "id": "com.example.dev-pack",
+  "version": "0.1.0",
+  "name": {
+    "zh-Hant": "生成設定（開發中）",
+    "en": "Generation settings (development)"
+  },
+  "description": {
+    "zh-Hant": "共用插件規則案例使用的合成插件包。",
+    "en": "Synthetic package for the shared plugin rule vectors."
+  },
+  "author": {
+    "name": "Example"
+  },
+  "license": "Apache-2.0",
+  "engines": {
+    "phasyn": ">=1.0.0 <2.0.0"
+  },
+  "contributes": {
+    "generation": [
+      {
+        "id": "tv-720p",
+        "label": {
+          "zh-Hant": "720P 直出",
+          "en": "720p output"
+        },
+        "defaults": {
+          "format": {
+            "width": 1280,
+            "height": 736
+          },
+          "frames": 141
+        },
+        "require": [
+          {
+            "id": "size",
+            "field": "format",
+            "in": [
+              {
+                "width": 1280,
+                "height": 736
+              }
+            ],
+            "message": {
+              "zh-Hant": "畫面須為 1280×736",
+              "en": "the frame must be 1280x736"
+            }
+          },
+          {
+            "id": "length",
+            "field": "frames",
+            "in": [
+              124,
+              141
+            ],
+            "message": {
+              "zh-Hant": "影格數須為 124 或 141",
+              "en": "124 or 141 frames"
+            }
+          }
+        ]
+      },
+      {
+        "id": "fast-sampling",
+        "label": {
+          "zh-Hant": "8 步採樣",
+          "en": "Eight-step sampling"
+        },
+        "defaults": {
+          "steps": 8,
+          "video_shift": 3,
+          "audio_shift": 3
+        },
+        "require": [
+          {
+            "id": "steps",
+            "field": "steps",
+            "in": [
+              8
+            ],
+            "message": {
+              "zh-Hant": "步數須為 8",
+              "en": "8 steps"
+            }
+          },
+          {
+            "id": "video-shift",
+            "field": "video_shift",
+            "in": [
+              3,
+              5.5
+            ],
+            "message": {
+              "zh-Hant": "video shift 須為 3 或 5.5",
+              "en": "video shift 3 or 5.5"
+            }
+          },
+          {
+            "id": "audio-shift",
+            "field": "audio_shift",
+            "in": [
+              3
+            ],
+            "message": {
+              "zh-Hant": "audio shift 須為 3",
+              "en": "audio shift 3"
+            }
+          }
+        ]
+      },
+      {
+        "id": "reference-route",
+        "label": {
+          "zh-Hant": "參考素材路由",
+          "en": "Reference route"
+        },
+        "require": [
+          {
+            "id": "capability",
+            "field": "route_capability",
+            "in": [
+              "ref2va"
+            ],
+            "message": {
+              "zh-Hant": "需要 ref2va 元件組合",
+              "en": "needs a ref2va route"
+            }
+          },
+          {
+            "id": "short-edge",
+            "field": "reference_video_short_edge",
+            "in": [
+              768
+            ],
+            "message": {
+              "zh-Hant": "參考影片短邊須為 768",
+              "en": "reference video short edge 768"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "files": {}
+  }
+}

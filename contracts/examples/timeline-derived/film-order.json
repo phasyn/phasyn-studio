@@ -1,0 +1,183 @@
+{
+ "about": "Film order of shots, derived from the timeline.",
+ "rule": "placed = the shots (of shot_ids) that have a clip, ordered by the start of each shot's first clip on the first video track (the first track of kind video in timeline.tracks); a shot with no clip there is ordered by its first clip on any track; equal starts keep the order of shot_ids. unplaced = the shots without a clip, in the order of shot_ids. Whether a clip is enabled does not matter. A source naming a shot that is not in shot_ids is ignored.",
+ "vectors": [
+  {
+   "name": "the first video track decides, not the order the shots were made in",
+   "shot_ids": ["s1", "s2", "s3", "s4"],
+   "timeline": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [
+     {"source_id": "m-s1", "name": "S1", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true, "shot_id": "s1"},
+     {"source_id": "m-s2", "name": "S2", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true, "shot_id": "s2"},
+     {"source_id": "m-s3", "name": "S3", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true, "shot_id": "s3"},
+     {"source_id": "m-lib", "name": "LIB", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true, "library_id": "x1"}
+    ],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {"clip_id": "c-b", "source_id": "m-s2", "track_id": "video-1", "name": "c-b", "start_frame": 0, "in_frame": 0, "out_frame": 50, "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "c-a", "source_id": "m-s1", "track_id": "video-1", "name": "c-a", "start_frame": 50, "in_frame": 0, "out_frame": 50, "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "c-lib", "source_id": "m-lib", "track_id": "video-1", "name": "c-lib", "start_frame": 100, "in_frame": 0, "out_frame": 50, "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "c-c", "source_id": "m-s3", "track_id": "video-1", "name": "c-c", "start_frame": 150, "in_frame": 0, "out_frame": 50, "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}}
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "expected": {"placed": ["s2", "s1", "s3"], "unplaced": ["s4"]}
+  },
+  {
+   "name": "a shot shown twice counts where it is first shown",
+   "shot_ids": ["s1", "s2"],
+   "timeline": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [{"source_id": "m-s1", "name": "S1", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true, "shot_id": "s1"}, {"source_id": "m-s2", "name": "S2", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true, "shot_id": "s2"}],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {"clip_id": "c1", "source_id": "m-s2", "track_id": "video-1", "name": "c1", "start_frame": 0, "in_frame": 0, "out_frame": 40, "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "c2", "source_id": "m-s1", "track_id": "video-1", "name": "c2", "start_frame": 40, "in_frame": 0, "out_frame": 40, "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "c3", "source_id": "m-s2", "track_id": "video-1", "name": "c3", "start_frame": 80, "in_frame": 40, "out_frame": 80, "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}}
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "expected": {"placed": ["s2", "s1"], "unplaced": []}
+  },
+  {
+   "name": "a shot that only sits on another track is ordered by its first clip there",
+   "shot_ids": ["s1", "s2", "s3"],
+   "timeline": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [
+     {"source_id": "m-s1", "name": "S1", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true, "shot_id": "s1"},
+     {"source_id": "m-s2", "name": "S2", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true, "shot_id": "s2"},
+     {"source_id": "m-s3", "name": "S3", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true, "shot_id": "s3"}
+    ],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {"clip_id": "c1", "source_id": "m-s1", "track_id": "video-1", "name": "c1", "start_frame": 0, "in_frame": 0, "out_frame": 50, "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "c3", "source_id": "m-s3", "track_id": "video-1", "name": "c3", "start_frame": 50, "in_frame": 0, "out_frame": 50, "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "c2", "source_id": "m-s2", "track_id": "video-2", "name": "c2", "start_frame": 20, "in_frame": 0, "out_frame": 50, "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}}
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "expected": {"placed": ["s1", "s2", "s3"], "unplaced": []}
+  },
+  {
+   "name": "a clip on the first video track counts before an earlier clip on another track",
+   "shot_ids": ["s1", "s2"],
+   "timeline": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [{"source_id": "m-s1", "name": "S1", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true, "shot_id": "s1"}, {"source_id": "m-s2", "name": "S2", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true, "shot_id": "s2"}],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {"clip_id": "c1", "source_id": "m-s1", "track_id": "video-1", "name": "c1", "start_frame": 0, "in_frame": 0, "out_frame": 50, "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "c2", "source_id": "m-s2", "track_id": "video-1", "name": "c2", "start_frame": 50, "in_frame": 0, "out_frame": 50, "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "c2-over", "source_id": "m-s2", "track_id": "video-2", "name": "c2-over", "start_frame": 0, "in_frame": 100, "out_frame": 120, "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}}
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "expected": {"placed": ["s1", "s2"], "unplaced": []}
+  },
+  {
+   "name": "equal starts keep the order of shot_ids; a source of a shot that left the project is ignored",
+   "shot_ids": ["s1", "s2"],
+   "timeline": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [
+     {"source_id": "m-s1", "name": "S1", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true, "shot_id": "s1"},
+     {"source_id": "m-s2", "name": "S2", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true, "shot_id": "s2"},
+     {"source_id": "m-gone", "name": "GONE", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true, "shot_id": "gone"}
+    ],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {"clip_id": "c2", "source_id": "m-s2", "track_id": "audio-1", "name": "c2", "start_frame": 0, "in_frame": 0, "out_frame": 50, "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "c1", "source_id": "m-s1", "track_id": "video-2", "name": "c1", "start_frame": 0, "in_frame": 0, "out_frame": 50, "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}},
+     {"clip_id": "c-gone", "source_id": "m-gone", "track_id": "video-1", "name": "c-gone", "start_frame": 0, "in_frame": 0, "out_frame": 50, "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}}
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "expected": {"placed": ["s1", "s2"], "unplaced": []}
+  },
+  {
+   "name": "a disabled clip still gives its shot a place",
+   "shot_ids": ["s1", "s2"],
+   "timeline": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [{"source_id": "m-s1", "name": "S1", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true, "shot_id": "s1"}, {"source_id": "m-s2", "name": "S2", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true, "shot_id": "s2"}],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {"clip_id": "c2", "source_id": "m-s2", "track_id": "video-1", "name": "c2", "start_frame": 0, "in_frame": 0, "out_frame": 50, "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}, "enabled": false},
+     {"clip_id": "c1", "source_id": "m-s1", "track_id": "video-1", "name": "c1", "start_frame": 50, "in_frame": 0, "out_frame": 50, "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}}
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "expected": {"placed": ["s2", "s1"], "unplaced": []}
+  },
+  {
+   "name": "without clips every shot is unplaced",
+   "shot_ids": ["s1", "s2"],
+   "timeline": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [{"source_id": "m-s1", "name": "S1", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true, "shot_id": "s1"}],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "video-2", "kind": "video", "name": "V2", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "expected": {"placed": [], "unplaced": ["s1", "s2"]}
+  }
+ ]
+}

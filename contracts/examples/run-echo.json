@@ -1,0 +1,40 @@
+{
+  "pipeline": {
+    "pipeline_id": "cpu-echo",
+    "label": "CPU接線測試（synthetic）",
+    "inputs": [
+      {
+        "name": "text",
+        "type_id": "text.prompt.v1",
+        "required": true,
+        "transport": "inline",
+        "description": "text"
+      }
+    ],
+    "steps": [
+      {
+        "step_id": "echo",
+        "node_id": "20000000-0000-4000-8000-000000000001",
+        "component_id": "echo",
+        "inputs": {
+          "text": {
+            "from_input": "text"
+          }
+        },
+        "parameters": {}
+      }
+    ],
+    "outputs": {
+      "text": {
+        "from_step": "echo",
+        "output": "text"
+      }
+    }
+  },
+  "inputs": {
+    "text": {
+      "type_id": "text.prompt.v1",
+      "value": "這是可重複的CPU契約示例，不是模型輸出。"
+    }
+  }
+}

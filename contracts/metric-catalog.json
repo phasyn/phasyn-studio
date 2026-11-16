@@ -1,0 +1,1026 @@
+{
+  "schema_version": "4.0",
+  "rules": "每metric攜quality/method/scope/unit/reason；null不代表0。counter不可由理論層數冒充觀測。",
+  "metrics": [
+    {
+      "name": "host_wall_ms",
+      "unit": "ms",
+      "scope": "call_or_phase",
+      "method": "host_monotonic_or_process_cpu",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "一次call的monotonic起訖；不以phase加總"
+    },
+    {
+      "name": "host_load_ms",
+      "unit": "ms",
+      "scope": "call_or_phase",
+      "method": "host_monotonic_or_process_cpu",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "單獨load recording；含loaderCPU工作"
+    },
+    {
+      "name": "host_input_transfer_ms",
+      "unit": "ms",
+      "scope": "call_or_phase",
+      "method": "host_monotonic_or_process_cpu",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "consumer取得所有輸入的wall"
+    },
+    {
+      "name": "host_output_publish_ms",
+      "unit": "ms",
+      "scope": "call_or_phase",
+      "method": "host_monotonic_or_process_cpu",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "輸出寫完與metadata發布"
+    },
+    {
+      "name": "host_encode_ms",
+      "unit": "ms",
+      "scope": "call_or_phase",
+      "method": "host_monotonic_or_process_cpu",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "本地codec wall；可與decode重疊"
+    },
+    {
+      "name": "host_wait_ms",
+      "unit": "ms",
+      "scope": "call_or_phase",
+      "method": "host_monotonic_or_process_cpu",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "真正觀測到的等待；不得用wall−GPU猜測"
+    },
+    {
+      "name": "host_cpu_time_ms",
+      "unit": "ms",
+      "scope": "call_or_phase",
+      "method": "host_monotonic_or_process_cpu",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "程序user+system CPU差值；不是wall"
+    },
+    {
+      "name": "gpu_event_ms",
+      "unit": "ms",
+      "scope": "device_stream_interval",
+      "method": "cuda_event",
+      "minimum_mode": "detailed",
+      "nullable": true,
+      "signed": false,
+      "rule": "event end已完成才計算；可能含wait，不是kernel active sum"
+    },
+    {
+      "name": "gpu_kernel_union_ms",
+      "unit": "ms",
+      "scope": "device_trace_clock",
+      "method": "trace_interval_union",
+      "minimum_mode": "trace",
+      "nullable": true,
+      "signed": false,
+      "rule": "僅同device時鐘的kernel intervals並集；無trace=null"
+    },
+    {
+      "name": "api_enter_to_kernel_start_ms",
+      "unit": "ms",
+      "scope": "trace_correlation",
+      "method": "trace",
+      "minimum_mode": "trace",
+      "nullable": true,
+      "signed": false,
+      "rule": "共同clock與真正API/kernel關聯才計；不是純排隊"
+    },
+    {
+      "name": "api_exit_to_kernel_start_ms",
+      "unit": "ms",
+      "scope": "trace_correlation",
+      "method": "trace",
+      "minimum_mode": "trace",
+      "nullable": true,
+      "signed": true,
+      "rule": "允許負值，GPU可能在API返回前執行"
+    },
+    {
+      "name": "kernel_launch_count",
+      "unit": "count",
+      "scope": "trace_window",
+      "method": "trace",
+      "minimum_mode": "trace",
+      "nullable": true,
+      "signed": false,
+      "rule": "不是module.forward_count；trace窗口外未知"
+    },
+    {
+      "name": "torch_allocated_current_bytes",
+      "unit": "bytes",
+      "scope": "actor_device_call",
+      "method": "torch_allocator",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "call開始一次reset；含常駐模型；allocated包含於reserved，不相加"
+    },
+    {
+      "name": "torch_allocated_peak_bytes",
+      "unit": "bytes",
+      "scope": "actor_device_call",
+      "method": "torch_allocator",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "call開始一次reset；含常駐模型；allocated包含於reserved，不相加"
+    },
+    {
+      "name": "torch_reserved_current_bytes",
+      "unit": "bytes",
+      "scope": "actor_device_call",
+      "method": "torch_allocator",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "call開始一次reset；含常駐模型；allocated包含於reserved，不相加"
+    },
+    {
+      "name": "torch_reserved_peak_bytes",
+      "unit": "bytes",
+      "scope": "actor_device_call",
+      "method": "torch_allocator",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "call開始一次reset；含常駐模型；allocated包含於reserved，不相加"
+    },
+    {
+      "name": "nvml_device_used_bytes",
+      "unit": "bytes",
+      "scope": "whole_device",
+      "method": "nvml_sample",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "包含其他程序和driver；2Hz樣本不保證瞬間峰值"
+    },
+    {
+      "name": "nvml_device_total_bytes",
+      "unit": "bytes",
+      "scope": "whole_device",
+      "method": "nvml_sample",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "包含其他程序和driver；2Hz樣本不保證瞬間峰值"
+    },
+    {
+      "name": "nvml_device_used_sample_peak_bytes",
+      "unit": "bytes",
+      "scope": "whole_device",
+      "method": "nvml_sample",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "包含其他程序和driver；2Hz樣本不保證瞬間峰值"
+    },
+    {
+      "name": "nvml_process_used_bytes",
+      "unit": "bytes",
+      "scope": "process_device",
+      "method": "nvml_process_query",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "unsupported=null；不能用device used補"
+    },
+    {
+      "name": "host_rss_current_bytes",
+      "unit": "bytes",
+      "scope": "actor_process",
+      "method": "host_sample",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "採樣當下RSS"
+    },
+    {
+      "name": "host_rss_sample_peak_bytes",
+      "unit": "bytes",
+      "scope": "actor_process_call_samples",
+      "method": "host_sample",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "只為這次sample窗口peak"
+    },
+    {
+      "name": "host_lifetime_peak_bytes",
+      "unit": "bytes",
+      "scope": "actor_process_lifetime",
+      "method": "host_sample",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "明確lifetime，不稱callpeak"
+    },
+    {
+      "name": "host_available_bytes",
+      "unit": "bytes",
+      "scope": "whole_host",
+      "method": "host_sample",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "非單元件"
+    },
+    {
+      "name": "host_swap_used_bytes",
+      "unit": "bytes",
+      "scope": "whole_host",
+      "method": "host_sample",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "非單元件"
+    },
+    {
+      "name": "owned_weight_host_bytes",
+      "unit": "bytes",
+      "scope": "component_owned_payload",
+      "method": "runtime_inventory",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "payload/subset，可能與allocator/RSS重疊，不累加成總物理量"
+    },
+    {
+      "name": "owned_weight_device_bytes",
+      "unit": "bytes",
+      "scope": "component_owned_payload",
+      "method": "runtime_inventory",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "payload/subset，可能與allocator/RSS重疊，不累加成總物理量"
+    },
+    {
+      "name": "owned_pinned_host_bytes",
+      "unit": "bytes",
+      "scope": "component_owned_payload",
+      "method": "runtime_inventory",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "payload/subset，可能與allocator/RSS重疊，不累加成總物理量"
+    },
+    {
+      "name": "output_buffer_bytes",
+      "unit": "bytes",
+      "scope": "component_owned_payload",
+      "method": "runtime_inventory",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "payload/subset，可能與allocator/RSS重疊，不累加成總物理量"
+    },
+    {
+      "name": "allocation_fail_requested_bytes",
+      "unit": "bytes",
+      "scope": "failed_allocation",
+      "method": "runtime_exception",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "錯誤可取得才填；不能從OOM字樣猜測"
+    },
+    {
+      "name": "weight_h2d_submitted_count",
+      "unit": "count",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "submitted口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "weight_h2d_submitted_bytes",
+      "unit": "bytes",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "submitted口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "weight_h2d_completed_count",
+      "unit": "count",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "completed口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "weight_h2d_completed_bytes",
+      "unit": "bytes",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "completed口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "weight_d2h_submitted_count",
+      "unit": "count",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "submitted口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "weight_d2h_submitted_bytes",
+      "unit": "bytes",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "submitted口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "weight_d2h_completed_count",
+      "unit": "count",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "completed口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "weight_d2h_completed_bytes",
+      "unit": "bytes",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "completed口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "activation_h2d_submitted_count",
+      "unit": "count",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "submitted口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "activation_h2d_submitted_bytes",
+      "unit": "bytes",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "submitted口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "activation_h2d_completed_count",
+      "unit": "count",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "completed口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "activation_h2d_completed_bytes",
+      "unit": "bytes",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "completed口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "activation_d2h_submitted_count",
+      "unit": "count",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "submitted口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "activation_d2h_submitted_bytes",
+      "unit": "bytes",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "submitted口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "activation_d2h_completed_count",
+      "unit": "count",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "completed口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "activation_d2h_completed_bytes",
+      "unit": "bytes",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "completed口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "device_copy_submitted_count",
+      "unit": "count",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "submitted口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "device_copy_submitted_bytes",
+      "unit": "bytes",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "submitted口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "device_copy_completed_count",
+      "unit": "count",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "completed口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "device_copy_completed_bytes",
+      "unit": "bytes",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "completed口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "peer_copy_submitted_count",
+      "unit": "count",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "submitted口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "peer_copy_submitted_bytes",
+      "unit": "bytes",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "submitted口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "peer_copy_completed_count",
+      "unit": "count",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "completed口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "peer_copy_completed_bytes",
+      "unit": "bytes",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "completed口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "host_copy_submitted_count",
+      "unit": "count",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "submitted口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "host_copy_submitted_bytes",
+      "unit": "bytes",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "submitted口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "host_copy_completed_count",
+      "unit": "count",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "completed口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "host_copy_completed_bytes",
+      "unit": "bytes",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "completed口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "diagnostic_readback_submitted_count",
+      "unit": "count",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "submitted口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "diagnostic_readback_submitted_bytes",
+      "unit": "bytes",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "submitted口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "diagnostic_readback_completed_count",
+      "unit": "count",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "completed口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "diagnostic_readback_completed_bytes",
+      "unit": "bytes",
+      "scope": "instrumented_copies",
+      "method": "runtime_copy_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "completed口徑；no-op不計、discard不是D2H、packed/scales真實bytes；hook覆蓋不全時total未知"
+    },
+    {
+      "name": "network_received_bytes",
+      "unit": "bytes",
+      "scope": "transfer_owner",
+      "method": "io_wrapper",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "只以consumer entity-body計數，sender不重複合計"
+    },
+    {
+      "name": "network_sent_bytes",
+      "unit": "bytes",
+      "scope": "transfer_owner",
+      "method": "io_wrapper",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "sender參考值，不與receiver相加"
+    },
+    {
+      "name": "logical_disk_read_bytes",
+      "unit": "bytes",
+      "scope": "transfer_owner",
+      "method": "io_wrapper",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "程式讀取bytes，不是physical disk/page-fault I/O"
+    },
+    {
+      "name": "logical_disk_written_bytes",
+      "unit": "bytes",
+      "scope": "transfer_owner",
+      "method": "io_wrapper",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "程式寫入bytes，不是NVMe硬體bytes"
+    },
+    {
+      "name": "pin_count",
+      "unit": "count",
+      "scope": "component_lifecycle",
+      "method": "runtime_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "只計真實動作；pin不是H2D，discard不表示D2H，offload cycle不表示真來回"
+    },
+    {
+      "name": "unpin_count",
+      "unit": "count",
+      "scope": "component_lifecycle",
+      "method": "runtime_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "只計真實動作；pin不是H2D，discard不表示D2H，offload cycle不表示真來回"
+    },
+    {
+      "name": "block_load_count",
+      "unit": "count",
+      "scope": "component_lifecycle",
+      "method": "runtime_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "只計真實動作；pin不是H2D，discard不表示D2H，offload cycle不表示真來回"
+    },
+    {
+      "name": "device_discard_count",
+      "unit": "count",
+      "scope": "component_lifecycle",
+      "method": "runtime_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "只計真實動作；pin不是H2D，discard不表示D2H，offload cycle不表示真來回"
+    },
+    {
+      "name": "resident_hit_count",
+      "unit": "count",
+      "scope": "component_lifecycle",
+      "method": "runtime_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "只計真實動作；pin不是H2D，discard不表示D2H，offload cycle不表示真來回"
+    },
+    {
+      "name": "prefetch_hit_count",
+      "unit": "count",
+      "scope": "component_lifecycle",
+      "method": "runtime_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "只計真實動作；pin不是H2D，discard不表示D2H，offload cycle不表示真來回"
+    },
+    {
+      "name": "prefetch_miss_count",
+      "unit": "count",
+      "scope": "component_lifecycle",
+      "method": "runtime_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "只計真實動作；pin不是H2D，discard不表示D2H，offload cycle不表示真來回"
+    },
+    {
+      "name": "offload_cycle_count",
+      "unit": "count",
+      "scope": "component_lifecycle",
+      "method": "runtime_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "只計真實動作；pin不是H2D，discard不表示D2H，offload cycle不表示真來回"
+    },
+    {
+      "name": "paired_roundtrip_count",
+      "unit": "count",
+      "scope": "completed_paired_copies",
+      "method": "explicit_pair_id",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "同weight group有實際completed H2D及D2H才計，無法配對則null"
+    },
+    {
+      "name": "scheduler_steps_completed",
+      "unit": "count",
+      "scope": "component_call",
+      "method": "runtime_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "scheduler update次數"
+    },
+    {
+      "name": "denoiser_forwards_completed",
+      "unit": "count",
+      "scope": "component_call",
+      "method": "runtime_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "真實模型前向次數；CFG可與steps不同"
+    },
+    {
+      "name": "block_forward_count",
+      "unit": "count",
+      "scope": "component_call",
+      "method": "runtime_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "module執行次數，不是kernel數"
+    },
+    {
+      "name": "cfg_branch_forward_count",
+      "unit": "count",
+      "scope": "component_call",
+      "method": "runtime_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "可觀測branch呼叫，fused/雙batch依實際標"
+    },
+    {
+      "name": "decode_forward_count",
+      "unit": "count",
+      "scope": "component_call",
+      "method": "runtime_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "decoder forward非callback數"
+    },
+    {
+      "name": "frame_callback_count",
+      "unit": "count",
+      "scope": "component_call",
+      "method": "runtime_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "實際sink callback數"
+    },
+    {
+      "name": "output_frame_count",
+      "unit": "count",
+      "scope": "component_call",
+      "method": "runtime_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "完整輸出frames，不能從target猜測"
+    },
+    {
+      "name": "input_frame_count",
+      "unit": "count",
+      "scope": "component_call",
+      "method": "runtime_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "真正送進模型的抽樣frames"
+    },
+    {
+      "name": "input_tokens",
+      "unit": "count",
+      "scope": "component_call",
+      "method": "runtime_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "真正tokenizer/processor token數"
+    },
+    {
+      "name": "output_tokens",
+      "unit": "count",
+      "scope": "component_call",
+      "method": "runtime_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "captioner實際生成tokens"
+    },
+    {
+      "name": "prefetch_wait_ms",
+      "unit": "ms",
+      "scope": "component_stream_or_host",
+      "method": "runtime_hook",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "區分host wait/CUDA event等待區間，不假設重疊節省"
+    },
+    {
+      "name": "caption_ttft_ms",
+      "unit": "ms",
+      "scope": "captioner_model_start_to_first_token",
+      "method": "host_monotonic",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "起點固定且記在context；不是invoke總time"
+    },
+    {
+      "name": "encoder_backpressure_ms",
+      "unit": "ms",
+      "scope": "decoder_to_encoder_queue",
+      "method": "host_monotonic",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "producer確實因bounded queue等待的wall"
+    },
+    {
+      "name": "device_utilization_pct",
+      "unit": "percent",
+      "scope": "whole_device",
+      "method": "nvml_sample",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "不是單part獨占數字；版本/裝置不支援則null"
+    },
+    {
+      "name": "memory_utilization_pct",
+      "unit": "percent",
+      "scope": "whole_device",
+      "method": "nvml_sample",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "不是單part獨占數字；版本/裝置不支援則null"
+    },
+    {
+      "name": "device_power_w",
+      "unit": "W",
+      "scope": "whole_device",
+      "method": "nvml_sample",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "不是單part獨占數字；版本/裝置不支援則null"
+    },
+    {
+      "name": "device_temperature_c",
+      "unit": "degC",
+      "scope": "whole_device",
+      "method": "nvml_sample",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "不是單part獨占數字；版本/裝置不支援則null"
+    },
+    {
+      "name": "device_sm_clock_mhz",
+      "unit": "MHz",
+      "scope": "whole_device",
+      "method": "nvml_sample",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "不是單part獨占數字；版本/裝置不支援則null"
+    },
+    {
+      "name": "recorder_cpu_ms",
+      "unit": "ms",
+      "scope": "recording_pipeline",
+      "method": "recorder_self",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "記錄器自己的成本/缺失；不偷偷吞掉"
+    },
+    {
+      "name": "recorder_written_bytes",
+      "unit": "bytes",
+      "scope": "recording_pipeline",
+      "method": "recorder_self",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "記錄器自己的成本/缺失；不偷偷吞掉"
+    },
+    {
+      "name": "publisher_bytes",
+      "unit": "bytes",
+      "scope": "recording_pipeline",
+      "method": "recorder_self",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "記錄器自己的成本/缺失；不偷偷吞掉"
+    },
+    {
+      "name": "events_dropped",
+      "unit": "count",
+      "scope": "recording_pipeline",
+      "method": "recorder_self",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "記錄器自己的成本/缺失；不偷偷吞掉"
+    },
+    {
+      "name": "publisher_dropped",
+      "unit": "count",
+      "scope": "recording_pipeline",
+      "method": "recorder_self",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "記錄器自己的成本/缺失；不偷偷吞掉"
+    },
+    {
+      "name": "measurement_error_count",
+      "unit": "count",
+      "scope": "recording_pipeline",
+      "method": "recorder_self",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "記錄器自己的成本/缺失；不偷偷吞掉"
+    },
+    {
+      "name": "sample_count",
+      "unit": "count",
+      "scope": "recording_pipeline",
+      "method": "recorder_self",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "記錄器自己的成本/缺失；不偷偷吞掉"
+    },
+    {
+      "name": "copy_effective_gbps",
+      "unit": "GB/s",
+      "scope": "same_copy_group_interval",
+      "method": "derived",
+      "minimum_mode": "detailed",
+      "nullable": true,
+      "signed": false,
+      "rule": "completed_bytes/(duration_ms/1000)/1e9；duration零/未知=null"
+    },
+    {
+      "name": "analytic_flops",
+      "unit": "FLOP",
+      "scope": "model_formula",
+      "method": "derived",
+      "minimum_mode": "summary",
+      "nullable": true,
+      "signed": false,
+      "rule": "只有公式推導時附formula，非GPU指令計數"
+    }
+  ]
+}

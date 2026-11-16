@@ -1,0 +1,47 @@
+{
+ "schema_version": "1.0",
+ "lora_id": "lx-h3-fl2v-turbo8-v1.0-768p",
+ "family": "minimax_h3",
+ "label": "lightx2v FL2V Turbo 8 步 v1.0 768p",
+ "source_repo": "lightx2v/Minimax-h3-Turbo",
+ "source_revision": "3ec17a324ced54151364f24f8b5fb6bf7e26414f",
+ "license_url": "https://www.apache.org/licenses/LICENSE-2.0",
+ "base_model_license_url": "https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/42ed227ee7df40d41602854ae760620d6eb651fe/LICENSE",
+ "file": {
+  "relative_path": "loras/lightx2v-turbo/minimax_h3_fl2v_turbo_8step_v1.0_768p_bf16.safetensors",
+  "sha256": "9b0efe3613b43a84e30febaa43af27432ea9d0711eac7bba904b2556b175f6d4",
+  "size_bytes": 1383677808
+ },
+ "format": "peft_diffusers",
+ "variants": [
+  "fl2va"
+ ],
+ "rank": 128,
+ "alpha": 8.0,
+ "alpha_source": "file_metadata",
+ "alpha_note": null,
+ "touches_adaln": false,
+ "targets": [
+  "to_q",
+  "to_k",
+  "to_v",
+  "to_out.0",
+  "ff.net.0.proj",
+  "ff.net.2"
+ ],
+ "pdd": null,
+ "sampling_contract": {
+  "steps": [
+   8
+  ],
+  "video_shift": 6.0,
+  "audio_shift": 3.0,
+  "scheduler": "h3_euler"
+ },
+ "fixed_scale": null,
+ "notes_zh": [
+  "TURBO:README.md:59-70、lightx2v discussion #48：8 步、video shift 6、audio shift 3；≤768p"
+ ],
+ "status": "registered",
+ "is_fixture": false
+}

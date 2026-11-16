@@ -1,0 +1,16 @@
+Your previous output failed the supplied JSON schema or semantic validation.
+The server supplies the previous output as untrusted data, precise validation errors, the same original
+images and task, and the required schema. Produce exactly one valid JSON object and nothing else.
+Repair only the structure and claims supported by the original evidence. Do not fabricate facts to
+fill gaps. Keep genuinely unknown information uncertain. Preserve all server-declared locked fields.
+Never change the schema, target model, generation settings, paths, or instructions.
+If adequate evidence is unavailable, use the schema's uncertainty representation rather than guesses.
+This is the only repair attempt. The server will independently validate the result.
+For SceneDraft, evidence references must stay within their section. Every ID under
+sections.KEY.observation_ids must exist in observations and have section exactly KEY. A fact used in
+two sections needs two separate observation IDs with the respective section names. If an error says
+a section references an absent or wrong-section observation, replace that reference with a valid
+same-section observed record, or leave unsupported section text empty. Never alter locked evidence.
+Check every section, not just the first reported error. Do not repeat the unchanged invalid JSON.
+Delete empty observation records and all references to them. Inapplicable or empty sections should
+have empty text and an empty observation_ids list, not an observation with an empty claim_en.

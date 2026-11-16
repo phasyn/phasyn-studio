@@ -1,0 +1,83 @@
+{
+  "pipeline_id": "prompt-revise-local",
+  "label": "圖片反推：依指示或比較修訂（鎖定區段不變）→ 編譯（GPU 1＋CPU）",
+  "inputs": [
+    {
+      "name": "image",
+      "type_id": "media.image.v1",
+      "required": true,
+      "transport": "file",
+      "description": "研究原圖（v-full）"
+    },
+    {
+      "name": "scene",
+      "type_id": "prompt.scene.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "PromptScene"
+    },
+    {
+      "name": "comparison",
+      "type_id": "prompt.comparison.v1",
+      "required": false,
+      "transport": "inline",
+      "description": "要依據的比較結果（選用）"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "revise",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "qimg-vision-gpu1",
+      "inputs": {
+        "image": {
+          "from_input": "image"
+        },
+        "scene": {
+          "from_input": "scene"
+        },
+        "comparison": {
+          "from_input": "comparison"
+        }
+      },
+      "parameters": {
+        "op": "revise",
+        "language": "zh-TW",
+        "instruction": "",
+        "intentional_changes": [],
+        "crops": []
+      }
+    },
+    {
+      "step_id": "compile",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "prompt-compile",
+      "inputs": {
+        "scene": {
+          "from_step": "revise",
+          "output": "scene"
+        }
+      },
+      "parameters": {
+        "intentional_changes": [],
+        "views": [
+          "v-full"
+        ]
+      }
+    }
+  ],
+  "outputs": {
+    "revise_result": {
+      "from_step": "revise",
+      "output": "result"
+    },
+    "scene": {
+      "from_step": "revise",
+      "output": "scene"
+    },
+    "candidates": {
+      "from_step": "compile",
+      "output": "candidates"
+    }
+  }
+}

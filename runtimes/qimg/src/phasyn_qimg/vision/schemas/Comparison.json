@@ -1,0 +1,172 @@
+{
+  "$defs": {
+    "ComparisonSections": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/MetricValue"
+        },
+        "appearance": {
+          "$ref": "#/$defs/MetricValue"
+        },
+        "composition": {
+          "$ref": "#/$defs/MetricValue"
+        },
+        "environment": {
+          "$ref": "#/$defs/MetricValue"
+        },
+        "lighting": {
+          "$ref": "#/$defs/MetricValue"
+        },
+        "style": {
+          "$ref": "#/$defs/MetricValue"
+        },
+        "subject": {
+          "$ref": "#/$defs/MetricValue"
+        },
+        "visible_text": {
+          "$ref": "#/$defs/MetricValue"
+        }
+      },
+      "required": [
+        "subject",
+        "action",
+        "composition",
+        "environment",
+        "lighting",
+        "appearance",
+        "style",
+        "visible_text"
+      ],
+      "title": "ComparisonSections",
+      "type": "object"
+    },
+    "Difference": {
+      "additionalProperties": false,
+      "properties": {
+        "description_zh_tw": {
+          "maxLength": 800,
+          "minLength": 1,
+          "title": "Description Zh Tw",
+          "type": "string"
+        },
+        "section": {
+          "enum": [
+            "subject",
+            "action",
+            "composition",
+            "environment",
+            "lighting",
+            "appearance",
+            "style",
+            "visible_text"
+          ],
+          "title": "Section",
+          "type": "string"
+        },
+        "suggested_change_en": {
+          "maxLength": 1000,
+          "minLength": 0,
+          "title": "Suggested Change En",
+          "type": "string"
+        }
+      },
+      "required": [
+        "section",
+        "description_zh_tw",
+        "suggested_change_en"
+      ],
+      "title": "Difference",
+      "type": "object"
+    },
+    "MetricValue": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_zh_tw": {
+          "maxLength": 800,
+          "minLength": 1,
+          "title": "Evidence Zh Tw",
+          "type": "string"
+        },
+        "label": {
+          "enum": [
+            "match",
+            "minor",
+            "major",
+            "missing",
+            "uncertain",
+            "not_applicable"
+          ],
+          "title": "Label",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "evidence_zh_tw"
+      ],
+      "title": "MetricValue",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "differences": {
+      "items": {
+        "$ref": "#/$defs/Difference"
+      },
+      "maxItems": 16,
+      "minItems": 0,
+      "title": "Differences",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "sections": {
+      "$ref": "#/$defs/ComparisonSections"
+    },
+    "text_transcription": {
+      "maxLength": 1000,
+      "minLength": 0,
+      "title": "Text Transcription",
+      "type": "string"
+    },
+    "unexpected_elements": {
+      "items": {
+        "maxLength": 600,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 16,
+      "minItems": 0,
+      "title": "Unexpected Elements",
+      "type": "array"
+    },
+    "unjudgeable_reason": {
+      "anyOf": [
+        {
+          "maxLength": 800,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Unjudgeable Reason"
+    }
+  },
+  "required": [
+    "schema_version",
+    "sections",
+    "unexpected_elements",
+    "differences",
+    "text_transcription",
+    "unjudgeable_reason"
+  ],
+  "title": "Comparison",
+  "type": "object"
+}

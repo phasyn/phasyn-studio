@@ -1,0 +1,34 @@
+[project]
+name = "phasyn-qimg"
+version = "1.0.0"
+description = "Qwen-Image 2.1 component providers for Phasyn Studio (prepare, Qwen3-VL conditioning, VAE encode/decode, DiT, compose, image reverse prompting); heavy libraries are imported lazily in load/invoke"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+authors = [{ name = "Phasyn Studio authors" }]
+# Only torch-free dependencies. torch, diffusers, transformers and Pillow come from the GPU runtime environment
+# (deploy/runtimes/qimg-x86_64; aarch64-sm121 serves qimg.vision); describe() reports missing modules
+# (PROVIDER_NOT_INSTALLED) instead of failing at import time.
+dependencies = ["phasyn-components", "numpy>=1.26"]
+
+[project.urls]
+Homepage = "https://github.com/phasyn/phasyn-studio"
+Repository = "https://github.com/phasyn/phasyn-studio"
+
+[project.entry-points."phasyn.providers"]
+"qimg.prepare" = "phasyn_qimg.prepare:PrepareProvider"
+"qimg.conditioning" = "phasyn_qimg.conditioning:ConditioningProvider"
+"qimg.vae_encode" = "phasyn_qimg.vae:VaeEncodeProvider"
+"qimg.vae_decode" = "phasyn_qimg.vae:VaeDecodeProvider"
+"qimg.dit" = "phasyn_qimg.dit.provider:QimgDitProvider"
+"image.compose" = "phasyn_qimg.compose:ComposeProvider"
+"qimg.vision" = "phasyn_qimg.vision.provider:QwenVisionProvider"
+"prompt.scene_compile" = "phasyn_qimg.prompting.provider:SceneCompileProvider"
+"prompt.scene_score" = "phasyn_qimg.prompting.provider:SceneScoreProvider"
+
+[build-system]
+requires = ["hatchling>=1.33.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/phasyn_qimg"]

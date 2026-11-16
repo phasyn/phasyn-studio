@@ -1,0 +1,138 @@
+{
+  "$defs": {
+    "CompactSection": {
+      "additionalProperties": false,
+      "properties": {
+        "explanation_zh_tw": {
+          "maxLength": 1200,
+          "title": "Explanation Zh Tw",
+          "type": "string"
+        },
+        "observations": {
+          "items": {
+            "$ref": "#/$defs/InlineObservation"
+          },
+          "maxItems": 40,
+          "title": "Observations",
+          "type": "array"
+        },
+        "text_en": {
+          "maxLength": 2400,
+          "title": "Text En",
+          "type": "string"
+        },
+        "text_zh_tw": {
+          "default": "",
+          "maxLength": 2400,
+          "title": "Text Zh Tw",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text_en",
+        "explanation_zh_tw",
+        "observations"
+      ],
+      "title": "CompactSection",
+      "type": "object"
+    },
+    "CompactSections": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/CompactSection"
+        },
+        "appearance": {
+          "$ref": "#/$defs/CompactSection"
+        },
+        "composition": {
+          "$ref": "#/$defs/CompactSection"
+        },
+        "environment": {
+          "$ref": "#/$defs/CompactSection"
+        },
+        "lighting": {
+          "$ref": "#/$defs/CompactSection"
+        },
+        "style": {
+          "$ref": "#/$defs/CompactSection"
+        },
+        "subject": {
+          "$ref": "#/$defs/CompactSection"
+        },
+        "visible_text": {
+          "$ref": "#/$defs/CompactSection"
+        }
+      },
+      "required": [
+        "subject",
+        "action",
+        "composition",
+        "environment",
+        "lighting",
+        "appearance",
+        "style",
+        "visible_text"
+      ],
+      "title": "CompactSections",
+      "type": "object"
+    },
+    "InlineObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "certainty": {
+          "enum": [
+            "observed",
+            "uncertain"
+          ],
+          "title": "Certainty",
+          "type": "string"
+        },
+        "claim_en": {
+          "maxLength": 800,
+          "minLength": 1,
+          "title": "Claim En",
+          "type": "string"
+        },
+        "view_id": {
+          "enum": [
+            "v-full",
+            "v-crop-1",
+            "v-crop-2"
+          ],
+          "title": "View Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "view_id",
+        "claim_en",
+        "certainty"
+      ],
+      "title": "InlineObservation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "sections": {
+      "$ref": "#/$defs/CompactSections"
+    },
+    "uncertainty_notes": {
+      "items": {
+        "maxLength": 600,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Uncertainty Notes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "sections",
+    "uncertainty_notes"
+  ],
+  "title": "CompactScene",
+  "type": "object"
+}

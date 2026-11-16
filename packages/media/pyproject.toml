@@ -1,0 +1,26 @@
+[project]
+name = "phasyn-media"
+version = "1.0.0"
+description = "Phasyn Studio media: supervised ffprobe/FFmpeg, streaming encode and mux, PTS sampling and the CPU media providers (no torch)"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+authors = [{ name = "Phasyn Studio authors" }]
+dependencies = [
+    "numpy>=1.26",
+    "phasyn-components",
+]
+
+[project.urls]
+Homepage = "https://github.com/phasyn/phasyn-studio"
+Repository = "https://github.com/phasyn/phasyn-studio"
+
+[tool.uv.sources]
+phasyn-components = { workspace = true }
+
+[build-system]
+requires = ["hatchling>=1.33.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/phasyn_media"]

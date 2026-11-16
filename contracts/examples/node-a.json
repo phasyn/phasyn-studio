@@ -1,0 +1,96 @@
+{
+  "node_id": "20000000-0000-4000-8000-000000000001",
+  "label": "主機A（示例）",
+  "bind_host": "127.0.0.1",
+  "port": 8090,
+  "advertise_url": "http://node-a:8090",
+  "controller_url": "http://controller-host:8080",
+  "data_dir": "/absolute/path/to/node-a-data",
+  "catalog_interval_seconds": 5,
+  "load_timeout_seconds": 1800,
+  "cancel_grace_seconds": 10,
+  "file_buffer_bytes": 8388608,
+  "file_transfer_concurrency": 2,
+  "runtimes": [
+    {
+      "runtime_id": "cpu",
+      "python": "/absolute/path/to/venv/bin/python",
+      "module": "phasyn_components.runtime_host",
+      "env": {}
+    }
+  ],
+  "components": [
+    {
+      "component_id": "echo",
+      "label": "CPU契約測試元件（不是生成模型）",
+      "provider_id": "test.echo",
+      "runtime_id": "cpu",
+      "autostart": false,
+      "settings": {
+        "load": {
+          "device": {
+            "kind": "cpu",
+            "id": "cpu",
+            "resource_group": "cpu-echo"
+          },
+          "provider_options": {}
+        },
+        "invoke": {},
+        "recording": {
+          "mode": "detailed",
+          "log_level": "info",
+          "device_sample_hz": 2,
+          "publish_interval_ms": 1000,
+          "batch_max_events": 256,
+          "batch_max_bytes": 262144,
+          "queue_max_events": 8192,
+          "queue_max_bytes": 16777216,
+          "segment_bytes": 67108864,
+          "max_detail_bytes_per_recording": 2147483648,
+          "cuda_pending_event_pairs": 4096,
+          "trace_steps": [
+            0,
+            1
+          ],
+          "trace_parts": [],
+          "record_shapes": false,
+          "with_stack": false,
+          "capture_prompt": true,
+          "tensor_dump": false,
+          "capture_stderr": true,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "parts": [],
+          "steps": []
+        }
+      }
+    }
+  ],
+  "recording": {
+    "mode": "detailed",
+    "log_level": "info",
+    "device_sample_hz": 2,
+    "publish_interval_ms": 1000,
+    "batch_max_events": 256,
+    "batch_max_bytes": 262144,
+    "queue_max_events": 8192,
+    "queue_max_bytes": 16777216,
+    "segment_bytes": 67108864,
+    "max_detail_bytes_per_recording": 2147483648,
+    "cuda_pending_event_pairs": 4096,
+    "trace_steps": [
+      0,
+      1
+    ],
+    "trace_parts": [],
+    "record_shapes": false,
+    "with_stack": false,
+    "capture_prompt": true,
+    "tensor_dump": false,
+    "capture_stderr": true,
+    "finite_scan": false,
+    "gpu_event_timing": true,
+    "parts": [],
+    "steps": []
+  }
+}

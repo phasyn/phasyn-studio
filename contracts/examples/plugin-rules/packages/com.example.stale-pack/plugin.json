@@ -1,0 +1,50 @@
+{
+  "manifest_version": 1,
+  "id": "com.example.stale-pack",
+  "version": "1.0.0",
+  "name": {
+    "zh-Hant": "過時的包",
+    "en": "Stale pack"
+  },
+  "description": {
+    "zh-Hant": "共用插件規則案例使用的合成插件包。",
+    "en": "Synthetic package for the shared plugin rule vectors."
+  },
+  "author": {
+    "name": "Example"
+  },
+  "license": "Apache-2.0",
+  "engines": {
+    "phasyn": ">=1.0.0 <2.0.0"
+  },
+  "contributes": {
+    "rules": [
+      {
+        "id": "still-here",
+        "kind": "effect",
+        "label": {
+          "zh-Hant": "還在的規則",
+          "en": "Still here"
+        },
+        "inject": "A rule that still exists."
+      }
+    ],
+    "presets": [
+      {
+        "id": "old-set",
+        "label": {
+          "zh-Hant": "舊組合",
+          "en": "Old set"
+        },
+        "rules": [
+          "still-here",
+          "retired-rule"
+        ]
+      }
+    ]
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "files": {}
+  }
+}

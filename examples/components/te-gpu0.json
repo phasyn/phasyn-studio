@@ -1,0 +1,44 @@
+{
+  "component_id": "te-gpu0",
+  "label": "H3 文字條件（Qwen3-VL TE，GPU 0 逐層串流；用完釋放）",
+  "provider_id": "h3.conditioning",
+  "runtime_id": "x86_64",
+  "autostart": false,
+  "folder": "生成/文字條件",
+  "settings": {
+    "load": {
+      "model_path": "/path/to/models",
+      "device": {
+        "kind": "cuda",
+        "id": "GPU-REPLACE-0",
+        "resource_group": "gpu-0"
+      },
+      "part_overrides": [],
+      "precision": {
+        "compute_dtype": "native"
+      },
+      "offload": {
+        "mode": "block",
+        "prefetch_depth": 1,
+        "resident_layers": 0,
+        "max_pinned_bytes": 4294967296,
+        "after_use": "drop"
+      },
+      "provider_options": {
+        "variant": "fl2va",
+        "shared_from": "ref2va",
+        "mode": "exact",
+        "encoder_max_tokens": 32768
+      }
+    },
+    "invoke": {
+      "task": "t2va",
+      "width": 768,
+      "height": 448,
+      "frames": 124
+    },
+    "recording": {
+      "mode": "detailed"
+    }
+  }
+}

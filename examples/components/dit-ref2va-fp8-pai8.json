@@ -1,0 +1,64 @@
+{
+  "component_id": "dit-ref2va-fp8-pai8",
+  "label": "H3 DiT Ref2VA・FP8・PAI Acc 8 步（預設）・AdaLN fixed h3-ref2va-pdd8（逐層串流）",
+  "provider_id": "h3.dit",
+  "runtime_id": "x86_64",
+  "autostart": false,
+  "folder": "生成/H3 DiT/Ref2VA/PAI 8 步",
+  "exclusive_group": "dit",
+  "settings": {
+    "load": {
+      "model_path": "/path/to/models",
+      "device": {
+        "kind": "cuda",
+        "id": "GPU-REPLACE-0",
+        "resource_group": "gpu-0"
+      },
+      "part_overrides": [],
+      "precision": {
+        "compute_dtype": "native",
+        "quantization": {
+          "scheme": "fp8_e4m3",
+          "excluded_modules": [
+            "adaln_proj"
+          ]
+        }
+      },
+      "offload": {
+        "mode": "block",
+        "prefetch_depth": 1,
+        "resident_layers": 0,
+        "max_pinned_bytes": 25769803776,
+        "after_use": "host"
+      },
+      "provider_options": {
+        "variant": "ref2va",
+        "shared_from": null,
+        "mode": "approximate",
+        "attention": {
+          "provider": "auto_exact",
+          "reject_quadratic_materialization": true
+        },
+        "adaln": {
+          "mode": "fixed",
+          "host_cache_bytes": 8589934592,
+          "cache_ref": "h3-ref2va-pdd8"
+        },
+        "lora": {
+          "manifest_path": "pai-h3-ref2va-acc8.json",
+          "scale": 1.0
+        },
+        "bounded_fp8_load": true
+      }
+    },
+    "invoke": {
+      "seed": 42,
+      "steps": 8,
+      "video_shift": 12.0,
+      "audio_shift": 3.0
+    },
+    "recording": {
+      "mode": "detailed"
+    }
+  }
+}

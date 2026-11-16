@@ -1,0 +1,37 @@
+{
+  "manifest_version": 1,
+  "id": "com.example.future-pack",
+  "version": "2.0.0",
+  "name": {
+    "zh-Hant": "未來版本的包",
+    "en": "Future pack"
+  },
+  "description": {
+    "zh-Hant": "共用插件規則案例使用的合成插件包。",
+    "en": "Synthetic package for the shared plugin rule vectors."
+  },
+  "author": {
+    "name": "Example"
+  },
+  "license": "Apache-2.0",
+  "engines": {
+    "phasyn": ">=99.0.0 <100.0.0"
+  },
+  "contributes": {
+    "rules": [
+      {
+        "id": "future-rule",
+        "kind": "effect",
+        "label": {
+          "zh-Hant": "未來的規則",
+          "en": "Future rule"
+        },
+        "inject": "A rule for a later version."
+      }
+    ]
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "files": {}
+  }
+}

@@ -1,0 +1,143 @@
+{
+  "$defs": {
+    "CompactMetric": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_zh_tw": {
+          "maxLength": 800,
+          "minLength": 1,
+          "title": "Evidence Zh Tw",
+          "type": "string"
+        },
+        "label": {
+          "enum": [
+            "match",
+            "minor",
+            "major",
+            "missing",
+            "uncertain",
+            "not_applicable"
+          ],
+          "title": "Label",
+          "type": "string"
+        },
+        "section": {
+          "enum": [
+            "subject",
+            "action",
+            "composition",
+            "environment",
+            "lighting",
+            "appearance",
+            "style",
+            "visible_text"
+          ],
+          "title": "Section",
+          "type": "string"
+        }
+      },
+      "required": [
+        "label",
+        "evidence_zh_tw",
+        "section"
+      ],
+      "title": "CompactMetric",
+      "type": "object"
+    },
+    "Difference": {
+      "additionalProperties": false,
+      "properties": {
+        "description_zh_tw": {
+          "maxLength": 800,
+          "minLength": 1,
+          "title": "Description Zh Tw",
+          "type": "string"
+        },
+        "section": {
+          "enum": [
+            "subject",
+            "action",
+            "composition",
+            "environment",
+            "lighting",
+            "appearance",
+            "style",
+            "visible_text"
+          ],
+          "title": "Section",
+          "type": "string"
+        },
+        "suggested_change_en": {
+          "maxLength": 1000,
+          "minLength": 0,
+          "title": "Suggested Change En",
+          "type": "string"
+        }
+      },
+      "required": [
+        "section",
+        "description_zh_tw",
+        "suggested_change_en"
+      ],
+      "title": "Difference",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "differences": {
+      "items": {
+        "$ref": "#/$defs/Difference"
+      },
+      "maxItems": 16,
+      "title": "Differences",
+      "type": "array"
+    },
+    "metrics": {
+      "items": {
+        "$ref": "#/$defs/CompactMetric"
+      },
+      "maxItems": 8,
+      "minItems": 8,
+      "title": "Metrics",
+      "type": "array"
+    },
+    "text_transcription": {
+      "maxLength": 1000,
+      "title": "Text Transcription",
+      "type": "string"
+    },
+    "unexpected_elements": {
+      "items": {
+        "maxLength": 600,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 16,
+      "title": "Unexpected Elements",
+      "type": "array"
+    },
+    "unjudgeable_reason": {
+      "anyOf": [
+        {
+          "maxLength": 800,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Unjudgeable Reason"
+    }
+  },
+  "required": [
+    "metrics",
+    "unexpected_elements",
+    "differences",
+    "text_transcription",
+    "unjudgeable_reason"
+  ],
+  "title": "CompactComparison",
+  "type": "object"
+}

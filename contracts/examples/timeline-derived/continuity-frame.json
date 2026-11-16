@@ -1,0 +1,12 @@
+{
+ "about": "The frame of the previous shot's take a previous_last continuity starts from.",
+ "rule": "index = floor(last_source_frame * take_fps * fps.den / fps.num), where take_fps is the fps of the take's asset (24 without one) and fps the timeline's. total = the asset's frame_count, else the take's frames, else planned_frames (at least 1); a take that did not succeed has no asset. The answer is max(0, index) when index < total - 1, and null (the last decodable frame of the take) otherwise. take null is a take that is rendered in the same run. take carries only the fields the rule reads.",
+ "vectors": [
+  {"name": "a frame inside the take", "last_source_frame": 49, "fps": {"num": 24, "den": 1}, "take": {"state": "succeeded", "frames": 124, "asset": {"frame_count": 124, "fps": {"num": 24, "den": 1}}}, "planned_frames": 124, "expected": 49},
+  {"name": "the last frame of the take is asked for as the last decodable frame", "last_source_frame": 123, "fps": {"num": 24, "den": 1}, "take": {"state": "succeeded", "frames": 124, "asset": {"frame_count": 124, "fps": {"num": 24, "den": 1}}}, "planned_frames": 124, "expected": null},
+  {"name": "a 30 fps timeline over a 24 fps take", "last_source_frame": 100, "fps": {"num": 30, "den": 1}, "take": {"state": "succeeded", "frames": 124, "asset": {"frame_count": 124, "fps": {"num": 24, "den": 1}}}, "planned_frames": 124, "expected": 80},
+  {"name": "a take rendered in the same run is judged by the planned length", "last_source_frame": 60, "fps": {"num": 24, "den": 1}, "take": null, "planned_frames": 124, "expected": 60},
+  {"name": "the planned last frame of a take rendered in the same run", "last_source_frame": 123, "fps": {"num": 24, "den": 1}, "take": null, "planned_frames": 124, "expected": null},
+  {"name": "a take that did not succeed counts by its requested frames", "last_source_frame": 50, "fps": {"num": 24, "den": 1}, "take": {"state": "failed", "frames": 124, "asset": null}, "planned_frames": 200, "expected": 50}
+ ]
+}

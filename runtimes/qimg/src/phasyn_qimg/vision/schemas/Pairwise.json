@@ -1,0 +1,47 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "reason_zh_tw": {
+      "maxLength": 1200,
+      "minLength": 1,
+      "title": "Reason Zh Tw",
+      "type": "string"
+    },
+    "violated_sections": {
+      "items": {
+        "enum": [
+          "subject",
+          "action",
+          "composition",
+          "environment",
+          "lighting",
+          "appearance",
+          "style",
+          "visible_text"
+        ],
+        "type": "string"
+      },
+      "maxItems": 8,
+      "minItems": 0,
+      "title": "Violated Sections",
+      "type": "array"
+    },
+    "winner": {
+      "enum": [
+        "A",
+        "B",
+        "tie",
+        "uncertain"
+      ],
+      "title": "Winner",
+      "type": "string"
+    }
+  },
+  "required": [
+    "winner",
+    "reason_zh_tw",
+    "violated_sections"
+  ],
+  "title": "Pairwise",
+  "type": "object"
+}

@@ -1,0 +1,394 @@
+{
+  "version": 1,
+  "kinds_note": "A kind is a presentation hint for interfaces: what the user can do next. It is not HTTP semantics; every code keeps its own HTTP status, and an interface may give a code its own hint instead of its kind's.",
+  "kinds": {
+    "client": "The request is wrong for this server: fix it before sending it again.",
+    "conflict": "The request is valid but conflicts with the current state: resolve it, then retry.",
+    "unavailable": "A dependency is temporarily unavailable: retrying later may succeed.",
+    "remote": "The outcome on the other side is unknown: check before retrying.",
+    "internal": "The system failed while handling a valid request: see the logs and the recording."
+  },
+  "codes": {
+    "AMBIGUOUS_STREAM": {
+      "status": 400,
+      "kind": "client",
+      "description": "The recording has several streams; name the stream_id."
+    },
+    "BAD_REQUEST": {
+      "status": 400,
+      "kind": "client",
+      "description": "The HTTP request is malformed."
+    },
+    "BROWSER_REQUEST_REJECTED": {
+      "status": 403,
+      "kind": "client",
+      "description": "A Node refused a request sent by a web browser (the controller answers cross-site writes with BAD_REQUEST)."
+    },
+    "CALL_ID_CONFLICT": {
+      "status": 409,
+      "kind": "conflict",
+      "description": "The call id is already in use."
+    },
+    "CALL_TIMEOUT": {
+      "status": 500,
+      "kind": "internal",
+      "description": "The call exceeded its deadline."
+    },
+    "CANCELLED": {
+      "status": 500,
+      "kind": "client",
+      "description": "The call was cancelled on request."
+    },
+    "COMPONENT_BUSY": {
+      "status": 409,
+      "kind": "conflict",
+      "description": "The component is already running a call."
+    },
+    "COMPONENT_NOT_CONFIGURED": {
+      "status": 422,
+      "kind": "client",
+      "description": "A required component setting or file is missing."
+    },
+    "COMPONENT_NOT_READY": {
+      "status": 409,
+      "kind": "conflict",
+      "description": "The component is not loaded."
+    },
+    "CONTEXT_BUDGET_EXCEEDED": {
+      "status": 422,
+      "kind": "client",
+      "description": "The inputs exceed the model's context budget."
+    },
+    "CONTROLLER_UNREACHABLE": {
+      "status": 503,
+      "kind": "unavailable",
+      "description": "The controller could not be reached."
+    },
+    "CYCLIC_PIPELINE": {
+      "status": 422,
+      "kind": "client",
+      "description": "The pipeline graph contains a cycle."
+    },
+    "DEVICE_BUSY": {
+      "status": 409,
+      "kind": "conflict",
+      "description": "Another component holds the device's resource group."
+    },
+    "DISK_FULL": {
+      "status": 507,
+      "kind": "internal",
+      "description": "The disk is full."
+    },
+    "DUPLICATE_NODE_ID": {
+      "status": 409,
+      "kind": "conflict",
+      "description": "Another live Node registered with the same node_id."
+    },
+    "ENCODER_CONTRACT_MISMATCH": {
+      "status": 500,
+      "kind": "internal",
+      "description": "Media taxonomy: an encoder produced output that breaks its contract."
+    },
+    "EXCLUSIVE_GROUP_BUSY": {
+      "status": 409,
+      "kind": "conflict",
+      "description": "A member of the exclusive group is loading, stopping or busy."
+    },
+    "EXCLUSIVE_GROUP_CONFLICT": {
+      "status": 409,
+      "kind": "conflict",
+      "description": "An idle member holds the exclusive group; retry with replace_exclusive."
+    },
+    "FILE_HASH_MISMATCH": {
+      "status": 422,
+      "kind": "client",
+      "description": "A file's SHA-256 differs from its FileRef."
+    },
+    "FILE_NOT_FOUND": {
+      "status": 404,
+      "kind": "client",
+      "description": "The file does not exist."
+    },
+    "FILE_TRUNCATED": {
+      "status": 422,
+      "kind": "client",
+      "description": "A file is shorter than its declared size."
+    },
+    "GPU_MEMORY_INSUFFICIENT": {
+      "status": 409,
+      "kind": "conflict",
+      "description": "A memory pre-check found too little free GPU memory for this configuration; nothing was loaded or run."
+    },
+    "GPU_OOM": {
+      "status": 500,
+      "kind": "internal",
+      "description": "The GPU ran out of memory."
+    },
+    "HOST_MEMORY_INSUFFICIENT": {
+      "status": 409,
+      "kind": "conflict",
+      "description": "A memory pre-check found too little free host memory for this configuration; nothing was loaded or run."
+    },
+    "HOST_NOT_ALLOWED": {
+      "status": 400,
+      "kind": "client",
+      "description": "The Host header is not one the server answers: its allowed_hosts, or without that setting IP addresses, localhost and the server's own names."
+    },
+    "HOST_OOM": {
+      "status": 500,
+      "kind": "internal",
+      "description": "The host ran out of memory."
+    },
+    "HOST_PROTECTION": {
+      "status": 503,
+      "kind": "unavailable",
+      "description": "The Node's host protection (admission in its configuration) held a call back until its deadline or cancelled it while it ran: the chip or GPU was too hot, or free host memory fell below the floor; details.reason and the message give the reading. Retry once the host has cooled down or freed memory."
+    },
+    "INPUT_TOO_LARGE": {
+      "status": 422,
+      "kind": "client",
+      "description": "An input exceeds a semantic limit (frames, pixels, characters...)."
+    },
+    "INTEGRITY_MISMATCH": {
+      "status": 422,
+      "kind": "client",
+      "description": "Media taxonomy: a file changed or failed an integrity check."
+    },
+    "INTERRUPTED": {
+      "status": 500,
+      "kind": "remote",
+      "description": "The run was interrupted (e.g. the controller restarted); Node-side work may have continued."
+    },
+    "INVALID_ARGUMENT": {
+      "status": 422,
+      "kind": "client",
+      "description": "A field is missing, malformed or out of range."
+    },
+    "LATENT_MISMATCH": {
+      "status": 422,
+      "kind": "client",
+      "description": "A latent's layout, shape or space is not what the consumer needs."
+    },
+    "LATENT_SOURCE_MISMATCH": {
+      "status": 422,
+      "kind": "client",
+      "description": "A latent's linked blob or source differs from its manifest."
+    },
+    "LOAD_TIMEOUT": {
+      "status": 500,
+      "kind": "internal",
+      "description": "Loading the component exceeded its deadline."
+    },
+    "MEDIA_INCOMPLETE": {
+      "status": 422,
+      "kind": "client",
+      "description": "A media asset is incomplete or failed its frame or sample verification."
+    },
+    "MEDIA_TOOL_FAILED": {
+      "status": 500,
+      "kind": "internal",
+      "description": "FFmpeg or ffprobe failed."
+    },
+    "METHOD_NOT_ALLOWED": {
+      "status": 405,
+      "kind": "client",
+      "description": "The HTTP method is not supported on this path."
+    },
+    "MODEL_INCOMPATIBLE": {
+      "status": 422,
+      "kind": "client",
+      "description": "The input or the weights do not match what the component expects."
+    },
+    "MODEL_OUTPUT_INVALID": {
+      "status": 422,
+      "kind": "internal",
+      "description": "The model produced output that fails validation."
+    },
+    "NODE_INTERNAL_ERROR": {
+      "status": 500,
+      "kind": "internal",
+      "description": "The Node failed unexpectedly while handling the request."
+    },
+    "NODE_SHUTTING_DOWN": {
+      "status": 503,
+      "kind": "unavailable",
+      "description": "The Node is shutting down."
+    },
+    "NODE_UNREACHABLE": {
+      "status": 503,
+      "kind": "unavailable",
+      "description": "The Node could not be reached."
+    },
+    "NOT_FOUND": {
+      "status": 404,
+      "kind": "client",
+      "description": "The resource does not exist."
+    },
+    "PAYLOAD_TOO_LARGE": {
+      "status": 413,
+      "kind": "client",
+      "description": "The request body or upload exceeds the server's transport limit."
+    },
+    "PORT_MISMATCH": {
+      "status": 422,
+      "kind": "client",
+      "description": "A pipeline wire connects incompatible port types."
+    },
+    "PREVIEW_NOT_FOUND": {
+      "status": 404,
+      "kind": "client",
+      "description": "No preview is available for that call or step."
+    },
+    "PROCESS_EXIT_UNCONFIRMED": {
+      "status": 500,
+      "kind": "remote",
+      "description": "The component process may still be running; its exit is unconfirmed."
+    },
+    "PROMPT_TOO_LONG": {
+      "status": 422,
+      "kind": "client",
+      "description": "The prompt exceeds the text encoder's limit."
+    },
+    "PROTOCOL_ERROR": {
+      "status": 500,
+      "kind": "internal",
+      "description": "A component process received a control message it could not parse."
+    },
+    "PROTOCOL_MISMATCH": {
+      "status": 409,
+      "kind": "client",
+      "description": "The peer speaks an incompatible protocol version."
+    },
+    "PROVIDER_NOT_INSTALLED": {
+      "status": 422,
+      "kind": "client",
+      "description": "The runtime has no such provider (package missing or not enabled)."
+    },
+    "RANGE_NOT_SATISFIABLE": {
+      "status": 416,
+      "kind": "client",
+      "description": "The requested byte range is outside the file."
+    },
+    "RECORDING_NOT_FOUND": {
+      "status": 404,
+      "kind": "client",
+      "description": "The recording does not exist."
+    },
+    "RESOURCE_EXHAUSTED": {
+      "status": 422,
+      "kind": "client",
+      "description": "Media taxonomy: the work would exceed a resource limit."
+    },
+    "REVISION_CONFLICT": {
+      "status": 409,
+      "kind": "conflict",
+      "description": "The document changed since it was read; reload and save again."
+    },
+    "RUBRIC_MISMATCH": {
+      "status": 422,
+      "kind": "client",
+      "description": "The evaluation rubric does not match the study."
+    },
+    "RUNTIME_ERROR": {
+      "status": 500,
+      "kind": "internal",
+      "description": "The component or service failed while handling the request."
+    },
+    "RUNTIME_EXITED": {
+      "status": 500,
+      "kind": "internal",
+      "description": "The component process exited during the operation."
+    },
+    "RUNTIME_NOT_CONFIGURED": {
+      "status": 422,
+      "kind": "client",
+      "description": "The Node has no runtime with this id."
+    },
+    "RUNTIME_START_FAILED": {
+      "status": 500,
+      "kind": "internal",
+      "description": "The component process could not be started."
+    },
+    "RUNTIME_UNAVAILABLE": {
+      "status": 422,
+      "kind": "unavailable",
+      "description": "The runtime environment cannot run this provider right now."
+    },
+    "RUN_ACTIVE": {
+      "status": 409,
+      "kind": "conflict",
+      "description": "Another run is active."
+    },
+    "SETTINGS_NOT_LOADED": {
+      "status": 409,
+      "kind": "conflict",
+      "description": "The saved settings differ from the loaded ones; restart to apply."
+    },
+    "STATE_CONFLICT": {
+      "status": 409,
+      "kind": "conflict",
+      "description": "The resource's current state does not allow this operation."
+    },
+    "STUDIO_PLUGIN_INSTALL_DISABLED": {
+      "status": 409,
+      "kind": "conflict",
+      "description": "The Controller's configuration file turns plugin installation and removal through the API off."
+    },
+    "STUDIO_PLUGIN_INVALID": {
+      "status": 422,
+      "kind": "client",
+      "description": "The plugin package breaks a package rule (archive, paths, sizes, manifest or integrity); details.errors lists up to 20 problems."
+    },
+    "STUDIO_TIMELINE_REJECTED": {
+      "status": 422,
+      "kind": "client",
+      "description": "A timeline command or export was refused and nothing was saved; details.reason is the stable reason."
+    },
+    "TASK_RUNNING": {
+      "status": 409,
+      "kind": "conflict",
+      "description": "A study task is still marked running; stop it or mark it interrupted first."
+    },
+    "TRACE_UNAVAILABLE": {
+      "status": 404,
+      "kind": "client",
+      "description": "The recording has no profiler trace."
+    },
+    "UNSUPPORTED_COMBINATION": {
+      "status": 422,
+      "kind": "client",
+      "description": "Media taxonomy: the requested media combination is not supported."
+    },
+    "UNSUPPORTED_MEDIA_TYPE": {
+      "status": 415,
+      "kind": "client",
+      "description": "The body's Content-Type is not the one the endpoint needs (application/json for JSON endpoints, application/octet-stream for a plugin package)."
+    },
+    "UNSUPPORTED_SETTING": {
+      "status": 422,
+      "kind": "client",
+      "description": "The component does not support this setting or combination."
+    },
+    "UPSTREAM_PATCH_SOURCE_MISMATCH": {
+      "status": 500,
+      "kind": "internal",
+      "description": "A pinned upstream function changed; the runtime refuses to patch it."
+    },
+    "WEIGHTS_DESTINATION_CONFLICT": {
+      "status": 409,
+      "kind": "conflict",
+      "description": "The destination holds files that differ from the pinned weights; they are replaced only when asked."
+    },
+    "WEIGHTS_SOURCE_UNAVAILABLE": {
+      "status": 503,
+      "kind": "unavailable",
+      "description": "The weight source (Hugging Face or HF_ENDPOINT) could not be reached or refused the download."
+    }
+  },
+  "notices": {
+    "CANCEL_NO_ANSWER": "A cancel request got no answer from the Node in time.",
+    "DETAIL_TRUNCATED": "Some detail events were not recorded (a bounded queue or limit was reached).",
+    "TRACE_TRUNCATED": "The profiler trace exceeded its size limit and was not kept.",
+    "TRACE_UNAVAILABLE": "The profiler trace could not be started or exported."
+  }
+}

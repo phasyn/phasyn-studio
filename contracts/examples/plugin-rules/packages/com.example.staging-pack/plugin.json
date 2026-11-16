@@ -1,0 +1,207 @@
+{
+  "manifest_version": 1,
+  "id": "com.example.staging-pack",
+  "version": "1.2.0",
+  "name": {
+    "zh-Hant": "站位規則包",
+    "en": "Staging pack",
+    "ja": "配置ルールパック"
+  },
+  "description": {
+    "zh-Hant": "共用插件規則案例使用的合成插件包。",
+    "en": "Synthetic package for the shared plugin rule vectors."
+  },
+  "author": {
+    "name": "Example"
+  },
+  "license": "Apache-2.0",
+  "engines": {
+    "phasyn": ">=1.0.0 <2.0.0"
+  },
+  "contributes": {
+    "rules": [
+      {
+        "id": "no-side-view",
+        "kind": "constraint",
+        "label": {
+          "zh-Hant": "禁止側面視角",
+          "en": "No side view"
+        },
+        "description": {
+          "zh-Hant": "擋下側面構圖並要求景深站位。",
+          "en": "Blocks side-on staging and asks for depth."
+        },
+        "forbid": [
+          {
+            "id": "side",
+            "terms": [
+              "side view",
+              "side-on",
+              "in profile"
+            ],
+            "word": true,
+            "message": {
+              "zh-Hant": "側面視角",
+              "en": "side view"
+            }
+          }
+        ],
+        "require": [
+          {
+            "id": "depth",
+            "any_terms": [
+              "foreground",
+              "background"
+            ],
+            "message": {
+              "zh-Hant": "需要景深站位",
+              "en": "needs depth staging"
+            }
+          }
+        ],
+        "inject": "Staging: the action moves along the depth axis."
+      },
+      {
+        "id": "no-realism",
+        "kind": "constraint",
+        "label": {
+          "zh-Hant": "禁止寫實",
+          "en": "No realism"
+        },
+        "forbid": [
+          {
+            "id": "realism",
+            "terms": [
+              "realis",
+              "3d"
+            ],
+            "message": {
+              "zh-Hant": "寫實或 3D 的字眼",
+              "en": "realistic or 3D wording"
+            }
+          }
+        ]
+      },
+      {
+        "id": "whole-words",
+        "kind": "constraint",
+        "label": {
+          "zh-Hant": "整詞比對",
+          "en": "Whole words"
+        },
+        "forbid": [
+          {
+            "id": "words",
+            "terms": [
+              "cg",
+              "bird's eye",
+              "kodak"
+            ],
+            "word": true,
+            "message": {
+              "zh-Hant": "清單內的詞",
+              "en": "a listed word"
+            }
+          }
+        ]
+      },
+      {
+        "id": "shot-staging",
+        "kind": "constraint",
+        "label": {
+          "zh-Hant": "逐鏡站位",
+          "en": "Per-shot staging"
+        },
+        "shots": {
+          "forbid": [
+            {
+              "id": "side",
+              "terms": [
+                "side view",
+                "in profile"
+              ],
+              "word": true,
+              "message": {
+                "zh-Hant": "鏡頭裡的側面視角",
+                "en": "a side view in a shot"
+              }
+            }
+          ],
+          "require": [
+            {
+              "id": "depth",
+              "any_terms": [
+                "foreground",
+                "background"
+              ],
+              "message": {
+                "zh-Hant": "點名角色的鏡頭需要景深站位",
+                "en": "a shot that names a subject needs depth staging"
+              }
+            }
+          ],
+          "every_subject": {
+            "id": "cast",
+            "message": {
+              "zh-Hant": "每個角色都要在某一鏡出場",
+              "en": "every subject appears in some shot"
+            }
+          }
+        }
+      },
+      {
+        "id": "watercolor",
+        "kind": "style",
+        "group": "style",
+        "label": {
+          "zh-Hant": "水彩",
+          "en": "Watercolour"
+        },
+        "inject": "Painted in loose watercolour washes on textured paper."
+      },
+      {
+        "id": "padded",
+        "kind": "effect",
+        "label": {
+          "zh-Hant": "前後留白的文字",
+          "en": "Padded text"
+        },
+        "inject": "\n  Soft rim light on every figure.  \n"
+      },
+      {
+        "id": "heavy-a",
+        "kind": "effect",
+        "label": {
+          "zh-Hant": "長文字 A",
+          "en": "Long text A"
+        },
+        "inject": "畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，畫面保持手繪水彩的柔和質感，"
+      },
+      {
+        "id": "heavy-b",
+        "kind": "effect",
+        "label": {
+          "zh-Hant": "長文字 B",
+          "en": "Long text B"
+        },
+        "inject": "鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，鏡頭沿著景深方向緩慢向前推，"
+      }
+    ],
+    "presets": [
+      {
+        "id": "staging-set",
+        "label": {
+          "zh-Hant": "站位組合",
+          "en": "Staging set"
+        },
+        "rules": [
+          "no-side-view"
+        ]
+      }
+    ]
+  },
+  "integrity": {
+    "algorithm": "sha256",
+    "files": {}
+  }
+}

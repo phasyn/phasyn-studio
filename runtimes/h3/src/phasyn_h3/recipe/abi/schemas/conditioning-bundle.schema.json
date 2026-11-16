@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "conditioning-bundle",
+  "description": "Phasyn Studio H3 recipe contract",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "kind": {
+      "const": "h3_conditioning"
+    },
+    "is_fixture": {
+      "type": "boolean"
+    },
+    "payload": {
+      "$ref": "artifact-ref.schema.json"
+    },
+    "encoder_revision": {
+      "type": "string",
+      "minLength": 40,
+      "maxLength": 40,
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "tokenizer_digest": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64,
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "processor_digest": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64,
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "prepared_inputs_digest": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64,
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "presentation_digest": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64,
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "geometry_digest": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64,
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "quant_profile_digest": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64,
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "runtime_fingerprint": {
+      "type": "string",
+      "minLength": 64,
+      "maxLength": 64,
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "tap": {
+      "type": "object",
+      "properties": {
+        "hidden_states_index": {
+          "const": 50
+        },
+        "final_norm_applied": {
+          "const": false
+        },
+        "use_cache": {
+          "const": false
+        },
+        "hidden_size": {
+          "const": 5120
+        }
+      },
+      "required": [
+        "hidden_states_index",
+        "final_norm_applied",
+        "use_cache",
+        "hidden_size"
+      ],
+      "additionalProperties": false
+    },
+    "text_len": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 262144
+    },
+    "tensors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]*$"
+          },
+          "dtype": {
+            "type": "string",
+            "enum": [
+              "BF16",
+              "F32",
+              "I64",
+              "I32",
+              "BOOL",
+              "U8"
+            ]
+          },
+          "shape": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 2147483647
+            },
+            "minItems": 1,
+            "maxItems": 8
+          },
+          "layout": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "byte_length": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "name",
+          "dtype",
+          "shape",
+          "layout",
+          "byte_length"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 3,
+      "maxItems": 3
+    }
+  },
+  "required": [
+    "schema_version",
+    "kind",
+    "is_fixture",
+    "payload",
+    "encoder_revision",
+    "tokenizer_digest",
+    "processor_digest",
+    "prepared_inputs_digest",
+    "presentation_digest",
+    "geometry_digest",
+    "quant_profile_digest",
+    "runtime_fingerprint",
+    "tap",
+    "text_len",
+    "tensors"
+  ],
+  "additionalProperties": false
+}

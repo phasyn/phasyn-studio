@@ -1,0 +1,57 @@
+{
+  "component_id": "qimg-te-gpu0",
+  "label": "Qwen-Image 文字條件（Qwen3-VL 8B BF16，sequential offload；權重留在 host）",
+  "provider_id": "qimg.conditioning",
+  "runtime_id": "qimg-x86_64",
+  "autostart": false,
+  "folder": "生成/圖片/文字條件",
+  "settings": {
+    "load": {
+      "model_path": "/path/to/models",
+      "device": {
+        "kind": "cuda",
+        "id": "GPU-REPLACE-0",
+        "resource_group": "gpu-0"
+      },
+      "precision": {
+        "compute_dtype": "bf16"
+      },
+      "offload": {
+        "mode": "sequential",
+        "after_use": "host"
+      },
+      "part_overrides": [],
+      "provider_options": {
+        "base": "qwen-image-2.1"
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "device_sample_hz": 2,
+      "publish_interval_ms": 1000,
+      "batch_max_events": 256,
+      "batch_max_bytes": 262144,
+      "queue_max_events": 8192,
+      "queue_max_bytes": 16777216,
+      "segment_bytes": 67108864,
+      "max_detail_bytes_per_recording": 2147483648,
+      "cuda_pending_event_pairs": 4096,
+      "trace_steps": [
+        0,
+        1
+      ],
+      "trace_parts": [],
+      "record_shapes": false,
+      "with_stack": false,
+      "capture_prompt": true,
+      "tensor_dump": false,
+      "capture_stderr": true,
+      "finite_scan": false,
+      "gpu_event_timing": true,
+      "log_level": "info",
+      "parts": [],
+      "steps": [],
+      "mode": "detailed"
+    }
+  }
+}

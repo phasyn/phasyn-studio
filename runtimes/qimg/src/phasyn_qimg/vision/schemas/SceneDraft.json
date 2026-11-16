@@ -1,0 +1,179 @@
+{
+  "$defs": {
+    "Observation": {
+      "additionalProperties": false,
+      "properties": {
+        "certainty": {
+          "enum": [
+            "observed",
+            "uncertain"
+          ],
+          "title": "Certainty",
+          "type": "string"
+        },
+        "claim_en": {
+          "maxLength": 800,
+          "minLength": 1,
+          "title": "Claim En",
+          "type": "string"
+        },
+        "id": {
+          "maxLength": 4,
+          "minLength": 4,
+          "pattern": "^o[0-9]{3}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "section": {
+          "enum": [
+            "subject",
+            "action",
+            "composition",
+            "environment",
+            "lighting",
+            "appearance",
+            "style",
+            "visible_text"
+          ],
+          "title": "Section",
+          "type": "string"
+        },
+        "view_id": {
+          "enum": [
+            "v-full",
+            "v-crop-1",
+            "v-crop-2"
+          ],
+          "title": "View Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "view_id",
+        "section",
+        "claim_en",
+        "certainty"
+      ],
+      "title": "Observation",
+      "type": "object"
+    },
+    "SceneDraftSections": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "$ref": "#/$defs/SectionDraft"
+        },
+        "appearance": {
+          "$ref": "#/$defs/SectionDraft"
+        },
+        "composition": {
+          "$ref": "#/$defs/SectionDraft"
+        },
+        "environment": {
+          "$ref": "#/$defs/SectionDraft"
+        },
+        "lighting": {
+          "$ref": "#/$defs/SectionDraft"
+        },
+        "style": {
+          "$ref": "#/$defs/SectionDraft"
+        },
+        "subject": {
+          "$ref": "#/$defs/SectionDraft"
+        },
+        "visible_text": {
+          "$ref": "#/$defs/SectionDraft"
+        }
+      },
+      "required": [
+        "subject",
+        "action",
+        "composition",
+        "environment",
+        "lighting",
+        "appearance",
+        "style",
+        "visible_text"
+      ],
+      "title": "SceneDraftSections",
+      "type": "object"
+    },
+    "SectionDraft": {
+      "additionalProperties": false,
+      "properties": {
+        "explanation_zh_tw": {
+          "maxLength": 1200,
+          "minLength": 0,
+          "title": "Explanation Zh Tw",
+          "type": "string"
+        },
+        "observation_ids": {
+          "items": {
+            "maxLength": 4,
+            "minLength": 4,
+            "pattern": "^o[0-9]{3}$",
+            "type": "string"
+          },
+          "maxItems": 40,
+          "minItems": 0,
+          "title": "Observation Ids",
+          "type": "array"
+        },
+        "text_en": {
+          "maxLength": 2400,
+          "minLength": 0,
+          "title": "Text En",
+          "type": "string"
+        },
+        "text_zh_tw": {
+          "default": "",
+          "maxLength": 2400,
+          "minLength": 0,
+          "title": "Text Zh Tw",
+          "type": "string"
+        }
+      },
+      "required": [
+        "text_en",
+        "explanation_zh_tw",
+        "observation_ids"
+      ],
+      "title": "SectionDraft",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "observations": {
+      "items": {
+        "$ref": "#/$defs/Observation"
+      },
+      "maxItems": 80,
+      "minItems": 1,
+      "title": "Observations",
+      "type": "array"
+    },
+    "sections": {
+      "$ref": "#/$defs/SceneDraftSections"
+    },
+    "uncertainty_notes": {
+      "items": {
+        "maxLength": 600,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 20,
+      "minItems": 0,
+      "title": "Uncertainty Notes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "sections",
+    "observations",
+    "uncertainty_notes"
+  ],
+  "title": "SceneDraft",
+  "type": "object"
+}

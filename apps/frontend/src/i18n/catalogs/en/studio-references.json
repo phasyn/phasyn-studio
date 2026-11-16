@@ -1,0 +1,7 @@
+{
+  "@{alias} 的檔名": "File name of @{alias}",
+  "Enter 儲存、Esc 取消 · {count}/{max} · 所有鏡頭共用這個檔名": "Enter saves, Esc cancels · {count}/{max} · Shared by every shot using this file",
+  "{name}（雙擊或按 F2 重新命名）": "{name} (double-click or press F2 to rename)",
+  "H3：{value}": "H3: {value}",
+  " · prompt 用了 {mentions} 次": " · used {mentions} times in the prompt"
+}

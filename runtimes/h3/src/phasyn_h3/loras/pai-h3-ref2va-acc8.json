@@ -1,0 +1,50 @@
+{
+ "schema_version": "1.0",
+ "lora_id": "pai-h3-ref2va-acc8",
+ "family": "minimax_h3",
+ "label": "alibaba-pai Ref2VA Acc 8 步（PDD）",
+ "source_repo": "alibaba-pai/MiniMax-H3-Acc-LoRAs",
+ "source_revision": "335001fb9e5455d68a0caa18ec2e319072150328",
+ "license_url": "https://huggingface.co/MiniMaxAI/MiniMax-H3/blob/42ed227ee7df40d41602854ae760620d6eb651fe/LICENSE",
+ "file": {
+  "relative_path": "loras/alibaba-pai-acc/MiniMax-H3-Ref2VA-Acc-8Step.safetensors",
+  "sha256": "111c82e669f6e20e628228172edf39395f1a9fc3ad049793895e542c0f55b18c",
+  "size_bytes": 1372450680
+ },
+ "format": "pdd_videox_fun",
+ "variants": [
+  "ref2va"
+ ],
+ "rank": 64,
+ "alpha": 64.0,
+ "alpha_source": "file_metadata",
+ "alpha_note": null,
+ "touches_adaln": true,
+ "targets": [
+  "to_q",
+  "to_k",
+  "to_v",
+  "to_out.0",
+  "ff.net.0.proj",
+  "ff.net.2",
+  "adaln_proj.linear"
+ ],
+ "pdd": {
+  "num_steps": 32,
+  "block_size": 4
+ },
+ "sampling_contract": {
+  "steps": [
+   8
+  ],
+  "video_shift": 12.0,
+  "audio_shift": 3.0,
+  "scheduler": "h3_euler"
+ },
+ "fixed_scale": 1.0,
+ "notes_zh": [
+  "PAI:predict_ref2v.py:17-38：8 步、video shift 12、audio shift 3、強度 1.0"
+ ],
+ "status": "registered",
+ "is_fixture": false
+}
