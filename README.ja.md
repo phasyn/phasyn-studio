@@ -1,5 +1,11 @@
 # Phasyn Studio
 
+> **インストール方法がわからない？** 下の文をそのまま AI エージェント（Claude Code、Codex など）に渡せば、インストールしてくれます：
+>
+> ```text
+> https://github.com/phasyn/phasyn-studio/blob/main/docs/agent-install.md に従って Phasyn Studio をインストールしてください。
+> ```
+
 自分のパソコンで、AI を使って音声付きの短い動画と画像を作れます。公式サイト：<https://phasyn.dev>
 
 [English](README.md) | [繁體中文](README.zh-Hant.md) | **日本語**

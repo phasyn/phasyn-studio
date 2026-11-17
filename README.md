@@ -1,5 +1,11 @@
 # Phasyn Studio
 
+> **Not sure how to install?** Just hand this to your AI agent (Claude Code, Codex, etc.) and let it do the install:
+>
+> ```text
+> Install Phasyn Studio for me by following https://github.com/phasyn/phasyn-studio/blob/main/docs/agent-install.md
+> ```
+
 Make short videos with sound, and pictures, with AI on your own computer. Website: <https://phasyn.dev>
 
 **English** | [繁體中文](README.zh-Hant.md) | [日本語](README.ja.md)

@@ -1,5 +1,11 @@
 # Phasyn Studio
 
+> **不知道怎麼安裝？** 直接把下面這段交給你的 AI agent（Claude Code、Codex 等），由它來安裝：
+>
+> ```text
+> 請依照 https://github.com/phasyn/phasyn-studio/blob/main/docs/agent-install.md 幫我安裝 Phasyn Studio。
+> ```
+
 在自己的電腦上，用 AI 做有聲音的短片和圖片。官網：<https://phasyn.dev>
 
 [English](README.md) | **繁體中文** | [日本語](README.ja.md)
