@@ -35,7 +35,9 @@ class OutputFile:
         self.media_type = media_type
         self.metadata: dict[str, Any] = dict(metadata or {})
         self.file_id, self.path = store.reserve()
-        self._fh: Any = open(self.path, "wb")  # noqa: SIM115 - finish/abort 管理
+        if ".." in self.path.parts:  # 路徑穿越防護（CWE-22）：`.part` 一律落在檔案庫內
+            raise ComponentError("PATH_TRAVERSAL", f"路徑不可包含 .. 分量：{self.path}")
+        self._fh: Any = self.path.open("wb")  # noqa: SIM115 - finish/abort 管理
         self._hasher = hashlib.sha256()
         self.size = 0
         self._recorder = recorder

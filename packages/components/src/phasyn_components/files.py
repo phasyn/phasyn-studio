@@ -40,6 +40,22 @@ def _disk_error(exc: OSError, what: str) -> ComponentError:
     return ComponentError("RUNTIME_ERROR", f"{what}：{exception_message(exc)}", details={"errno": exc.errno})
 
 
+def ensure_within(root: Path, path: Path) -> Path:
+    """路徑穿越防護（CWE-22）：``path`` 正規化後必須位於 ``root`` 之內，否則拒絕。
+
+    回傳正規化後的路徑；``root`` 本身也接受（由呼叫端判斷是否合理）。
+    """
+    root_real = root.resolve()
+    path_real = path.resolve()
+    if path_real != root_real and root_real not in path_real.parents:
+        raise ComponentError(
+            "PATH_TRAVERSAL",
+            f"路徑超出允許範圍：{path}",
+            details={"path": str(path_real), "root": str(root_real)},
+        )
+    return path_real
+
+
 class FileWriter:
     """串流寫入一個新檔；``commit()`` 原子發布並回傳 FileRef。"""
 
@@ -54,10 +70,12 @@ class FileWriter:
         self.size = 0
         self._hasher = hashlib.sha256()
         self._closed = False
+        if ".." in directory.parts:
+            raise ComponentError("PATH_TRAVERSAL", f"目錄路徑不可包含 .. 分量：{directory}")
         directory.mkdir(parents=True, exist_ok=True)
         self.part_path = directory / PART
         try:
-            self._fh: BinaryIO | None = open(self.part_path, "wb")  # noqa: SIM115 - 生命週期由 commit/abort 管理
+            self._fh: BinaryIO | None = self.part_path.open("wb")  # noqa: SIM115 - 生命週期由 commit/abort 管理
         except OSError as exc:
             raise _disk_error(exc, "建立暫存檔失敗") from exc
 
@@ -184,14 +202,14 @@ def publish(
 
 class FileStore:
     def __init__(self, data_dir: Path, node_id: str, *, buffer_bytes: int = DEFAULT_BUFFER_BYTES) -> None:
-        self.root = Path(data_dir) / "files"
+        self.root = (Path(data_dir) / "files").resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         self.node_id = node_id
         self.buffer_bytes = int(buffer_bytes)
 
     # ------------------------------------------------------------ local files
     def directory(self, file_id: str) -> Path:
-        return self.root / require_uuid(file_id, "file_id")
+        return ensure_within(self.root, self.root / require_uuid(file_id, "file_id"))
 
     def new_writer(
         self, media_type: str, metadata: Mapping[str, Any] | None = None, *, file_id: str | None = None
@@ -208,8 +226,10 @@ class FileStore:
         """給元件程序直接寫 `.part`：回傳 file_id 與 `.part` 路徑（Node 之後以 publish_reserved 發布）。"""
         fid = new_id()
         directory = self.directory(fid)
+        if ".." in directory.parts:
+            raise ComponentError("PATH_TRAVERSAL", f"目錄路徑不可包含 .. 分量：{directory}")
         directory.mkdir(parents=True, exist_ok=True)
-        return fid, directory / PART
+        return fid, ensure_within(self.root, directory / PART)
 
     def publish_reserved(
         self, file_id: str, *, media_type: str, metadata: Mapping[str, Any], size: int, sha256: str
@@ -291,7 +311,10 @@ class FileStore:
 
     # ------------------------------------------------------------ remote copies
     def remote_directory(self, ref: Mapping[str, Any]) -> Path:
-        return self.root / "remote" / require_uuid(ref["node_id"], "node_id") / require_uuid(ref["file_id"], "file_id")
+        return ensure_within(
+            self.root,
+            self.root / "remote" / require_uuid(ref["node_id"], "node_id") / require_uuid(ref["file_id"], "file_id"),
+        )
 
     def remote_copy(self, ref: Mapping[str, Any]) -> Path | None:
         """已下載且大小／雜湊與 FileRef 相同的完整副本。"""
@@ -368,4 +391,4 @@ def parse_range(header: str | None, size: int) -> tuple[int, int] | None:
     return start, end
 
 
-__all__ = ["DEFAULT_BUFFER_BYTES", "FileStore", "FileWriter", "parse_range", "publish"]
+__all__ = ["DEFAULT_BUFFER_BYTES", "FileStore", "FileWriter", "ensure_within", "parse_range", "publish"]

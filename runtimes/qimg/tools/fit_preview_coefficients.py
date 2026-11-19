@@ -21,8 +21,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import struct
 import sys
+import urllib.parse
 import urllib.request
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -199,11 +201,29 @@ def build_document(beta: np.ndarray, *, stats: Mapping[str, Any], pairs: list[Pa
 
 
 # ---------------------------------------------------------------------------------------------- run 輸出
+RUN_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}")
+
+
+class _SameHostRedirect(urllib.request.HTTPRedirectHandler):
+    """只跟隨同一主機的 http(s) 轉址，避免 30x 把 GET 帶去其他主機或非 http(s) 目標（SSRF 防護）。"""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        parsed = urllib.parse.urlsplit(newurl)
+        if parsed.scheme not in ("http", "https") or parsed.netloc != urllib.parse.urlsplit(req.full_url).netloc:
+            raise urllib.request.HTTPError(newurl, code, msg, headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+# 不走系統代理（與 phasyn_cli.machine 同一做法）；controller 由操作者指定，只送 GET。
+_OPENER = urllib.request.build_opener(_SameHostRedirect, urllib.request.ProxyHandler({}))
+
+
 def _get_json(url: str, timeout: float) -> Any:
-    if not url.startswith(("http://", "https://")):
-        raise ValueError(f"controller URL 必須是 http(s)：{url}")
-    request = urllib.request.Request(url, method="GET", headers={"Accept": "application/json"})  # noqa: S310
-    with urllib.request.urlopen(request, timeout=timeout) as resp:  # noqa: S310 - 上面已限定 http(s)
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username is not None:
+        raise ValueError(f"controller URL 必須是 http(s)、帶主機名且不含帳號密碼：{url}")
+    request = urllib.request.Request(url, method="GET", headers={"Accept": "application/json"})
+    with _OPENER.open(request, timeout=timeout) as resp:  # noqa: S310 - 上面已限定 http(s) 與主機
         return json.loads(resp.read())
 
 
@@ -274,6 +294,9 @@ def collect(args: argparse.Namespace) -> list[Pair]:
         if not args.controller or not args.data_dir:
             raise SystemExit("--run 需要 --controller 與 --data-dir")
         for run_id in args.run:
+            if not RUN_ID_RE.fullmatch(run_id):  # 防 URL 路徑竄改：run_id 只能是英數與 _ . : -
+                print(f"run_id 格式不正確（僅英數與 _ . : -）：{run_id}", file=sys.stderr)
+                return 2
             run = _get_json(f"{args.controller.rstrip('/')}/api/runs/{run_id}", args.timeout)
             found = run_pairs(run)
             if not found:

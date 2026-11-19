@@ -79,7 +79,11 @@ def main(argv: list[str] | None = None) -> int:
             print("  plugin.json has no integrity section yet: run again with --write-integrity", file=sys.stderr)
         return 1
     output: Path = args.output or directory.resolve().parent / archive_name(package)
-    with open(output, "wb") as target:
+    output = output.resolve()  # 規範化路徑：移除 .. 分量並解析符號連結（CWE-22）
+    if output.is_relative_to(directory.resolve()):
+        print(f"{output}: 不可寫入插件目錄 {directory} 內（避免汙染套件與完整性雜湊）", file=sys.stderr)
+        return 1
+    with output.open("wb") as target:
         write_archive(package, target)
     print(f"{output}  {package.plugin_id} {package.version}  digest {package.digest}")
     size = output.stat().st_size
