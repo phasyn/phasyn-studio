@@ -9,12 +9,12 @@ type ResidentFacts = Pick<ComponentDescriptor, "autostart" | "device" | "setting
 /** 目前載入（沒有載入時用保存的設定）的 offload 模式；沒有設定 → null。 */
 export function offloadMode(component: ResidentFacts): string | null {
   const offload = component.settings.loaded?.offload ?? component.settings.stored.load.offload;
-  const mode = offload?.mode;
+  const mode = offload?.["mode"];
   return typeof mode === "string" ? mode : null;
 }
 
 export function isResidentComponent(component: ResidentFacts): boolean {
-  if (component.autostart !== true || component.device.kind === "cpu") return false;
+  if (!component.autostart || component.device.kind === "cpu") return false;
   const mode = offloadMode(component);
   return mode === null || mode === "none";
 }

@@ -21,7 +21,7 @@ function deferredFetch() {
         url,
         method: init.method ?? "GET",
         keepalive: init.keepalive,
-        resolve: (body) => resolve(new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } })),
+        resolve: (body) => { resolve(new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } })); },
         reject,
       });
     });

@@ -1,8 +1,11 @@
-import { PEAK_JOB_TIMEOUT_MS, PEAK_PROTOCOL, isPeakErrorCode, record, validDimensions, type PeakErrorCode, type PeakRequest } from "./waveformProtocol";
+import { PEAK_JOB_TIMEOUT_MS, PEAK_PROTOCOL, isPeakErrorCode, isPeakRecord, isOwnedPcm, validDimensions, type PeakErrorCode, type PeakRequest } from "./waveformProtocol";
 
 export class WaveformError extends Error {
-  constructor(readonly code: PeakErrorCode) {
+  readonly code: PeakErrorCode;
+
+  constructor(code: PeakErrorCode) {
     super(code);
+    this.code = code;
     this.name = "WaveformError";
   }
 }
@@ -17,7 +20,7 @@ const active = new Set<() => void>();
  */
 export function aggregateWaveform(samples: Float32Array<ArrayBuffer>, channels: number, buckets: number, signal?: AbortSignal): Promise<Float32Array<ArrayBuffer>> {
   if (!(samples.buffer instanceof ArrayBuffer) || !validDimensions(samples.length, channels, buckets)) return Promise.reject(new WaveformError("INPUT_BOUNDS"));
-  if (signal?.aborted) return Promise.reject(new WaveformError("CANCELLED"));
+  if (signal?.aborted === true) return Promise.reject(new WaveformError("CANCELLED"));
   generation = generation % Number.MAX_SAFE_INTEGER + 1;
   const owner = generation;
   return new Promise((resolve, reject) => {
@@ -42,25 +45,25 @@ export function aggregateWaveform(samples: Float32Array<ArrayBuffer>, channels: 
       if (result instanceof WaveformError) reject(result);
       else resolve(result);
     };
-    const cancel = () => finish(new WaveformError("CANCELLED"));
+    const cancel = () => { finish(new WaveformError("CANCELLED")); };
     active.add(cancel);
     signal?.addEventListener("abort", cancel, { once: true });
     worker.onerror = (event) => { event.preventDefault(); finish(new WaveformError("WORKER_FAILED")); };
-    worker.onmessageerror = () => finish(new WaveformError("PROTOCOL_ERROR"));
+    worker.onmessageerror = () => { finish(new WaveformError("PROTOCOL_ERROR")); };
     worker.onmessage = (event: MessageEvent<unknown>) => {
-      const data = record(event.data);
-      if (!data || data.protocol !== PEAK_PROTOCOL || data.requestId !== 1 || data.generation !== owner) {
+      const data = event.data;
+      if (!isPeakRecord(data) || data["protocol"] !== PEAK_PROTOCOL || data["requestId"] !== 1 || data["generation"] !== owner) {
         finish(new WaveformError("PROTOCOL_ERROR"));
-      } else if (data.kind === "error" && isPeakErrorCode(data.code)) {
-        finish(new WaveformError(data.code));
-      } else if (data.kind === "result" && data.peaks instanceof Float32Array && data.peaks.buffer instanceof ArrayBuffer
-        && data.peaks.length === buckets && data.peaks.every((value) => Number.isFinite(value) && value >= 0)) {
-        finish(data.peaks as Float32Array<ArrayBuffer>);
+      } else if (data["kind"] === "error" && isPeakErrorCode(data["code"])) {
+        finish(new WaveformError(data["code"]));
+      } else if (data["kind"] === "result" && isOwnedPcm(data["peaks"])
+        && data["peaks"].length === buckets && data["peaks"].every((value) => Number.isFinite(value) && value >= 0)) {
+        finish(data["peaks"]);
       } else {
         finish(new WaveformError("PROTOCOL_ERROR"));
       }
     };
-    const timer = setTimeout(() => finish(new WaveformError("TIMEOUT")), PEAK_JOB_TIMEOUT_MS);
+    const timer = setTimeout(() => { finish(new WaveformError("TIMEOUT")); }, PEAK_JOB_TIMEOUT_MS);
     try {
       const owned = samples.byteOffset === 0 && samples.byteLength === samples.buffer.byteLength ? samples : new Float32Array(samples);
       worker.postMessage({ protocol: PEAK_PROTOCOL, requestId: 1, generation: owner, channels, buckets, samples: owned } satisfies PeakRequest, [owned.buffer]);

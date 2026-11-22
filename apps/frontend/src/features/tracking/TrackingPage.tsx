@@ -1,3 +1,4 @@
+import { withRecordValue } from "@/lib/json";
 import { Activity, Gauge, Info, ScrollText, Search } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { Link, useBlocker, useSearchParams } from "react-router";
@@ -52,12 +53,6 @@ import { T } from "@/i18n/T";
 
 const SUMMARY_ID = "tracking-save-summary";
 
-function withDraft(drafts: Readonly<Record<string, RowDraft>>, key: string, next: RowDraft | undefined): Record<string, RowDraft> {
-  const out = { ...drafts };
-  if (next) out[key] = next;
-  else delete out[key];
-  return out;
-}
 
 /**
  * 追蹤設定（工作台）：中欄＝所有 Node 元件 instance 的 recorder（recording）設定表，可逐列修改或批次套用；
@@ -75,7 +70,7 @@ export function TrackingPage() {
   const inspectKey = selection ? instanceKey(selection.nodeId, selection.componentId) : null;
   const batch = useRecordingBatch();
   const [drafts, setDrafts] = useState<Record<string, RowDraft>>({});
-  const [selected, setSelectedKeys] = useState<ReadonlySet<string>>(() => new Set());
+  const [selectedKeys, setSelectedKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [bulk, setBulk] = useState<BulkValues>({});
   const [legendOpen, setLegendOpen] = useState(false);
   /** 目前這一批的來源：讓觸發按鈕在進行中保持掛載（pending），焦點不掉。 */
@@ -93,8 +88,8 @@ export function TrackingPage() {
   const rows = buildRows(componentEntries(catalog.data), batch.local);
   const groups = groupRows(nodes, rows, filters);
   const visible = groups.flatMap((group) => group.rows);
-  const targets = visible.filter((row) => selected.has(row.key) && !row.stale).map((row) => row.key);
-  const selectedExisting = rows.filter((row) => selected.has(row.key)).length;
+  const targets = visible.filter((row) => selectedKeys.has(row.key) && !row.stale).map((row) => row.key);
+  const selectedExisting = rows.filter((row) => selectedKeys.has(row.key)).length;
   const excluded = selectedExisting - targets.length;
   // 依表格順序（含被篩選隱藏的列）逐一儲存；草稿對應的元件已不在目錄時不計。
   const ordered = groupRows(nodes, rows, { q: "", node: "", mode: "" }).flatMap((group) => group.rows);
@@ -102,7 +97,7 @@ export function TrackingPage() {
   const hiddenDirty = dirtyKeys.filter((key) => !visible.some((row) => row.key === key)).length;
   const counts = resultCounts(batch.results);
   const summary = resultSummary(counts);
-  const inspected = inspectKey ? (rows.find((row) => row.key === inspectKey) ?? null) : null;
+  const inspected = (inspectKey != null && inspectKey !== "") ? (rows.find((row) => row.key === inspectKey) ?? null) : null;
   const showBulk = selectedExisting > 0;
   const showSave = dirtyKeys.length > 0 || batch.running || summary !== "";
 
@@ -110,22 +105,22 @@ export function TrackingPage() {
 
   useEffect(() => {
     if (dirtyKeys.length === 0 && !batch.running) return;
-    const handler = (event: BeforeUnloadEvent) => event.preventDefault();
+    const handler = (event: BeforeUnloadEvent) => { event.preventDefault(); };
     window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
+    return () => { window.removeEventListener("beforeunload", handler); };
   }, [dirtyKeys.length, batch.running]);
 
-  const updateFilters = (changes: Partial<TrackingFilters>) => setParams((previous) => withFilterParams(previous, changes), { replace: true });
+  const updateFilters = (changes: Partial<TrackingFilters>) => { setParams((previous) => withFilterParams(previous, changes), { replace: true }); };
   const clearFilters = () => {
     setQuery("");
     updateFilters({ q: "", node: "", mode: "" });
   };
-  const inspect = (row: TrackingRow) => setParams((previous) => withSelectionParams(previous, { nodeId: row.nodeId, componentId: row.componentId }), { replace: true });
+  const inspect = (row: TrackingRow) => { setParams((previous) => withSelectionParams(previous, { nodeId: row.nodeId, componentId: row.componentId }), { replace: true }); };
 
-  const edit = (row: TrackingRow, key: string, value: unknown) => setDrafts((previous) => withDraft(previous, row.key, setDraftField(row, previous[row.key], key, value)));
-  const replace = (row: TrackingRow, value: JsonObject) => setDrafts((previous) => withDraft(previous, row.key, replaceDraftValue(row, previous[row.key], value)));
+  const edit = (row: TrackingRow, key: string, value: unknown) => { setDrafts((previous) => withRecordValue(previous, row.key, setDraftField(row, previous[row.key], key, value))); };
+  const replace = (row: TrackingRow, value: JsonObject) => { setDrafts((previous) => withRecordValue(previous, row.key, replaceDraftValue(row, previous[row.key], value))); };
   const revert = (row: TrackingRow, fromTable = true) => {
-    setDrafts((previous) => withDraft(previous, row.key, undefined));
+    setDrafts((previous) => withRecordValue(previous, row.key, undefined));
     if (fromTable) setFocusRequest({ id: rowAnchorId(row.key) });
   };
 
@@ -134,17 +129,17 @@ export function TrackingPage() {
     const plan = planDraftSaves(rows, drafts, keys);
     setRunKind(kind);
     void batch
-      .run(plan, (item) => setDrafts((previous) => withDraft(previous, item.key, undefined)))
+      .run(plan, (item) => { setDrafts((previous) => withRecordValue(previous, item.key, undefined)); })
       .finally(() => {
         setRunKind(null);
-        if (focusId) setFocusRequest({ id: focusId });
+        if (focusId != null && focusId !== "") setFocusRequest({ id: focusId });
       });
   };
 
   const applyBulk = () => {
     if (batch.running) return;
     setRunKind("bulk");
-    void batch.run(planBulk(rows, targets, bulk, drafts)).finally(() => setRunKind(null));
+    void batch.run(planBulk(rows, targets, bulk, drafts)).finally(() => { setRunKind(null); });
   };
 
   /** 重新讀取（衝突、結果未知或失敗後由使用者觸發）：草稿套到最新版；觸發的按鈕消失時焦點回到 focusId。 */
@@ -153,7 +148,7 @@ export function TrackingPage() {
       if (!latest) return;
       setDrafts((previous) => {
         const draft = previous[row.key];
-        return draft ? withDraft(previous, row.key, rebaseDraft(draft, latest)) : previous;
+        return draft ? withRecordValue(previous, row.key, rebaseDraft(draft, latest)) : previous;
       });
       setFocusRequest({ id: focusId });
     });
@@ -192,11 +187,11 @@ export function TrackingPage() {
             placeholder={t("搜尋 ID、名稱、provider、Node")}
             aria-label={t("搜尋元件（ID、名稱、provider、Node）")}
             autoComplete="off"
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => { setQuery(event.target.value); }}
             className="pl-8"
           />
         </div>
-        <Select compact id="tracking-node" aria-label="Node" value={filters.node} onChange={(event) => updateFilters({ node: event.target.value })} className="w-auto max-w-60 min-w-44">
+        <Select compact id="tracking-node" aria-label="Node" value={filters.node} onChange={(event) => { updateFilters({ node: event.target.value }); }} className="w-auto max-w-60 min-w-44">
           <option value="">{t("全部 Node")}</option>
           {nodes.map((node) => (
             <option key={node.node_id} value={node.node_id}>
@@ -205,7 +200,7 @@ export function TrackingPage() {
             </option>
           ))}
         </Select>
-        <Select compact id="tracking-mode" aria-label={t("錄製模式")} value={filters.mode} onChange={(event) => updateFilters({ mode: event.target.value })} className="w-auto min-w-32">
+        <Select compact id="tracking-mode" aria-label={t("錄製模式")} value={filters.mode} onChange={(event) => { updateFilters({ mode: event.target.value }); }} className="w-auto min-w-32">
           <option value="">{t("全部模式")}</option>
           {RECORDER_MODES.map((mode) => (
             <option key={mode} value={mode}>
@@ -219,10 +214,10 @@ export function TrackingPage() {
           icon={<Info aria-hidden />}
           aria-expanded={legendOpen}
           aria-controls={legendId}
-          onClick={() => setLegendOpen(!legendOpen)}
+          onClick={() => { setLegendOpen(!legendOpen); }}
         />
         <p className="ml-auto pr-1 text-caption text-fg-tertiary" aria-live="polite">
-          <T source={"顯示 <0>{visibleCount}</0>／<1>{rowsCount}</1> 個元件"} values={{ visibleCount: visible.length, rowsCount: rows.length }} slots={[<span className="machine text-fg-secondary" />, <span className="machine" />]} />
+          <T source={"顯示 <0>{visibleCount}</0>／<1>{rowsCount}</1> 個元件"} values={{ visibleCount: visible.length, rowsCount: rows.length }} slots={[<span key="slot-0" className="machine text-fg-secondary" />, <span key="slot-1" className="machine" />]} />
         </p>
       </ToolStrip>
       <ModeLegend id={legendId} hidden={!legendOpen} />
@@ -233,7 +228,7 @@ export function TrackingPage() {
           values={bulk}
           onChange={setBulk}
           onApply={applyBulk}
-          onClear={() => setSelectedKeys(new Set())}
+          onClear={() => { setSelectedKeys(new Set()); }}
           blockReason={bulkBlock}
           pending={batch.running && runKind === "bulk"}
         />
@@ -248,9 +243,9 @@ export function TrackingPage() {
           saveAllPending={batch.running && runKind === "all"}
           showSaveAll={dirtyKeys.length > 0 || runKind === "all"}
           summary={summary}
-          onSaveAll={() => saveDrafts(dirtyKeys, "all", SUMMARY_ID)}
+          onSaveAll={() => { saveDrafts(dirtyKeys, "all", SUMMARY_ID); }}
           onStop={batch.stop}
-          onRevertAll={() => setDrafts({})}
+          onRevertAll={() => { setDrafts({}); }}
           onClearResults={batch.clearResults}
         />
       ) : null}
@@ -293,19 +288,19 @@ export function TrackingPage() {
               groups={groups}
               drafts={drafts}
               results={batch.results}
-              selected={selected}
+              selected={selectedKeys}
               inspectedKey={inspectKey}
               running={batch.running}
-              onSelect={(keys, on) => setSelectedKeys((previous) => setSelected(previous, keys, on))}
+              onSelect={(keys, on) => { setSelectedKeys((previous) => setSelected(previous, keys, on)); }}
               onEdit={edit}
-              onSave={(row) => saveDrafts([row.key], "row", rowAnchorId(row.key))}
+              onSave={(row) => { saveDrafts([row.key], "row", rowAnchorId(row.key)); }}
               onRevert={revert}
               onInspect={inspect}
-              onReload={(row) => reload(row, rowAnchorId(row.key))}
+              onReload={(row) => { reload(row, rowAnchorId(row.key)); }}
             />
             {visible.length === 0 ? (
               <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-line-subtle px-4 py-2 text-data text-fg-secondary">
-                <T source={"沒有符合篩選的元件。<0>清除篩選</0>"} slots={[<Button size="sm" variant="quiet" onClick={clearFilters} />]} />
+                <T source={"沒有符合篩選的元件。<0>清除篩選</0>"} slots={[<Button key="slot-0" size="sm" variant="quiet" onClick={clearFilters} />]} />
               </div>
             ) : null}
           </>
@@ -322,9 +317,9 @@ export function TrackingPage() {
       result={batch.results[inspected.key]}
       running={batch.running}
       onChange={replace}
-      onSave={(row) => saveDrafts([row.key], "row", null)}
-      onRevert={(row) => revert(row, false)}
-      onReload={(row) => reload(row, RECORDER_SAVE_ID)}
+      onSave={(row) => { saveDrafts([row.key], "row", null); }}
+      onRevert={(row) => { revert(row, false); }}
+      onReload={(row) => { reload(row, RECORDER_SAVE_ID); }}
     />
   ) : selection && catalog.isPending ? (
     <p role="status" className="px-4 py-6 text-body text-fg-secondary">
@@ -335,9 +330,7 @@ export function TrackingPage() {
       icon={<Info />}
       title={t("目錄中找不到這個元件")}
       description={
-        <>
-          <T source={"<0>{componentId}</0> 不在 Node <1>{nodeId}</1>的最新快照中：可能已被移除，或 Node 尚未回報最新快照。"} values={{ componentId: selection.componentId, nodeId: selection.nodeId }} slots={[<code className="machine" />, <code className="machine" />]} />
-        </>
+        <T source={"<0>{componentId}</0> 不在 Node <1>{nodeId}</1>的最新快照中：可能已被移除，或 Node 尚未回報最新快照。"} values={{ componentId: selection.componentId, nodeId: selection.nodeId }} slots={[<code key="slot-0" className="machine" />, <code key="slot-1" className="machine" />]} />
       }
     />
   ) : (

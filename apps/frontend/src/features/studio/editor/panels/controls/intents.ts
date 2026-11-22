@@ -19,7 +19,7 @@ const listeners = new Set<() => void>();
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  return () => void listeners.delete(listener);
 }
 
 function serve(owner: object, id: number): void {
@@ -36,7 +36,7 @@ export function useFieldRequest(editor: Pick<Editor, "ui" | "drafts">): FieldReq
   const { drafts } = editor;
   const done = useSyncExternalStore(subscribe, () => served.get(drafts) ?? 0);
   const intent = editor.ui.intent;
-  const request = intent && intent.panel === "controls" && intent.field && done < intent.id ? { id: intent.id, field: intent.field } : null;
+  const request = intent?.panel === "controls" && intent.field && done < intent.id ? { id: intent.id, field: intent.field } : null;
   const id = request?.id ?? null;
   useEffect(() => {
     if (id !== null) serve(drafts, id);

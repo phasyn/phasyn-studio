@@ -29,7 +29,7 @@ export function DeletePipelineDialog({
 }) {
   const remove = useDeletePipeline();
   return (
-    <Dialog open={open} onOpenChange={(next) => (remove.isPending ? undefined : onOpenChange(next))}>
+    <Dialog open={open} onOpenChange={(next) => { if (!(remove.isPending)) { onOpenChange(next); } }}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("刪除元件組合「{value}」？", { value: pipeline.label || pipeline.pipeline_id })}</DialogTitle>
@@ -41,7 +41,7 @@ export function DeletePipelineDialog({
           {remove.isError ? <ErrorCallout error={remove.error} write title={t("沒有刪除")} /> : null}
         </DialogBody>
         <DialogFooter>
-          <Button variant="quiet" onClick={() => onOpenChange(false)} disabled={remove.isPending}>
+          <Button variant="quiet" onClick={() => { onOpenChange(false); }} disabled={remove.isPending}>
             {t("取消")}
           </Button>
           <Button
@@ -49,16 +49,15 @@ export function DeletePipelineDialog({
             icon={<Trash2 aria-hidden />}
             pending={remove.isPending}
             disabled={remove.isPending}
-            onClick={() =>
-              remove.mutate(pipeline.pipeline_id, {
-                onSuccess: () => onDeleted(),
+            onClick={() => { remove.mutate(pipeline.pipeline_id, {
+                onSuccess: () => { onDeleted(); },
                 // Already deleted elsewhere: useDeletePipeline drops it from the cache (this page unmounts next), so go
                 // back to the list and explain it there.
                 onError: (error) => {
                   const state = leaveAfterDeleteError(error, pipeline.pipeline_id);
                   if (state) onDeleted(state);
                 },
-              })
+              }); }
             }
           >
             {t("刪除元件組合")}
@@ -83,7 +82,7 @@ export function SaveWithErrorsDialog({
   onConfirm: () => void;
 }) {
   return (
-    <Dialog open={open} onOpenChange={(next) => (pending ? undefined : onOpenChange(next))}>
+    <Dialog open={open} onOpenChange={(next) => { if (!(pending)) { onOpenChange(next); } }}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("儲存有 {errorsCount} 個錯誤的元件組合？", { errorsCount: errors.length })}</DialogTitle>
@@ -92,7 +91,7 @@ export function SaveWithErrorsDialog({
         <DialogBody className="grid gap-2">
           <ul className="grid gap-1 text-caption text-danger" aria-label={t("錯誤")}>
             {errors.slice(0, 8).map((issue, index) => (
-              <li key={`${index}:${issue.message}`} className="flex items-start gap-1.5 [overflow-wrap:anywhere]">
+              <li key={`${String(index)}:${issue.message}`} className="flex items-start gap-1.5 [overflow-wrap:anywhere]">
                 <CircleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" />
                 <span>
                   <span className="machine text-fg-tertiary">{issue.code}</span> {issue.message}
@@ -103,7 +102,7 @@ export function SaveWithErrorsDialog({
           {errors.length > 8 ? <p className="text-caption text-fg-tertiary">{t("另外還有 {errorsCount} 個，見底部「問題」。", { errorsCount: errors.length - 8 })}</p> : null}
         </DialogBody>
         <DialogFooter>
-          <Button variant="quiet" onClick={() => onOpenChange(false)} disabled={pending}>
+          <Button variant="quiet" onClick={() => { onOpenChange(false); }} disabled={pending}>
             {t("回去修正")}
           </Button>
           <Button variant="secondary" icon={<Save aria-hidden />} pending={pending} onClick={onConfirm}>

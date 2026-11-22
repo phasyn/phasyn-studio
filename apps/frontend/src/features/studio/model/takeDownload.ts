@@ -13,5 +13,5 @@ export function takeNumber(shot: StudioShot, take: StudioTake): number {
 /** 「<shot title> take 2.mp4」; characters a file system rejects become 「-」, an empty title 「shot」. */
 export function takeFileName(shot: StudioShot, take: StudioTake, mediaType: string): string {
   const title = shot.title.replace(UNSAFE_NAME, "-").trim() || "shot";
-  return `${title} take ${takeNumber(shot, take)}.${extensionFor(mediaType)}`;
+  return `${title} take ${String(takeNumber(shot, take))}.${extensionFor(mediaType)}`;
 }

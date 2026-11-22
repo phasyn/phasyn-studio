@@ -2,22 +2,24 @@
 // 哪些元件組合能給 Studio 用（剛好 1 個 text.prompt.v1 輸入、有 media.asset.v1 輸出）、能做哪種 H3 任務
 // （t2va／fl2va／ref2va：看接線與 DiT 的 checkpoint），以及每個步驟元件是否就緒。
 // 純函式；不送出任何請求，也不猜測沒有證據的狀態（找不到元件就說找不到）。
-import { indexCatalog, type CatalogIndex } from "@/api/catalog";
+import { componentAvailability, indexCatalog, type CatalogIndex } from "@/api/catalog";
 import type { Catalog, ComponentDescriptor, StudioProject } from "@/api/generated/contracts";
 import type { WirePipeline, WireStep } from "@/api/types";
 import { placeLabel } from "@/lib/deviceTag";
 import { acceptedSteps, describeConflicts, samplingConflicts } from "@/lib/ditSampling";
 import { componentVariant, VARIANT_FL2VA, VARIANT_REF2VA } from "@/lib/h3Variant";
 import { isRecord } from "@/lib/json";
-import { t } from "@/i18n";
+import { t, tServer } from "@/i18n";
+import { declaredGeneration, type StudioGenerationBinding } from "./studioGenerationBinding";
 import { formatList } from "@/i18n/format";
+import { creativeDeclaration, creativePurpose, declaresGenerator, DRIVING_ROLES, DRIVING_TYPE, editPurpose, H3_STUDIO_PROVIDERS, isExperimental, type DrivingRole, type ProviderFamily, type RoutePurpose } from "./providerTraits";
 
 export const PROMPT_TYPE = "text.prompt.v1";
 export const ASSET_TYPE = "media.asset.v1";
 export const MATERIALS_TYPE = "h3.materials.v1";
 export const IMAGE_TYPE = "media.image.v1";
 
-/** Studio 認得並會覆寫參數或額外加入的 provider。 */
+/** Studio 認得並會覆寫參數或額外加入的 provider（H3 的 TE／DiT／參考編碼在 providerTraits.H3_STUDIO_PROVIDERS）。 */
 export const PROVIDER = {
   te: "h3.conditioning",
   dit: "h3.dit",
@@ -73,8 +75,13 @@ export interface ComponentSlot {
   componentId: string;
   component: ComponentDescriptor | null;
   nodeLabel: string;
-  /** 可以送出呼叫：ready 或 busy（busy 時同一 run 內由 runner 排隊，跨 run 由主控回 409）。 */
+  /**
+   * 可以送出呼叫：ready 或 busy（busy 時同一 run 內由 runner 排隊，跨 run 由主控回 409），或用到才載入（on_demand）的元件
+   * 目前沒載入——主控在步驟用到時自動載入（@/api/catalog componentAvailability）。
+   */
   usable: boolean;
+  /** 用到才載入、目前沒載入：渲染時主控先載入它（畫面說「使用時載入」，不說未就緒）。舊主控沒有 load_policy 時永遠 false。 */
+  onUse: boolean;
   reason: string | null;
 }
 
@@ -84,15 +91,49 @@ export function componentSlot(index: CatalogIndex, nodeId: string, componentId: 
   const node = index.nodeLabel(nodeId) ?? nodeId.slice(0, 8);
   // 顯示用「[GPU 0] Node A（GPU 0 + GPU 1）」：同一台 Node 上看得出元件用哪張卡；找不到元件時只有 Node 名稱
   const nodeLabel = component ? placeLabel(component.device, node) : node;
-  const base = { nodeId, componentId, component, nodeLabel };
+  const base = { nodeId, componentId, component, nodeLabel, onUse: false };
   if (!component) return { ...base, usable: false, reason: t("{name}：找不到元件 {componentId}（{node}）；請到「元件修改・元件」確認", { name, componentId, node }) };
   if (index.online(nodeId) === false) return { ...base, usable: false, reason: t("{name}所在的 {node} 不在線上", { name, node }) };
-  const usable = component.state === "ready" || component.state === "busy";
-  return { ...base, usable, reason: usable ? null : t("{name} {value}（{componentId}）", { name, value: STATE_LABELS[component.state] ?? component.state, componentId }) };
+  const availability = componentAvailability(component);
+  const usable = availability !== "unavailable";
+  return { ...base, usable, onUse: availability === "on_use", reason: usable ? null : t("{name} {value}（{componentId}）", { name, value: STATE_LABELS[component.state] ?? component.state, componentId }) };
+}
+
+/**
+ * The owner's placement rule on a component (`limits.studio`, kept in the component definition,
+ * limits): `{ "render": false, "reason": "device_memory" | "validation_only", "where": "node-b" }` says the Studio must not
+ * render with this instance, for example a 14B model on a 16 GB card (表演影片 and 音訊驅動 run only on
+ * the unified-memory node) or a variant that exists only to validate small sizes. The text says why; `where` names the machine that can
+ * (the owner's own words, shown as written). Null when the instance may render.
+ */
+export function studioPlacementBlock(component: Pick<ComponentDescriptor, "limits"> | null | undefined): string | null {
+  const rule = isRecord(component?.limits) ? component.limits["studio"] : undefined;
+  if (!isRecord(rule) || rule["render"] !== false) return null;
+  const where = typeof rule["where"] === "string" && rule["where"].trim() !== "" ? rule["where"].trim() : null;
+  if (rule["reason"] === "device_memory") {
+    return where !== null ? t("這台電腦的顯示卡記憶體不夠，只能在 {where} 上執行", { where }) : t("這台電腦的顯示卡記憶體不夠，只能在記憶體更大的主機上執行");
+  }
+  if (rule["reason"] === "validation_only") {
+    return where !== null ? t("這個版本只用來驗證（小畫面、少量影格），不能正式出片；請改用 {where} 上的版本", { where }) : t("這個版本只用來驗證（小畫面、少量影格），不能正式出片");
+  }
+  return where !== null ? t("這個元件設定成不在這台電腦出片，只能在 {where} 上執行", { where }) : t("這個元件設定成不在這台電腦出片");
+}
+
+/** The instance only validates small sizes (`limits.studio.reason = validation_only`): its routes rank as experimental. */
+function validationOnly(component: Pick<ComponentDescriptor, "limits"> | null | undefined): boolean {
+  const rule = isRecord(component?.limits) ? component.limits["studio"] : undefined;
+  return isRecord(rule) && rule["render"] === false && rule["reason"] === "validation_only";
 }
 
 function preferUsable(items: readonly ComponentDescriptor[]): ComponentDescriptor | null {
-  return items.find((item) => item.state === "ready") ?? items.find((item) => item.state === "busy") ?? items[0] ?? null;
+  return items.find((item) => item.state === "ready") ?? items.find((item) => item.state === "busy") ?? items.find((item) => componentAvailability(item) === "on_use") ?? items[0] ?? null;
+}
+
+/** The route's components that load when a render uses them (on_demand and not loaded now), each once. */
+export function onUseSlots(route: StudioRoute): ComponentSlot[] {
+  const seen = new Map<string, ComponentSlot>();
+  for (const { slot } of route.steps) if (slot.onUse) seen.set(`${slot.nodeId}:${slot.componentId}`, slot);
+  return [...seen.values()];
 }
 
 // 元件實際用的 checkpoint variant 由共用的 lib 判斷（範本也依它挑 DiT）；這裡保留原本的匯出位置。
@@ -119,7 +160,27 @@ export interface StudioRoute {
   promptInput: string;
   /** 成片（media.asset.v1）來自哪個步驟的哪個輸出；name 是元件組合的輸出名稱。 */
   final: { name: string; from_step: string; output: string };
+  /**
+   * H3 任務（t2va／fl2va／ref2va）。只有 family 為 h3 時是 H3 的意思；宣告式路線用它表示有沒有首幀輸入，creative 與 edit
+   * 路線一律是 t2va（不送首幀），畫面上顯示 purpose，不顯示這個值。
+   */
   capability: RouteTask;
+  /** 生成元件的模型家族（由元件 facts 與步驟 provider 判斷，providerTraits.ts）。 */
+  family: ProviderFamily;
+  /** 這條路線做什麼：參考生成、首幀、文字、延展、重繪、控制、表演驅動、音訊驅動。 */
+  purpose: RoutePurpose;
+  /** 實驗或研究用的變體（名稱標了實驗／研究，或 DiT 少於 FEW_STEPS 步）：路線清單收在「實驗」群組。 */
+  experimental: boolean;
+  /** 能從鏡頭的「方式」直接渲染；延展、重繪、控制路線是剪輯工具用的，為 false。 */
+  renderable: boolean;
+  /** 主要生成步驟（H3 DiT 或宣告生成的元件）所在的 Node；找不到時為 null。 */
+  mainNodeId: string | null;
+  /** creative 路線：驅動素材角色 → 元件組合的輸入名稱（只列出接到元件組合輸入、型別相符的角色）；其他路線為空。 */
+  drivingInputs: Partial<Record<DrivingRole, string>>;
+  /** creative 路線：宣告 studio_creative 的生成步驟 id；其他路線為 null。 */
+  generatorStepId: string | null;
+  /** Explicit Studio-to-provider bindings; older routes keep their H3 behavior. */
+  generationBinding?: StudioGenerationBinding;
   /** 接到 TE materials 的 h3.materials.v1 輸入（ref2va）。 */
   materialsInput: string | null;
   /** 接到 TE first_frame 的 media.image.v1 輸入（fl2va）。 */
@@ -143,6 +204,11 @@ export interface StudioRoute {
   caveat: RouteCaveat | null;
   /** 一行摘要；細節在 problems 與渲染引擎側欄。 */
   summary: string;
+  /**
+   * Why the owner keeps renders of this route off the machine it is on (a step's `limits.studio`, studioPlacementBlock);
+   * it is also one of the problems, and choosing a 方式 skips the route for a ready one elsewhere. Null when allowed.
+   */
+  placement: string | null;
 }
 
 /** 少於這個去噪步數的 DiT 會加上品質提醒（步數少時快速運鏡與角色動作較弱）。 */
@@ -220,11 +286,64 @@ export function deriveRoute(pipeline: WirePipeline, index: CatalogIndex): Studio
   const steps: RouteStep[] = pipeline.steps.map((step) => {
     const component = index.component(step.node_id, step.component_id);
     const providerId = component?.provider_id ?? null;
-    const name = (providerId ? SHORT_NAMES[providerId] : undefined) ?? step.step_id;
+    // A generator another family declares (Wan…) is named for what it does, not by its step id
+    const name = ((providerId != null && providerId !== "") ? SHORT_NAMES[providerId] : undefined) ?? (declaresGenerator(component?.facts) ? t("生成") : step.step_id);
     return { step, providerId, name, slot: componentSlot(index, step.node_id, step.component_id, name) };
   });
   const final = finalOutput(pipeline, steps);
   if (!final) return null;
+
+  const source = pipeline.label.trim() || pipeline.pipeline_id;
+  // The combination's name in the interface language when the catalog has it (the bundled ones do); traits are read
+  // from the saved (source) text
+  const label = tServer(source);
+  const producer = steps.find((item) => item.step.step_id === final.from_step);
+  const base = { id: pipeline.pipeline_id, label, pipeline, steps, promptInput: prompt.name, final, mainNodeId: producer?.step.node_id ?? null, drivingInputs: {}, generatorStepId: null };
+  const issues: Issue[] = steps.flatMap((item) => (item.slot.usable ? [] : [{ name: item.name, text: item.slot.reason ?? t("{name} 無法使用", { name: item.name }), component: true }]));
+  // Not a component to start: the owner keeps renders of this instance off this machine
+  const placement = steps.map((item) => studioPlacementBlock(item.slot.component)).find((text) => text !== null) ?? null;
+  if (placement !== null) issues.unshift({ name: t("執行位置"), text: placement, component: false });
+  // A validation-only variant goes with the experiments: it is never the route a 方式 picks first
+  const validation = steps.some((item) => validationOnly(item.slot.component));
+  const noNotes: string[] = [];
+  const nonH3 = { teStepId: null, ditStepId: null, teNodeId: null, ditNodeId: null, ditVariant: null, referenceHint: null, materialsInput: null, notes: noNotes, caveat: null, placement };
+  const declared = declaredGeneration(pipeline, steps, final.from_step, prompt.name);
+  if (declared) {
+    if (!declared.valid) issues.push({ name: t("結構"), text: declared.problem, component: false });
+    const imageInput = declared.valid ? declared.binding.firstFrame?.input ?? null : null;
+    return {
+      ...base, ...nonH3, ...(declared.valid ? { generationBinding: declared.binding } : {}),
+      capability: imageInput === null ? "t2va" : "fl2va", imageInput,
+      family: "declared", purpose: imageInput === null ? "text" : "first-frame", experimental: validation || isExperimental(source, false), renderable: true,
+      ready: issues.length === 0, problems: issues.map((issue) => issue.text), summary: summarize(issues),
+    };
+  }
+  // 宣告 studio_creative 的生成元件（表演影片、音訊驅動）：輸入是驅動素材，長度由素材決定
+  const creative = producer ? creativeDeclaration(producer.slot.component) : null;
+  const creativeKind = creative?.output === final.output ? creativePurpose(creative.roles) : null;
+  if (producer && creative && creativeKind) {
+    const drivingInputs: Partial<Record<DrivingRole, string>> = {};
+    for (const role of DRIVING_ROLES) {
+      const port = creative.roles.get(role);
+      const edge = port === undefined ? undefined : producer.step.inputs[port];
+      if (!edge || !("from_input" in edge)) continue;
+      if (pipeline.inputs.some((item) => item.name === edge.from_input && item.type_id === DRIVING_TYPE[role])) drivingInputs[role] = edge.from_input;
+    }
+    return {
+      ...base, ...nonH3, drivingInputs, generatorStepId: producer.step.step_id, capability: "t2va", imageInput: null,
+      family: "creative", purpose: creativeKind, experimental: validation || isExperimental(source, false), renderable: true,
+      ready: issues.length === 0, problems: issues.map((issue) => issue.text), summary: summarize(issues),
+    };
+  }
+  // 宣告 studio_edit 的元件（延展、重繪、控制）：在剪輯工具上對既有 take 使用，不從鏡頭的方式渲染
+  const edit = producer ? editPurpose(producer.slot.component, producer.step.parameters) : null;
+  if (edit) {
+    return {
+      ...base, ...nonH3, capability: "t2va", imageInput: null,
+      family: "edit", purpose: edit, experimental: validation || isExperimental(source, false), renderable: false,
+      ready: issues.length === 0, problems: issues.map((issue) => issue.text), summary: summarize(issues),
+    };
+  }
 
   const te = steps.find((item) => item.providerId === PROVIDER.te) ?? steps.find((item) => item.providerId === null && bindsInput(item.step, prompt.name));
   const dit =
@@ -235,30 +354,29 @@ export function deriveRoute(pipeline: WirePipeline, index: CatalogIndex): Studio
   const ditVariant = dit?.slot.component ? componentVariant(dit.slot.component) : null;
   // DiT 不在目錄（variant 未知）時只看接線；能否真的執行由就緒狀態說明
   const capability: RouteTask =
-    materialsInput && (ditVariant ?? TASK_VARIANT.ref2va) === TASK_VARIANT.ref2va
+    (materialsInput != null && materialsInput !== "") && (ditVariant ?? TASK_VARIANT.ref2va) === TASK_VARIANT.ref2va
       ? "ref2va"
-      : imageInput && (ditVariant ?? TASK_VARIANT.fl2va) === TASK_VARIANT.fl2va
+      : (imageInput != null && imageInput !== "") && (ditVariant ?? TASK_VARIANT.fl2va) === TASK_VARIANT.fl2va
         ? "fl2va"
         : "t2va";
   // 接了參考素材輸入卻用了非 ref2va 的 DiT：路由只剩 t2va／fl2va。把原因說清楚（常見於範本預設選到 FL2VA 的 DiT），
   // 否則使用者只看到「不支援參考素材」而 DiT 其實已經啟動
   const referenceHint =
-    materialsInput && dit && ditVariant !== null && ditVariant !== TASK_VARIANT.ref2va
+    (materialsInput != null && materialsInput !== "") && dit && ditVariant !== null && ditVariant !== TASK_VARIANT.ref2va
       ? t("元件組合接了參考素材輸入，但它的 DiT（{id}）載入的是 {ditVariant} checkpoint；參考素材需要 ref2va checkpoint 的 DiT：把去噪步驟換成 ref2va 的 DiT", { id: dit.step.component_id, ditVariant })
       : null;
 
-  const issues: Issue[] = steps.flatMap((item) => (item.slot.usable ? [] : [{ name: item.name, text: item.slot.reason ?? t("{name} 無法使用", { name: item.name }), component: true }]));
   // Studio 的時長、解析度與 seed 只能經由 H3 的 TE／DiT 步驟套用；沒有這些步驟就不假裝套用
   const known = steps.every((item) => item.providerId !== null);
   if (known && !te) issues.push({ name: t("結構"), text: t("元件組合沒有 H3 文字條件步驟（h3.conditioning）：Studio 的時長與解析度無法套用"), component: false });
   if (known && !dit) issues.push({ name: t("結構"), text: t("元件組合沒有 H3 DiT 步驟（h3.dit）：Studio 的 seed 與步數無法套用"), component: false });
   const wanted = TASK_VARIANT[capability];
-  if (dit && ditVariant && ditVariant !== wanted) {
+  if (dit && (ditVariant != null && ditVariant !== "") && ditVariant !== wanted) {
     const id = dit.step.component_id;
     issues.push({
       name: "DiT",
       text:
-        ditVariant === TASK_VARIANT.ref2va && !materialsInput
+        ditVariant === TASK_VARIANT.ref2va && !(materialsInput != null && materialsInput !== "")
           ? t("DiT（{id}）是 ref2va checkpoint，但元件組合沒有參考素材輸入（h3.materials.v1 → TE 的 materials）", { id })
           : t("DiT（{id}）載入的是 {ditVariant} checkpoint；{capability} 需要 {wanted}", { id, ditVariant, capability, wanted }),
       component: false,
@@ -284,14 +402,17 @@ export function deriveRoute(pipeline: WirePipeline, index: CatalogIndex): Studio
     if (variant !== wanted) issues.push({ name: item.name, text: t("{name}（{id}）載入的是 {variant} checkpoint；{capability} 需要 {wanted}", { name: item.name, id, variant, capability, wanted }), component: false });
   }
 
+  const h3 = steps.some((item) => item.providerId !== null && H3_STUDIO_PROVIDERS.has(item.providerId));
+  const caveat = dit?.slot.component ? routeCaveat(dit.step, dit.slot.component, capability) : null;
   return {
-    id: pipeline.pipeline_id,
-    label: pipeline.label.trim() || pipeline.pipeline_id,
-    pipeline,
-    steps,
-    promptInput: prompt.name,
-    final,
+    ...base,
+    placement,
+    mainNodeId: dit?.step.node_id ?? base.mainNodeId,
     capability,
+    family: h3 || !known ? "h3" : "other",
+    purpose: capability === "ref2va" ? "reference" : capability === "fl2va" ? "first-frame" : "text",
+    experimental: validation || isExperimental(source, caveat !== null),
+    renderable: true,
     materialsInput,
     imageInput,
     teStepId: te?.step.step_id ?? null,
@@ -303,7 +424,7 @@ export function deriveRoute(pipeline: WirePipeline, index: CatalogIndex): Studio
     ready: issues.length === 0,
     problems: issues.map((issue) => issue.text),
     notes,
-    caveat: dit?.slot.component ? routeCaveat(dit.step, dit.slot.component, capability) : null,
+    caveat,
     summary: summarize(issues),
   };
 }
@@ -321,9 +442,9 @@ export function findRoute(routes: readonly StudioRoute[], id: string): StudioRou
   return routes.find((route) => route.id === id) ?? null;
 }
 
-const OPENING_BRACKETS = new Set([..."(（[［【「"]); // i18n-ignore
-const CLOSING_BRACKETS = new Set([...")）]］】」"]); // i18n-ignore
-const COLONS = new Set([...":："]); // i18n-ignore
+const OPENING_BRACKETS = new Set("(（[［【「"); // i18n-ignore
+const CLOSING_BRACKETS = new Set(")）]］】」"); // i18n-ignore
+const COLONS = new Set(":："); // i18n-ignore
 
 /**
  * A component combination's label as lists show it. People name a combination 「名稱：接法」 (for example
@@ -370,7 +491,7 @@ export interface TakeRouteSummary {
 export function takeRouteSummary(routes: readonly StudioRoute[], take: { route: string; task?: RouteTask; continuity?: unknown }): TakeRouteSummary {
   const label = routeDisplayLabel(routes, take.route);
   const known = findRoute(routes, take.route) !== null;
-  const task: RouteTask = take.task ?? (take.continuity ? "fl2va" : "t2va");
+  const task: RouteTask = take.task ?? (isRecord(take.continuity) ? "fl2va" : "t2va");
   return {
     label,
     task,
@@ -379,13 +500,13 @@ export function takeRouteSummary(routes: readonly StudioRoute[], take: { route: 
 }
 
 /**
- * 沒有指定時挑哪個元件組合當預設：文字生成（t2va）優先，因為新鏡頭還沒有參考素材，也不是接續前一個鏡頭；
- * 同能力內就緒的優先。fl2va 需要首幀接續、ref2va 需要參考素材，排在後面。
+ * 沒有指定時挑哪個元件組合當預設：文字生成優先，因為新鏡頭還沒有參考素材，也不是接續前一個鏡頭；同用途內非實驗、
+ * 就緒的優先。參考生成需要參考素材、首幀需要首幀接續、表演與音訊驅動需要驅動素材，排在後面；剪輯工具用的路線最後。
  */
-const CAPABILITY_ORDER: Record<RouteTask, number> = { t2va: 0, ref2va: 1, fl2va: 2 };
+const PURPOSE_RANK: Record<RoutePurpose, number> = { text: 0, reference: 1, "first-frame": 2, performance: 3, audio: 3, extend: 4, retouch: 4, control: 4 };
 
 export function pickDefaultRoute(routes: readonly StudioRoute[]): StudioRoute | undefined {
-  return [...routes].sort((a, b) => CAPABILITY_ORDER[a.capability] - CAPABILITY_ORDER[b.capability] || Number(b.ready) - Number(a.ready))[0];
+  return [...routes].sort((a, b) => PURPOSE_RANK[a.purpose] - PURPOSE_RANK[b.purpose] || Number(a.experimental) - Number(b.experimental) || Number(b.ready) - Number(a.ready))[0];
 }
 
 /** 新鏡頭的路由：專案預設還存在就用它，否則依 pickDefaultRoute；都沒有時保留預設值。 */
@@ -411,7 +532,15 @@ function readDitParameter(step: WireStep | undefined, component: ComponentDescri
 
 export function ditDefaults(route: StudioRoute | null): Record<"steps" | "video_shift" | "audio_shift", ParameterDefault> {
   const dit = route?.steps.find((item) => item.step.step_id === route.ditStepId);
-  const read = (key: string) => readDitParameter(dit?.step, dit?.slot.component, key);
+  function read(key: string): ParameterDefault {
+    if (!route?.generationBinding) return readDitParameter(dit?.step, dit?.slot.component, key);
+    const values = route.steps.flatMap(({ step, slot }) => {
+      const binding = route.generationBinding?.byStep.get(step.step_id)?.find((item) => item.field === key);
+      return binding ? [readDitParameter(step, slot.component, binding.name)] : [];
+    });
+    const first = values[0];
+    return first && values.every((value) => value.value === first.value) ? first : { value: null, source: null };
+  }
   return { steps: read("steps"), video_shift: read("video_shift"), audio_shift: read("audio_shift") };
 }
 
@@ -428,10 +557,10 @@ export interface ContinuitySupport {
 }
 
 function frameSlot(index: CatalogIndex, nodeId: string | null): ComponentSlot {
-  const nodeLabel = nodeId ? (index.nodeLabel(nodeId) ?? nodeId.slice(0, 8)) : "—";
-  const component = nodeId ? preferUsable(index.all.filter((item) => item.provider_id === PROVIDER.frame && item.node_id === nodeId)) : null;
-  if (!component || !nodeId) {
-    return { nodeId: nodeId ?? "", componentId: "", component: null, nodeLabel, usable: false, reason: t("{nodeLabel} 上沒有取出影格元件（media.frame）；首幀接續需要它", { nodeLabel }) };
+  const nodeLabel = (nodeId != null && nodeId !== "") ? (index.nodeLabel(nodeId) ?? nodeId.slice(0, 8)) : "—";
+  const component = (nodeId != null && nodeId !== "") ? preferUsable(index.all.filter((item) => item.provider_id === PROVIDER.frame && item.node_id === nodeId)) : null;
+  if (!component || !(nodeId != null && nodeId !== "")) {
+    return { nodeId: nodeId ?? "", componentId: "", component: null, nodeLabel, usable: false, onUse: false, reason: t("{nodeLabel} 上沒有取出影格元件（media.frame）；首幀接續需要它", { nodeLabel }) };
   }
   return componentSlot(index, nodeId, component.component_id, SHORT_NAMES[PROVIDER.frame] ?? t("取影格"));
 }
@@ -439,11 +568,11 @@ function frameSlot(index: CatalogIndex, nodeId: string | null): ComponentSlot {
 /** 首幀接續（previous_last）在這條路由上需要的條件：fl2va 元件組合本身就緒，加上 DiT 所在 Node 的 media.frame。 */
 export function routeContinuity(route: StudioRoute | null, catalog: Catalog | undefined): ContinuitySupport {
   if (!route) return { supported: false, ready: false, problems: [ROUTE_MISSING], summary: ROUTE_MISSING, frame: null };
-  if (route.capability !== "fl2va" || !route.imageInput) {
+  if (route.capability !== "fl2va" || !(route.imageInput != null && route.imageInput !== "")) {
     const text = t("元件組合「{label}」是 {capability}，不支援首幀接續（需要 fl2va：media.image.v1 輸入接到 TE 的 first_frame）", { label: route.label, capability: route.capability });
     return { supported: false, ready: false, problems: [text], summary: text, frame: null };
   }
-  const frame = frameSlot(indexCatalog(catalog), route.ditNodeId);
+  const frame = frameSlot(indexCatalog(catalog), route.generationBinding?.firstFrame?.nodeId ?? route.ditNodeId);
   const frameProblem = frame.usable ? [] : [frame.reason ?? t("取影格無法使用")];
   const problems = [...route.problems, ...frameProblem];
   const summary = problems.length === 0 ? t("就緒") : [...(route.ready ? [] : [route.summary]), ...frameProblem].join(t("；"));
@@ -455,9 +584,9 @@ export function concatSlot(catalog: Catalog | undefined, preferNodeIds: readonly
   const index = indexCatalog(catalog);
   const candidates = index.all.filter((item) => item.provider_id === PROVIDER.concat);
   const score = (item: ComponentDescriptor) =>
-    (item.state === "ready" || item.state === "busy" ? 2 : 0) + (index.online(item.node_id) === false ? -4 : 0) + (preferNodeIds.includes(item.node_id) ? 1 : 0);
+    ({ ready: 2, on_use: 1, unavailable: 0 }[componentAvailability(item)]) + (index.online(item.node_id) === false ? -4 : 0) + (preferNodeIds.includes(item.node_id) ? 1 : 0);
   const chosen = [...candidates].sort((a, b) => score(b) - score(a))[0];
-  if (!chosen) return { nodeId: "", componentId: "", component: null, nodeLabel: "—", usable: false, reason: t("找不到序列匯出元件（media.concat）；請到「元件修改・元件」新增") };
+  if (!chosen) return { nodeId: "", componentId: "", component: null, nodeLabel: "—", usable: false, onUse: false, reason: t("找不到序列匯出元件（media.concat）；請到「元件修改・元件」新增") };
   return componentSlot(index, chosen.node_id, chosen.component_id, SHORT_NAMES[PROVIDER.concat] ?? t("序列匯出"));
 }
 
@@ -473,8 +602,8 @@ export interface Engine {
 
 export function resolveEngine(input: { pipelines: readonly WirePipeline[] | undefined; catalog: Catalog | undefined; error: string | null }): Engine {
   const routes = deriveStudioRoutes(input.pipelines, input.catalog);
-  const ditNodes = [...new Set(routes.flatMap((route) => (route.ditNodeId ? [route.ditNodeId] : [])))];
-  const status = input.pipelines && input.catalog ? "ready" : input.error ? "error" : "loading";
+  const ditNodes = [...new Set(routes.flatMap((route) => ((route.ditNodeId != null && route.ditNodeId !== "") ? [route.ditNodeId] : [])))];
+  const status = input.pipelines && input.catalog ? "ready" : (input.error != null && input.error !== "") ? "error" : "loading";
   return { status, error: status === "error" ? input.error : null, routes, concat: concatSlot(input.catalog, ditNodes) };
 }
 

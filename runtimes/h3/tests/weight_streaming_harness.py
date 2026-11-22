@@ -22,23 +22,31 @@ import json
 import mmap
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, override
+
 
 NUM_BLOCKS = 36
 
 
 def _sdpa_stand_in() -> Any:
     import torch
-    import torch.nn.functional as F
+    from torch.nn import functional
 
     class SdpaAttention(torch.nn.Module):
-        def __init__(self, num_heads: int, head_size: int, causal: bool = False, **_ignored: Any) -> None:
+        def __init__(
+            self,
+            num_heads: int,  # noqa: ARG002 - Pinned attention constructor.
+            head_size: int,
+            causal: bool = False,  # noqa: FBT001, FBT002 - Pinned attention constructor.
+            **_ignored: Any,
+        ) -> None:
             super().__init__()
             assert not causal
             self.scale = head_size**-0.5
 
+        @override
         def forward(self, q: Any, k: Any, v: Any) -> Any:
-            return F.scaled_dot_product_attention(
+            return functional.scaled_dot_product_attention(
                 q.transpose(1, 2),
                 k.transpose(1, 2),
                 v.transpose(1, 2),
@@ -51,7 +59,9 @@ def _sdpa_stand_in() -> Any:
 
 
 def vae_config(vae_dir: Path) -> Any:
-    from sglang.multimodal_gen.configs.models.vaes.minimax_h3_video import MiniMaxH3VideoVAEConfig
+    from sglang.multimodal_gen.configs.models.vaes.minimax_h3_video import (  # type: ignore[import-untyped]  # Pinned SGLang has no PEP 561 metadata.
+        MiniMaxH3VideoVAEConfig,
+    )
 
     config = json.loads((vae_dir / "config.json").read_text(encoding="utf-8"))
     config.pop("_class_name", None)
@@ -70,15 +80,19 @@ def construct_decode_half(vae_dir: Path, *, on_host: bool = False) -> Any:
     (``on_host``) on the host like the pinned loader's decode half — uninitialized storage (``skip_init_modules``)
     that the checkpoint tensors replace untouched, and the constructor's own non-persistent RoPE buffer."""
     import torch
-    from sglang.multimodal_gen.runtime.loader.utils import initialize_model
-    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3 import MiniMaxH3VideoVAE
-    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae import attention as attn_mod
+    from sglang.multimodal_gen.runtime.loader.utils import initialize_model  # type: ignore[import-untyped]  # Pinned SGLang has no PEP 561 metadata.
+    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3 import MiniMaxH3VideoVAE  # type: ignore[import-untyped]  # Pinned SGLang has no PEP 561 metadata.
+    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae import (  # type: ignore[import-untyped]  # Pinned SGLang has no PEP 561 metadata.
+        attention as attn_mod,
+    )
 
     saved = attn_mod.USPAttention
     attn_mod.USPAttention = _sdpa_stand_in()
     try:
         where = None if on_host else torch.device("meta")
-        vae = initialize_model(MiniMaxH3VideoVAE, {"config": vae_config(vae_dir)}, torch.float32, where)
+        vae = initialize_model(
+            MiniMaxH3VideoVAE, {"config": vae_config(vae_dir)}, torch.float32, where
+        )
     finally:
         attn_mod.USPAttention = saved
     for name in ("encoder", "quant_conv"):
@@ -91,7 +105,8 @@ class _Mapped:
 
     def __init__(self, path: Path) -> None:
         import torch
-        from phasyn_h3.recipe.abi.tensors import read_header_from_file
+
+        from phasyn_h3.recipe.abi.tensors import read_header_from_file  # noqa: PLC0415 - Keep this optional experiment dependency behind its runtime check.
 
         self.header = read_header_from_file(path)
         fd = os.open(path, os.O_RDONLY)
@@ -106,10 +121,14 @@ class _Mapped:
 
         info = self.header.tensors[name]
         start = self.header.data_offset + info.start
-        return self.base[start : start + info.byte_length].view(torch.float32).view(info.shape)
+        return (
+            self.base[start : start + info.byte_length]
+            .view(torch.float32)
+            .view(info.shape)
+        )
 
 
-def _finish(vae: Any, device: Any, optimize: bool) -> Any:
+def _finish(vae: Any, device: Any, *, optimize: bool) -> Any:
     import torch
     from sglang.multimodal_gen.runtime.loader.utils import finalize_loaded_model
 
@@ -117,14 +136,19 @@ def _finish(vae: Any, device: Any, optimize: bool) -> Any:
     if torch.device(device).type != "cpu":
         vae.to(device)
     if optimize:
-        from sglang.multimodal_gen.runtime.platforms import current_platform
+        from sglang.multimodal_gen.runtime.platforms import current_platform  # type: ignore[import-untyped]  # Pinned SGLang has no PEP 561 metadata.
 
         vae = current_platform.optimize_vae(vae)
     return vae
 
 
 def build_resident(
-    vae_dir: Path, *, blocks: int | None, device: Any = "cpu", optimize: bool = False, hold_fp16: bool = False
+    vae_dir: Path,
+    *,
+    blocks: int | None,
+    device: Any = "cpu",
+    optimize: bool = False,
+    hold_fp16: bool = False,
 ) -> Any:
     """The production decode half with ``blocks`` real decoder blocks (None: all 36) — the resident decode.  Built on
     the host like the pinned loader (its RoPE buffer is the constructor's), the weights assigned as zero-copy views of
@@ -134,39 +158,60 @@ def build_resident(
 
     vae = construct_decode_half(vae_dir, on_host=True)
     n = NUM_BLOCKS if blocks is None else int(blocks)
-    vae.decoder.transformer_blocks = torch.nn.ModuleList(list(vae.decoder.transformer_blocks)[:n])
+    vae.decoder.transformer_blocks = torch.nn.ModuleList(
+        list(vae.decoder.transformer_blocks)[:n]
+    )
     mapped = _Mapped(checkpoint(vae_dir))
-    names = [name for name, _ in [*vae.named_parameters(), *vae.named_buffers()] if name in mapped.header.tensors]
+    names = [
+        name
+        for name, _ in [*vae.named_parameters(), *vae.named_buffers()]
+        if name in mapped.header.tensors
+    ]
     want = {
         name
         for name in mapped.header.tensors
         if name.startswith(("decoder.", "post_quant_conv."))
-        and (not name.startswith("decoder.transformer_blocks.") or int(name.split(".")[2]) < n)
+        and (
+            not name.startswith("decoder.transformer_blocks.")
+            or int(name.split(".")[2]) < n
+        )
     }
     if set(names) != want:
         raise RuntimeError(f"state mismatch: {sorted(set(names) ^ want)[:5]}")
-    vae.load_state_dict({name: mapped.tensor(name) for name in names}, strict=False, assign=True)
+    vae.load_state_dict(
+        {name: mapped.tensor(name) for name in names}, strict=False, assign=True
+    )
     for p in vae.parameters():
         p.requires_grad = False
     if hold_fp16:
         vae.prepare_decoder_autocast_weights(torch.float16)
-    return _finish(vae, device, optimize)
+    return _finish(vae, device, optimize=optimize)
 
 
-def build_streaming(vae_dir: Path, cfg: Any, *, blocks: int | None, device: Any = "cpu", optimize: bool = False) -> Any:
+def build_streaming(
+    vae_dir: Path,
+    cfg: Any,
+    *,
+    blocks: int | None,
+    device: Any = "cpu",
+    optimize: bool = False,
+) -> Any:
     """The weight-streaming shell, built with the loader's steps; ``blocks`` truncates the streamed decoder."""
     import torch
-    from phasyn_h3.recipe.abi.tensors import read_header_from_file
-    from phasyn_h3.recipe.runtime.loaders import video_vae_half_plan
-    from phasyn_h3.recipe.runtime.stages import vae_weight_streaming as ws
     from safetensors import safe_open
     from sglang.multimodal_gen.runtime.loader.utils import load_model_state_dict
+
+    from phasyn_h3.recipe.abi.tensors import read_header_from_file  # noqa: PLC0415 - Keep this optional experiment dependency behind its runtime check.
+    from phasyn_h3.recipe.runtime.loaders import video_vae_half_plan  # noqa: PLC0415 - Keep this optional experiment dependency behind its runtime check.
+    from phasyn_h3.recipe.runtime.stages import vae_weight_streaming as ws  # noqa: PLC0415 - Keep this optional experiment dependency behind its runtime check.
 
     path = checkpoint(vae_dir)
     vae = construct_decode_half(vae_dir)
     header = read_header_from_file(path)
     half = video_vae_half_plan(header.tensors, "decode_only")
-    index = ws.block_index(path, header, keep=half["keep"], num_blocks=len(vae.decoder.transformer_blocks))
+    index = ws.block_index(
+        path, header, keep=half["keep"], num_blocks=len(vae.decoder.transformer_blocks)
+    )
     slots = ws.detach_blocks(vae, cfg)
     loaded: dict[str, Any] = {}
     with safe_open(str(path), framework="pt", device="cpu") as handle:
@@ -182,12 +227,14 @@ def build_streaming(vae_dir: Path, cfg: Any, *, blocks: int | None, device: Any 
     vae = _finish(vae, device, optimize=False)
     if blocks is not None:
         index = index.truncated(int(blocks))
-    state = ws.WeightStreamingState(config=cfg, index=index, slots=slots, pin=torch.device(device).type == "cuda")
+    state = ws.WeightStreamingState(
+        config=cfg, index=index, slots=slots, pin=torch.device(device).type == "cuda"
+    )
     ws.attach_state(vae, state)
     return vae
 
 
-def load_test_latent(
+def load_test_latent(  # noqa: PLR0913 - Match the shared fixture call signature.
     vae: Any,
     *,
     latent_path: Path | None = None,
@@ -215,10 +262,16 @@ def load_test_latent(
             width or 40,
             generator=torch.Generator().manual_seed(0),
         )
-    z = z[:, :, : frames or z.shape[2], : height or z.shape[3], : width or z.shape[4]].contiguous()
+    z = z[
+        :, :, : frames or z.shape[2], : height or z.shape[3], : width or z.shape[4]
+    ].contiguous()
     z = z.to(device=device, dtype=torch.float32)
-    mean = torch.as_tensor(tuple(arch.latents_mean), device=z.device, dtype=z.dtype).view(1, -1, 1, 1, 1)
-    std = torch.as_tensor(tuple(arch.latents_std), device=z.device, dtype=z.dtype).view(1, -1, 1, 1, 1)
+    mean = torch.as_tensor(
+        tuple(arch.latents_mean), device=z.device, dtype=z.dtype
+    ).view(1, -1, 1, 1, 1)
+    std = torch.as_tensor(tuple(arch.latents_std), device=z.device, dtype=z.dtype).view(
+        1, -1, 1, 1, 1
+    )
     return z * std + mean
 
 
@@ -226,7 +279,9 @@ class FrameSink:
     """``decode_video``'s ``on_frames``: revert, crop, ``(x*255).clamp(0,255).to(uint8)``; keeps the raw FP32 frames
     (``keep_raw``) and the uint8 frames on the host."""
 
-    def __init__(self, vae: Any, *, height: int, width: int, keep_raw: bool = True) -> None:
+    def __init__(
+        self, vae: Any, *, height: int, width: int, keep_raw: bool = True
+    ) -> None:
         self.vae, self.height, self.width, self.keep_raw = vae, height, width, keep_raw
         self.raw: list[Any] = []
         self.u8: list[Any] = []
@@ -236,8 +291,17 @@ class FrameSink:
 
         if self.keep_raw:
             self.raw.append(chunk.detach().to("cpu", copy=True))
-        frames = self.vae.processor.revert_tensor(chunk)[..., : self.height, : self.width]
-        self.u8.append((frames[0] * 255).clamp(0, 255).to(torch.uint8).permute(1, 2, 3, 0).contiguous().cpu())
+        frames = self.vae.processor.revert_tensor(chunk)[
+            ..., : self.height, : self.width
+        ]
+        self.u8.append(
+            (frames[0] * 255)
+            .clamp(0, 255)
+            .to(torch.uint8)
+            .permute(1, 2, 3, 0)
+            .contiguous()
+            .cpu()
+        )
 
     def raw_frames(self) -> Any:
         import torch
@@ -251,37 +315,68 @@ class FrameSink:
 
 
 @contextlib.contextmanager
-def decode_context(vae: Any, *, device: Any, precision: str = "fp32", streamed: bool = False) -> Any:
+def decode_context(
+    vae: Any, *, device: Any, precision: str = "fp32", streamed: bool = False
+) -> Any:
     """The ``with`` block of ``decode_video.run`` around ``vae.decode_base`` (fp32: tile batch 1, today's TF32 rule)."""
     import torch
-    from phasyn_h3.recipe.runtime.stages.vae_fp32_accel import STRICT_FP32_CONV, fp32_decode_scope
-    from phasyn_h3.recipe.runtime.stages.vae_streaming import streaming_decode_scope
-    from phasyn_h3.recipe.runtime.stages.vae_weight_streaming import weight_streaming_scope
-    from sglang.multimodal_gen.runtime.managers.forward_context import set_forward_context
-    from sglang.multimodal_gen.runtime.models.vaes.fast_path_gate import use_vae_fast_path
+    from sglang.multimodal_gen.runtime.managers.forward_context import (  # type: ignore[import-untyped]  # Pinned SGLang has no PEP 561 metadata.
+        set_forward_context,
+    )
+    from sglang.multimodal_gen.runtime.models.vaes.fast_path_gate import (  # type: ignore[import-untyped]  # Pinned SGLang has no PEP 561 metadata.
+        use_vae_fast_path,
+    )
 
-    fp32 = (
-        fp32_decode_scope(vae, tile_batch=1, w2_per_tile=True, strict_fp32_conv=STRICT_FP32_CONV)
+    from phasyn_h3.recipe.runtime.stages.vae_fp32_accel import (  # noqa: PLC0415 - Keep this optional experiment dependency behind its runtime check.
+        STRICT_FP32_CONV,
+        fp32_decode_scope,
+    )
+    from phasyn_h3.recipe.runtime.stages.vae_streaming import streaming_decode_scope  # noqa: PLC0415 - Keep this optional experiment dependency behind its runtime check.
+    from phasyn_h3.recipe.runtime.stages.vae_weight_streaming import (  # noqa: PLC0415 - Keep this optional experiment dependency behind its runtime check.
+        weight_streaming_scope,
+    )
+
+    fp32: contextlib.AbstractContextManager[Any] = (
+        fp32_decode_scope(
+            vae, tile_batch=1, w2_per_tile=True, strict_fp32_conv=STRICT_FP32_CONV
+        )
         if precision == "fp32"
         else contextlib.nullcontext({})
     )
-    autocast = torch.autocast("cuda", dtype=torch.float16) if precision == "fp16" else contextlib.nullcontext()
+    autocast = (
+        torch.autocast("cuda", dtype=torch.float16)
+        if precision == "fp16"
+        else contextlib.nullcontext()
+    )
     stream = (
-        weight_streaming_scope(vae, device=device, precision=precision) if streamed else contextlib.nullcontext(None)
+        weight_streaming_scope(vae, device=device, precision=precision)
+        if streamed
+        else contextlib.nullcontext(None)
     )
     with (
         torch.inference_mode(),
         autocast,
-        use_vae_fast_path(vae, False),
+        use_vae_fast_path(vae, False),  # noqa: FBT003 - Use the pinned upstream positional switch.
         set_forward_context(current_timestep=0, attn_metadata=None),
         fp32 as accel,
         stream as weight_streaming,
         streaming_decode_scope(vae, release_clip_outputs=streamed) as streaming,
     ):
-        yield {"fp32_accel": accel, "weight_streaming": weight_streaming, "streaming": streaming}
+        yield {
+            "fp32_accel": accel,
+            "weight_streaming": weight_streaming,
+            "streaming": streaming,
+        }
 
 
-def decode(vae: Any, z: Any, *, streamed: bool = False, precision: str = "fp32", device: Any = "cpu") -> Any:
+def decode(
+    vae: Any,
+    z: Any,
+    *,
+    streamed: bool = False,
+    precision: str = "fp32",
+    device: Any = "cpu",
+) -> Any:
     """Raw FP32 output frames of ``decode_base(z)`` through the production decode path."""
     sink = FrameSink(vae, height=int(z.shape[-2]) * 16, width=int(z.shape[-1]) * 16)
     with decode_context(vae, device=device, precision=precision, streamed=streamed):

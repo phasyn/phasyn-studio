@@ -92,7 +92,7 @@ function buildRows(run: WireRun, item: QueueItem, now: number | null, views: rea
       const state = step.state === "unknown" ? "pending" : step.state;
       const ms = stepElapsed(run, stepId, now);
       const view = state === "running" && stepRole(run, stepId, lookup) === "dit" ? views.find((entry) => entry.suffix === branch.suffix) : undefined;
-      const node = step.node_id ? nodeShortName(nodeLabel(step.node_id)) : "";
+      const node = (step.node_id != null && step.node_id !== "") ? nodeShortName(nodeLabel(step.node_id)) : "";
       const title = joinInline([t("{stage}：{state}", { stage: column.label, state: STEP_STATE_LABEL[state] ?? state }), ms !== null ? formatSpanExact(ms) : "", node, stepId].filter(Boolean));
       return { column, known: true, state, ms, title, view };
     });
@@ -111,11 +111,11 @@ function rowStatus(row: Row): { text: string; tone: string } {
   if (waiting) return { text: t("{stage}・等待資源", { stage: waiting.column.label }), tone: "text-fg-secondary" };
   const failed = row.cells.find((cell) => cell.state === "failed");
   if (failed) return { text: t("{stage}失敗", { stage: failed.column.label }), tone: "text-danger" };
-  if (row.cells.some((cell) => cell.state === "interrupted")) return { text: STEP_STATE_LABEL.interrupted ?? "", tone: "text-warning" };
-  if (row.cells.some((cell) => cell.state === "cancelled")) return { text: STEP_STATE_LABEL.cancelled ?? "", tone: "text-fg-secondary" };
+  if (row.cells.some((cell) => cell.state === "interrupted")) return { text: STEP_STATE_LABEL["interrupted"] ?? "", tone: "text-warning" };
+  if (row.cells.some((cell) => cell.state === "cancelled")) return { text: STEP_STATE_LABEL["cancelled"] ?? "", tone: "text-fg-secondary" };
   const present = row.cells.filter((cell) => cell.known);
-  if (present.length > 0 && present.every((cell) => cell.state === "succeeded" || cell.state === "skipped")) return { text: STEP_STATE_LABEL.succeeded ?? "", tone: "text-success" };
-  return { text: STEP_STATE_LABEL.pending ?? "", tone: "text-fg-tertiary" };
+  if (present.length > 0 && present.every((cell) => cell.state === "succeeded" || cell.state === "skipped")) return { text: STEP_STATE_LABEL["succeeded"] ?? "", tone: "text-success" };
+  return { text: STEP_STATE_LABEL["pending"] ?? "", tone: "text-fg-tertiary" };
 }
 
 function StageDots({ cells }: { cells: readonly Cell[] }) {
@@ -123,7 +123,7 @@ function StageDots({ cells }: { cells: readonly Cell[] }) {
     <ol aria-label={t("各階段")} className="flex shrink-0 items-center gap-1.5">
       {cells.map((cell) => (
         <li key={cell.column.base} title={cell.title} className="grid size-3.5 place-items-center">
-          <span aria-hidden className={cn("block size-2.5 rounded-full transition-colors duration-(--duration-base)", cell.known ? (STATE_DOT[cell.state] ?? STATE_DOT.pending) : "opacity-0")} />
+          <span aria-hidden className={cn("block size-2.5 rounded-full transition-colors duration-(--duration-base)", cell.known ? (STATE_DOT[cell.state] ?? STATE_DOT["pending"]) : "opacity-0")} />
           <span className="sr-only">{cell.title}</span>
         </li>
       ))}
@@ -200,7 +200,7 @@ function StageTable({ columns, rows, item }: { columns: readonly StageColumn[]; 
             </th>
             {row.cells.map((cell) =>
               cell.known ? (
-                <td key={cell.column.base} title={cell.title} className={cn("rounded-md border px-1.5 py-1.5 align-top", STATE_CELL[cell.state] ?? STATE_CELL.pending)}>
+                <td key={cell.column.base} title={cell.title} className={cn("rounded-md border px-1.5 py-1.5 align-top", STATE_CELL[cell.state] ?? STATE_CELL["pending"])}>
                   <span className="flex min-w-0 items-center gap-1 whitespace-nowrap">
                     {cell.state === "running" ? <LoaderCircle aria-hidden className="size-3 shrink-0 animate-spin" /> : null}
                     <span className="truncate">{STEP_STATE_LABEL[cell.state] ?? cell.state}</span>
@@ -228,11 +228,14 @@ function StageTable({ columns, rows, item }: { columns: readonly StageColumn[]; 
             <th scope="row" className="truncate text-left align-top font-medium text-fg-tertiary" title={t("各步驟耗時加總；同時進行的步驟會重複計入，實際經過時間看上方的總耗時")}>
               {t("合計")}
             </th>
-            {columnTotals.map((total, index) => (
-              <td key={columns[index]?.base ?? index} className={TOTAL_CELL} title={formatSpanExact(total)}>
-                {formatSpan(total)}
-              </td>
-            ))}
+            {columns.map((column, index) => {
+              const total = columnTotals[index] ?? null;
+              return (
+                <td key={column.base} className={TOTAL_CELL} title={formatSpanExact(total)}>
+                  {formatSpan(total)}
+                </td>
+              );
+            })}
             {showRowTotal ? (
               <td className={cn(TOTAL_CELL, "border-line text-brand-cyan")} title={formatSpanExact(sumMs(columnTotals))}>
                 {formatSpan(sumMs(columnTotals))}

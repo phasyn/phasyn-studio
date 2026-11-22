@@ -1,3 +1,4 @@
+import { optionalField } from "@/lib/json";
 // 單選清單（WAI-ARIA listbox）：焦點留在清單上，↑／↓／Home／End 移動選取（aria-activedescendant），點一列就選取。
 // 列第一次出現時依序進場；篩選或排序後留下的列以 snappy 彈簧補位（只動 transform）。選取的列有品牌標記，hover 只變色。
 import { Fragment, useId, useRef, type KeyboardEvent, type ReactNode } from "react";
@@ -19,7 +20,7 @@ interface RowProps {
 function Row({ id, index, selected, dimmed, title, onSelect, children }: RowProps) {
   const enter = useRevealRef(index);
   return (
-    <div
+    <div /* eslint-disable-line jsx-a11y-x/click-events-have-key-events, jsx-a11y-x/interactive-supports-focus -- The owning composite keeps keyboard focus and exposes the active option with aria-activedescendant. */
       ref={enter}
       id={id}
       role="option"
@@ -96,7 +97,7 @@ export function SelectList<T>({ label, items, idOf, selectedId, onSelect, render
                 {heading}
               </div>
             ) : null}
-            <Row id={optionId(id)} index={index} selected={id === active} dimmed={dimmed?.(item) ?? false} title={titleOf?.(item)} onSelect={() => onSelect(id)}>
+            <Row id={optionId(id)} index={index} selected={id === active} dimmed={dimmed?.(item) ?? false} {...optionalField("title", titleOf?.(item))} onSelect={() => { onSelect(id); }}>
               {renderRow(item, id === active)}
             </Row>
           </Fragment>

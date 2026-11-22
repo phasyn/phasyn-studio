@@ -96,7 +96,7 @@ export function stepErrorWords(text: StepErrorText): string {
         value: formatList([...text.inputs.map((name) => t("輸入「{name}」", { name })), ...text.outputs.map((name) => t("輸出「{name}」", { name }))]),
       });
     case "params_rejected":
-      return text.name
+      return (text.name != null && text.name !== "")
         ? t("{name}（{component_id}）不接受這組參數：{map}", { name: text.name, component_id: text.component_id, map: issueLines(text.issues) })
         : t("元件 {component_id} 不接受這組參數：{map}", { component_id: text.component_id, map: issueLines(text.issues) });
     case "base_version_missing":
@@ -140,49 +140,49 @@ function readIssues(value: unknown): ParameterIssue[] | null {
   if (!Array.isArray(value)) return null;
   const issues: ParameterIssue[] = [];
   for (const item of value as unknown[]) {
-    if (!isRecord(item) || typeof item.path !== "string" || typeof item.message !== "string") return null;
-    issues.push({ path: item.path, message: item.message });
+    if (!isRecord(item) || typeof item["path"] !== "string" || typeof item["message"] !== "string") return null;
+    issues.push({ path: item["path"], message: item["message"] });
   }
   return issues;
 }
 
 /** The structured error details.text holds, or null when it holds anything else. */
 export function readStepErrorText(value: unknown): StepErrorText | null {
-  if (!isRecord(value) || value.format !== FORMAT) return null;
-  switch (value.kind) {
+  if (!isRecord(value) || value["format"] !== FORMAT) return null;
+  switch (value["kind"]) {
     case "run_not_found":
-      return isId(value.run_id) ? { kind: "run_not_found", run_id: value.run_id } : null;
+      return isId(value["run_id"]) ? { kind: "run_not_found", run_id: value["run_id"] } : null;
     case "run_mismatch":
-      return isId(value.pipeline_id) && isId(value.expected) ? { kind: "run_mismatch", pipeline_id: value.pipeline_id, expected: value.expected } : null;
+      return isId(value["pipeline_id"]) && isId(value["expected"]) ? { kind: "run_mismatch", pipeline_id: value["pipeline_id"], expected: value["expected"] } : null;
     case "run_ended":
-      return oneOf(RUN_STATES, value.state) ? { kind: "run_ended", state: value.state } : null;
+      return oneOf(RUN_STATES, value["state"]) ? { kind: "run_ended", state: value["state"] } : null;
     case "component_missing":
-      return oneOf(ROLES, value.role) && (value.component === null || isId(value.component)) ? { kind: "component_missing", role: value.role, component: value.component } : null;
+      return oneOf(ROLES, value["role"]) && (value["component"] === null || isId(value["component"])) ? { kind: "component_missing", role: value["role"], component: value["component"] } : null;
     case "interface_mismatch":
-      return isId(value.component_id) && isId(value.provider_id) && isLines(value.inputs) && isLines(value.outputs)
-        ? { kind: "interface_mismatch", component_id: value.component_id, provider_id: value.provider_id, inputs: value.inputs, outputs: value.outputs }
+      return isId(value["component_id"]) && isId(value["provider_id"]) && isLines(value["inputs"]) && isLines(value["outputs"])
+        ? { kind: "interface_mismatch", component_id: value["component_id"], provider_id: value["provider_id"], inputs: value["inputs"], outputs: value["outputs"] }
         : null;
     case "params_rejected": {
-      const issues = readIssues(value.issues);
-      return isId(value.component_id) && (value.name === null || isId(value.name)) && issues ? { kind: "params_rejected", component_id: value.component_id, name: value.name, issues } : null;
+      const issues = readIssues(value["issues"]);
+      return isId(value["component_id"]) && (value["name"] === null || isId(value["name"])) && issues ? { kind: "params_rejected", component_id: value["component_id"], name: value["name"], issues } : null;
     }
     case "route_missing":
-      return isId(value.route) ? { kind: "route_missing", route: value.route } : null;
+      return isId(value["route"]) ? { kind: "route_missing", route: value["route"] } : null;
     case "route_unusable":
-      return typeof value.label === "string" && isLines(value.problems) ? { kind: "route_unusable", label: value.label, problems: value.problems } : null;
+      return typeof value["label"] === "string" && isLines(value["problems"]) ? { kind: "route_unusable", label: value["label"], problems: value["problems"] } : null;
     case "settings_invalid":
-      return isLines(value.problems) ? { kind: "settings_invalid", problems: value.problems } : null;
+      return isLines(value["problems"]) ? { kind: "settings_invalid", problems: value["problems"] } : null;
     case "no_negative_input":
-      return typeof value.label === "string" ? { kind: "no_negative_input", label: value.label } : null;
+      return typeof value["label"] === "string" ? { kind: "no_negative_input", label: value["label"] } : null;
     case "output_missing":
-      return oneOf(OUTPUTS, value.output) ? { kind: "output_missing", output: value.output } : null;
+      return oneOf(OUTPUTS, value["output"]) ? { kind: "output_missing", output: value["output"] } : null;
     case "base_version_missing":
     case "frozen_base_missing":
     case "settings_unreadable":
     case "prompt_empty":
     case "no_prompt_input":
     case "image_missing":
-      return { kind: value.kind };
+      return { kind: value["kind"] };
     default:
       return null;
   }
@@ -194,6 +194,6 @@ export function readStepErrorText(value: unknown): StepErrorText | null {
  */
 export function stepErrorText(error: Pick<ApiErrorBody, "message" | "details"> | null | undefined): string {
   if (!error) return "";
-  const text = readStepErrorText(error.details?.text);
+  const text = readStepErrorText(error.details?.["text"]);
   return text ? stepErrorWords(text) : tServer(error.message);
 }

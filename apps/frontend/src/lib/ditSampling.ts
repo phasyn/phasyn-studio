@@ -2,7 +2,7 @@
 // 元件組合或鏡頭固定了別的值時，元件會在 DiT 步驟回 INVALID_ARGUMENT（前面的文字條件、VAE 編碼已經白跑）。
 // 沒有 LoRA 的原版 DiT 沒有合約，固定別的步數會照跑——不會失敗，但跑的不是元件預設（例如原版 50 步被固定成 8 步）。
 import type { ComponentDescriptor } from "@/api/generated/contracts";
-import { isRecord } from "@/lib/json";
+import { isListed, isRecord } from "@/lib/json";
 import { t } from "@/i18n";
 import { formatList } from "@/i18n/format";
 
@@ -23,12 +23,14 @@ export function storedSampling(component: Dit): Partial<Record<SamplingKey, numb
   return out;
 }
 
-/** DiT 是否帶加速 LoRA（有採樣合約）：保存設定的 provider_options.lora 有 manifest_path。 */
+/** DiT 是否帶 LoRA（有採樣合約）：保存設定的 provider_options.lora，或串接清單 loras 的任一項有 manifest_path。 */
 export function hasSamplingContract(component: Dit): boolean {
   const load: unknown = component.settings.stored.load;
-  const options = isRecord(load) ? load.provider_options : null;
-  const lora = isRecord(options) ? options.lora : null;
-  return isRecord(lora) && typeof lora.manifest_path === "string" && lora.manifest_path.length > 0;
+  const options = isRecord(load) ? load["provider_options"] : null;
+  if (!isRecord(options)) return false;
+  const named = (entry: unknown) => isRecord(entry) && typeof entry["manifest_path"] === "string" && entry["manifest_path"].length > 0;
+  const stack = options["loras"];
+  return named(options["lora"]) || (Array.isArray(stack) && stack.some(named));
 }
 
 export interface SamplingConflict {
@@ -54,11 +56,11 @@ export function samplingConflicts(pinned: Readonly<Record<string, unknown>>, com
 /** DiT 回報可接受的步數（parameters_schema 的 steps enum，來自綁定 LoRA 的採樣合約）；沒有回報時為 null。 */
 export function acceptedSteps(component: Dit): number[] | null {
   if (component.provider_id !== DIT_PROVIDER) return null;
-  const properties: unknown = component.settings.parameters_schema.properties;
-  const steps = isRecord(properties) ? properties.steps : null;
-  const values: unknown = isRecord(steps) ? steps.enum : null;
-  if (!Array.isArray(values) || values.length === 0 || !values.every((value) => Number.isInteger(value))) return null;
-  return values as number[];
+  const properties: unknown = component.settings.parameters_schema["properties"];
+  const steps = isRecord(properties) ? properties["steps"] : null;
+  const values: unknown = isRecord(steps) ? steps["enum"] : null;
+  if (!Array.isArray(values) || values.length === 0 || !values.every((value: unknown): value is number => typeof value === "number" && Number.isInteger(value))) return null;
+  return values;
 }
 
 /** 這次實際會用的步數不在 DiT 的 LoRA 採樣合約內：說明原因（會在 DiT 步驟被拒絕）；合約允許或沒有回報時為 null。 */
@@ -84,7 +86,7 @@ export function stripSampling(parameters: Readonly<Record<string, unknown>>): { 
   const next: Record<string, unknown> = {};
   const removed: Partial<Record<SamplingKey, unknown>> = {};
   for (const [key, value] of Object.entries(parameters)) {
-    if ((SAMPLING_KEYS as readonly string[]).includes(key)) removed[key as SamplingKey] = value;
+    if (isListed(key, SAMPLING_KEYS)) removed[key] = value;
     else next[key] = value;
   }
   return { parameters: next, removed };

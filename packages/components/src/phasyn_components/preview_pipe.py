@@ -21,12 +21,13 @@ from .recorder import Recorder
 from .runtime_env import PREVIEW_FD_ENV
 from .timeutil import mono_ns
 
+
 PREVIEW_HEADER_MAX = 16 * 1024
 PREVIEW_END_WAIT_S = 2.0
 
 
 def encode_preview_header(seq: int, frame: PreviewFrame, sha256: str) -> bytes:
-    """預覽 pipe 的一筆＝一行 JSON header，之後緊接 ``size_bytes`` 個原始影像 bytes（不 base64）。"""
+    """預覽 pipe 的一筆=一行 JSON header，之後緊接 ``size_bytes`` 個原始影像 bytes（不 base64）."""
     doc = {
         "call_id": frame.call_id,
         "seq": seq,
@@ -39,7 +40,10 @@ def encode_preview_header(seq: int, frame: PreviewFrame, sha256: str) -> bytes:
         "size_bytes": len(frame.data),
         "sha256": sha256,
     }
-    return (json.dumps(doc, ensure_ascii=False, allow_nan=False, separators=(",", ":")) + "\n").encode("utf-8")
+    return (
+        json.dumps(doc, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+        + "\n"
+    ).encode("utf-8")
 
 
 @dataclass
@@ -51,14 +55,15 @@ class _PreviewCall:
 
 
 class PreviewForwarder:
-    """provider 的中間預覽 → Node 的預覽 pipe（一個 runtime 程序一個，背景執行緒寫入）。
+    """provider 的中間預覽 → Node 的預覽 pipe（一個 runtime 程序一個，背景執行緒寫入）.
 
-    最多一張傳送中＋一張待送：新的預覽取代還沒送出的舊預覽（被取代的計入 ``preview.dropped_count``）；
+    最多一張傳送中+一張待送：新的預覽取代還沒送出的舊預覽（被取代的計入 ``preview.dropped_count``）；
     ``offer`` 永不阻塞。寫入失敗（Node 已關閉讀端）→ 通道停用，之後都回 False。每張寫完記一筆
-    ``preview_published`` log 事件（step、bytes、ms＝publish_preview 到寫完的時間），不記影像本身。
+    ``preview_published`` log 事件（step、bytes、ms=publish_preview 到寫完的時間），不記影像本身。
     """
 
     def __init__(self, fd: int) -> None:
+        """Initialize preview forwarder with its configuration."""
         self._fd = fd
         self._cv = threading.Condition()
         self._call: _PreviewCall | None = None
@@ -66,11 +71,14 @@ class PreviewForwarder:
         self._in_flight: tuple[_PreviewCall, int, PreviewFrame] | None = None
         self._broken: str | None = None
         self._closed = False
-        self._thread = threading.Thread(target=self._loop, name="preview-forwarder", daemon=True)
+        self._thread = threading.Thread(
+            target=self._loop, name="preview-forwarder", daemon=True
+        )
         self._thread.start()
 
     @classmethod
     def from_env(cls) -> PreviewForwarder | None:
+        """Open the preview channel named by the runtime environment."""
         raw = os.environ.pop(PREVIEW_FD_ENV, None)  # 不讓 provider 啟動的子程序看到
         if not raw:
             return None
@@ -78,12 +86,17 @@ class PreviewForwarder:
             fd = int(raw)
             os.fstat(fd)
         except (ValueError, OSError) as exc:
-            print(f"[runtime_host] {PREVIEW_FD_ENV}={raw!r} 無效，中間預覽停用：{exc}", file=sys.stderr, flush=True)
+            print(  # noqa: T201 - The runtime host reserves stdout for control messages.
+                f"[runtime_host] {PREVIEW_FD_ENV}={raw!r} 無效，中間預覽停用：{exc}",
+                file=sys.stderr,
+                flush=True,
+            )
             return None
         return cls(fd)
 
     @property
     def available(self) -> bool:
+        """Report whether the channel can accept previews."""
         return self._broken is None and not self._closed
 
     @property
@@ -93,11 +106,12 @@ class PreviewForwarder:
             return self._in_flight is not None
 
     def begin_call(self, call_id: str, recorder: Recorder) -> None:
+        """Reset preview tracking for a new invocation."""
         with self._cv:
             self._call = _PreviewCall(call_id, recorder)
 
     def offer(self, frame: PreviewFrame) -> bool:
-        """RunContext 的 preview_sink：放進待送槽（取代未送出的舊預覽）並喚醒寫入執行緒。"""
+        """RunContext 的 preview_sink：放進待送槽（取代未送出的舊預覽）並喚醒寫入執行緒."""
         with self._cv:
             call = self._call
             if (
@@ -117,7 +131,7 @@ class PreviewForwarder:
         return True
 
     def end_call(self, call_id: str, *, timeout: float = PREVIEW_END_WAIT_S) -> None:
-        """呼叫結束（送 run_done 之前）：丟掉還沒送出的預覽、等傳送中的那張寫完（有上限），之後不再接受。"""
+        """呼叫結束（送 run_done 之前）：丟掉還沒送出的預覽、等傳送中的那張寫完（有上限），之後不再接受."""
         deadline = time.monotonic() + timeout
         dropped = None
         with self._cv:
@@ -137,7 +151,7 @@ class PreviewForwarder:
             call.recorder.count("preview.dropped_count")
 
     def close(self) -> None:
-        """程序結束前：不再接受、丟掉待送；不關 FD（寫入中的執行緒可能還持有，程序結束時一併釋放）。"""
+        """程序結束前：不再接受、丟掉待送；不關 FD（寫入中的執行緒可能還持有，程序結束時一併釋放）."""
         with self._cv:
             self._closed = True
             self._pending = None
@@ -157,14 +171,17 @@ class PreviewForwarder:
                 if self._closed:
                     return
                 item = self._pending
-                assert item is not None
+                if item is None:
+                    continue
                 self._pending = None
                 self._in_flight = item
             call, seq, frame = item
             started = mono_ns()
             error: str | None = None
             try:
-                header = encode_preview_header(seq, frame, hashlib.sha256(frame.data).hexdigest())
+                header = encode_preview_header(
+                    seq, frame, hashlib.sha256(frame.data).hexdigest()
+                )
                 self._write(header)
                 self._write(frame.data)
             except (OSError, ValueError) as exc:
@@ -202,4 +219,9 @@ class PreviewForwarder:
                 return
 
 
-__all__ = ["PREVIEW_END_WAIT_S", "PREVIEW_HEADER_MAX", "PreviewForwarder", "encode_preview_header"]
+__all__ = [
+    "PREVIEW_END_WAIT_S",
+    "PREVIEW_HEADER_MAX",
+    "PreviewForwarder",
+    "encode_preview_header",
+]

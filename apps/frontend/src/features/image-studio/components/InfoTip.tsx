@@ -26,34 +26,34 @@ function placeTip(anchor: DOMRect, size: { width: number; height: number }, view
 
 export function InfoTip({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
   const id = useId();
-  const button = useRef<HTMLButtonElement>(null);
-  const tip = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const tipRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState<Opener | null>(null);
   const [hovering, setHovering] = useState(false);
 
   // 滑鼠停留一下才打開（掃過不閃）；已經用別的方式打開時不改
   useEffect(() => {
     if (!hovering) return;
-    const timer = window.setTimeout(() => setOpen((current) => current ?? "hover"), HOVER_DELAY_MS);
-    return () => window.clearTimeout(timer);
+    const timer = window.setTimeout(() => { setOpen((current) => current ?? "hover"); }, HOVER_DELAY_MS);
+    return () => { window.clearTimeout(timer); };
   }, [hovering]);
 
   useLayoutEffect(() => {
-    const node = tip.current;
-    const anchor = button.current;
+    const node = tipRef.current;
+    const anchor = buttonRef.current;
     if (!open || !node || !anchor) return;
     const place = placeTip(anchor.getBoundingClientRect(), { width: node.offsetWidth, height: node.offsetHeight }, { width: window.innerWidth, height: window.innerHeight });
-    node.style.left = `${place.left}px`;
-    node.style.top = `${place.top}px`;
+    node.style.left = `${String(place.left)}px`;
+    node.style.top = `${String(place.top)}px`;
     // 進場位移的方向：在按鈕上方時由下升起，否則由上落下（pop-in keyframes 讀這個變數）
     node.style.setProperty("--motion-pop-y", place.above ? "var(--motion-shift)" : "calc(var(--motion-shift) * -1)");
   }, [open]);
 
   useEffect(() => {
     if (!open) return;
-    const dismiss = () => setOpen(null);
+    const dismiss = () => { setOpen(null); };
     const pointer = (event: PointerEvent) => {
-      if (event.target instanceof Node && button.current?.contains(event.target)) return;
+      if (event.target instanceof Node && Boolean(buttonRef.current?.contains(event.target))) return;
       setOpen(null);
     };
     window.addEventListener("scroll", dismiss, true);
@@ -69,7 +69,7 @@ export function InfoTip({ label, children, className }: { label: string; childre
   return (
     <>
       <button
-        ref={button}
+        ref={buttonRef}
         type="button"
         aria-label={t("{label}：說明", { label })}
         aria-describedby={id}
@@ -84,8 +84,8 @@ export function InfoTip({ label, children, className }: { label: string; childre
         onFocus={(event) => {
           if (event.currentTarget.matches(":focus-visible")) setOpen((current) => current ?? "focus");
         }}
-        onBlur={() => setOpen(null)}
-        onClick={() => setOpen((current) => (current === "click" ? null : "click"))}
+        onBlur={() => { setOpen(null); }}
+        onClick={() => { setOpen((current) => (current === "click" ? null : "click")); }}
         onKeyDown={(event) => {
           if (event.key !== "Escape" || !open) return;
           event.stopPropagation();
@@ -104,7 +104,7 @@ export function InfoTip({ label, children, className }: { label: string; childre
       {open
         ? createPortal(
             <div
-              ref={tip}
+              ref={tipRef}
               role="tooltip"
               className="material-popover pointer-events-none fixed top-0 left-0 z-50 w-max max-w-80 rounded-lg px-3 py-2 text-caption leading-5 text-fg-secondary [overflow-wrap:anywhere] animate-pop-in"
             >

@@ -143,7 +143,7 @@ export function pageItems(openProject: string | null = null): CommandItem[] {
     subtitle: page.path,
     ident: page.ident ?? pageIdent(page.path),
     keywords: [...page.keywords],
-    to: page.workspace && openProject ? videoStudioPath(page.workspace, openProject) : page.path,
+    to: page.workspace && (openProject != null && openProject !== "") ? videoStudioPath(page.workspace, openProject) : page.path,
   }));
 }
 
@@ -184,7 +184,7 @@ function compact(values: readonly (string | null | undefined)[]): string[] {
   const out: string[] = [];
   for (const value of values) {
     const text = value?.trim();
-    if (text && !out.includes(text)) out.push(text);
+    if ((text != null && text !== "") && !out.includes(text)) out.push(text);
   }
   return out;
 }
@@ -215,7 +215,7 @@ export function componentItems(catalog: Catalog | undefined): CommandItem[] {
       meta: {
         providerId: descriptor.provider_id,
         status: { kind: "component", value: descriptor.state },
-        nodeState: node.stale ? node.liveness : undefined,
+        ...(node.stale ? { nodeState: node.liveness } : {}),
       },
     };
   });

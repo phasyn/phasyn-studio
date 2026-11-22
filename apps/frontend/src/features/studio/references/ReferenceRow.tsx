@@ -30,8 +30,8 @@ export function LibraryThumb({ item, className }: { item: StudioLibraryItem | un
   const [failed, setFailed] = useState(false);
   if (!item || failed) return <ImageOff aria-hidden className="size-4 text-fg-disabled" />;
   const url = mediaUrl(item.file.node_id, item.file.file_id);
-  if (item.kind === "image") return <img src={url} alt="" loading="lazy" decoding="async" draggable={false} onError={() => setFailed(true)} className={cn("size-full object-cover", className)} />;
-  if (item.kind === "video") return <video src={`${url}#t=0.1`} preload="metadata" muted playsInline aria-hidden onError={() => setFailed(true)} className={cn("size-full object-cover", className)} />;
+  if (item.kind === "image") return <img src={url} alt="" loading="lazy" decoding="async" draggable={false} onError={() => { setFailed(true); }} className={cn("size-full object-cover", className)} />;
+  if (item.kind === "video") return <video src={`${url}#t=0.1`} preload="metadata" muted playsInline aria-hidden onError={() => { setFailed(true); }} className={cn("size-full object-cover", className)} />;
   return <KindIcon kind="audio" className="size-5" />;
 }
 
@@ -94,12 +94,12 @@ export function ReferenceRow({
   const [clipOpen, setClipOpen] = useState(false);
   const [replacing, setReplacing] = useState(false);
   // The row's 「…」 button: focus comes back to it when the rename field or the removal question leaves
-  const menuSlot = useRef<HTMLSpanElement>(null);
+  const menuSlotRef = useRef<HTMLSpanElement>(null);
   const alias = `@${reference.alias}`;
   const timed = reference.kind !== "image";
   const uses = mentions === null ? null : mentions + tagUses;
   const canRename = rename !== undefined && item !== undefined && !disabled;
-  const focusMenuButton = () => menuSlot.current?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
+  const focusMenuButton = () => menuSlotRef.current?.querySelector<HTMLButtonElement>("button")?.focus({ preventScroll: true });
 
   // The video's own sound is sent (or may be, when the browser cannot tell): shown on the row, not only in its clip settings
   const originalSound = reference.kind === "video" && (label?.soundtrack?.state === "used" || label?.soundtrack?.state === "unknown");
@@ -118,20 +118,20 @@ export function ReferenceRow({
     else onRemove();
   };
   const items: MenuItem[] = [
-    ...(rename && item ? [{ id: "rename", label: t("重新命名"), icon: Pencil, shortcut: "F2", disabledReason: disabled ? t("目前無法編輯") : null, onSelect: () => setRenaming(true) }] : []),
+    ...(rename && item ? [{ id: "rename", label: t("重新命名"), icon: Pencil, shortcut: "F2", disabledReason: disabled ? t("目前無法編輯") : null, onSelect: () => { setRenaming(true); } }] : []),
     ...(move
       ? [
-          { id: "up", label: t("往前移（送出順序）"), icon: ArrowUp, shortcut: "↑", disabledReason: move.up ? null : t("已經是同類的第一個"), onSelect: () => move.onMove(-1) },
-          { id: "down", label: t("往後移（送出順序）"), icon: ArrowDown, shortcut: "↓", disabledReason: move.down ? null : t("已經是同類的最後一個"), onSelect: () => move.onMove(1) },
+          { id: "up", label: t("往前移（送出順序）"), icon: ArrowUp, shortcut: "↑", disabledReason: move.up ? null : t("已經是同類的第一個"), onSelect: () => { move.onMove(-1); } },
+          { id: "down", label: t("往後移（送出順序）"), icon: ArrowDown, shortcut: "↓", disabledReason: move.down ? null : t("已經是同類的最後一個"), onSelect: () => { move.onMove(1); } },
         ]
       : []),
-    ...(replace ? [{ id: "replace", label: replacing ? t("收起換檔") : t("換成其他檔案…"), icon: Replace, disabledReason: disabled ? t("目前無法編輯") : null, onSelect: () => setReplacing((open) => !open) }] : []),
-    ...(timed && item ? [{ id: "clip", label: clipOpen ? t("收起片段設定") : t("片段與原聲…"), icon: Scissors, onSelect: () => setClipOpen((open) => !open) }] : []),
+    ...(replace ? [{ id: "replace", label: replacing ? t("收起換檔") : t("換成其他檔案…"), icon: Replace, disabledReason: disabled ? t("目前無法編輯") : null, onSelect: () => { setReplacing((open) => !open); } }] : []),
+    ...(timed && item ? [{ id: "clip", label: clipOpen ? t("收起片段設定") : t("片段與原聲…"), icon: Scissors, onSelect: () => { setClipOpen((open) => !open); } }] : []),
     { id: "remove", label: t("從這個鏡頭移除…"), icon: Trash2, tone: "danger" as const, separatorBefore: true, disabledReason: disabled ? t("目前無法編輯") : null, onSelect: askRemove },
   ];
 
   return (
-    <li
+    <li /* eslint-disable-line jsx-a11y-x/no-noninteractive-element-interactions -- Keyboard events from this panel’s focusable controls bubble here so navigation and dismissal share one handler. */
       ref={ref}
       data-ref-id={reference.ref_id}
       data-ref-kind={reference.kind}
@@ -139,7 +139,7 @@ export function ReferenceRow({
       className={cn(
         CARD,
         "relative grid min-w-0 gap-1.5 p-1.5 transition-[scale,rotate,box-shadow] duration-(--duration-spring-snappy) ease-(--ease-spring-snappy)",
-        drag?.active && cn(DRAG_LIFT, "z-[2] shadow-raised ring-1 ring-brand-blue/50"),
+        (drag?.active === true) && cn(DRAG_LIFT, "z-[2] shadow-raised ring-1 ring-brand-blue/50"),
         className,
       )}
     >
@@ -173,7 +173,7 @@ export function ReferenceRow({
               <button
                 type="button"
                 disabled={disabled}
-                onClick={() => onInsertMention(reference.alias)}
+                onClick={() => { onInsertMention(reference.alias); }}
                 title={`${t("插入 {alias} 到 prompt", { alias })}\n${h3Note}`}
                 aria-label={t("插入 {alias} 到 prompt", { alias })}
                 className="pressable machine shrink-0 rounded-full border border-brand-blue/40 bg-brand-soft px-2 text-data text-action-fg hover:border-brand-blue/70 hover:bg-brand-blue/20 disabled:cursor-not-allowed disabled:border-line disabled:bg-transparent disabled:text-fg-disabled"
@@ -186,7 +186,7 @@ export function ReferenceRow({
               </span>
             )}
             <div className="min-w-0 flex-1">
-              <ReferenceName name={item?.name ?? null} alias={reference.alias} rename={rename} editing={renaming} onEditingChange={setRenaming} onFinished={focusMenuButton} disabled={disabled} />
+              <ReferenceName name={item?.name ?? null} alias={reference.alias} {...(rename === undefined ? {} : { rename })} editing={renaming} onEditingChange={setRenaming} onFinished={focusMenuButton} disabled={disabled} />
             </div>
           </div>
           <div className="flex min-w-0 items-center gap-1 text-caption text-fg-tertiary">
@@ -208,7 +208,7 @@ export function ReferenceRow({
                 aria-controls={clipOpen ? `${id}-clip` : undefined}
                 aria-label={t("{alias} 的片段與原聲", { alias })}
                 title={t("片段：{span}", { span: clipSpan(reference, item) })}
-                onClick={() => setClipOpen((open) => !open)}
+                onClick={() => { setClipOpen((open) => !open); }}
                 className="pressable ml-auto inline-flex h-6 shrink-0 items-center gap-1 rounded-md px-1.5 text-fg-secondary hover:bg-raised hover:text-fg aria-expanded:bg-brand-gradient-soft aria-expanded:text-fg [&_svg]:size-3"
               >
                 <Scissors aria-hidden />
@@ -218,13 +218,13 @@ export function ReferenceRow({
             ) : null}
           </div>
         </div>
-        <span ref={menuSlot} data-row-menu="" className="contents">
+        <span ref={menuSlotRef} data-row-menu="" className="contents">
           <MenuTriggerButton
             menuId={`${id}-menu`}
             open={menu !== null}
             label={t("{alias} 的動作", { alias })}
-            onOpen={(element, focus) => setMenu({ anchor: { kind: "element", element }, element, focus })}
-            onClose={() => setMenu(null)}
+            onOpen={(element, focus) => { setMenu({ anchor: { kind: "element", element }, element, focus }); }}
+            onClose={() => { setMenu(null); }}
             className="size-8 self-center [&_svg]:size-4"
           >
             <Ellipsis aria-hidden />
@@ -286,7 +286,7 @@ export function ReferenceRow({
       {menu ? (
         // Esc 只關閉選單，不關閉外層的專業編輯器
         <div data-escape-local="true" className="contents">
-          <ActionMenu id={`${id}-menu`} label={t("{alias} 的動作", { alias })} items={items} anchor={menu.anchor} returnFocus={menu.element} initialFocus={menu.focus} onClose={() => setMenu(null)} />
+          <ActionMenu id={`${id}-menu`} label={t("{alias} 的動作", { alias })} items={items} anchor={menu.anchor} returnFocus={menu.element} initialFocus={menu.focus} onClose={() => { setMenu(null); }} />
         </div>
       ) : null}
     </li>

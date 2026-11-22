@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0",
+  "providers": {
+    "media.transcribe": {
+      "default_settings": {
+        "invoke": {},
+        "load": {
+          "device": {
+            "kind": "cpu",
+            "id": "cpu",
+            "resource_group": "cpu-asr"
+          },
+          "model_path": "/path/to/models/faster-whisper-small",
+          "model_revision": "536b0662742c02347bc0e980a01041f333bce120"
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_transcription.provider:TranscriptionProvider",
+      "kind": "media.transcribe",
+      "label": "語音辨識與字幕",
+      "required_modules": [
+        "faster_whisper",
+        "ctranslate2",
+        "numpy",
+        "onnxruntime"
+      ],
+      "synthetic": false,
+      "source_pins": []
+    }
+  }
+}

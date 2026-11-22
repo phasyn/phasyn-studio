@@ -54,7 +54,7 @@ export function weightsTotals(view: WeightsView, replaceMismatched: boolean): We
           totals.downloadFiles += 1;
           totals.downloadBytes += file.size;
         }
-      } else if (file.link_from) {
+      } else if (file.link_from != null && file.link_from !== "") {
         totals.linkFiles += 1;
         totals.linkBytes += file.size;
       } else {
@@ -86,7 +86,7 @@ export function downloadBlockedReason({ descriptor, view, totals, accepted, stal
   if (stale) return t("Node 離線（目錄是過時快照）：無法下載");
   if (view.job?.state === "running") return t("下載進行中");
   if (view.sets.length === 0) return t("這個元件沒有可以下載的權重");
-  if (!view.root) return view.notes[0] ? tServer(view.notes[0]) : t("未設定模型目錄（load.model_path）");
+  if (!(view.root != null && view.root !== "")) return (view.notes[0] != null && view.notes[0] !== "") ? tServer(view.notes[0]) : t("未設定模型目錄（load.model_path）");
   if (descriptor.state !== "stopped" && descriptor.state !== "error") return t("元件停止時才能下載權重：先停止元件");
   if (pendingFiles(totals) === 0) {
     return totals.mismatchFiles > 0 ? t("只剩大小不同的檔案：勾選「取代大小不同的檔案」才會重新下載") : t("沒有缺少的檔案");

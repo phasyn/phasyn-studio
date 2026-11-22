@@ -21,7 +21,7 @@ export function RenderThumb({ entry, className }: { entry: RenderEntry; classNam
   const [failed, setFailed] = useState(false);
   if (failed) return <ImageOff aria-hidden className="size-4 text-fg-disabled" />;
   const file = entry.asset.file;
-  return <video src={`${mediaUrl(file.node_id, file.file_id)}#t=0.1`} preload="metadata" muted playsInline aria-hidden onError={() => setFailed(true)} className={cn("size-full object-cover", className)} />;
+  return <video src={`${mediaUrl(file.node_id, file.file_id)}#t=0.1`} preload="metadata" muted playsInline aria-hidden onError={() => { setFailed(true); }} className={cn("size-full object-cover", className)} />;
 }
 
 /** 「使用中」標記（鏡頭的時間軸與匯出用這個 take）。 */

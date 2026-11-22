@@ -39,7 +39,7 @@ export const CATEGORY_HELP: Record<string, string> = {
 };
 
 /** 篩選選項：activation_* 合併為一組，其餘逐類別。 */
-export const CATEGORY_FILTERS: ReadonlyArray<{ id: string; label: string; match: (category: string) => boolean }> = [
+export const CATEGORY_FILTERS: readonly { id: string; label: string; match: (category: string) => boolean }[] = [
   { id: "all", label: t("全部類別"), match: () => true },
   { id: "weight_h2d", label: "weight_h2d", match: (c) => c === "weight_h2d" },
   { id: "weight_d2h", label: "weight_d2h", match: (c) => c === "weight_d2h" },
@@ -155,7 +155,7 @@ export interface EventTransferAggregate {
  * 由事件重算逐類別合計（與 Controller 彙整同語意），供展開 sender／receiver 對照。
  * events 應依讀取順序（stream 內 seq 遞增）傳入；同 transfer_id 以較後者為準。
  */
-export function aggregateTransferEvents(events: ReadonlyArray<{ streamId: string; event: RecordingEvent }>): Map<string, EventTransferAggregate> {
+export function aggregateTransferEvents(events: readonly { streamId: string; event: RecordingEvent }[]): Map<string, EventTransferAggregate> {
   const latest = new Map<string, TransferEventRow>();
   const reference = new Map<string, TransferEventRow[]>();
   const noOps = new Map<string, number>();
@@ -219,7 +219,7 @@ export function aggregateTransferEvents(events: ReadonlyArray<{ streamId: string
 }
 
 /** 依 transfer_id 對照 network 的 consumer（計數）與 producer（對照）紀錄。 */
-export function pairNetworkRows(aggregate: EventTransferAggregate): Array<{ transferId: string; consumer: TransferEventRow | null; senders: TransferEventRow[] }> {
+export function pairNetworkRows(aggregate: EventTransferAggregate): { transferId: string; consumer: TransferEventRow | null; senders: TransferEventRow[] }[] {
   const pairs = new Map<string, { transferId: string; consumer: TransferEventRow | null; senders: TransferEventRow[] }>();
   for (const row of aggregate.counted) {
     pairs.set(row.data.transfer_id, { transferId: row.data.transfer_id, consumer: row, senders: [] });

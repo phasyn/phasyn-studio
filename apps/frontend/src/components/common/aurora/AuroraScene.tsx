@@ -24,7 +24,7 @@ const STOP_TOKENS = ["--color-brand-cyan", "--color-brand-blue", "--color-brand-
 
 function tokenColor(style: CSSStyleDeclaration | null, name: string, fallback: string): THREE.Color {
   const value = style?.getPropertyValue(name).trim();
-  return new THREE.Color(value || fallback);
+  return new THREE.Color((value ?? "") || fallback);
 }
 
 /** A small seeded generator, so every mount draws the same sky. */
@@ -140,7 +140,7 @@ void main() {
  * them: advance() moves time by a clamped delta (a resumed loop never jumps) and resize() follows the canvas.
  */
 class AuroraUniforms {
-  readonly values: Record<string, THREE.IUniform>;
+  readonly values;
 
   constructor() {
     const style = typeof document === "undefined" ? null : getComputedStyle(document.documentElement);
@@ -154,14 +154,14 @@ class AuroraUniforms {
   }
 
   advance(delta: number): number {
-    const time = Number(this.values.uTime?.value ?? 0) + Math.min(Math.max(delta, 0), 0.1);
-    if (this.values.uTime) this.values.uTime.value = time;
+    const time = this.values.uTime.value + Math.min(Math.max(delta, 0), 0.1);
+    this.values.uTime.value = time;
     return time;
   }
 
   resize(width: number, height: number, dpr: number): void {
-    (this.values.uResolution?.value as THREE.Vector2 | undefined)?.set(width * dpr, height * dpr);
-    if (this.values.uPixelRatio) this.values.uPixelRatio.value = dpr;
+    this.values.uResolution.value.set(width * dpr, height * dpr);
+    this.values.uPixelRatio.value = dpr;
   }
 }
 
@@ -233,9 +233,9 @@ function ContextGuard({ onLost }: { onLost: (reason: string) => void }) {
   const gl = useThree((state) => state.gl);
   useEffect(() => {
     const canvas = gl.domElement;
-    const lost = () => onLost("WebGL context lost");
+    const lost = () => { onLost("WebGL context lost"); };
     canvas.addEventListener("webglcontextlost", lost);
-    return () => canvas.removeEventListener("webglcontextlost", lost);
+    return () => { canvas.removeEventListener("webglcontextlost", lost); };
   }, [gl, onLost]);
   return null;
 }
@@ -262,7 +262,7 @@ export default function AuroraScene({ tier, active, onLost }: AuroraSceneProps) 
       flat
       gl={{ antialias: false, alpha: true, powerPreference: "low-power" }}
       camera={{ fov: 55, position: [0, 0, 5], near: 0.1, far: 30 }}
-      onCreated={() => setReady(true)}
+      onCreated={() => { setReady(true); }}
     >
       <Sky uniforms={uniforms} octaves={settings.octaves} />
       <Stardust uniforms={uniforms} count={settings.stars} />

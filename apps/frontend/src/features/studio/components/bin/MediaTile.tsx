@@ -49,7 +49,7 @@ export function MediaTile({ item, uses, index, menuOpen, menuId, onOpen, onMenu,
       <button
         type="button"
         data-library-open={item.item_id}
-        onClick={() => onOpen(item.item_id)}
+        onClick={() => { onOpen(item.item_id); }}
         aria-label={t("在素材庫查看「{name}」", { name: item.name })}
         title={[item.name, `${KIND_LABEL[item.kind]}${facts ? t("・{item}", { item: facts }) : ""}`, usage].join("\n")}
         className={cn(TILE, "pressable grid w-full gap-1 p-1.5 text-left hover:border-brand-blue/45 active:bg-sunken focus-visible:ring-2 focus-visible:ring-focus")}
@@ -68,7 +68,7 @@ export function MediaTile({ item, uses, index, menuOpen, menuId, onOpen, onMenu,
         menuId={menuId}
         open={menuOpen}
         label={t("「{title}」的動作", { title: item.name })}
-        onOpen={(element, focus) => onMenu(item.item_id, element, focus)}
+        onOpen={(element, focus) => { onMenu(item.item_id, element, focus); }}
         onClose={onCloseMenu}
         className={cn(HUD_BUTTON, "absolute top-2.5 right-2.5")}
       >

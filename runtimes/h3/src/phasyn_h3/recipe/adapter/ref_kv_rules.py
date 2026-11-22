@@ -30,21 +30,38 @@ from typing import Any
 
 from ._diag import INVALID, UNSUPPORTED, err
 
+
 OPTION = "ref_kv_cache"  # provider_options key (h3.dit)
 EXTENSION = "phasyn.sglang_h3.ref_kv_cache"
 MODES = ("off", "skip")
 CACHE_DTYPES = ("fp8", "bf16")
+# Where the cache lives: gpu = on the DiT's device; host = pinned host memory, one layer copied to the device
+# right before its skip attention (lets a GPU with block offload hold the cache)
+CACHE_DEVICES = ("gpu", "host")
+DEFAULT_CACHE_DEVICE = "gpu"
 CACHE_DTYPE_BYTES = {"fp8": 1, "bf16": 2}
 DEFAULT_START_STEP = 1
 DEFAULT_CACHE_DTYPE = "fp8"  # per-head E4M3; half the memory of bf16
 MAX_STEP_INDEX = 199  # invoke.steps <= 200 (phasyn_h3.config.INVOKE_PROPS)
 MAX_REFRESH_STEPS = 64
-FIELDS = ("mode", "start_step", "cache_dtype", "refresh_steps", "max_cache_bytes")
+FIELDS = (
+    "mode",
+    "start_step",
+    "cache_dtype",
+    "refresh_steps",
+    "max_cache_bytes",
+    "cache_device",
+)
 # The FP8 cache stores E4M3 with one absmax scale per head.
 FP8_MAX = 448.0
 # Attention providers whose kernel takes a query sequence shorter than its key sequence. ``auto_exact`` resolves
 # to ``pytorch_sdpa`` (runtime policy._resolve_attention).
-SKIP_ATTENTION_PROVIDERS = ("auto_exact", "pytorch_sdpa", "flash_attention_3", "flash_attention_4")
+SKIP_ATTENTION_PROVIDERS = (
+    "auto_exact",
+    "pytorch_sdpa",
+    "flash_attention_3",
+    "flash_attention_4",
+)
 ATTENTION_REFUSALS: Mapping[str, str] = {
     "fp8_fa_sm120": (
         "fp8_fa_sm120 的 kernel 只接受形狀相同的 Q/K/V（kernels/ops/attention/fp8_fa_sm120/plan.py validate_inputs）；"
@@ -66,7 +83,7 @@ OPTION_SCHEMA: dict[str, Any] = {
             "properties": {
                 "mode": {
                     "enum": list(MODES),
-                    "description": "off＝不使用（預設，與未設定相同）；skip＝快取步的參考列不進 DiT block，"
+                    "description": "off\N{FULLWIDTH EQUALS SIGN}不使用（預設，與未設定相同）；skip\N{FULLWIDTH EQUALS SIGN}快取步的參考列不進 DiT block，"
                     "其他列改用快取的參考列 K/V（近似，只限 Ref2VA）",
                 },
                 "start_step": {
@@ -75,7 +92,7 @@ OPTION_SCHEMA: dict[str, Any] = {
                 },
                 "cache_dtype": {
                     "enum": list(CACHE_DTYPES),
-                    "description": "fp8＝E4M3、每 head 一個 absmax scale（預設）；bf16＝原值（記憶體 2 倍）",
+                    "description": "fp8\N{FULLWIDTH EQUALS SIGN}E4M3、每 head 一個 absmax scale（預設）；bf16\N{FULLWIDTH EQUALS SIGN}原值（記憶體 2 倍）",
                 },
                 "refresh_steps": {
                     "type": "array",
@@ -87,7 +104,12 @@ OPTION_SCHEMA: dict[str, Any] = {
                 "max_cache_bytes": {
                     "type": ["integer", "null"],
                     "minimum": 0,
-                    "description": "快取位元組上限；第 0 步前估計值超過就拒絕（null＝不設上限）",
+                    "description": "快取位元組上限；第 0 步前估計值超過就拒絕（null\N{FULLWIDTH EQUALS SIGN}不設上限）",
+                },
+                "cache_device": {
+                    "enum": list(CACHE_DEVICES),
+                    "description": "gpu\N{FULLWIDTH EQUALS SIGN}快取放在 DiT 的 GPU（預設）；host\N{FULLWIDTH EQUALS SIGN}放在釘選的主記憶體，每層略過步前搬一層上 GPU"
+                    "（數值相同；給 16 GB 卡逐層串流的 DiT 用）",
                 },
             },
             "required": ["mode"],
@@ -95,7 +117,7 @@ OPTION_SCHEMA: dict[str, Any] = {
         },
     ],
     "description": "參考列 K/V 跨步快取：快取 50 層 × K,V × 參考列 × 56 heads × 128 × "
-    "（fp8 1 B／bf16 2 B）；短邊 448 的換角段落約 10.5 GB（fp8）",
+    "（fp8 1 B／bf16 2 B）",
 }
 # Profile extension (registered in profile_rules.PROFILE_EXTENSION_SCHEMAS); editing it changes its digest
 # (phasyn_h3.config.EXTENSION_DIGESTS, test_h3_extension_digests).
@@ -115,7 +137,10 @@ EXTENSION_SCHEMA: dict[str, Any] = {
             "uniqueItems": True,
             "maxItems": MAX_REFRESH_STEPS,
         },
-        "max_cache_bytes": {"anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]},
+        "max_cache_bytes": {
+            "anyOf": [{"type": "integer", "minimum": 0}, {"type": "null"}]
+        },
+        "cache_device": {"type": "string", "enum": list(CACHE_DEVICES)},
     },
     "required": list(FIELDS),
     "additionalProperties": False,
@@ -126,6 +151,7 @@ class OptionError(ValueError):
     """A ``ref_kv_cache`` value the rules reject; ``field`` is relative to the option (``start_step`` …)."""
 
     def __init__(self, message: str, field: str = "") -> None:
+        """Record the invalid reference-cache option."""
         super().__init__(message)
         self.message = message
         self.field = field
@@ -139,21 +165,28 @@ class RefKvCachePolicy:
     cache_dtype: str
     refresh_steps: tuple[int, ...]
     max_cache_bytes: int | None
+    cache_device: str = DEFAULT_CACHE_DEVICE
 
     @property
     def mode(self) -> str:
+        """Return the reference reuse mode."""
         return "skip"
 
     def plan(self, steps: int) -> tuple[str, ...]:
-        return step_plan(steps, start_step=self.start_step, refresh_steps=self.refresh_steps)
+        """Build the ordered cache actions for the denoising steps."""
+        return step_plan(
+            steps, start_step=self.start_step, refresh_steps=self.refresh_steps
+        )
 
     def as_dict(self) -> dict[str, Any]:
+        """Serialize the resolved values used by the runtime."""
         return {
             "mode": self.mode,
             "start_step": self.start_step,
             "cache_dtype": self.cache_dtype,
             "refresh_steps": list(self.refresh_steps),
             "max_cache_bytes": self.max_cache_bytes,
+            "cache_device": self.cache_device,
         }
 
 
@@ -165,16 +198,24 @@ def _build(raw: Mapping[str, Any]) -> RefKvCachePolicy:
     start = raw.get("start_step", DEFAULT_START_STEP)
     if not _is_int(start) or not 1 <= start <= MAX_STEP_INDEX:
         raise OptionError(
-            f"start_step 必須是 1..{MAX_STEP_INDEX} 的整數（第 0 步一定完整計算並填快取），收到 {start!r}", "start_step"
+            f"start_step 必須是 1..{MAX_STEP_INDEX} 的整數（第 0 步一定完整計算並填快取），收到 {start!r}",
+            "start_step",
         )
     dtype = raw.get("cache_dtype", DEFAULT_CACHE_DTYPE)
     if dtype not in CACHE_DTYPES:
-        raise OptionError(f"cache_dtype 必須是 {' 或 '.join(CACHE_DTYPES)}，收到 {dtype!r}", "cache_dtype")
+        raise OptionError(
+            f"cache_dtype 必須是 {' 或 '.join(CACHE_DTYPES)}，收到 {dtype!r}",
+            "cache_dtype",
+        )
     refresh = raw.get("refresh_steps", [])
     if not isinstance(refresh, (list, tuple)) or not all(_is_int(s) for s in refresh):
-        raise OptionError(f"refresh_steps 必須是整數陣列，收到 {refresh!r}", "refresh_steps")
+        raise OptionError(
+            f"refresh_steps 必須是整數陣列，收到 {refresh!r}", "refresh_steps"
+        )
     if len(set(refresh)) != len(refresh) or len(refresh) > MAX_REFRESH_STEPS:
-        raise OptionError(f"refresh_steps 不可重複，最多 {MAX_REFRESH_STEPS} 個", "refresh_steps")
+        raise OptionError(
+            f"refresh_steps 不可重複，最多 {MAX_REFRESH_STEPS} 個", "refresh_steps"
+        )
     early = sorted(s for s in refresh if not start <= s <= MAX_STEP_INDEX)
     if early:
         raise OptionError(
@@ -184,9 +225,21 @@ def _build(raw: Mapping[str, Any]) -> RefKvCachePolicy:
         )
     cap = raw.get("max_cache_bytes")
     if cap is not None and (not _is_int(cap) or cap < 0):
-        raise OptionError(f"max_cache_bytes 必須是非負整數或 null，收到 {cap!r}", "max_cache_bytes")
+        raise OptionError(
+            f"max_cache_bytes 必須是非負整數或 null，收到 {cap!r}", "max_cache_bytes"
+        )
+    where = raw.get("cache_device", DEFAULT_CACHE_DEVICE)
+    if where not in CACHE_DEVICES:
+        raise OptionError(
+            f"cache_device 必須是 {' 或 '.join(CACHE_DEVICES)}，收到 {where!r}",
+            "cache_device",
+        )
     return RefKvCachePolicy(
-        start_step=int(start), cache_dtype=str(dtype), refresh_steps=tuple(sorted(refresh)), max_cache_bytes=cap
+        start_step=int(start),
+        cache_dtype=str(dtype),
+        refresh_steps=tuple(sorted(refresh)),
+        max_cache_bytes=cap,
+        cache_device=str(where),
     )
 
 
@@ -195,17 +248,23 @@ def parse_option(raw: Any) -> RefKvCachePolicy | None:
     if raw is None:
         return None
     if not isinstance(raw, Mapping):
-        raise OptionError(f"ref_kv_cache 必須是 object 或 null，收到 {type(raw).__name__}")
+        raise OptionError(
+            f"ref_kv_cache 必須是 object 或 null，收到 {type(raw).__name__}"
+        )
     unknown = sorted(set(raw) - set(FIELDS))
     if unknown:
         raise OptionError(f"ref_kv_cache 有未知欄位 {unknown}", unknown[0])
     mode = raw.get("mode")
     if mode not in MODES:
-        raise OptionError(f"ref_kv_cache.mode 必須是 off 或 skip，收到 {mode!r}", "mode")
+        raise OptionError(
+            f"ref_kv_cache.mode 必須是 off 或 skip，收到 {mode!r}", "mode"
+        )
     if mode == "off":
         extra = sorted(k for k in raw if k != "mode")
         if extra:
-            raise OptionError(f"ref_kv_cache.mode=off 時 {extra} 沒有作用（不默默忽略）", extra[0])
+            raise OptionError(
+                f"ref_kv_cache.mode=off 時 {extra} 沒有作用（不默默忽略）", extra[0]
+            )
         return None
     return _build(raw)
 
@@ -218,10 +277,14 @@ def parse_extension(values: Any) -> RefKvCachePolicy:
     missing = [k for k in FIELDS if k not in values]
     if unknown or missing:
         raise OptionError(
-            f"{EXTENSION} 欄位不完整或有未知欄位（缺 {missing}，未知 {unknown}）", (missing or unknown)[0]
+            f"{EXTENSION} 欄位不完整或有未知欄位（缺 {missing}，未知 {unknown}）",
+            (missing or unknown)[0],
         )
     if values.get("mode") != "skip":
-        raise OptionError(f"{EXTENSION}.mode 只能是 skip（off 不帶此 extension），收到 {values.get('mode')!r}", "mode")
+        raise OptionError(
+            f"{EXTENSION}.mode 只能是 skip（off 不帶此 extension），收到 {values.get('mode')!r}",
+            "mode",
+        )
     return _build(values)
 
 
@@ -232,7 +295,11 @@ def extension_values(policy: RefKvCachePolicy) -> dict[str, Any]:
 
 def find_extension(profile: Mapping[str, Any]) -> Mapping[str, Any] | None:
     """Values of the profile's ``phasyn.sglang_h3.ref_kv_cache`` extension, None when absent."""
-    found = [e for e in profile.get("extensions") or () if isinstance(e, Mapping) and e.get("namespace") == EXTENSION]
+    found = [
+        e
+        for e in profile.get("extensions") or ()
+        if isinstance(e, Mapping) and e.get("namespace") == EXTENSION
+    ]
     if len(found) > 1:
         raise OptionError(f"{EXTENSION} 出現 {len(found)} 次")
     if not found:
@@ -252,10 +319,13 @@ def attention_refusal(provider: str) -> str | None:
     )
 
 
-def step_plan(steps: int, *, start_step: int, refresh_steps: Iterable[int] = ()) -> tuple[str, ...]:
-    """Per denoise step: ``skip`` (reference rows skipped), ``fill`` (full sequence, then the cache is (re)filled from
-    this step's K/V) or ``full`` (full sequence, cache untouched). A skip step is never the first step, and the step
-    before every run of skip steps is a fill step."""
+def step_plan(
+    steps: int, *, start_step: int, refresh_steps: Iterable[int] = ()
+) -> tuple[str, ...]:
+    """Per denoise step: ``skip`` (reference rows skipped), ``fill`` (full sequence, then the cache is (re)filled from this step's K/V) or ``full`` (full sequence, cache untouched).
+
+    A skip step is never the first step, and the step before every run of skip steps is a fill step.
+    """
     refresh = {int(s) for s in refresh_steps}
     skip = [s >= int(start_step) and s not in refresh for s in range(int(steps))]
     plan: list[str] = []
@@ -269,22 +339,26 @@ def step_plan(steps: int, *, start_step: int, refresh_steps: Iterable[int] = ())
     return tuple(plan)
 
 
-def cache_bytes(*, layers: int, ref_rows: int, heads: int, head_dim: int, cache_dtype: str) -> int:
-    """Device bytes of the cache: layers × (K, V) × reference rows × heads × head_dim × dtype bytes (+ the FP8
-    per-head scales, FP32)."""
+def cache_bytes(
+    *, layers: int, ref_rows: int, heads: int, head_dim: int, cache_dtype: str
+) -> int:
+    """Device bytes of the cache: layers × (K, V) × reference rows × heads × head_dim × dtype bytes (+ the FP8 per-head scales, FP32)."""
     per = CACHE_DTYPE_BYTES[cache_dtype]
     data = int(layers) * 2 * int(ref_rows) * int(heads) * int(head_dim) * per
     scales = int(layers) * 2 * int(heads) * 4 if cache_dtype == "fp8" else 0
     return data + scales
 
 
-def kv_buffer_bytes(*, used_rows: int, heads: int, head_dim: int, dtype_bytes: int = 2) -> int:
-    """Transient bytes of one skip forward: the BF16 K and V of every live row, rebuilt per layer in one buffer pair
-    (freed after the forward; the reduced activations of that forward are smaller by more than this)."""
+def kv_buffer_bytes(
+    *, used_rows: int, heads: int, head_dim: int, dtype_bytes: int = 2
+) -> int:
+    """Transient bytes of one skip forward: the BF16 K and V of every live row, rebuilt per layer in one buffer pair (freed after the forward; the reduced activations of that forward are smaller by more than this)."""
     return 2 * int(used_rows) * int(heads) * int(head_dim) * int(dtype_bytes)
 
 
-def diagnostics(profile: Mapping[str, Any], model: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+def diagnostics(
+    profile: Mapping[str, Any], model: Mapping[str, Any] | None = None
+) -> list[dict[str, Any]]:
     """Plan-time diagnostics of the extension (the runtime policy re-checks the same rules)."""
     base = f"extensions[{EXTENSION}]"
     try:
@@ -299,7 +373,7 @@ def diagnostics(profile: Mapping[str, Any], model: Mapping[str, Any] | None = No
         out.append(
             err(
                 UNSUPPORTED,
-                "ref_kv_cache skip 讓略過步沿用快取的參考列 K/V，屬 approximate run，不能用於 mode=exact（REQ-021）",
+                "ref_kv_cache skip 讓略過步沿用快取的參考列 K/V，屬 approximate run，不能用於 mode=exact",
                 "mode",
                 base,
             )

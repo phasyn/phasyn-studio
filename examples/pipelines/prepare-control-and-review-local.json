@@ -1,0 +1,51 @@
+{
+  "pipeline_id": "prepare-control-and-review-local",
+  "label": "影片輪廓素材、黑場與停格檢查（CPU）",
+  "inputs": [
+    {
+      "name": "video",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": "要檢查的候選影片原檔"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "take_analysis",
+      "component_id": "take-analysis",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "inputs": {
+        "video": {
+          "from_input": "video"
+        }
+      },
+      "parameters": {}
+    },
+    {
+      "step_id": "edge_control",
+      "component_id": "edge-control",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "inputs": {
+        "video": {
+          "from_input": "video"
+        }
+      },
+      "parameters": {}
+    }
+  ],
+  "outputs": {
+    "control": {
+      "from_step": "edge_control",
+      "output": "control"
+    },
+    "report": {
+      "from_step": "take_analysis",
+      "output": "report"
+    },
+    "evidence": {
+      "from_step": "take_analysis",
+      "output": "evidence"
+    }
+  }
+}

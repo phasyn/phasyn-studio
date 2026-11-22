@@ -17,6 +17,7 @@ from __future__ import annotations
 import re
 from collections.abc import Callable
 
+
 REDACTED = "<redacted>"
 
 # An absolute path token: an optional "~" or drive prefix, then a separator that does not start "//"
@@ -57,7 +58,7 @@ def mask_paths(text: str) -> str:
     """Absolute POSIX paths with two or more components -> their file name."""
 
     def basename(token: str, parts: list[str]) -> str | None:
-        return parts[-1] if token.startswith("/") and len(parts) >= 2 else None
+        return parts[-1] if token.startswith("/") and parts[1:] else None
 
     return scrub_paths(text, basename)
 
@@ -65,8 +66,12 @@ def mask_paths(text: str) -> str:
 def redact_paths(text: str) -> str:
     """Every absolute path -> ``<redacted>/<file name>`` (``<redacted>`` when there is no name)."""
 
-    def redacted(token: str, parts: list[str]) -> str:
-        name = parts[-1] if parts and parts[-1] not in ("~",) and not parts[-1].endswith(":") else ""
+    def redacted(_token: str, parts: list[str]) -> str:
+        name = (
+            parts[-1]
+            if parts and parts[-1] != "~" and not parts[-1].endswith(":")
+            else ""
+        )
         return f"{REDACTED}/{name}" if name else REDACTED
 
     return scrub_paths(text, redacted)

@@ -31,9 +31,9 @@ export function FormatPicker({
   const [customOpen, setCustomOpen] = useState(false);
   const [draft, setDraft] = useState({ width: String(width), height: String(height) });
   // 外部尺寸改變（選了預設、專案重新載入）時，欄位跟著換成新值（render 時調整 state，React 允許）
-  const [shown, setShown] = useState(`${width}x${height}`);
-  if (shown !== `${width}x${height}`) {
-    setShown(`${width}x${height}`);
+  const [shown, setShown] = useState(`${String(width)}x${String(height)}`);
+  if (shown !== `${String(width)}x${String(height)}`) {
+    setShown(`${String(width)}x${String(height)}`);
     setDraft({ width: String(width), height: String(height) });
   }
   const custom = customOpen || preset === null;
@@ -46,7 +46,7 @@ export function FormatPicker({
     if (formatProblem(nextWidth, nextHeight) !== null) return;
     if (nextWidth !== width || nextHeight !== height) onChange(nextWidth, nextHeight);
   };
-  const commitDraft = () => apply(draftWidth, draftHeight);
+  const commitDraft = () => { apply(draftWidth, draftHeight); };
 
   const sideInput = (side: "width" | "height", label: string) => {
     // 只把有問題的那一邊標成不合法（原因在下方的訊息）
@@ -61,7 +61,7 @@ export function FormatPicker({
         value={draft[side]}
         aria-invalid={invalid ? true : undefined}
         aria-describedby={`${id}-rule${invalid ? ` ${id}-problem` : ""}`}
-        onChange={(event) => setDraft({ ...draft, [side]: event.target.value })}
+        onChange={(event) => { setDraft({ ...draft, [side]: event.target.value }); }}
         onBlur={commitDraft}
         onKeyDown={(event) => {
           if (event.key === "Enter") {
@@ -80,7 +80,7 @@ export function FormatPicker({
       <Select
         id={id}
         compact={compact}
-        value={custom ? CUSTOM : (preset?.id ?? CUSTOM)}
+        value={custom ? CUSTOM : preset.id}
         onChange={(event) => {
           if (event.target.value === CUSTOM) {
             setCustomOpen(true);
@@ -121,7 +121,7 @@ export function FormatPicker({
           <p id={`${id}-rule`} className="text-caption text-fg-tertiary">
             {t("寬高都必須是 {multiple} 的倍數、介於 {min}–{max}；按 Enter 或離開欄位後套用。", { multiple: FORMAT_SIDE.multiple, min: FORMAT_SIDE.min, max: FORMAT_SIDE.max })}
           </p>
-          {dirty && problem ? (
+          {dirty && (problem != null && problem !== "") ? (
             <p id={`${id}-problem`} role="alert" className="flex flex-wrap items-center gap-2 text-caption text-danger">
               {problem}
               <Button

@@ -10,11 +10,14 @@ only here; the package version comes from the installed distribution metadata.
 
 from importlib.metadata import PackageNotFoundError, version
 
+
 PROTOCOL_VERSION = "4.0"
 SCHEMA_VERSION = "4.0"
 try:
     __version__ = version("phasyn-components")
-except PackageNotFoundError:  # imported from a source tree that was never installed: say so, never guess
+except (
+    PackageNotFoundError
+):  # imported from a source tree that was never installed: say so, never guess
     __version__ = "0+unknown"
 
 __all__ = ["PROTOCOL_VERSION", "SCHEMA_VERSION", "__version__"]

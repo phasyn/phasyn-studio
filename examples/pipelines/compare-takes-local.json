@@ -1,0 +1,96 @@
+{
+  "pipeline_id": "compare-takes-local",
+  "label": "選片：比對兩個 Take 的首尾影格",
+  "inputs": [
+    {
+      "name": "take_a",
+      "type_id": "media.asset.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "第一個 Take 的完整 Asset 輸出，含原始檔案參照。"
+    },
+    {
+      "name": "take_b",
+      "type_id": "media.asset.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "第二個 Take 的完整 Asset 輸出，含原始檔案參照。"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "a_first",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "frame",
+      "inputs": {
+        "video": {
+          "from_input": "take_a"
+        }
+      },
+      "parameters": {
+        "position": "first",
+        "frame_index": null
+      }
+    },
+    {
+      "step_id": "a_last",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "frame",
+      "inputs": {
+        "video": {
+          "from_input": "take_a"
+        }
+      },
+      "parameters": {
+        "position": "last",
+        "frame_index": null
+      }
+    },
+    {
+      "step_id": "b_first",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "frame",
+      "inputs": {
+        "video": {
+          "from_input": "take_b"
+        }
+      },
+      "parameters": {
+        "position": "first",
+        "frame_index": null
+      }
+    },
+    {
+      "step_id": "b_last",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "frame",
+      "inputs": {
+        "video": {
+          "from_input": "take_b"
+        }
+      },
+      "parameters": {
+        "position": "last",
+        "frame_index": null
+      }
+    }
+  ],
+  "outputs": {
+    "a_first": {
+      "from_step": "a_first",
+      "output": "image"
+    },
+    "a_last": {
+      "from_step": "a_last",
+      "output": "image"
+    },
+    "b_first": {
+      "from_step": "b_first",
+      "output": "image"
+    },
+    "b_last": {
+      "from_step": "b_last",
+      "output": "image"
+    }
+  }
+}

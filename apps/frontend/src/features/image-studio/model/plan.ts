@@ -6,6 +6,8 @@
 import type { FileRef, Port } from "@/api/generated/contracts";
 import type { RunRequestBody, WireBinding, WireStep, WireTypedValue } from "@/api/types";
 import { cloneJson } from "@/lib/json";
+import { validateValue } from "@/lib/schema/validate";
+import { declaredParams, declaredSnapshot, unsupportedImageControl } from "./declaredImage";
 import type { ImageLibraryItem, ImageStudioProject, StudioImageShot } from "../types";
 import { COMPOSE_METADATA_BUDGET, LIMITS, LINEAR_FIT_UNAVAILABLE, OUTPUT_IMAGE, OUTPUT_WHITE } from "./constants";
 import type { ImageParamsSnapshot } from "./params";
@@ -100,7 +102,7 @@ export function composeMetadata(project: Pick<ImageStudioProject, "project_id">,
   };
   const withPrompt = { ...base, prompt: shot.prompt, negative_prompt: cfgEnabled(shot.guidance) ? shot.negative_prompt : null };
   // 估計 ASCII 跳脫後的大小：非 ASCII 字元算 6 bytes
-  const size = [...JSON.stringify(withPrompt)].reduce((sum, char) => sum + (char.charCodeAt(0) > 0x7e ? 6 : 1), 0);
+  const size = Array.from(JSON.stringify(withPrompt)).reduce((sum, char) => sum + (char.charCodeAt(0) > 0x7e ? 6 : 1), 0);
   return size <= COMPOSE_METADATA_BUDGET ? withPrompt : { ...base, prompt: null, prompt_omitted: t("prompt 太長，沒有寫進 PNG metadata（完整內容在 Studio 的參數紀錄）") };
 }
 
@@ -119,14 +121,14 @@ export function planImageRender(
   context: ImageRenderContext,
   options: { label?: string } = {},
 ): ImagePlanResult {
-  const params = paramProblems(shot);
+  const params = paramProblems(shot, findImageRoute(context.routes, shot.route)?.declared ? 1 : undefined);
   if (params.length > 0) return fail(params.join(t("；")));
   if (takeIds.length !== shot.batch) return fail(t("內部錯誤：take 數量（{takeIdsCount}）與生成張數（{batch}）不同", { takeIdsCount: takeIds.length, batch: shot.batch }));
   if (shot.takes.length + shot.batch > LIMITS.takes) return fail(t("這張圖片的 take 最多 {takes} 個（目前 {takesCount}）：用「用這組參數新增一張圖片」在新的圖片繼續，或刪除不要的 run", { takes: LIMITS.takes, takesCount: shot.takes.length }));
   const route = findImageRoute(context.routes, shot.route);
   if (!route) return fail(ROUTE_MISSING);
   const mismatch = modeMismatch(route, shot.mode);
-  if (mismatch) return fail(mismatch);
+  if (mismatch != null && mismatch !== "") return fail(mismatch);
   if (!route.ready) return fail(t("元件組合「{label}」未就緒：{summary}", { label: route.label, summary: route.summary }));
   const library = project.library ?? [];
   const refProblems = referenceProblems(shot, library);
@@ -136,10 +138,12 @@ export function planImageRender(
   const references = i2i ? orderedReferences(shot.references) : [];
   if (references.length > route.referenceCapacity) return fail(t("元件組合「{label}」只接受 {referenceCapacity} 張參考圖片（目前 {referencesCount} 張）", { label: route.label, referenceCapacity: route.referenceCapacity, referencesCount: references.length }));
   const maskItem = i2i ? shot.mask_item_id : null;
-  if (maskItem !== null && !route.maskInput) return fail(t("元件組合「{label}」沒有遮罩輸入：停用遮罩，或改選有遮罩輸入的 i2i 元件組合", { label: route.label }));
-  const cfg = cfgEnabled(shot.guidance);
-  if (cfg && !route.negativeInput) return fail(t("元件組合「{label}」沒有負面提示詞輸入（negative_prompt）：guidance > 1 的 CFG 無法使用；把 guidance 設為 1 以下，或改選有負面提示詞輸入的元件組合", { label: route.label }));
-  if (shot.preview.mode === "linear_fit" && LINEAR_FIT_UNAVAILABLE) return fail(t("線性擬合預覽不可用：{linearFitUnavailable}。在「採樣」分頁改成 VAE 縮圖或關閉預覽", { linearFitUnavailable: LINEAR_FIT_UNAVAILABLE }));
+  if (maskItem !== null && !(route.maskInput != null && route.maskInput !== "")) return fail(t("元件組合「{label}」沒有遮罩輸入：停用遮罩，或改選有遮罩輸入的 i2i 元件組合", { label: route.label }));
+  const unsupported = route.declared ? unsupportedImageControl(route.declared, shot) : null;
+  if (unsupported !== null) return fail(t("這個圖片路由無法套用所選設定：{control}", { control: unsupported }));
+  const cfg = !route.declared && cfgEnabled(shot.guidance);
+  if (cfg && !(route.negativeInput != null && route.negativeInput !== "")) return fail(t("元件組合「{label}」沒有負面提示詞輸入（negative_prompt）：guidance > 1 的 CFG 無法使用；把 guidance 設為 1 以下，或改選有負面提示詞輸入的元件組合", { label: route.label }));
+  if (!route.declared && shot.preview.mode === "linear_fit" && (LINEAR_FIT_UNAVAILABLE != null && LINEAR_FIT_UNAVAILABLE !== "")) return fail(t("線性擬合預覽不可用：{linearFitUnavailable}。在「採樣」分頁改成 VAE 縮圖或關閉預覽", { linearFitUnavailable: LINEAR_FIT_UNAVAILABLE }));
   // VAE 縮圖預覽需要 DiT 以 preview_vae 載入；沒有時這次不送預覽（附註），不讓第一次生成失敗。預覽不影響最終圖片。
   const previewMode = shot.preview.mode === "vae_thumbnail" && route.previewVae === false ? "off" : shot.preview.mode;
   const previewNote =
@@ -168,7 +172,8 @@ export function planImageRender(
     const item = byId.get(id);
     if (!item) continue;
     const parameters = cloneJson(item.step.parameters);
-    if (item.role === "prepare") {
+    if (route.declared) Object.assign(parameters, declaredParams(route.declared, id, shot, 0));
+    else if (item.role === "prepare") {
       writer.set(parameters, item, "width", shot.width, "required", t("輸出尺寸"));
       writer.set(parameters, item, "height", shot.height, "required", t("輸出尺寸"));
       writer.set(parameters, item, "reference_resolution", shot.reference_resolution, "required", t("參考圖編碼解析度"));
@@ -187,7 +192,7 @@ export function planImageRender(
   const branches: PlannedImageBranch[] = [];
   const outputs: RunRequestBody["pipeline"]["outputs"] = {};
   for (let index = 0; index < shot.batch; index += 1) {
-    const suffix = single ? "" : `_${index}`;
+    const suffix = single ? "" : `_${String(index)}`;
     const seed = seeds[index] ?? 0;
     const takeId = takeIds[index] ?? "";
     const rename = (id: string) => (branchIds.has(id) ? `${id}${suffix}` : id);
@@ -198,7 +203,8 @@ export function planImageRender(
       if (stepId.length > MAX_ID || taken.has(stepId)) return fail(t("元件組合「{label}」的步驟 id「{stepId}」太長或重複，無法組成批次 run", { label: route.label, stepId }));
       taken.add(stepId);
       const parameters = cloneJson(item.step.parameters);
-      if (item.role === "dit") {
+      if (route.declared) Object.assign(parameters, declaredParams(route.declared, id, shot, seed));
+      else if (item.role === "dit") {
         writer.set(parameters, item, "width", shot.width, "required", t("輸出尺寸"));
         writer.set(parameters, item, "height", shot.height, "required", t("輸出尺寸"));
         writer.set(parameters, item, "steps", shot.steps, "required", t("採樣步數"));
@@ -208,7 +214,7 @@ export function planImageRender(
         writer.set(parameters, item, "seed", seed, "required", "seed");
         if (previewMode !== "off") writer.set(parameters, item, "preview", { mode: previewMode, every: shot.preview.every }, "optional", t("這次不會有中間預覽"));
         // 關閉預覽也要明確送出（範本可能預設開啟）；元件不接受 preview 參數時本來就沒有預覽
-        else if (parameterSupport(item.slot.component, "preview") !== false) parameters.preview = { mode: "off", every: shot.preview.every };
+        else if (parameterSupport(item.slot.component, "preview") !== false) parameters["preview"] = { mode: "off", every: shot.preview.every };
       } else if (item.role === "decode") {
         writer.set(parameters, item, "mode", shot.decode, "required", t("解碼方式（完整／分塊）"));
       } else if (item.role === "compose") {
@@ -258,7 +264,10 @@ export function planImageRender(
         decode: shot.decode,
         preview: { ...shot.preview },
         outputs: { image: imageKey, image_white: whiteKey },
-        auto_library: context.autoLibrary === true,
+        ...(route.declared ? {
+          studio_image: declaredSnapshot(route.declared, shot, seed),
+        } : {}),
+        auto_library: context.autoLibrary === true && (!route.declared || route.white !== null),
       },
     });
   }
@@ -269,8 +278,13 @@ export function planImageRender(
   for (const port of route.pipeline.inputs) {
     let value: WireTypedValue | string | null = null;
     if (port.name === route.promptInput) value = { type_id: port.type_id, value: shot.prompt };
-    else if (port.name === route.negativeInput) value = cfg || port.required ? { type_id: port.type_id, value: shot.negative_prompt } : null;
-    else if (port.name === route.referenceListInput) {
+    else if (port.name === route.negativeInput) value = route.declared !== undefined || cfg || port.required ? { type_id: port.type_id, value: shot.negative_prompt } : null;
+    else if (route.declared?.referenceInputs.includes(port.name) === true) {
+      const selected = references[route.declared.referenceInputs.indexOf(port.name)];
+      const file = selected ? libraryFile(library, selected.item_id) : null;
+      if (file) value = fileValue(port, file);
+      else if (port.required) value = t("元件組合「{label}」需要參考圖片（必填輸入 {name}）", { label: route.label, name: port.name });
+    } else if (port.name === route.referenceListInput) {
       // qimg.references.v1：[{file, label}]，順序＝送出順序；label 只記在前處理的 metadata（不進 prompt）
       const list = references.flatMap((ref) => {
         const item = library.find((entry) => entry.item_id === ref.item_id);
@@ -289,13 +303,21 @@ export function planImageRender(
     if (value) inputs[port.name] = value;
   }
 
+  if (route.declared) {
+    for (const step of steps) {
+      const component = route.steps.find((item) => item.step.component_id === step.component_id && item.step.node_id === step.node_id)?.slot.component;
+      const issue = validateValue(component?.settings.parameters_schema, step.parameters)[0];
+      if (issue) return fail(t("步驟 {step} 的圖片參數不相容：{reason}", { step: step.step_id, reason: [issue.path, issue.message].filter(Boolean).join(" ") }));
+    }
+  }
+
   const label =
     options.label ?? t("Image Studio：{title}・{title2}{value}", { title: project.title, title2: shot.title, value: single ? "" : t("・{batch} 張", { batch: shot.batch }) });
   return {
     plan: {
       body: { pipeline: { pipeline_id: route.id, label, inputs: cloneJson(route.pipeline.inputs), steps, outputs }, inputs, label },
       branches,
-      notes: previewNote ? [previewNote, ...writer.notes] : writer.notes,
+      notes: route.declared ? route.notes : (previewNote != null && previewNote !== "") ? [previewNote, ...writer.notes] : writer.notes,
     },
     problem: null,
   };
@@ -309,7 +331,7 @@ export interface RenderPreflight {
 /** 屬性面板用：這張圖現在能不能生成（與送出時同一套檢查，不抽真的 seed、不送出）。 */
 export function imageRenderPreflight(project: Pick<ImageStudioProject, "project_id" | "title" | "library">, shot: StudioImageShot, context: Omit<ImageRenderContext, "randomSeed">): RenderPreflight {
   const batch = Number.isInteger(shot.batch) && shot.batch >= LIMITS.batch.min && shot.batch <= LIMITS.batch.max ? shot.batch : 1;
-  const takeIds = Array.from({ length: batch }, (_, index) => `preflight${index}`);
+  const takeIds = Array.from({ length: batch }, (_, index) => `preflight${String(index)}`);
   let counter = 0;
   const result = planImageRender(project, shot, takeIds, { ...context, randomSeed: () => counter++ });
   return { problem: result.problem, notes: result.plan?.notes ?? [] };

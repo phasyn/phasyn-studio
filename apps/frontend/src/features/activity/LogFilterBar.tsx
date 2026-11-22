@@ -75,7 +75,7 @@ export function LogFilterBar({
   return (
     <ToolStrip ref={stripRef} label={label} data-fit={fit} className={cn(oneRow && "flex-nowrap *:shrink-0")}>
       {scope ? (
-        <Select compact aria-label={t("紀錄範圍")} value={scope.value} onChange={(event) => scope.onChange(event.target.value)} className={cn("w-auto", fit >= 3 ? "min-w-0" : "min-w-32")}>
+        <Select compact aria-label={t("紀錄範圍")} value={scope.value} onChange={(event) => { scope.onChange(event.target.value); }} className={cn("w-auto", fit >= 3 ? "min-w-0" : "min-w-32")}>
           {scope.options.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
@@ -91,7 +91,7 @@ export function LogFilterBar({
           aria-label={t("搜尋紀錄")}
           placeholder={t("搜尋紀錄…")}
           value={filter.query}
-          onChange={(event) => onFilterChange({ ...filter, query: event.target.value })}
+          onChange={(event) => { onFilterChange({ ...filter, query: event.target.value }); }}
           className="pl-8"
         />
       </div>
@@ -99,7 +99,7 @@ export function LogFilterBar({
         compact
         aria-label={t("等級篩選")}
         value={choiceForLevels(filter.levels)}
-        onChange={(event) => onFilterChange({ ...filter, levels: levelsForChoice(parseLevelChoice(event.target.value)) })}
+        onChange={(event) => { onFilterChange({ ...filter, levels: levelsForChoice(parseLevelChoice(event.target.value)) }); }}
         className={cn("w-auto", fit >= 3 ? "min-w-0" : "min-w-36")}
       >
         {LEVEL_CHOICES.map((choice) => (
@@ -112,7 +112,7 @@ export function LogFilterBar({
         compact
         aria-label={t("來源篩選")}
         value={filter.source}
-        onChange={(event) => onFilterChange({ ...filter, source: parseSourceChoice(event.target.value) })}
+        onChange={(event) => { onFilterChange({ ...filter, source: parseSourceChoice(event.target.value) }); }}
         className={cn("w-auto", fit >= 3 ? "min-w-0" : "min-w-28")}
       >
         <option value="all">{t("全部來源")}</option>
@@ -127,7 +127,7 @@ export function LogFilterBar({
           {t("顯示 {shown}／{visibleTotal} 筆{value}", { shown, visibleTotal, value: cleared > 0 ? t("・已清除 {cleared} 筆", { cleared }) : "" })}
         </span>
         <ToolSeparator />
-        <Switch id={liveId} label={t("即時")} checked={live} onChange={(event) => onLiveChange(event.target.checked)} className="min-h-8 gap-2 py-0 text-data" />
+        <Switch id={liveId} label={t("即時")} checked={live} onChange={(event) => { onLiveChange(event.target.checked); }} className="min-h-8 gap-2 py-0 text-data" />
         {onRefresh ? (
           <ToolButton
             label={t("重新讀取")}

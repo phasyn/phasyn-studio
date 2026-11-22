@@ -13,27 +13,29 @@ says so.
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Mapping
 from typing import Any
 
-from . import constants as C
+from . import constants
+
 
 # The values the pinned configs hold (H3:FL2VA/transformer/config.json, H3:FL2VA/text_encoder/config.json)
 PINNED_TRANSFORMER_CONFIG: Mapping[str, Any] = {
-    "num_layers": C.DIT_NUM_LAYERS,
-    "hidden_size": C.DIT_HIDDEN,
-    "num_attention_heads": C.DIT_HEADS,
-    "attention_head_dim": C.DIT_HEAD_DIM,
-    "ffn_hidden_size": C.DIT_FFN,
+    "num_layers": constants.DIT_NUM_LAYERS,
+    "hidden_size": constants.DIT_HIDDEN,
+    "num_attention_heads": constants.DIT_HEADS,
+    "attention_head_dim": constants.DIT_HEAD_DIM,
+    "ffn_hidden_size": constants.DIT_FFN,
 }
 PINNED_TEXT_ENCODER_CONFIG: Mapping[str, Any] = {
     "text_config": {
-        "num_hidden_layers": C.TEXT_CHECKPOINT_LAYERS,
-        "hidden_size": C.TEXT_HIDDEN,
-        "num_attention_heads": C.TEXT_HEADS,
-        "num_key_value_heads": C.TEXT_KV_HEADS,
-        "head_dim": C.TEXT_HEAD_DIM,
-        "intermediate_size": C.TEXT_FFN,
+        "num_hidden_layers": constants.TEXT_CHECKPOINT_LAYERS,
+        "hidden_size": constants.TEXT_HIDDEN,
+        "num_attention_heads": constants.TEXT_HEADS,
+        "num_key_value_heads": constants.TEXT_KV_HEADS,
+        "head_dim": constants.TEXT_HEAD_DIM,
+        "intermediate_size": constants.TEXT_FFN,
     }
 }
 
@@ -54,14 +56,21 @@ def dit_flop_coefficients(config: Mapping[str, Any]) -> dict[str, int]:
     """
     layers = _positive_int(config, "num_layers")
     hidden = _positive_int(config, "hidden_size")
-    attention = _positive_int(config, "num_attention_heads") * _positive_int(config, "attention_head_dim")
+    attention = _positive_int(config, "num_attention_heads") * _positive_int(
+        config, "attention_head_dim"
+    )
     ffn = _positive_int(config, "ffn_hidden_size")
-    block = hidden * 3 * attention + attention * hidden + hidden * 2 * ffn + ffn * hidden
-    return {"flops_per_row": 2 * layers * block, "flops_per_row_squared": 4 * layers * attention}
+    block = (
+        hidden * 3 * attention + attention * hidden + hidden * 2 * ffn + ffn * hidden
+    )
+    return {
+        "flops_per_row": 2 * layers * block,
+        "flops_per_row_squared": 4 * layers * attention,
+    }
 
 
 def text_encoder_flop_coefficients(
-    config: Mapping[str, Any], *, tap_layer: int = C.TEXT_SELECTED_LAYER
+    config: Mapping[str, Any], *, tap_layer: int = constants.TEXT_SELECTED_LAYER
 ) -> dict[str, int]:
     """Qwen3-VL FLOPs for S conditioning tokens = ``flops_per_token·S + flops_per_token_squared·S²``.
 
@@ -76,7 +85,9 @@ def text_encoder_flop_coefficients(
     layers = min(int(tap_layer), _positive_int(text, "num_hidden_layers"))
     hidden = _positive_int(text, "hidden_size")
     heads = _positive_int(text, "num_attention_heads")
-    head_dim = _positive_int(text, "head_dim") if "head_dim" in text else hidden // heads
+    head_dim = (
+        _positive_int(text, "head_dim") if "head_dim" in text else hidden // heads
+    )
     attention = heads * head_dim
     kv = _positive_int(text, "num_key_value_heads") * head_dim
     ffn = _positive_int(text, "intermediate_size")
@@ -91,30 +102,29 @@ def text_encoder_flop_coefficients(
 def geometry_facts() -> dict[str, Any]:
     """The pinned runtime's geometry rules the estimator needs to count rows, tokens and pixels."""
     return {
-        "fps": C.FPS,
-        "frame_group": C.FRAME_GROUP,
-        "frame_offset": C.FRAME_OFFSET,
-        "latent_per_group": C.LATENT_T_GROUP,
-        "latent_head": C.LATENT_T_HEAD,
-        "token_stride": C.TOKEN_STRIDE,
-        "audio_latent_hz": C.AUDIO_LATENT_HZ,
-        "audio_channels": C.AUDIO_CHANNELS,
-        "audio_sample_rate": C.AUDIO_SAMPLE_RATE,
-        "reference_video_short_edge": C.BASE_SHORT_EDGE,
-        "reference_video_max_pixels": C.MAX_PIXELS,
-        "canvas_multiple": C.CANVAS_MULTIPLE,
-        "reference_image_short_edge": C.REFERENCE_IMAGE_SHORT_EDGE,
-        "reference_image_multiple": C.REFERENCE_IMAGE_MULTIPLE,
-        "vae_spatial_factor": C.VAE_SPATIAL_FACTOR,
-        "vae_temporal_factor": C.VAE_TEMPORAL_FACTOR,
-        "vae_clip_length": C.VAE_CLIP_LENGTH,
-        "dit_patch_size": list(C.PATCH_SIZE),
+        "fps": constants.FPS,
+        "frame_group": constants.FRAME_GROUP,
+        "frame_offset": constants.FRAME_OFFSET,
+        "latent_per_group": constants.LATENT_T_GROUP,
+        "latent_head": constants.LATENT_T_HEAD,
+        "token_stride": constants.TOKEN_STRIDE,
+        "audio_latent_hz": constants.AUDIO_LATENT_HZ,
+        "audio_channels": constants.AUDIO_CHANNELS,
+        "audio_sample_rate": constants.AUDIO_SAMPLE_RATE,
+        "reference_video_short_edge": constants.BASE_SHORT_EDGE,
+        "reference_video_max_pixels": constants.MAX_PIXELS,
+        "canvas_multiple": constants.CANVAS_MULTIPLE,
+        "reference_image_short_edge": constants.REFERENCE_IMAGE_SHORT_EDGE,
+        "reference_image_multiple": constants.REFERENCE_IMAGE_MULTIPLE,
+        "vae_spatial_factor": constants.VAE_SPATIAL_FACTOR,
+        "vae_temporal_factor": constants.VAE_TEMPORAL_FACTOR,
+        "vae_clip_length": constants.VAE_CLIP_LENGTH,
+        "dit_patch_size": list(constants.PATCH_SIZE),
     }
 
 
 def _pixel_limits(config: Mapping[str, Any]) -> tuple[int | None, int | None]:
-    """(min, max) pixels of a Qwen3-VL processor config: ``size.shortest_edge`` / ``size.longest_edge``
-    (pixel counts in the Qwen2-VL family) or the older ``min_pixels`` / ``max_pixels``."""
+    """(min, max) pixels of a Qwen3-VL processor config: ``size.shortest_edge`` / ``size.longest_edge`` (pixel counts in the Qwen2-VL family) or the older ``min_pixels`` / ``max_pixels``."""
     size = config.get("size")
     low = size.get("shortest_edge") if isinstance(size, Mapping) else None
     high = size.get("longest_edge") if isinstance(size, Mapping) else None
@@ -122,7 +132,11 @@ def _pixel_limits(config: Mapping[str, Any]) -> tuple[int | None, int | None]:
     high = config.get("max_pixels", high)
 
     def ok(value: Any) -> int | None:
-        return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else None
+        return (
+            value
+            if isinstance(value, int) and not isinstance(value, bool) and value > 0
+            else None
+        )
 
     return ok(low), ok(high)
 
@@ -137,15 +151,22 @@ def qwen_processor_facts(
     vision block are the pinned runtime's.
     """
     facts: dict[str, Any] = {
-        "qwen_sample_fps": C.QWEN_VIDEO_SAMPLE_FPS,
-        "qwen_wrap_tokens": C.QWEN_VISION_WRAP_TOKENS,
+        "qwen_sample_fps": constants.QWEN_VIDEO_SAMPLE_FPS,
+        "qwen_wrap_tokens": constants.QWEN_VISION_WRAP_TOKENS,
     }
     if image_config:
         patch, merge = image_config.get("patch_size"), image_config.get("merge_size")
-        if all(isinstance(v, int) and not isinstance(v, bool) and v > 0 for v in (patch, merge)):
+        if all(
+            isinstance(v, int) and not isinstance(v, bool) and v > 0
+            for v in (patch, merge)
+        ):
             facts["qwen_factor"] = int(patch) * int(merge)  # type: ignore[arg-type]
         temporal = image_config.get("temporal_patch_size")
-        if isinstance(temporal, int) and not isinstance(temporal, bool) and temporal > 0:
+        if (
+            isinstance(temporal, int)
+            and not isinstance(temporal, bool)
+            and temporal > 0
+        ):
             facts["qwen_temporal_patch"] = temporal
         low, high = _pixel_limits(image_config)
         if low is not None:
@@ -163,12 +184,13 @@ def qwen_processor_facts(
 
 def dit_cost_model(transformer_config: Mapping[str, Any] | None) -> dict[str, Any]:
     """``facts.cost_model`` of a DiT component (FLOP coefficients only when the config was readable)."""
-    facts: dict[str, Any] = {"row_align": C.PACKED_ALIGNMENT, **geometry_facts()}
+    facts: dict[str, Any] = {
+        "row_align": constants.PACKED_ALIGNMENT,
+        **geometry_facts(),
+    }
     if transformer_config is not None:
-        try:
+        with contextlib.suppress(KeyError, TypeError, ValueError):
             facts.update(dit_flop_coefficients(transformer_config))
-        except (KeyError, TypeError, ValueError):
-            pass  # not the expected layout: the client falls back to its defaults
     return facts
 
 
@@ -178,12 +200,13 @@ def text_encoder_cost_model(
     video_processor_config: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """``facts.cost_model`` of a text-encoder (conditioning) component."""
-    facts: dict[str, Any] = {**geometry_facts(), **qwen_processor_facts(image_processor_config, video_processor_config)}
+    facts: dict[str, Any] = {
+        **geometry_facts(),
+        **qwen_processor_facts(image_processor_config, video_processor_config),
+    }
     if text_encoder_config is not None:
-        try:
+        with contextlib.suppress(KeyError, TypeError, ValueError):
             facts.update(text_encoder_flop_coefficients(text_encoder_config))
-        except (KeyError, TypeError, ValueError):
-            pass
     return facts
 
 

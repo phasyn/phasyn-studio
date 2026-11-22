@@ -1,7 +1,7 @@
 // Image Studio 的文件狀態（shell 的 docReducer＋圖片 reducer）：編輯、保存成功（保存期間的新編輯保留）、衝突後「保留兩邊」
 // 重新套用還沒保存的動作。
 import { describe, expect, it } from "vitest";
-import { type DocEvent, type DocState } from "@/features/studio-shell";
+import type { DocEvent, DocState } from "@/features/studio-shell";
 import { initialDocState } from "@/features/studio-shell/testing";
 import type { ImageProjectAction } from "../model/project";
 import { project } from "../model/imageFixtures";

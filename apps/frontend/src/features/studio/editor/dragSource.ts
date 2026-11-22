@@ -1,3 +1,4 @@
+import { isRecord } from "@/lib/json";
 // What a panel puts on a drag so the timeline can place it: the Project panel and the Source monitor drag a source
 // (with the marked range when there is one); the timeline reads it on dragover and drop. Only this module knows the
 // transfer format. A browser hides the payload until the drop, so the drag that started in this page is also kept
@@ -41,11 +42,11 @@ export function isSourceDrag(transfer: DataTransfer | null): boolean {
 /** The dragged source of a drop; null when the drop carries none or its payload is not ours. */
 export function readSourceDrag(transfer: DataTransfer | null): SourceDrag | null {
   const raw = transfer?.getData(SOURCE_DRAG_TYPE);
-  if (!raw) return null;
+  if (!(raw != null && raw !== "")) return null;
   try {
     const value: unknown = JSON.parse(raw);
-    if (typeof value !== "object" || value === null) return null;
-    const { sourceId, inFrame, outFrame } = value as Record<string, unknown>;
+    if (!isRecord(value)) return null;
+    const { sourceId, inFrame, outFrame } = value;
     if (typeof sourceId !== "string" || sourceId === "") return null;
     const frame = (item: unknown) => (typeof item === "number" && Number.isSafeInteger(item) && item >= 0 ? item : null);
     return { sourceId, inFrame: frame(inFrame), outFrame: frame(outFrame) };

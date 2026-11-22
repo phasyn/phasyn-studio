@@ -1,14 +1,12 @@
-// The inline prompt editor's toolbar (one 36 px row), left to right: 範本 ▾ (templates, one click from the tab),
-// 固定 Prompt ▾ (fixed prompts), @ 參考 (starts an @ name at the caret), 逐鏡描述 (only while the prompt has [Shot N]
-// lines: the per-shot description dialog), 建議 n (the advisor: a panel under the button with
-// the findings, their one-click fixes and a way to 修正與建議 in the professional editor), the caller's status badges
-// (the shot's plugin check), ⋯ (格式化…, 區塊檢視) and, at the right
-// end, 展開 (the professional editor). Narrower than its tools, it drops the icons of the labelled buttons and then
-// wraps onto a second row, keeping the words (fit.ts, measured, so it holds for any language); only a row narrower than
-// one tool gives up words, which then stay in the accessible names and tooltips (逐鏡描述 gives up its words with
-// 固定 Prompt's). The two dropdowns open a ToolPopover under their button; the ⋯ menu is the shared action menu.
+// The inline prompt editor's toolbar: always ONE 36 px row of tools (a second row
+// would crowd the prompt): 範本 ▾ (templates), 固定 Prompt ▾ (fixed prompts), @ 參考 (starts an @ name at
+// the caret), 逐鏡描述 (only while the prompt has [Shot N] lines), ⋯ (格式化…, 區塊檢視 and every tool the row had no
+// room for, with its full words) and, at the right end, 展開 (the professional editor). The checks (建議, the plugin
+// check) are status, not tools: they live in the status row under the editor (PromptStatusRow.tsx). Narrower than its
+// tools, the row moves tools into ⋯ instead of wrapping (fit.ts, measured, so it holds for any language). The two
+// dropdowns open a ToolPopover under their button, or under ⋯ when they live in the menu.
 import { AtSign, BookMarked, ChevronDown, Ellipsis, LayoutList, LayoutTemplate, ListVideo, Maximize2, RemoveFormatting } from "lucide-react";
-import { useId, useRef, useState, type ReactNode } from "react";
+import { useMemo, useId, useRef, useState } from "react";
 import type { StudioPromptSnippet } from "@/api/generated/contracts";
 import { ActionMenu, MenuTriggerButton } from "@/components/ui/action-menu";
 import { Button } from "@/components/ui/button";
@@ -18,7 +16,7 @@ import { cn } from "@/lib/cn";
 import { useFitLevel } from "@/lib/useFitLevel";
 import type { PromptTemplate } from "../advisor";
 import { TemplatePicker } from "../advisor/TemplatePicker";
-import { AdvisorBadgeSlot, type AdvisorBadgeSlotProps, type PromptTask } from "../advisorSlot";
+import type { PromptTask } from "../advisorSlot";
 import { SnippetPicker } from "../SnippetPicker";
 import { TOOL, TOOLBAR_FIT_LEVELS, ToolbarFitContext, toolbarFit, toolPadding } from "./fit";
 import { ToolPopover } from "./ToolPopover";
@@ -35,11 +33,6 @@ export interface PromptToolbarProps {
   empty: boolean;
   templates: readonly PromptTemplate[];
   mode: PromptTask | undefined;
-  advisor: AdvisorBadgeSlotProps;
-  /** The caller's status badges, after the advisor's. */
-  status?: ReactNode;
-  /** Changes when the status badges change what they show (the toolbar then measures its room again). */
-  statusKey?: string;
   onInsertTemplate: (template: PromptTemplate) => void;
   /** Inserts a fixed prompt; false = it was not inserted (the picker stays open, the reason is shown). */
   onPickSnippet: (snippet: StudioPromptSnippet) => boolean;
@@ -60,9 +53,6 @@ export function PromptToolbar({
   empty,
   templates,
   mode,
-  advisor,
-  status,
-  statusKey = "",
   onInsertTemplate,
   onPickSnippet,
   onManageSnippets,
@@ -76,16 +66,16 @@ export function PromptToolbar({
   const id = useId();
   const rowRef = useRef<HTMLDivElement>(null);
   const shots = shotCount > 0 && onShotDescriptions !== undefined;
-  const level = useFitLevel(rowRef, TOOLBAR_FIT_LEVELS, `${getLocale()}\u0000${statusKey}\u0000${shots ? "shots" : ""}`);
-  const fit = toolbarFit(level);
+  const level = useFitLevel(rowRef, TOOLBAR_FIT_LEVELS, `${getLocale()}\u0000${shots ? "shots" : ""}`);
+  const fit = useMemo(() => toolbarFit(level), [level]);
   const pad = toolPadding(fit);
   const [open, setOpen] = useState<OpenPanel>(null);
   const [menuAnchor, setMenuAnchor] = useState<HTMLButtonElement | null>(null);
   const close = (restoreFocus: boolean) => {
-    if (restoreFocus && open?.anchor.isConnected) open.anchor.focus();
+    if (restoreFocus && (open?.anchor.isConnected === true)) open.anchor.focus();
     setOpen(null);
   };
-  const toggle = (kind: "templates" | "snippets", anchor: HTMLButtonElement) => setOpen((current) => (current?.kind === kind ? null : { kind, anchor }));
+  const toggle = (kind: "templates" | "snippets", anchor: HTMLButtonElement) => { setOpen((current) => (current?.kind === kind ? null : { kind, anchor })); };
   const panelId = (kind: "templates" | "snippets") => `${id}-${kind}`;
   const popup = (kind: "templates" | "snippets") => ({
     "aria-haspopup": "dialog" as const,
@@ -93,19 +83,27 @@ export function PromptToolbar({
     "aria-controls": open?.kind === kind ? panelId(kind) : undefined,
   });
   const disabledReason = disabled ? t("編輯器目前停用") : null;
+  const snippetTitle = view === "blocks" ? t("插入固定 Prompt（區塊檢視：附加到最後）") : t("插入固定 Prompt 到游標位置");
+  // Tools the row has no room for, first in the ⋯ menu with their full words; a dropdown opened from there hangs under ⋯
+  const overflow: MenuItem[] = [
+    ...(fit.snippetsInMenu ? [{ id: "snippets", label: t("固定 Prompt"), icon: BookMarked, disabledReason, onSelect: () => { if (menuAnchor) setOpen({ kind: "snippets", anchor: menuAnchor }); } }] : []),
+    ...(fit.mentionInMenu ? [{ id: "mention", label: t("參考"), icon: AtSign, disabledReason, onSelect: onMention }] : []),
+    ...(shots && fit.shotsInMenu ? [{ id: "shots", label: t("逐鏡描述"), icon: ListVideo, disabledReason, onSelect: () => { onShotDescriptions(); } }] : []),
+  ];
   const menuItems: MenuItem[] = [
-    { id: "format", label: t("格式化…"), icon: RemoveFormatting, disabledReason: disabledReason ?? (empty ? t("prompt 是空的") : null), onSelect: onFormat },
+    ...overflow,
+    { id: "format", label: t("格式化…"), icon: RemoveFormatting, disabledReason: disabledReason ?? (empty ? t("prompt 是空的") : null), onSelect: onFormat, separatorBefore: overflow.length > 0 },
     { id: "view", label: view === "blocks" ? t("切回文字檢視") : t("區塊檢視"), icon: LayoutList, onSelect: onToggleView },
   ];
 
   return (
-    <ToolbarFitContext.Provider value={fit}>
+    <ToolbarFitContext value={fit}>
       <div
         ref={rowRef}
         role="group"
         aria-label={t("Prompt 工具")}
         data-fit={level}
-        className={cn("flex min-w-0 shrink-0 items-center", fit.wrap ? "min-h-9 flex-wrap py-0.5" : "h-9", fit.tight ? "gap-0.5" : "gap-1")}
+        className={cn("flex h-9 min-w-0 shrink-0 items-center", fit.tight ? "gap-0.5" : "gap-1")}
       >
         <Button
           size="sm"
@@ -114,69 +112,71 @@ export function PromptToolbar({
           icon={fit.icons ? <LayoutTemplate aria-hidden /> : undefined}
           disabled={disabled}
           title={t("從範本開始：分段格式、分鏡骨架與範例")}
-          onClick={(event) => toggle("templates", event.currentTarget)}
+          onClick={(event) => { toggle("templates", event.currentTarget); }}
           {...popup("templates")}
         >
           {t("範本")}
           <ChevronDown aria-hidden className="opacity-70" />
         </Button>
-        <Button
-          size="sm"
-          variant="quiet"
-          className={cn(TOOL, pad)}
-          icon={fit.icons || !fit.snippetLabel ? <BookMarked aria-hidden /> : undefined}
-          disabled={disabled}
-          title={view === "blocks" ? t("插入固定 Prompt（區塊檢視：附加到最後）") : t("插入固定 Prompt 到游標位置")}
-          onClick={(event) => toggle("snippets", event.currentTarget)}
-          {...popup("snippets")}
-        >
-          <span className={fit.snippetLabel ? undefined : "sr-only"}>{t("固定 Prompt")}</span>
-          <ChevronDown aria-hidden className="opacity-70" />
-        </Button>
-        <Button size="sm" variant="quiet" className={cn(TOOL, pad)} icon={<AtSign aria-hidden />} disabled={disabled} title={t("插入參考素材（也可以直接輸入 @）")} onClick={onMention}>
-          <span className={fit.mentionLabel ? undefined : "sr-only"}>{t("參考")}</span>
-        </Button>
-        {shots ? (
+        {fit.snippetsInMenu ? null : (
+          <Button
+            size="sm"
+            variant="quiet"
+            className={cn(TOOL, pad)}
+            icon={fit.icons ? <BookMarked aria-hidden /> : undefined}
+            disabled={disabled}
+            title={snippetTitle}
+            onClick={(event) => { toggle("snippets", event.currentTarget); }}
+            {...popup("snippets")}
+          >
+            {t("固定 Prompt")}
+            <ChevronDown aria-hidden className="opacity-70" />
+          </Button>
+        )}
+        {fit.mentionInMenu ? null : (
+          <Button size="sm" variant="quiet" className={cn(TOOL, pad)} icon={<AtSign aria-hidden />} disabled={disabled} title={t("插入參考素材（也可以直接輸入 @）")} onClick={onMention}>
+            {t("參考")}
+          </Button>
+        )}
+        {shots && !fit.shotsInMenu ? (
           <Button
             size="sm"
             variant="quiet"
             className={cn(TOOL, pad, "animate-fade-in")}
-            icon={fit.icons || !fit.snippetLabel ? <ListVideo aria-hidden /> : undefined}
+            icon={fit.icons ? <ListVideo aria-hidden /> : undefined}
             disabled={disabled}
             aria-haspopup="dialog"
             title={t("逐一寫每個鏡頭的描述：景別、角色與特徵（{count} 個鏡頭）", { count: shotCount })}
             onClick={onShotDescriptions}
           >
-            <span className={fit.snippetLabel ? undefined : "sr-only"}>{t("逐鏡描述")}</span>
+            {t("逐鏡描述")}
           </Button>
         ) : null}
-        <AdvisorBadgeSlot {...advisor} />
-        {status ? <span className="flex shrink-0 items-center">{status}</span> : null}
         <MenuTriggerButton
           menuId={`${id}-more`}
           open={menuAnchor !== null}
           label={t("更多動作")}
-          onOpen={(element) => setMenuAnchor(element)}
-          onClose={() => setMenuAnchor(null)}
-          className="size-7 [&_svg]:size-3.5"
+          onOpen={(element) => { setMenuAnchor(element); }}
+          onClose={() => { setMenuAnchor(null); }}
+          className="size-[30px] [&_svg]:size-4"
         >
           <Ellipsis aria-hidden />
         </MenuTriggerButton>
         <Button
           size="sm"
           variant="secondary"
-          className={cn("ml-auto min-h-7 gap-1.5 [&_svg]:size-3.5", pad)}
-          icon={fit.icons ? <Maximize2 aria-hidden /> : undefined}
+          className={cn("ml-auto min-h-[30px] shrink-0 gap-1.5 [&_svg]:size-3.5", fit.expandIconOnly ? "w-[30px] px-0" : pad)}
+          icon={fit.icons || fit.expandIconOnly ? <Maximize2 aria-hidden /> : undefined}
           disabled={disabled}
           aria-label={t("展開專業 Prompt 編輯器")}
           title={t("展開專業 Prompt 編輯器（區塊、片段庫、參考）")}
           onClick={onExpand}
         >
-          {t("展開")}
+          {fit.expandIconOnly ? null : t("展開")}
         </Button>
       </div>
       {menuAnchor ? (
-        <ActionMenu id={`${id}-more`} label={t("更多動作")} items={menuItems} anchor={{ kind: "element", element: menuAnchor }} returnFocus={menuAnchor} onClose={() => setMenuAnchor(null)} />
+        <ActionMenu id={`${id}-more`} label={t("更多動作")} items={menuItems} anchor={{ kind: "element", element: menuAnchor }} returnFocus={menuAnchor} onClose={() => { setMenuAnchor(null); }} />
       ) : null}
       {open?.kind === "templates" ? (
         <ToolPopover id={panelId("templates")} anchor={open.anchor} label={t("範本")} width={340} onClose={close}>
@@ -207,11 +207,11 @@ export function PromptToolbar({
               close(true);
               onManageSnippets();
             }}
-            onClose={() => close(true)}
+            onClose={() => { close(true); }}
             className={IN_POPOVER}
           />
         </ToolPopover>
       ) : null}
-    </ToolbarFitContext.Provider>
+    </ToolbarFitContext>
   );
 }

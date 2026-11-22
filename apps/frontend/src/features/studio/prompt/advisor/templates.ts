@@ -69,13 +69,13 @@ export function shotAppearances(text: string, plan: LabelPlan): Map<string, stri
   };
   for (const mention of scan.mentions) if (mention.exactCase && plan.byAlias.has(mention.alias)) add(mention.alias, mention.start);
   for (const label of scan.labels) {
-    const entry = plan.entries.find((item) => item.label === `<${label.tag} ${label.ordinal}>`);
+    const entry = plan.entries.find((item) => item.label === `<${label.tag} ${String(label.ordinal)}>`);
     if (entry) add(entry.ref.alias, label.start);
   }
   return new Map(
     [...found].map(([alias, numbers]) => [
       alias,
-      [...numbers].sort((a, b) => a - b).map((shot) => `[Shot ${shot}]`),
+      [...numbers].sort((a, b) => a - b).map((shot) => `[Shot ${String(shot)}]`),
     ]),
   );
 }
@@ -94,14 +94,14 @@ export function retentionLines(plan: LabelPlan, appearances: ReadonlyMap<string,
       subject += 1;
       const shots = (appearances.get(entry.ref.alias) ?? ["[Shot 1]"]).join(", ");
       if (entry.ref.kind === "video") return t("<Subject {subject}> (appears in {shots}): fully_preserved - [TODO: 要從 {file} 沿用的外觀或動作].", { subject, shots, file });
-      return `<Subject ${subject}> (appears in ${shots}): fully_preserved - the appearance shown in @${entry.ref.alias} is retained.`;
+      return `<Subject ${String(subject)}> (appears in ${shots}): fully_preserved - the appearance shown in @${entry.ref.alias} is retained.`;
     })
     .join("\n");
 }
 
 /** T2VA 三欄（官方 Base 指南 §2.2）；i2va＝加上 I2VA 對齊首行。 */
 export function baseTemplate(options: { i2va?: boolean } = {}): string {
-  const head = options.i2va ? `${I2VA_ALIGNMENT_LINE}\n\n` : "";
+  const head = (options.i2va === true) ? `${I2VA_ALIGNMENT_LINE}\n\n` : "";
   return `${head}integrated_multimodal_description: ${PLACEHOLDER.shot1}\n\noverall_soundscape: ${PLACEHOLDER.soundscape}\n\nnon_diegetic_music: ${PLACEHOLDER.music}`;
 }
 
@@ -144,7 +144,8 @@ export function timelineSkeleton(frames: number, shots: number): string | null {
 
 /**
  * 動作戲四鏡骨架（景深站位＋每鏡換視角，避開 2D 格鬥遊戲的左右對站）：
- * 低角度縱深衝刺 → 過肩朝鏡頭出招 → 接觸點特寫＋反轉衝擊格 → 俯角看結果。
+ * 低角度縱深衝向防守方 → 過肩朝防守方出招 → 接觸點特寫＋反轉衝擊格 → 俯角看結果。
+ * 動作朝向對手、不朝鏡頭：朝鏡頭的寫法會讓角色更常正面看鏡頭。
  */
 export function actionSkeleton(frames: number): string | null {
   const timing = clipTiming(frames);
@@ -153,8 +154,8 @@ export function actionSkeleton(frames: number): string | null {
   if (!cuts) return null;
   const [two, three, four] = cuts.map((time) => formatCueTime(time));
   return [
-    t("[Shot 1] A ground-level low angle looks along the street: [TODO: 防守方] stands in the midground, and far in the deep background [TODO: 進攻方] bursts toward the lens, growing larger with every stride."),
-    t("[Shot 2] At {time}, the camera cuts to an over-the-shoulder shot from behind [TODO: 防守方]: [TODO: 進攻方] fills the foreground and swings [TODO: 武器或拳腳] toward the lens, foreshortened and smeared.", { time: two }),
+    t("[Shot 1] A ground-level low angle looks along the street: [TODO: 防守方] stands in the midground, and far in the deep background [TODO: 進攻方] bursts toward [TODO: 防守方] down the street, growing larger with every stride."),
+    t("[Shot 2] At {time}, the camera cuts to an over-the-shoulder shot from behind [TODO: 防守方]: [TODO: 進攻方] fills the foreground and swings [TODO: 武器或拳腳] at [TODO: 防守方]'s guard, foreshortened and smeared.", { time: two }),
     t("[Shot 3] At {time}, the shot cuts to an extreme close-up at the point of contact: [TODO: 接觸的瞬間與防禦方式]; the frame shakes strongly and flashes to a black-and-white inverted impact frame.", { time: three }),
     t("[Shot 4] At {time}, a high angle looks down on both of them: [TODO: 衝擊造成的結果，例如被打向遠景、地面的衝擊波].", { time: four }),
   ].join("\n");
@@ -179,7 +180,7 @@ export interface PromptTemplate {
 
 /** 範本的提示文字：完整的說明，加上它依據的官方名稱（任務代號、段落名稱、指南章節）。 */
 export function templateHint(template: PromptTemplate): string {
-  return template.official ? t("{description}\n依據：{official}", { description: template.description, official: template.official }) : template.description;
+  return (template.official != null && template.official !== "") ? t("{description}\n依據：{official}", { description: template.description, official: template.official }) : template.description;
 }
 
 const SKELETONS = {
@@ -202,7 +203,7 @@ export function promptTemplates(input: {
   const skeleton = (shots: 2 | 3): PromptTemplate => {
     const text = timelineSkeleton(input.frames, shots);
     return {
-      id: `timeline-${shots}`,
+      id: `timeline-${String(shots)}`,
       title: SKELETONS[shots].title,
       description: timing ? SKELETONS[shots].describe(formatShortSeconds(timing.seconds)) : t("依鏡頭長度平均切鏡；要先知道鏡頭的「時長」"),
       official: markers,

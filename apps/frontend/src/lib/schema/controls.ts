@@ -1,8 +1,9 @@
+import { stringifyJson } from "../json";
 // Which control a schema field gets and what it shows: the control kind, select options, the one-line scalar list
 // and the short range text. Pure functions, so the form's choices are tested without rendering.
-import { displayText, isRecord, previewValue, valuesEqual } from "@/lib/json";
+import { isListed, displayText, isRecord, previewValue, valuesEqual } from "@/lib/json";
 import { t } from "@/i18n";
-import { describeField, type FieldInfo, type FieldKind, type JsonSchema } from "./describe";
+import { describeField, type FieldInfo, type JsonSchema } from "./describe";
 
 /** The kind of form control (SchemaField renders by it). */
 export type ControlKind = "fixed" | "null-only" | "select" | "switch" | "number" | "text" | "list" | "json";
@@ -14,7 +15,7 @@ export interface ControlOptions {
   value: unknown;
 }
 
-const SCALAR_ITEM_KINDS = new Set<FieldKind>(["string", "integer", "number"]);
+const SCALAR_ITEM_KINDS = ["string", "integer", "number"] as const;
 
 /**
  * An array of scalars (strings, integers or numbers, possibly an enum) can be edited as one comma-separated line;
@@ -22,11 +23,11 @@ const SCALAR_ITEM_KINDS = new Set<FieldKind>(["string", "integer", "number"]);
  * losslessly, so it falls back to JSON.
  */
 export function scalarListItemKind(info: FieldInfo, value: unknown, root?: JsonSchema): "string" | "integer" | "number" | null {
-  if (info.kind !== "array" || !isRecord(info.schema.items)) return null;
-  const item = describeField(info.schema.items, root);
+  if (info.kind !== "array" || !isRecord(info.schema["items"])) return null;
+  const item = describeField(info.schema["items"], root);
   let kind: "string" | "integer" | "number" | null = null;
   if (item.nullable) return null;
-  if (SCALAR_ITEM_KINDS.has(item.kind)) kind = item.kind as "string" | "integer" | "number";
+  if (isListed(item.kind, SCALAR_ITEM_KINDS)) kind = item.kind;
   else if (item.kind === "enum" && item.enumValues.every((option) => typeof option === "string")) kind = "string";
   if (kind === null) return null;
   if (value === undefined || value === null) return kind;
@@ -58,6 +59,8 @@ export function controlKind(info: FieldInfo, options: ControlOptions, root?: Jso
       return "text";
     case "array":
       return scalarListItemKind(info, options.value, root) ? "list" : "json";
+    case "json":
+    case "object":
     default:
       return "json";
   }
@@ -74,7 +77,7 @@ export interface SelectOption {
 }
 
 function optionKey(value: unknown): string {
-  return JSON.stringify(value) ?? "null";
+  return stringifyJson(value) ?? "null";
 }
 
 /**
@@ -123,7 +126,7 @@ export function rangeSummary(info: FieldInfo): string | null {
   if (info.exclusiveMinimum !== null) parts.push(t("須 > {exclusiveMinimum}", { exclusiveMinimum: info.exclusiveMinimum }));
   if (info.exclusiveMaximum !== null) parts.push(t("須 < {exclusiveMaximum}", { exclusiveMaximum: info.exclusiveMaximum }));
   if (info.maxLength !== null && info.maxLength < 1000) parts.push(t("最多 {maxLength} 字元", { maxLength: info.maxLength }));
-  if (info.pattern) parts.push(t("格式 {pattern}", { pattern: info.pattern }));
+  if (info.pattern != null && info.pattern !== "") parts.push(t("格式 {pattern}", { pattern: info.pattern }));
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 

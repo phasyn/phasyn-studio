@@ -10,21 +10,21 @@ import { takeSnapshot } from "./params";
 import { t } from "@/i18n";
 
 export function asImageAsset(value: unknown): ImageAsset | null {
-  if (!isRecord(value) || typeof value.asset_id !== "string" || !isFileRef(value.file)) return null;
-  const st = isRecord(value.source_take) ? value.source_take : null;
+  if (!isRecord(value) || typeof value["asset_id"] !== "string" || !isFileRef(value["file"])) return null;
+  const st = isRecord(value["source_take"]) ? value["source_take"] : null;
   return {
-    asset_id: value.asset_id,
-    file: value.file,
-    width: typeof value.width === "number" ? value.width : 0,
-    height: typeof value.height === "number" ? value.height : 0,
-    mode: value.mode === "RGB" ? "RGB" : "RGBA",
-    has_alpha: value.has_alpha === true,
-    white_matte: value.white_matte === true,
+    asset_id: value["asset_id"],
+    file: value["file"],
+    width: typeof value["width"] === "number" ? value["width"] : 0,
+    height: typeof value["height"] === "number" ? value["height"] : 0,
+    mode: value["mode"] === "RGB" ? "RGB" : "RGBA",
+    has_alpha: value["has_alpha"] === true,
+    white_matte: value["white_matte"] === true,
     source_take:
-      st && typeof st.project_id === "string" && typeof st.image_shot_id === "string" && typeof st.take_id === "string"
-        ? { project_id: st.project_id, image_shot_id: st.image_shot_id, take_id: st.take_id }
+      st && typeof st["project_id"] === "string" && typeof st["image_shot_id"] === "string" && typeof st["take_id"] === "string"
+        ? { project_id: st["project_id"], image_shot_id: st["image_shot_id"], take_id: st["take_id"] }
         : null,
-    actual_settings: isRecord(value.actual_settings) ? value.actual_settings : {},
+    actual_settings: isRecord(value["actual_settings"]) ? value["actual_settings"] : {},
   };
 }
 
@@ -54,7 +54,7 @@ export function takeStepIds(run: Pick<WireRun, "request">, take: Pick<StudioImag
   const outputs = takeOutputs(take);
   const ids = new Set<string>();
   for (const key of [outputs.image, outputs.image_white]) {
-    const ref = key ? run.request.pipeline.outputs[key] : undefined;
+    const ref = (key != null && key !== "") ? run.request.pipeline.outputs[key] : undefined;
     if (ref) for (const id of upstreamSteps(run, ref.from_step)) ids.add(id);
   }
   return run.request.pipeline.steps.map((step) => step.step_id).filter((id) => ids.has(id));
@@ -66,13 +66,13 @@ export function outputSuffix(outputKey: string): string {
 }
 
 function elapsedMs(start: string | null, end: string | null): number | null {
-  if (!start || !end) return null;
+  if (!(start != null && start !== "") || !(end != null && end !== "")) return null;
   const ms = Date.parse(end) - Date.parse(start);
   return Number.isFinite(ms) && ms >= 0 ? ms : null;
 }
 
 function readAsset(run: WireRun, key: string | null): ImageAsset | null {
-  const ref = key ? run.request.pipeline.outputs[key] : undefined;
+  const ref = (key != null && key !== "") ? run.request.pipeline.outputs[key] : undefined;
   if (!ref) return null;
   const step = parseRunStep(ref.from_step, run.steps[ref.from_step]);
   const value = step.outputs[ref.output];
@@ -133,7 +133,7 @@ export function imageTakeOutcome(run: WireRun, take: Pick<StudioImageTake, "para
 
 /** run 狀態上的 preview（RunStepPreview）；缺必要欄位或網址不是主控路徑時 null（不顯示，不猜）。 */
 export function asPreview(value: unknown): RunStepPreview | null {
-  if (!isRecord(value) || typeof value.url !== "string" || !value.url.startsWith("/api/runs/")) return null;
+  if (!isRecord(value) || typeof value["url"] !== "string" || !value["url"].startsWith("/api/runs/")) return null;
   const n = (key: string): number | null => {
     const raw = value[key];
     return typeof raw === "number" && Number.isFinite(raw) ? raw : null;
@@ -148,11 +148,11 @@ export function asPreview(value: unknown): RunStepPreview | null {
     total,
     width: n("width") ?? 0,
     height: n("height") ?? 0,
-    media_type: value.media_type === "image/png" ? "image/png" : "image/jpeg",
+    media_type: value["media_type"] === "image/png" ? "image/png" : "image/jpeg",
     size_bytes: n("size_bytes") ?? 0,
-    note: typeof value.note === "string" && value.note ? value.note : null,
-    at: typeof value.at === "string" ? value.at : "",
-    url: value.url,
+    note: typeof value["note"] === "string" && value["note"] ? value["note"] : null,
+    at: typeof value["at"] === "string" ? value["at"] : "",
+    url: value["url"],
   };
 }
 
@@ -161,12 +161,12 @@ export function asPreview(value: unknown): RunStepPreview | null {
  * 同一張圖有多個步驟帶預覽時取時間最新的一張。
  */
 export function takePreview(run: WireRun | undefined, take: Pick<StudioImageTake, "params_snapshot">): (RunStepPreview & { stepId: string }) | null {
-  if (!run || run.state !== "running") return null;
+  if (run?.state !== "running") return null;
   let best: (RunStepPreview & { stepId: string }) | null = null;
   for (const id of takeStepIds(run, take)) {
     const raw = run.steps[id];
-    if (!isRecord(raw) || raw.state !== "running") continue;
-    const preview = asPreview(raw.preview);
+    if (!isRecord(raw) || raw["state"] !== "running") continue;
+    const preview = asPreview(raw["preview"]);
     if (preview && (!best || preview.at > best.at || (preview.at === best.at && preview.seq > best.seq))) best = { ...preview, stepId: id };
   }
   return best;
@@ -190,7 +190,7 @@ export function takeStages(run: WireRun, take: Pick<StudioImageTake, "params_sna
     const view = parseRunStep(id, run.steps[id]);
     const def = defs.get(id);
     const provider = def ? lookup(view.node_id ?? def.node_id, view.component_id ?? def.component_id) : null;
-    const role = provider ? (ROLE_BY_PROVIDER[provider] ?? null) : null;
+    const role = (provider != null && provider !== "") ? (ROLE_BY_PROVIDER[provider] ?? null) : null;
     const base = suffix && id.endsWith(suffix) ? id.slice(0, -suffix.length) : id;
     return { stepId: id, role, label: role ? ROLE_LABELS[role] : base, state: view.state, startedAt: view.started_at, finishedAt: view.finished_at, error: view.error };
   });

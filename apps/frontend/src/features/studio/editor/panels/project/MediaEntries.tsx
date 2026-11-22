@@ -56,7 +56,7 @@ function proxyLabel(item: MediaItem): string {
 
 /** A shot's take carries the Video Studio's clapperboard; uploaded media the icon of its kind. */
 function MediaIcon({ item, className }: { item: MediaItem; className?: string }) {
-  if (!item.source.shot_id) return <KindIcon kind={item.kind} className={className} />;
+  if (!(item.source.shot_id != null && item.source.shot_id !== "")) return <KindIcon kind={item.kind} {...(className === undefined ? {} : { className })} />;
   return <Clapperboard aria-hidden className={cn("size-4 shrink-0", item.pending ? "text-fg-tertiary" : "text-brand-cyan", className)} />;
 }
 
@@ -105,7 +105,7 @@ function MenuButton({ item, menuId, open, onOpen, onClose, className }: MenuButt
       aria-controls={open ? menuId : undefined}
       aria-label={label}
       title={label}
-      onClick={(event) => toggle(event.currentTarget)}
+      onClick={(event) => { toggle(event.currentTarget); }}
       className={cn(TOOL_BUTTON, "text-fg-tertiary aria-expanded:bg-brand-gradient-soft aria-expanded:text-fg", className)}
     >
       <Ellipsis aria-hidden />
@@ -155,7 +155,7 @@ function entryProps({ item, selected, tabbable, loaded, onSelect, onOpen, onMenu
     onDoubleClick: (event: MouseEvent<HTMLElement>) => {
       if (!onControl(event)) onOpen();
     },
-    onDragStart: (event: DragEvent<HTMLElement>) => writeSourceDrag(event.dataTransfer, { sourceId: item.id, inFrame: null, outFrame: null }),
+    onDragStart: (event: DragEvent<HTMLElement>) => { writeSourceDrag(event.dataTransfer, { sourceId: item.id, inFrame: null, outFrame: null }); },
     onDragEnd: endSourceDrag,
     onContextMenu: (event: MouseEvent<HTMLElement>) => {
       event.preventDefault();

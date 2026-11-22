@@ -94,9 +94,9 @@ export interface ShotRowProps {
 
 export function ShotRow({ index, fieldId, shot, range, picture, text, issues, subjects, disabled, onText }: ShotRowProps) {
   const fieldRef = useRef<HTMLTextAreaElement>(null);
-  const pendingCaret = useRef<number | null>(null);
+  const pendingCaretRef = useRef<number | null>(null);
   // Until the caret has been in the field, a character chip writes at the end (a new field's caret sits at its start)
-  const placed = useRef(false);
+  const placedRef = useRef(false);
   const labels = shotSizeLabels();
   const viewLabels = viewpointLabels();
   const size = currentShotSize(text);
@@ -108,17 +108,17 @@ export function ShotRow({ index, fieldId, shot, range, picture, text, issues, su
 
   // After a chip's edit reaches the field: the caret goes right after what the chip wrote
   useLayoutEffect(() => {
-    const caret = pendingCaret.current;
+    const caret = pendingCaretRef.current;
     const field = fieldRef.current;
     if (caret === null || !field) return;
-    pendingCaret.current = null;
+    pendingCaretRef.current = null;
     field.focus();
     field.setSelectionRange(caret, caret);
   }, [text]);
 
   const commit = (edit: TextEdit) => {
     if (edit.text !== text) {
-      pendingCaret.current = edit.caret;
+      pendingCaretRef.current = edit.caret;
       onText(edit.text);
       return;
     }
@@ -131,8 +131,8 @@ export function ShotRow({ index, fieldId, shot, range, picture, text, issues, su
       return;
     }
     const field = fieldRef.current;
-    const start = field && placed.current ? field.selectionStart : text.length;
-    const end = field && placed.current ? field.selectionEnd : text.length;
+    const start = field && placedRef.current ? field.selectionStart : text.length;
+    const end = field && placedRef.current ? field.selectionEnd : text.length;
     commit(insertAt(text, start, end, subjectInsertion(subject)));
   };
 
@@ -165,7 +165,7 @@ export function ShotRow({ index, fieldId, shot, range, picture, text, issues, su
                 disabled={disabled}
                 aria-pressed={size === item.id}
                 title={t("開頭寫成「{phrase}」", { phrase: sizePhrase(item, lowerCase) })}
-                onClick={() => commit(applyShotSize(text, item, lowerCase))}
+                onClick={() => { commit(applyShotSize(text, item, lowerCase)); }}
                 className={cn(CHIP, size === item.id ? CHIP_ON : CHIP_IDLE)}
               >
                 {labels[item.id]}
@@ -176,7 +176,7 @@ export function ShotRow({ index, fieldId, shot, range, picture, text, issues, su
             <div className="flex min-w-0 flex-wrap items-center gap-1">
               <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-line" />
               {subjects.map((subject) => {
-                const tag = `<Subject ${subject.number}>`;
+                const tag = `<Subject ${String(subject.number)}>`;
                 const inShot = named.has(subject.number);
                 return (
                   <button
@@ -186,7 +186,7 @@ export function ShotRow({ index, fieldId, shot, range, picture, text, issues, su
                     disabled={disabled}
                     aria-pressed={inShot}
                     title={inShot ? t("從這一鏡拿掉 {subject}", { subject: tag }) : t("插入「{text}」", { text: subjectInsertion(subject) })}
-                    onClick={() => toggleSubject(subject)}
+                    onClick={() => { toggleSubject(subject); }}
                     className={cn(CHIP, inShot ? CHIP_ON : CHIP_IDLE, "machine")}
                   >
                     <UserRound aria-hidden />
@@ -206,7 +206,7 @@ export function ShotRow({ index, fieldId, shot, range, picture, text, issues, su
                 disabled={disabled}
                 aria-pressed={viewpoint === item.id}
                 title={t("視角寫成「{phrase}」", { phrase: item.phrase })}
-                onClick={() => commit(applyViewpoint(text, item, subjects))}
+                onClick={() => { commit(applyViewpoint(text, item, subjects)); }}
                 className={cn(CHIP, viewpoint === item.id ? CHIP_ON : CHIP_IDLE)}
               >
                 {viewLabels[item.id]}
@@ -228,9 +228,9 @@ export function ShotRow({ index, fieldId, shot, range, picture, text, issues, su
           aria-invalid={issues.some(blocksSave) || undefined}
           placeholder="A close-up of <Subject 1> with long silver hair and a red ribbon, raising her staff against the night sky"
           onFocus={() => {
-            placed.current = true;
+            placedRef.current = true;
           }}
-          onChange={(event) => onText(event.target.value)}
+          onChange={(event) => { onText(event.target.value); }}
           className="field-sizing-content max-h-60 min-h-[5.375rem] leading-6"
         />
         {issues.length > 0 ? (

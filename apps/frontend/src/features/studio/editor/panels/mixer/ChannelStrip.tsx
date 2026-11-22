@@ -2,12 +2,14 @@
 // it), pan, mute and solo, the gain fader and the typed gain. The master strip has the same rows so the faders line
 // up; where a track has pan it shows the output's loudest peak and clipping lamp, and its fader stands beside a pair
 // of output meters. Every change is one edit: tracks through the patchTrack command, the master gain through a commit.
+import { focusOpenedControl } from "@/lib/dom";
 import { useRef, useState } from "react";
 import type { TimelineTrack } from "@/api/generated/contracts";
 import { LevelMeter } from "@/components/workbench/LevelMeter";
 import { t } from "@/i18n";
 import { cn } from "@/lib/cn";
 import { useEditor } from "../../editorContext";
+import { DuckDialog } from "./DuckDialog";
 import { formatDb } from "./decibels";
 import { Fader } from "./Fader";
 import { GainField } from "./GainField";
@@ -22,20 +24,20 @@ const NAME_LIMIT = 40;
 
 /** The rename field of a strip: Enter or leaving it hands over the text, Esc hands over null. */
 function NameField({ value, onDone }: { value: string; onDone: (next: string | null) => void }) {
-  const cancelled = useRef(false);
+  const cancelledRef = useRef(false);
   return (
     <input
-      autoFocus
+      ref={focusOpenedControl}
       defaultValue={value}
       maxLength={NAME_LIMIT}
       aria-label={t("軌道名稱")}
-      onFocus={(event) => event.currentTarget.select()}
-      onBlur={(event) => onDone(cancelled.current ? null : event.target.value.trim())}
+      onFocus={(event) => { event.currentTarget.select(); }}
+      onBlur={(event) => { onDone(cancelledRef.current ? null : event.target.value.trim()); }}
       onKeyDown={(event) => {
-        if (event.key === "Escape") cancelled.current = true;
+        if (event.key === "Escape") cancelledRef.current = true;
         if (event.key === "Enter" || event.key === "Escape") event.currentTarget.blur();
       }}
-      className="h-6 w-full min-w-0 rounded border border-line-control bg-sunken px-1 text-center text-caption text-fg outline-none focus-visible:border-focus"
+      className="h-6 w-full min-w-0 rounded-sm border border-line-control bg-sunken px-1 text-center text-caption text-fg outline-none focus-visible:border-focus"
     />
   );
 }
@@ -54,26 +56,26 @@ export function TrackStrip({ track, label, silent }: TrackStripProps) {
   const patch = (value: Partial<Pick<TimelineTrack, "name" | "gain_db" | "pan" | "muted" | "solo">>) => editor.command({ type: "patchTrack", trackId: track.track_id, patch: value });
   const rename = (next: string | null) => {
     setRenaming(false);
-    if (next && next !== track.name) patch({ name: next });
+    if ((next != null && next !== "") && next !== track.name) patch({ name: next });
   };
   return (
     <div role="group" aria-label={t("{name} 聲道", { name: track.name })} className={cn(STRIP, "max-w-32 min-w-[76px] flex-1 border-r border-line-subtle")}>
       {renaming ? (
         <NameField value={track.name} onDone={rename} />
       ) : (
-        <div className="flex h-6 min-w-0 items-center justify-center gap-1" title={t("{name}（按兩下重新命名）", { name: track.name })} onDoubleClick={() => setRenaming(true)}>
+        <button onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); setRenaming(true); } }} type="button" className="flex h-6 min-w-0 items-center justify-center gap-1" title={t("{name}（按兩下重新命名）", { name: track.name })} onDoubleClick={() => { setRenaming(true); }}>
           <span className="machine shrink-0 text-caption font-semibold text-fg">{label}</span>
           {track.name !== label ? <span className="min-w-0 truncate text-caption text-fg-secondary">{track.name}</span> : null}
-        </div>
+        </button>
       )}
-      <PanKnob label={t("{name} 的聲像", { name: track.name })} value={track.pan} onCommit={(pan) => patch({ pan })} className={cn("transition-opacity duration-(--duration-fast)", silent && "opacity-50")} />
+      <PanKnob label={t("{name} 的聲像", { name: track.name })} value={track.pan} onCommit={(pan) => void patch({ pan })} className={cn("transition-opacity duration-(--duration-fast)", silent && "opacity-50")} />
       <div className="flex justify-center gap-1">
         <button
           type="button"
           aria-pressed={track.muted}
           aria-label={t("靜音 {name}", { name: track.name })}
           title={t("靜音 {name}", { name: track.name })}
-          onClick={() => patch({ muted: !track.muted })}
+          onClick={() => void patch({ muted: !track.muted })}
           className={cn(TOGGLE, track.muted ? "border-warning/50 bg-warning/20 text-warning" : TOGGLE_OFF)}
         >
           M
@@ -83,14 +85,15 @@ export function TrackStrip({ track, label, silent }: TrackStripProps) {
           aria-pressed={track.solo}
           aria-label={t("獨奏 {name}", { name: track.name })}
           title={t("獨奏 {name}", { name: track.name })}
-          onClick={() => patch({ solo: !track.solo })}
+          onClick={() => void patch({ solo: !track.solo })}
           className={cn(TOGGLE, track.solo ? "border-brand-blue/60 bg-brand-gradient-soft text-brand-cyan" : TOGGLE_OFF)}
         >
           S
         </button>
+        <DuckDialog track={track} />
       </div>
-      <Fader label={t("{name} 的音量", { name: track.name })} value={track.gain_db} onCommit={(gain_db) => patch({ gain_db })} className={cn("flex-1 transition-opacity duration-(--duration-fast)", silent && "opacity-50")} />
-      <GainField label={t("{name} 的音量", { name: track.name })} value={track.gain_db} onCommit={(gain_db) => patch({ gain_db })} />
+      <Fader label={t("{name} 的音量", { name: track.name })} value={track.gain_db} onCommit={(gain_db) => void patch({ gain_db })} className={cn("flex-1 transition-opacity duration-(--duration-fast)", silent && "opacity-50")} />
+      <GainField label={t("{name} 的音量", { name: track.name })} value={track.gain_db} onCommit={(gain_db) => void patch({ gain_db })} />
     </div>
   );
 }
@@ -118,7 +121,7 @@ export function MasterStrip() {
   const editor = useEditor();
   const { timeline } = editor;
   const { leftRef, rightRef, clipped, loudest, reset } = useLevelMeters();
-  const setGain = (master_gain_db: number) => editor.commit({ ...timeline, master_gain_db });
+  const setGain = (master_gain_db: number) => { editor.commit({ ...timeline, master_gain_db }); };
   return (
     <div role="group" aria-label={t("主輸出聲道")} className={cn(STRIP, "w-24 border-l border-line-strong bg-surface")}>
       <div className="flex h-6 items-center justify-center text-caption font-semibold text-fg">{t("主輸出")}</div>

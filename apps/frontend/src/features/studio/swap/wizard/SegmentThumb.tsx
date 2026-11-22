@@ -22,7 +22,7 @@ export function SegmentThumb({ url, seconds, label }: { url: string | null; seco
       { rootMargin: "240px 0px" },
     );
     observer.observe(node);
-    return () => observer.disconnect();
+    return () => { observer.disconnect(); };
   }, [seen]);
   const state = useSourceThumb(url, seconds, seen);
   return (
@@ -34,7 +34,7 @@ export function SegmentThumb({ url, seconds, label }: { url: string | null; seco
           <ImageOff aria-hidden className="size-4" />
           <span className="sr-only">{t("讀不到這一格畫面：{reason}", { reason: state.reason })}</span>
         </span>
-      ) : url ? (
+      ) : (url != null && url !== "") ? (
         <Skeleton className="size-full rounded-none" />
       ) : null}
     </div>

@@ -1,3 +1,4 @@
+import { pageTransition } from "@/lib/dom";
 import { Boxes, FolderTree, PanelLeftClose, PanelLeftOpen, ServerOff, Workflow } from "lucide-react";
 import { useState } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router";
@@ -30,7 +31,7 @@ export function ExplorerRail({ onExpand }: { onExpand: () => void }) {
         <NavLink
           key={section.id}
           to={section.path}
-          viewTransition
+          {...pageTransition()}
           aria-label={section.label}
           title={t("{label}：{hint}", { label: section.label, hint: section.hint })}
           className={({ isActive }) =>
@@ -63,7 +64,7 @@ function NodeFolderTree({ nodeId, entries, query, selectedId }: { nodeId: string
       expanded={expanded}
       onToggle={onToggle}
       onActivate={(item) => {
-        if (item.to) void navigate(item.to);
+        if (item.to != null && item.to !== "") void navigate(item.to);
       }}
     />
   );
@@ -143,11 +144,11 @@ function ComponentsPane({ query, onQuery }: { query: string; onQuery: (value: st
         aria-labelledby={known ? `admin-explorer-node-tab-${activeNode}` : undefined}
         aria-label={known ? undefined : t("元件資料夾")}
       >
-        {activeNode && known ? (
+        {(activeNode != null && activeNode !== "") && known ? (
           <NodeFolderTree key={activeNode} nodeId={activeNode} entries={entries} query={query} selectedId={selectedId} />
         ) : (
           <p className="px-3 py-4 text-caption text-fg-tertiary">
-            <T source={"目錄中沒有 Node <0>{value}</0>：可能已移除或尚未登記，請選擇上方的 Node。"} values={{ value: activeNode ?? "—" }} slots={[<code className="machine" />]} />
+            <T source={"目錄中沒有 Node <0>{value}</0>：可能已移除或尚未登記，請選擇上方的 Node。"} values={{ value: activeNode ?? "—" }} slots={[<code key="slot-0" className="machine" />]} />
           </p>
         )}
       </DockBody>
@@ -171,7 +172,7 @@ export function AdminExplorer({ onCollapse }: { onCollapse: () => void }) {
     setTab(section);
   }
   const [queries, setQueries] = useState<Record<ExplorerTab, string>>({ components: "", pipelines: "" });
-  const setQuery = (value: string) => setQueries((previous) => ({ ...previous, [tab]: value }));
+  const setQuery = (value: string) => { setQueries((previous) => ({ ...previous, [tab]: value })); };
   const componentCount = catalog.data ? componentEntries(catalog.data).length : null;
 
   return (
@@ -184,7 +185,7 @@ export function AdminExplorer({ onCollapse }: { onCollapse: () => void }) {
             { id: "pipelines", label: t("元件組合"), icon: Workflow, count: pipelines.data?.items.length ?? null },
           ]}
           value={tab}
-          onChange={(id) => setTab(id === "pipelines" ? "pipelines" : "components")}
+          onChange={(id) => { setTab(id === "pipelines" ? "pipelines" : "components"); }}
           idPrefix="admin-explorer"
           label={t("元件修改左欄分頁")}
           className="flex-1 [&>button]:flex-1 [&>button]:justify-center"

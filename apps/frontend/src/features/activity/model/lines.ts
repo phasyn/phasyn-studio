@@ -57,7 +57,7 @@ export function errorLine(error: { code: string; message: string } | null | unde
 
 /** 兩個真實時戳之間的毫秒數；任一缺值、無法解析或倒序時回傳 null（不補 0）。 */
 export function durationMs(startIso: string | null | undefined, endIso: string | null | undefined): number | null {
-  if (!startIso || !endIso) return null;
+  if (!(startIso != null && startIso !== "") || !(endIso != null && endIso !== "")) return null;
   const start = Date.parse(startIso);
   const end = Date.parse(endIso);
   if (Number.isNaN(start) || Number.isNaN(end) || end < start) return null;
@@ -79,7 +79,7 @@ export function localDateKey(iso: string): string | null {
   const ms = Date.parse(iso);
   if (Number.isNaN(ms)) return null;
   const date = new Date(ms);
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  return `${String(date.getFullYear())}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
 /**

@@ -2,6 +2,7 @@
 // formulas shared with the backend (phasyn_media.effects) and the title-layer key. Type-only imports, so the editor's
 // domain modules can use it without reaching UI or I/O code.
 import type { MediaClipEffects, MediaClipTitle } from "@/api/generated/contracts";
+import { MAX_SPEED_PERCENT, MIN_SPEED_PERCENT } from "@/api/generated/timelineLimits";
 import { t } from "@/i18n";
 
 export type Effects = MediaClipEffects;
@@ -28,8 +29,9 @@ export interface TransitionOptions {
 export type TitlePosition = Title["position"];
 export type TitleSize = Title["size"];
 
-export const SPEED_MIN = 50;
-export const SPEED_MAX = 200;
+/** Speed bounds come from the contract (contracts/component.schema.json → timelineLimits.ts). */
+export const SPEED_MIN = MIN_SPEED_PERCENT;
+export const SPEED_MAX = MAX_SPEED_PERCENT;
 export const VOLUME_MIN_DB = -60;
 export const VOLUME_MAX_DB = 12;
 export const FADE_MAX_FRAMES = 1000;
@@ -170,7 +172,7 @@ export function normalizeEffects(effects: Effects | undefined | null): Effects |
   if (speed !== 100) out.speed_percent = speed;
   const volume = roundTo(Math.min(VOLUME_MAX_DB, Math.max(VOLUME_MIN_DB, effects.volume_db ?? 0)), 2);
   if (volume !== 0) out.volume_db = volume;
-  if (effects.mute) out.mute = true;
+  if (effects.mute === true) out.mute = true;
   const fade: Fade = {};
   for (const key of FADE_KEYS) {
     const value = clampInt(effects.fade?.[key] ?? 0, 0, FADE_MAX_FRAMES);
@@ -182,8 +184,8 @@ export function normalizeEffects(effects: Effects | undefined | null): Effects |
     contrast: roundTo(Math.min(3, Math.max(0, effects.color?.contrast ?? 1)), 3),
     saturation: roundTo(Math.min(3, Math.max(0, effects.color?.saturation ?? 1)), 3),
   };
-  if (effects.color?.invert) color.invert = true;
-  if (color.brightness !== 0 || color.contrast !== 1 || color.saturation !== 1 || color.invert) out.color = color;
+  if (effects.color?.invert === true) color.invert = true;
+  if (color.brightness !== 0 || color.contrast !== 1 || color.saturation !== 1 || (color.invert === true)) out.color = color;
   const hold: Hold = {};
   const holdStart = clampInt(effects.hold?.start ?? 0, 0, HOLD_MAX_FRAMES);
   const holdEnd = clampInt(effects.hold?.end ?? 0, 0, HOLD_MAX_FRAMES);
@@ -205,15 +207,15 @@ export function normalizeEffects(effects: Effects | undefined | null): Effects |
   const impact = effects.impact;
   if (impact && IMPACT_STYLES.includes(impact.style)) out.impact = { frames: clampInt(impact.frames, 1, IMPACT_MAX_FRAMES), style: impact.style };
   const title = effects.title;
-  if (title && title.text.trim()) {
+  if (title?.text != null && title.text.trim() !== "") {
     const start = clampInt(title.start_frame, 0, 100_000);
     const end = title.end_frame === null ? null : Math.max(start + 1, clampInt(title.end_frame, 1, 100_000));
     out.title = { ...title, text: title.text.slice(0, TITLE_MAX_LENGTH), start_frame: start, end_frame: end };
   }
   const transition = effects.transition_out;
   if (transition && transition.kind !== "cut") {
-    const softness = "softness" in transition && transition.softness !== undefined ? Math.min(WIPE_SOFTNESS_MAX, Math.max(0, transition.softness)) : undefined;
-    out.transition_out = transitionOf(transition.kind, clampInt(transition.frames, 1, TRANSITION_MAX_FRAMES), { ...transition, softness });
+    const softness = "softness" in transition ? Math.min(WIPE_SOFTNESS_MAX, Math.max(0, transition.softness)) : undefined;
+    out.transition_out = transitionOf(transition.kind, clampInt(transition.frames, 1, TRANSITION_MAX_FRAMES), { ...transition, ...(softness === undefined ? {} : { softness }) });
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }

@@ -37,7 +37,7 @@ function invalidResponse(what: string): ApiError {
 // ---------------------------------------------------------------- 研究文件
 
 export async function fetchStudies(signal?: AbortSignal): Promise<PromptStudySummary[]> {
-  return normalizeSummaryList(await apiJson<unknown>(BASE, { query: { archived: "include" }, signal }));
+  return normalizeSummaryList(await apiJson(BASE, { query: { archived: "include" }, signal }));
 }
 
 export function useStudyList() {
@@ -45,7 +45,7 @@ export function useStudyList() {
 }
 
 export async function fetchStudy(studyId: string, signal?: AbortSignal): Promise<PromptStudy> {
-  const study = normalizeStudy(await apiJson<unknown>(studyPath(studyId), { signal }));
+  const study = normalizeStudy(await apiJson(studyPath(studyId), { signal }));
   if (!study) throw invalidResponse(t("研究 {studyId}", { studyId }));
   return study;
 }
@@ -65,7 +65,7 @@ export function useStudyQuery(studyId: string | null) {
 
 /** 保存整份文件：本文 revision 必須等於伺服器目前的 revision（新研究 0）；回傳保存後（revision+1）的文件。 */
 export async function saveStudy(study: PromptStudy): Promise<PromptStudy> {
-  const saved = normalizeStudy(await apiJson<unknown>(studyPath(study.study_id), { method: "PUT", json: study }));
+  const saved = normalizeStudy(await apiJson(studyPath(study.study_id), { method: "PUT", json: study }));
   if (!saved) throw invalidResponse(t("保存後的研究"));
   return saved;
 }
@@ -79,14 +79,14 @@ export async function setStudyArchived(studyId: string, archived: boolean): Prom
 
 /** 刪除前的試算（不做任何變更）。 */
 export async function fetchDeletePlan(studyId: string, mode: DeleteMode, signal?: AbortSignal): Promise<PromptStudyDeletionPlan> {
-  const plan = normalizeDeletionPlan(await apiJson<unknown>(`${studyPath(studyId)}/deletion-preview`, { query: { mode }, signal }), studyId, mode);
+  const plan = normalizeDeletionPlan(await apiJson(`${studyPath(studyId)}/deletion-preview`, { query: { mode }, signal }), studyId, mode);
   if (!plan) throw invalidResponse(t("刪除範圍"));
   return plan;
 }
 
 /** 永久刪除（一次請求；任何一步失敗就停止並在錯誤的 details 回報已完成的部分，不自動重試）。 */
 export async function deleteStudy(studyId: string, mode: DeleteMode, revision: number): Promise<PromptStudyDeletionPlan> {
-  const plan = normalizeDeletionPlan(await apiJson<unknown>(studyPath(studyId), { method: "DELETE", query: { mode, revision } }), studyId, mode);
+  const plan = normalizeDeletionPlan(await apiJson(studyPath(studyId), { method: "DELETE", query: { mode, revision } }), studyId, mode);
   if (!plan) throw invalidResponse(t("刪除結果"));
   return plan;
 }
@@ -133,7 +133,7 @@ export async function waitForRun(runId: string, options: { signal: AbortSignal; 
 /** run 建立或結束後，讓其他頁面（執行紀錄、活動）重新讀取。 */
 export function invalidateRuns(client: QueryClient, runId: string | null): void {
   void client.invalidateQueries({ queryKey: qk.runs() });
-  if (runId) void client.invalidateQueries({ queryKey: qk.run(runId) });
+  if (runId != null && runId !== "") void client.invalidateQueries({ queryKey: qk.run(runId) });
 }
 
 // ---------------------------------------------------------------- Studio 專案（套用到 Image Studio、素材庫選圖）
@@ -157,7 +157,7 @@ export function useStudioProjectQuery(projectId: string | null) {
 export async function appendImageShot(client: QueryClient, projectId: string, shot: StudioImageShot): Promise<StudioProject> {
   const latest = await fetchProject(projectId);
   const blocked = applyBlockReason(latest, shot);
-  if (blocked) throw new ApiError(409, { code: "STATE_CONFLICT", message: t("沒有寫入：{blocked}", { blocked }) }, "STATE_CONFLICT");
+  if (blocked != null && blocked !== "") throw new ApiError(409, { code: "STATE_CONFLICT", message: t("沒有寫入：{blocked}", { blocked }) }, "STATE_CONFLICT");
   const saved = await saveProject(withImageShot(latest, shot));
   client.setQueryData(studioKeys.project(projectId), saved);
   void client.invalidateQueries({ queryKey: studioKeys.projects() });

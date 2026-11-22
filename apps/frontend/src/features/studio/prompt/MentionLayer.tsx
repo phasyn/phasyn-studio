@@ -71,15 +71,15 @@ function align(textarea: HTMLTextAreaElement, layer: HTMLElement, content: HTMLE
   for (const name of TEXT_STYLE) content.style.setProperty(name, computed.getPropertyValue(name));
   const width = contentWidth + px(computed.paddingLeft) + px(computed.paddingRight);
   const height = contentHeight + px(computed.paddingTop) + px(computed.paddingBottom);
-  layer.style.left = `${textarea.offsetLeft + textarea.clientLeft}px`;
-  layer.style.top = `${textarea.offsetTop + textarea.clientTop}px`;
-  layer.style.width = `${width}px`;
-  layer.style.height = `${height}px`;
-  content.style.width = `${width}px`;
+  layer.style.left = `${String(textarea.offsetLeft + textarea.clientLeft)}px`;
+  layer.style.top = `${String(textarea.offsetTop + textarea.clientTop)}px`;
+  layer.style.width = `${String(width)}px`;
+  layer.style.height = `${String(height)}px`;
+  content.style.width = `${String(width)}px`;
 }
 
 function follow(textarea: HTMLTextAreaElement, content: HTMLElement): void {
-  content.style.transform = `translate(${-textarea.scrollLeft}px, ${-textarea.scrollTop}px)`;
+  content.style.transform = `translate(${String(-textarea.scrollLeft)}px, ${String(-textarea.scrollTop)}px)`;
 }
 
 export function MentionLayer({
@@ -109,9 +109,9 @@ export function MentionLayer({
     const first = contentBox(node, getComputedStyle(node));
     align(node, layer, content, first.width, first.height);
     follow(node, content);
-    const onScroll = () => follow(node, content);
+    const onScroll = () => { follow(node, content); };
     node.addEventListener("scroll", onScroll, { passive: true });
-    if (typeof ResizeObserver === "undefined") return () => node.removeEventListener("scroll", onScroll);
+    if (typeof ResizeObserver === "undefined") return () => { node.removeEventListener("scroll", onScroll); };
     const observer = new ResizeObserver((entries) => {
       const box = entries.at(-1)?.contentRect;
       if (!box) return;
@@ -135,12 +135,12 @@ export function MentionLayer({
   return (
     <div ref={layerRef} aria-hidden className="pointer-events-none absolute top-0 left-0 overflow-hidden select-none">
       <div ref={contentRef} className="text-transparent">
-        {markSegments(text, marks).map((segment, index) => {
+        {markSegments(text, marks).map((segment) => {
           const mark = segment.mark === null ? undefined : marks[segment.mark];
           if (!mark) return segment.text;
           return (
             <span
-              key={index}
+              key={mark.start}
               data-mark-start={mark.start}
               data-resolved={mark.resolved ? "" : undefined}
               className={mark.resolved ? (missing.has(mark.alias) ? MISSING_FILE : RESOLVED) : UNRESOLVED}

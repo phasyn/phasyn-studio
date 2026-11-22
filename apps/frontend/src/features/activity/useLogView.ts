@@ -54,9 +54,9 @@ export function useLogView(lines: readonly LogLine[]): LogView {
     filtersActive: hasActiveFilters(filter),
     clear: () => {
       const cutoff = clearCutoff(lines);
-      if (cutoff) setFilter((current) => ({ ...current, since: cutoff }));
+      if (cutoff != null && cutoff !== "") setFilter((current) => ({ ...current, since: cutoff }));
     },
-    restore: () => setFilter((current) => ({ ...current, since: null })),
-    resetFilters: () => setFilter((current) => ({ ...DEFAULT_LOG_FILTER, since: current.since })),
+    restore: () => { setFilter((current) => ({ ...current, since: null })); },
+    resetFilters: () => { setFilter((current) => ({ ...DEFAULT_LOG_FILTER, since: current.since })); },
   };
 }

@@ -92,7 +92,7 @@ export function swapMeasurements(project: StudioProject, routes: readonly Studio
       const images = references.filter((ref) => ref.kind === "image");
       if (images.length === 0) continue;
       const sizes = images.map((ref) => ({ width: items.get(ref.file.file_id)?.width ?? null, height: items.get(ref.file.file_id)?.height ?? null }));
-      const format = `${take.width}×${take.height}`;
+      const format = `${String(take.width)}×${String(take.height)}`;
       const key = `${step.node_id}/${step.component_id}`;
       const group = groups.get(key) ?? { route, fits: [], formats: [] };
       group.fits.push({ characters: images.length, frames: take.frames, pixels: take.width * take.height, area: preparedArea(sizes, routeImageEdge(route)), format });
@@ -180,6 +180,6 @@ export function recordedLimits(measurement: SwapMeasurement, date: string): Reco
     };
   }
   // The official path's values are replaced as a whole; entries for other reference video short edges stay as they are
-  const edges = isRecord(rest.swap) ? rest.swap.by_reference_short_edge : undefined;
+  const edges = isRecord(rest["swap"]) ? rest["swap"]["by_reference_short_edge"] : undefined;
   return { ...rest, swap: { ...swapCapacityJson(capacity), ...(edges === undefined ? {} : { by_reference_short_edge: edges }) } };
 }

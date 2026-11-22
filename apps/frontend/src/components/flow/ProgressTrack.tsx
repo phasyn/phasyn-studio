@@ -47,7 +47,7 @@ export function ProgressTrack({
       <span
         aria-hidden
         className={cn("absolute inset-y-0 left-0 rounded-full transition-[width] duration-(--duration-base) ease-standard", FILL[tone])}
-        style={{ width: `${fraction * 100}%` }}
+        style={{ width: `${String(fraction * 100)}%` }}
       />
     </span>
   );

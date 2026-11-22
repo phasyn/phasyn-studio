@@ -4,7 +4,8 @@
 // （以通知說明），也不換成別的路由；每個 run 只送一次，送出中再按不做事。
 import { useCallback, useRef, useState, type RefObject } from "react";
 import { isApiError } from "@/api/http";
-import { useCreateRun } from "@/api/runs";
+import { submitStudioRender, useCreateRun } from "@/api/runs";
+import { saveProject } from "@/api/studioProjects";
 import { engineUnavailable } from "@/features/studio";
 import type { NoticeInput } from "@/features/studio-shell";
 import type { ImageEngine } from "../imageStudioContext";
@@ -14,14 +15,14 @@ import { findImageRoute } from "../model/routes";
 import { imageShots, localId } from "../model/shots";
 import { errorText } from "../support";
 import type { ImageStudioProject, StudioImageShot, StudioImageTake } from "../types";
-import { uploadMaskDraft } from "./maskDrafts";
+import { maskDrafts, uploadMaskDraft } from "./maskDrafts";
 import { t } from "@/i18n";
 
 export interface GenerateOptions {
   engine: ImageEngine;
   /** 最新的草稿（送出前讀，不用可能過時的 render 值）。 */
   projectRef: RefObject<ImageStudioProject>;
-  dispatch: (action: ImageProjectAction) => void;
+  transact: (change: (doc: ImageStudioProject) => Promise<ImageStudioProject>) => Promise<void>;
   notify: (notice: NoticeInput) => void;
   autoLibrary: boolean;
   /** 主控上還有 run 在執行時的原因；有值時不送出。 */
@@ -32,7 +33,7 @@ export interface GenerateOptions {
   onStarted: (shotId: string, takeId: string | null) => void;
 }
 
-export function useGenerate({ engine, projectRef, dispatch, notify, autoLibrary, runBlockedReason, markNotSent, onStarted }: GenerateOptions) {
+export function useGenerate({ engine, projectRef, transact, notify, autoLibrary, runBlockedReason, markNotSent, onStarted }: GenerateOptions) {
   const { mutateAsync: postRun } = useCreateRun();
   const [busy, setBusy] = useState(false);
   /** Read synchronously so a second click during a submission sends nothing. */
@@ -55,13 +56,13 @@ export function useGenerate({ engine, projectRef, dispatch, notify, autoLibrary,
   const generate = useCallback(
     async (shotId: string) => {
       if (busyRef.current) return;
-      if (runBlockedReason) {
+      if (runBlockedReason != null && runBlockedReason !== "") {
         markNotSent(shotId, runBlockedReason);
         notify({ tone: "warning", title: t("沒有送出：目前有其他 run 正在執行"), detail: runBlockedReason });
         return;
       }
       const unavailable = engineUnavailable(engine);
-      if (unavailable) {
+      if (unavailable != null && unavailable !== "") {
         notify({ tone: "warning", title: t("生成引擎還不能判斷"), detail: unavailable, link: { label: t("開啟生成引擎"), to: "#engine" } });
         return;
       }
@@ -70,12 +71,26 @@ export function useGenerate({ engine, projectRef, dispatch, notify, autoLibrary,
       busyRef.current = true;
       setBusy(true);
       try {
+        const originalMask = maskDrafts.get(shotId);
         const mask = await uploadMask(target);
         if (mask === false) return;
         let doc = projectRef.current;
         if (mask) {
-          doc = imageProjectReducer(doc, mask);
-          dispatch(mask);
+          // Use the saved revision as the input to generation, even if React has not yet
+          // rendered that revision. A failed mask save must leave the painting available.
+          const upload = { saved: false };
+          try {
+            await transact(async (saved) => {
+              const masked = imageProjectReducer(saved, mask);
+              if (masked === saved) throw new Error(t("遮罩檔案已不在專案素材庫，沒有套用"));
+              doc = await saveProject(masked);
+              upload.saved = true;
+              return doc;
+            });
+          } catch (error) {
+            if (!upload.saved && originalMask && !maskDrafts.has(shotId)) maskDrafts.set(shotId, originalMask);
+            throw error;
+          }
         }
         const shot = imageShots(doc).find((item) => item.image_shot_id === shotId);
         if (!shot) return;
@@ -84,14 +99,11 @@ export function useGenerate({ engine, projectRef, dispatch, notify, autoLibrary,
         if (!plan) {
           // Only a problem with the route's components has its fix in the engine sheet
           const route = findImageRoute(engine.routes, shot.route);
-          notify({ tone: "warning", title: t("無法生成"), detail: problem, link: route !== null && !route.ready ? { label: t("開啟生成引擎"), to: "#engine" } : undefined });
+          notify({ tone: "warning", title: t("無法生成"), detail: problem, ...(route !== null && !route.ready ? { link: { label: t("開啟生成引擎"), to: "#engine" } } : {}) });
           return;
         }
-        const run = await postRun(plan.body);
-        const takes: StudioImageTake[] = plan.branches.map((branch, index) => ({
+        const takes: Omit<StudioImageTake, "run_id" | "created_at">[] = plan.branches.map((branch, index) => ({
           take_id: takeIds[index] ?? localId("t"),
-          run_id: run.run_id,
-          created_at: run.created_at,
           state: "rendering",
           seed: branch.seed,
           image: null,
@@ -99,16 +111,26 @@ export function useGenerate({ engine, projectRef, dispatch, notify, autoLibrary,
           library_item_id: null,
           timings_ms: {},
           error: null,
-          params_snapshot: branch.snapshot as unknown as Record<string, unknown>,
+          params_snapshot: { ...branch.snapshot },
         }));
-        dispatch({ type: "addImageTakes", shotId, takes });
+        const submitFromSavedMask: typeof transact = mask === null ? transact : (change) => transact((saved) => {
+          const current = saved.revision >= doc.revision ? saved : doc;
+          if (imageShots(current).find((item) => item.image_shot_id === shotId)?.mask_item_id !== shot.mask_item_id) {
+            throw new Error(t("遮罩檔案已不在專案素材庫，沒有套用"));
+          }
+          return change(current);
+        });
+        const { refreshError } = await submitStudioRender(submitFromSavedMask, postRun, {
+          medium: "image", run: plan.body, takes: takes.map((take) => ({ shot_id: shotId, take })),
+        });
         markNotSent(shotId, null);
         onStarted(shotId, takes[0]?.take_id ?? null);
         notify({
           tone: "info",
           title: takes.length > 1 ? t("開始生成「{title}」{takesCount} 張", { title: shot.title, takesCount: takes.length }) : t("開始生成「{title}」", { title: shot.title }),
-          detail: plan.notes.length > 0 ? plan.notes.join(t("；")) : undefined,
+          ...(plan.notes.length > 0 ? { detail: plan.notes.join(t("；")) } : {}),
         });
+        if (refreshError !== undefined) notify({ tone: "warning", title: t("已建立 Take，重新載入專案即可查看"), detail: errorText(refreshError) });
       } catch (error) {
         const active = isApiError(error) && error.code === "RUN_ACTIVE";
         markNotSent(shotId, active ? t("主控的同時執行數已滿，這次沒有送出；等其中一個 run 結束後再按一次。") : errorText(error));
@@ -116,14 +138,14 @@ export function useGenerate({ engine, projectRef, dispatch, notify, autoLibrary,
           tone: "danger",
           title: active ? t("沒有送出：目前有其他 run 正在執行") : t("無法開始生成"),
           detail: active ? t("主控的同時執行數已滿；等其中一個 run 結束或取消後再試。") : errorText(error),
-          link: active ? { label: t("查看執行紀錄"), to: "/records/runs" } : undefined,
+          ...(active ? { link: { label: t("查看執行紀錄"), to: "/records/runs" } } : {}),
         });
       } finally {
         busyRef.current = false;
         setBusy(false);
       }
     },
-    [autoLibrary, dispatch, engine, markNotSent, notify, onStarted, postRun, projectRef, runBlockedReason, uploadMask],
+    [autoLibrary, engine, markNotSent, notify, onStarted, postRun, projectRef, runBlockedReason, transact, uploadMask],
   );
 
   return { busy, generate };

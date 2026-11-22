@@ -67,9 +67,9 @@ export function AssetCard({ asset, run }: { asset: Asset; run: WireRun }) {
         items={[
           { key: "kind", label: t("種類"), value: asset.kind, mono: true },
           { key: "frames", label: t("幀數"), value: String(asset.frame_count), mono: true },
-          { key: "fps", label: "FPS", value: asset.fps ? `${asset.fps.num}/${asset.fps.den}${fps !== null ? t("（{fps}）", { fps: fps.toFixed(3) }) : ""}` : "—", mono: true },
+          { key: "fps", label: "FPS", value: asset.fps ? `${String(asset.fps.num)}/${String(asset.fps.den)}${fps !== null ? t("（{fps}）", { fps: fps.toFixed(3) }) : ""}` : "—", mono: true },
           { key: "duration", label: t("長度"), value: duration !== null ? t("{duration} s（frames×den/num）", { duration: duration.toFixed(3) }) : "—", mono: true },
-          { key: "size", label: t("畫幅"), value: asset.width && asset.height ? `${asset.width}×${asset.height}` : "—", mono: true },
+          { key: "size", label: t("畫幅"), value: asset.width && asset.height ? `${String(asset.width)}×${String(asset.height)}` : "—", mono: true },
           { key: "complete", label: t("完成"), value: asset.complete ? t("是（encoder flush 與 frame count 已核對）") : t("否"), tone: asset.complete ? "default" : "warning" },
           {
             key: "source",
@@ -108,7 +108,7 @@ export function AssetCard({ asset, run }: { asset: Asset; run: WireRun }) {
           </Button>
         </div>
       ) : null}
-      <FinalDecodeDialog seed={decode} onOpenChange={(open) => (open ? undefined : setDecode(null))} />
+      <FinalDecodeDialog seed={decode} onOpenChange={(open) => { if (!(open)) { setDecode(null); } }} />
     </div>
   );
 }
@@ -160,11 +160,11 @@ export function LatentCard({ file, run }: { file: FileRef; run: WireRun }) {
         <Button
           variant="primary"
           icon={<Film aria-hidden />}
-          onClick={() => setDecode({ latent: file, sourceRunId: run.run_id, previewAssetId: preview?.asset_id ?? null, mode: "from-preview" })}
+          onClick={() => { setDecode({ latent: file, sourceRunId: run.run_id, previewAssetId: preview?.asset_id ?? null, mode: "from-preview" }); }}
         >
           {t("從此來源正式解碼")}
         </Button>
-        <Button icon={<Layers aria-hidden />} onClick={() => setDecode({ latent: file, sourceRunId: run.run_id, previewAssetId: null, mode: "direct" })}>
+        <Button icon={<Layers aria-hidden />} onClick={() => { setDecode({ latent: file, sourceRunId: run.run_id, previewAssetId: null, mode: "direct" }); }}>
           {t("直接完整解碼")}
         </Button>
       </div>
@@ -172,7 +172,7 @@ export function LatentCard({ file, run }: { file: FileRef; run: WireRun }) {
         {preview ? t("本 run 的草稿 asset {asset_id} 來自此 latent；「從此來源正式解碼」會記錄它。", { asset_id: preview.asset_id.slice(0, 8) }) : t("本 run 沒有以此 latent 產生的草稿。")}
       </p>
       <PreviewDecoderStatus />
-      <FinalDecodeDialog seed={decode} onOpenChange={(open) => (open ? undefined : setDecode(null))} />
+      <FinalDecodeDialog seed={decode} onOpenChange={(open) => { if (!(open)) { setDecode(null); } }} />
     </div>
   );
 }
@@ -191,11 +191,9 @@ export function CaptionPairView({ pair }: { pair: CaptionPair }) {
         </section>
       </div>
       <p className="text-caption text-fg-tertiary">
-        <T source={"語言 <0>{language}</0> · include_uncertain {value} · 來源 <1/>{value2}。generation edits 不會進入 training caption。"} values={{ language: pair.language, value: pair.include_uncertain ? t("是") : t("否"), value2: pair.scene_recording_id ? (
-          <>
-            <T source={"{text}· Scene 紀錄 <0>{scene_recording_id}</0>"} values={{ text: " ", scene_recording_id: pair.scene_recording_id.slice(0, 8) }} slots={[<Link to={recordingPath(pair.scene_recording_id)} />]} />
-          </>
-        ) : null }} slots={[<code className="machine" />, <IdText value={pair.source.file_id} />]} />
+        <T source={"語言 <0>{language}</0> · include_uncertain {value} · 來源 <1/>{value2}。generation edits 不會進入 training caption。"} values={{ language: pair.language, value: pair.include_uncertain ? t("是") : t("否"), value2: (pair.scene_recording_id != null && pair.scene_recording_id !== "") ? (
+          <T source={"{text}· Scene 紀錄 <0>{scene_recording_id}</0>"} values={{ text: " ", scene_recording_id: pair.scene_recording_id.slice(0, 8) }} slots={[<Link key="slot-0" to={recordingPath(pair.scene_recording_id)} />]} />
+        ) : null }} slots={[<code key="slot-0" className="machine" />, <IdText key="slot-1" value={pair.source.file_id} />]} />
       </p>
     </div>
   );
@@ -213,19 +211,19 @@ export function MaterialsView({ name, value }: { name: string; value: unknown })
     <div className="grid min-w-0 gap-2">
       <ol className="grid gap-1.5" aria-label={t("{name}（依送出順序）", { name })}>
         {rows.map((row) => (
-          <li key={`${row.position}:${row.file.file_id}`} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-md border border-line-subtle bg-sunken/50 p-2">
-            <MediaPreview file={row.file} title={`${row.roleLabel} ${row.position}`} size="thumb" />
+          <li key={`${String(row.position)}:${row.file.file_id}`} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-md border border-line-subtle bg-sunken/50 p-2">
+            <MediaPreview file={row.file} title={`${row.roleLabel} ${String(row.position)}`} size="thumb" />
             <div className="grid min-w-0 gap-1 text-caption">
               <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
                 <span className="machine text-fg-tertiary">#{row.position}</span>
                 <code
-                  className={cn("machine rounded-sm border px-1", row.tag ? "border-entity/30 bg-entity/12 text-entity" : "border-line bg-raised text-fg-tertiary")}
-                  title={row.tag ? t("prompt 中以 {tag} 引用", { tag: row.tag }) : t("編號無法確定（前面有原聲未知的參考影片，或有不認得的角色）")}
+                  className={cn("machine rounded-sm border px-1", (row.tag != null && row.tag !== "") ? "border-entity/30 bg-entity/12 text-entity" : "border-line bg-raised text-fg-tertiary")}
+                  title={(row.tag != null && row.tag !== "") ? t("prompt 中以 {tag} 引用", { tag: row.tag }) : t("編號無法確定（前面有原聲未知的參考影片，或有不認得的角色）")}
                 >
                   {row.tag ?? "<?>"}
                 </code>
                 <span className="text-fg">{row.roleLabel}</span>
-                {row.range ? <span className="text-fg-secondary">{t("使用 {range}", { range: row.range })}</span> : null}
+                {(row.range != null && row.range !== "") ? <span className="text-fg-secondary">{t("使用 {range}", { range: row.range })}</span> : null}
               </div>
               <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 text-fg-tertiary">
                 <span className="machine">{row.file.media_type || t("未知類型")}</span>
@@ -285,8 +283,8 @@ export function TypedValueView({ name, value, run, usage }: { name: string; valu
     body = <MaterialsView name={name} value={value.value} />;
   } else if (value.type_id.startsWith("text.") && "value" in value && typeof value.value === "string") {
     body = <p className="text-reading whitespace-pre-wrap text-fg">{value.value}</p>;
-  } else if ("file" in value && /^media\.(video|image|audio)\.v1$/.test(value.type_id)) {
-    const kind = value.type_id.split(".")[1] as "video" | "image" | "audio";
+  } else if ("file" in value && (value.type_id === "media.video.v1" || value.type_id === "media.image.v1" || value.type_id === "media.audio.v1")) {
+    const kind = value.type_id === "media.video.v1" ? "video" : value.type_id === "media.image.v1" ? "image" : "audio";
     body = <AssetPlayer file={value.file} label={kind} title={name} />;
   } else if ("file" in value) {
     body = (

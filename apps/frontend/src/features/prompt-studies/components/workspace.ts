@@ -10,7 +10,7 @@ import { t } from "@/i18n";
 export type TabId = "source" | "scene" | "render" | "search";
 
 /** 分頁標籤不含編號（步驟列在圓點裡顯示編號，報讀時也會念「步驟 n」）；en＝英文副標（裝飾）。 */
-export const TABS: ReadonlyArray<{ id: TabId; label: string; en: string }> = [
+export const TABS: readonly { id: TabId; label: string; en: string }[] = [
   { id: "source", label: t("來源與分析"), en: "Analyze" },
   { id: "scene", label: t("場景與候選"), en: "Scene" },
   { id: "render", label: t("生成比對"), en: "Render" },
@@ -18,7 +18,7 @@ export const TABS: ReadonlyArray<{ id: TabId; label: string; en: string }> = [
 ];
 
 export function tabOf(value: string | null): TabId | null {
-  return TABS.some((tab) => tab.id === value) ? (value as TabId) : null;
+  return TABS.find((tab) => tab.id === value)?.id ?? null;
 }
 
 export interface Workspace {

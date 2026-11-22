@@ -6,7 +6,7 @@ const UUID_PREFIX = "00000000-0000-4000-8000-";
 
 /** Formats a 12-digit serial; decimal digits are valid hex, so `serial(1001)` → `000000001001`. */
 function serial(value: number): string {
-  if (!Number.isSafeInteger(value) || value < 0 || value > 999_999_999_999) throw new RangeError(`synthetic id serial out of range: ${value}`);
+  if (!Number.isSafeInteger(value) || value < 0 || value > 999_999_999_999) throw new RangeError(`synthetic id serial out of range: ${String(value)}`);
   return String(value).padStart(12, "0");
 }
 
@@ -59,6 +59,6 @@ export const FIXED_TIME = "2026-01-01T00:00:00.000Z";
 
 /** RFC 5737 documentation addresses for node endpoints: `nodeEndpoint(1)` → `http://192.0.2.1:8090`. */
 export function nodeEndpoint(host: number, port = 8090): string {
-  if (!Number.isInteger(host) || host < 1 || host > 254) throw new RangeError(`192.0.2.x host must be 1–254: ${host}`);
-  return `http://192.0.2.${host}:${port}`;
+  if (!Number.isInteger(host) || host < 1 || host > 254) throw new RangeError(`192.0.2.x host must be 1–254: ${String(host)}`);
+  return `http://192.0.2.${String(host)}:${String(port)}`;
 }

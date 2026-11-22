@@ -1,0 +1,46 @@
+{
+  "pipeline_id": "person-mask-local",
+  "label": "單人人物遮罩",
+  "inputs": [
+    {
+      "name": "video_file",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": "單人表演影片"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "capture",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "person-mask",
+      "inputs": {
+        "video_file": {
+          "from_input": "video_file"
+        }
+      },
+      "parameters": {
+        "frame_index": 0
+      }
+    }
+  ],
+  "outputs": {
+    "asset": {
+      "from_step": "capture",
+      "output": "asset"
+    },
+    "video_file": {
+      "from_step": "capture",
+      "output": "video_file"
+    },
+    "field": {
+      "from_step": "capture",
+      "output": "field"
+    },
+    "control_image": {
+      "from_step": "capture",
+      "output": "control_image"
+    }
+  }
+}

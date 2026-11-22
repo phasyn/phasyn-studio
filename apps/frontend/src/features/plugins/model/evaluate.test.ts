@@ -1,3 +1,5 @@
+import { isListed } from "@/lib/json";
+import { contractFixture, fixtureValue } from "@/test/fixtures";
 // Boundary: the rule evaluator never lets a render through that a selected plugin contribution should stop (fail
 // closed), and it gives the same result as the reference evaluator. Every shared case of
 // contracts/examples/plugin-rules (the rules are , "Evaluating rules") runs here against the fixture
@@ -26,16 +28,8 @@ interface Expected {
   blocked: boolean;
 }
 
-interface VectorCase {
-  name: string;
-  registry?: string;
-  plugins: string[];
-  prompt: string;
-  settings?: GenerationActuals;
-  expect: Expected;
-}
 
-const list = registryJson as unknown as StudioPluginList;
+const list = contractFixture("StudioPluginList", registryJson);
 const ready = registryFromList(list);
 const unavailable = registryFromError(new Error("registry unavailable"));
 
@@ -58,7 +52,11 @@ function evaluate(registry: PluginRegistry, refs: readonly string[], prompt: str
   };
 }
 
-const cases = (vectors: unknown): VectorCase[] => (vectors as { cases: VectorCase[] }).cases;
+function generationActuals(settings: Omit<GenerationActuals, "route_capability"> & { route_capability: string | null }): GenerationActuals {
+  const route = settings.route_capability;
+  if (route !== null && !isListed(route, ["t2va", "fl2va", "ref2va"] as const)) throw new Error("Unknown generation vector capability");
+  return { ...settings, route_capability: route };
+}
 
 describe("plugin rule evaluation: shared cases", () => {
   it("reads the fixture registry as a plugin registry", () => {
@@ -66,14 +64,14 @@ describe("plugin rule evaluation: shared cases", () => {
     expect([...new Set(list.items.map((plugin) => plugin.status))].sort()).toEqual(["disabled", "incompatible", "invalid", "ok"]);
   });
 
-  it.each(cases(promptVectors).map((item) => [item.name, item] as const))("prompt rules: %s", (_name, item) => {
+  it.each(promptVectors.cases.map((item) => [item.name, item] as const))("prompt rules: %s", (_name, item) => {
     const registry = item.registry === "unavailable" ? unavailable : ready;
     expect(evaluate(registry, item.plugins, item.prompt)).toEqual({ unmet: [], ...item.expect });
   });
 
-  it.each(cases(generationVectors).map((item) => [item.name, item] as const))("generation settings: %s", (_name, item) => {
-    const registry = item.registry === "unavailable" ? unavailable : ready;
-    expect(evaluate(registry, item.plugins, item.prompt, item.settings)).toEqual(item.expect);
+  it.each(generationVectors.cases.map((item) => [item.name, item] as const))("generation settings: %s", (_name, item) => {
+    const registry = "registry" in item && item.registry === "unavailable" ? unavailable : ready;
+    expect(evaluate(registry, item.plugins, item.prompt, generationActuals(item.settings))).toEqual(item.expect);
   });
 });
 
@@ -101,7 +99,7 @@ describe("plugin rule evaluation: fail closed", () => {
       ...list,
       items: [
         {
-          ...list.items.find((plugin) => plugin.plugin_id === "com.example.staging-pack")!,
+          ...fixtureValue(list.items.find((plugin) => plugin.plugin_id === "com.example.staging-pack"), "evaluate.test.ts"),
           contributes: {
             rules: [
               {

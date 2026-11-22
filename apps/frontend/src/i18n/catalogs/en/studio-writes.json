@@ -1,0 +1,13 @@
+{
+  "Studio 寫入遭拒": "Studio write rejected",
+  "此收據所屬專案已刪除": "The project for this receipt was deleted",
+  "Studio 寫入已保留，尚無可驗證的結果": "This Studio write is reserved and its result has not been verified",
+  "Studio 寫入只接受一個收據鍵": "Provide exactly one Studio write key",
+  "找不到 Studio 寫入收據": "Studio write receipt not found",
+  "Studio 寫入收據內容不完整": "The Studio write receipt is incomplete",
+  "Studio 寫入收據鍵格式無效": "Invalid Studio write key",
+  "Studio 收據鍵已綁定其他寫入內容或操作": "This Studio receipt key belongs to another write or operation",
+  "Studio 寫入收據已失效": "The Studio write receipt is no longer valid",
+  "請重新讀取已確認寫入的專案版本，再繼續編輯。": "Reload the confirmed project revision before editing further.",
+  "Studio 寫入結果尚待核對，收據 {key}": "The Studio write is awaiting verification. Receipt {key}"
+}

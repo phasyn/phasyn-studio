@@ -1,3 +1,4 @@
+import { contractFixture } from "@/test/fixtures";
 // 單元測試用的合成資料（不是模型輸出，也不會出現在畫面上）。prompt_sha256 用「sha:」加上文字代替（測試只比較相等）。
 import type { FileRef } from "@/api/generated/contracts";
 import type {
@@ -52,8 +53,8 @@ export function makeScene(texts: Partial<Record<SectionKey, string>>, options: {
         },
       ];
     }),
-  ) as PromptScene["sections"];
-  return { schema_version: 1, prompt_language: language, sections, observations, uncertainty_notes: [] };
+  );
+  return contractFixture("PromptScene", { schema_version: 1, prompt_language: language, sections, observations, uncertainty_notes: [] });
 }
 
 export function makeCandidates(scene: PromptScene, intentional: SectionKey[] = []): PromptCandidates {
@@ -78,7 +79,7 @@ export function makeVersion(id: string, number: number, scene: PromptScene, opti
     version_id: id,
     number,
     parent_version_id: options.parent ?? null,
-    origin: options.parent ? "refinement" : "analysis",
+    origin: (options.parent != null && options.parent !== "") ? "refinement" : "analysis",
     scene,
     intentional_changes: intentional,
     candidates: makeCandidates(scene, intentional),
@@ -109,14 +110,14 @@ export function makeStudy(versions: PromptStudyVersion[], tasks: PromptStudyTask
 }
 
 export function makeComparison(labels: Partial<Record<SectionKey, MetricLabel>>, options: { unjudgeable?: string | null; differences?: number } = {}): PromptComparison {
-  return {
+  return contractFixture("PromptComparison", {
     schema_version: 1,
-    sections: Object.fromEntries(SECTION_KEYS.map((key) => [key, { label: labels[key] ?? "match", evidence_zh_tw: `${key} 的依據` }])) as PromptComparison["sections"],
+    sections: Object.fromEntries(SECTION_KEYS.map((key) => [key, { label: labels[key] ?? "match", evidence_zh_tw: `${key} 的依據` }])),
     unexpected_elements: [],
-    differences: Array.from({ length: options.differences ?? 0 }, (_, index) => ({ section: "subject" as const, description_zh_tw: `差異 ${index + 1}`, suggested_change_en: `fix ${index + 1}` })),
+    differences: Array.from({ length: options.differences ?? 0 }, (_, index) => ({ section: "subject" as const, description_zh_tw: `差異 ${String(index + 1)}`, suggested_change_en: `fix ${String(index + 1)}` })),
     text_transcription: "",
     unjudgeable_reason: options.unjudgeable ?? null,
-  };
+  });
 }
 
 /** 依同一套規則算出的分數（loss 指定時直接用指定值，模擬元件回報）。 */
@@ -124,7 +125,7 @@ export function makeScore(comparison: PromptComparison, scene: PromptScene, loss
   const applicable = applicableSections(scene);
   const local = lossBreakdown(comparison, applicable);
   const value = loss === undefined ? local.loss : loss;
-  return {
+  return contractFixture("PromptScore", {
     scorer_version: "prompt-score/1",
     rubric: { sha256: "rubric", scene_sha256: "scene", intentional_changes: [], applicable_sections: applicable },
     loss: value,
@@ -133,8 +134,8 @@ export function makeScore(comparison: PromptComparison, scene: PromptScene, loss
     unverified_reasons: value === null ? ["測試：不可判斷"] : [],
     sections: Object.fromEntries(
       local.rows.map((row) => [row.key, { label: row.label, weight: row.weight, applicable: row.applicable, intentional: false, penalty: row.penalty, weighted_penalty: row.weighted }]),
-    ) as PromptScore["sections"],
-  };
+    ),
+  });
 }
 
 interface Spec {
@@ -180,7 +181,7 @@ export function evaluationRef(spec: Spec, renderRunId: string, runId: string, lo
 
 /** 一張圖的完整紀錄：render ＋ evaluation（run id 用 spec 組出來）。 */
 export function scored(spec: Spec, loss: number | null, scene: PromptScene): PromptTaskResult[] {
-  const key = `${spec.version}-${spec.variant}-${spec.seed}-${spec.split ?? "search"}-${spec.round ?? 0}`;
+  const key = `${spec.version}-${spec.variant}-${String(spec.seed)}-${spec.split ?? "search"}-${String(spec.round ?? 0)}`;
   return [renderRef(spec, `r-${key}`), evaluationRef(spec, `r-${key}`, `c-${key}`, loss, scene)];
 }
 
@@ -200,7 +201,7 @@ export function reconstructRequest(overrides: Partial<Extract<PromptTaskRequest,
 
 /** 任務；runIds 省略時用結果參照引用的 run（依序）。 */
 export function makeTask(request: PromptTaskRequest, baseVersionId: string | null, refs: PromptTaskResult[] = [], runIds?: string[]): PromptStudyTask {
-  const ids = runIds ?? refs.flatMap((ref) => (ref.kind === "version" ? (ref.run_id ? [ref.run_id] : []) : [ref.run_id])).filter((id, index, all) => all.indexOf(id) === index);
+  const ids = runIds ?? refs.flatMap((ref) => (ref.kind === "version" ? ((ref.run_id != null && ref.run_id !== "") ? [ref.run_id] : []) : [ref.run_id])).filter((id, index, all) => all.indexOf(id) === index);
   return {
     task_id: `task-${request.kind}`,
     kind: request.kind,

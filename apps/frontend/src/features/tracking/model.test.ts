@@ -1,6 +1,7 @@
+import { contractFixture, descriptor as makeDescriptor, fixtureValue } from "@/test/fixtures";
 import { describe, expect, it } from "vitest";
 import type { ComponentEntry, NodeView } from "@/api/catalog";
-import type { ComponentDescriptor, SettingsView } from "@/api/generated/contracts";
+import type { SettingsView } from "@/api/generated/contracts";
 import {
   buildRows,
   changedKeys,
@@ -22,7 +23,7 @@ function view(recording: Record<string, unknown>, revision: number): SettingsVie
   return {
     stored_revision: revision,
     loaded_revision: null,
-    stored: { load: { device: { kind: "cpu", id: "cpu", resource_group: "cpu" } }, invoke: {}, recording: recording as never },
+    stored: { load: { device: { kind: "cpu", id: "cpu", resource_group: "cpu" } }, invoke: {}, recording: contractFixture("RecorderConfig", recording) },
     loaded: null,
     restart_required: false,
     settings_schema: {},
@@ -31,16 +32,7 @@ function view(recording: Record<string, unknown>, revision: number): SettingsVie
 }
 
 function entry(nodeView: NodeView, componentId: string, recording: Record<string, unknown>, revision = 3): ComponentEntry {
-  const descriptor = {
-    component_id: componentId,
-    label: "",
-    provider_id: componentId.startsWith("echo") ? "test.echo" : "h3.dit",
-    runtime_id: "rt",
-    node_id: nodeView.node_id,
-    state: "ready",
-    recorder_state: "ok",
-    settings: view(recording, revision),
-  } as unknown as ComponentDescriptor;
+  const descriptor = makeDescriptor(nodeView.node_id, componentId, componentId.startsWith("echo") ? "test.echo" : "h3.dit", { label: "", runtime_id: "rt", settings: view(recording, revision) });
   return { descriptor, node: nodeView, key: `${nodeView.node_id}::${componentId}` };
 }
 
@@ -75,7 +67,7 @@ describe("批次規劃（每個元件一個 PATCH）", () => {
     const list = rows();
     const draft = setDraftField(rowOf(list, "node-a::echo"), undefined, "log_level", "debug");
     expect(draft).toBeDefined();
-    const plan = planBulk(list, ["node-a::dit", "node-a::echo", "node-b::dit2"], { mode: "detailed" }, { "node-a::echo": draft! });
+    const plan = planBulk(list, ["node-a::dit", "node-a::echo", "node-b::dit2"], { mode: "detailed" }, { "node-a::echo": fixtureValue(draft, "model.test.ts") });
     expect(plan.send).toEqual([]);
     expect(plan.skipped.map((skip) => [skip.key, skip.short])).toEqual([
       ["node-a::dit", "無變更"],
@@ -91,16 +83,16 @@ describe("草稿與儲存", () => {
     const off = setDraftField(echo, undefined, "gpu_event_timing", false);
     expect(changedKeys(off)).toEqual(["gpu_event_timing"]);
     expect(setDraftField(echo, off, "gpu_event_timing", true)).toBeUndefined();
-    const plan = planDraftSaves(rows(), { "node-a::echo": off! }, ["node-a::echo"]);
+    const plan = planDraftSaves(rows(), { "node-a::echo": fixtureValue(off, "model.test.ts") }, ["node-a::echo"]);
     expect(plan.send[0]).toMatchObject({ expectedRevision: 7, recording: { gpu_event_timing: false } });
   });
 
   it("重新讀取後把我的變更套到最新版", () => {
     const dit = rowOf(rows(), "node-a::dit");
     const mine = setDraftField(dit, undefined, "mode", "trace");
-    const rebased = rebaseDraft(mine!, view({ ...full, log_level: "warning" }, 9));
+    const rebased = rebaseDraft(fixtureValue(mine, "model.test.ts"), view({ ...full, log_level: "warning" }, 9));
     expect(rebased?.baseRevision).toBe(9);
     expect(rebased?.value).toMatchObject({ mode: "trace", log_level: "warning" });
-    expect(rebaseDraft(mine!, view({ ...full, mode: "trace" }, 10))).toBeUndefined();
+    expect(rebaseDraft(fixtureValue(mine, "model.test.ts"), view({ ...full, mode: "trace" }, 10))).toBeUndefined();
   });
 });

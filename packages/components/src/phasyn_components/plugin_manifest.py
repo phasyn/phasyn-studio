@@ -26,6 +26,7 @@ from . import contracts
 from .canonical import canonical_json, sha256_hex
 from .errors import ComponentError
 
+
 KIB = 1024
 MIB = 1024 * KIB
 
@@ -71,7 +72,9 @@ Issue = dict[str, Any]
 class PluginLimits:
     """Bounds of a plugin package and of what a project may take from plugins (contract ``StudioPluginLimits``)."""
 
-    package_bytes: int = 16 * MIB  # the uploaded archive (the Controller's plugins.max_package_bytes)
+    package_bytes: int = (
+        16 * MIB
+    )  # the uploaded archive (the Controller's plugins.max_package_bytes)
     files: int = 256  # archive entries, plugin.json and directories included
     file_bytes: int = 8 * MIB
     unpacked_bytes: int = 64 * MIB
@@ -89,6 +92,7 @@ class PluginLimits:
     central_directory_bytes: int = MIB
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize the object to its wire representation."""
         return {
             "max_package_bytes": self.package_bytes,
             "max_files": self.files,
@@ -178,6 +182,9 @@ _TEXT_CONTROLS = frozenset("\t\n\r")
 # Characters of other categories that draw nothing either: the code points Unicode marks as ignorable by default
 # (DerivedCoreProperties, Default_Ignorable_Code_Point: the combining grapheme joiner, the Hangul fillers, the Khmer
 # inherent vowels, the Mongolian and the general variation selectors, reserved ranges) and the blank Braille pattern.
+_H3_MIN_FRAMES, _H3_MAX_FRAMES = 96, 360
+_H3_FRAME_PERIOD = 17
+_H3_FRAME_OFFSET = 5
 _INVISIBLE_RANGES = (
     (0x034F, 0x034F),
     (0x115F, 0x1160),
@@ -221,8 +228,7 @@ def issue(code: str, *, path: str | None = None, **details: Any) -> Issue:
 
 
 def invalid(issues: Sequence[Issue]) -> ComponentError:
-    """The refusal of a package: 422 ``STUDIO_PLUGIN_INVALID`` with at most :data:`MAX_ISSUES` issues
-    (``details.truncated`` says whether there were more)."""
+    """The refusal of a package: 422 ``STUDIO_PLUGIN_INVALID`` with at most :data:`MAX_ISSUES` issues (``details.truncated`` says whether there were more)."""
     shown = [dict(item) for item in issues[:MAX_ISSUES]]
     first = shown[0]
     where = f"（{first['path']}）" if first["path"] else ""
@@ -243,7 +249,11 @@ def issues_of(error: ComponentError) -> list[Issue]:
 
 def is_plugin_id(value: object) -> bool:
     """Contract ``StudioPluginId``. An id is also a directory name and a URL segment, hence ``fullmatch``."""
-    return isinstance(value, str) and len(value) <= PLUGIN_ID_MAX and bool(_PLUGIN_ID.fullmatch(value))
+    return (
+        isinstance(value, str)
+        and len(value) <= PLUGIN_ID_MAX
+        and bool(_PLUGIN_ID.fullmatch(value))
+    )
 
 
 def is_plugin_ref(value: object) -> bool:
@@ -273,16 +283,23 @@ def _reject_constant(name: str) -> Any:
 def _read_json(data: bytes) -> Any:
     """Strict JSON: UTF-8 without a byte order mark, no NaN or Infinity, no duplicate keys, bounded nesting."""
     if data.startswith(codecs.BOM_UTF8):
-        raise invalid([issue("manifest_not_json", path=MANIFEST_NAME, reason="byte order mark")])
+        raise invalid(
+            [issue("manifest_not_json", path=MANIFEST_NAME, reason="byte order mark")]
+        )
     try:
-        return json.loads(data.decode("utf-8"), parse_constant=_reject_constant, object_pairs_hook=_unique_keys)
+        return json.loads(
+            data.decode("utf-8"),
+            parse_constant=_reject_constant,
+            object_pairs_hook=_unique_keys,
+        )
     except (ValueError, RecursionError) as exc:  # UnicodeDecodeError is a ValueError
-        raise invalid([issue("manifest_not_json", path=MANIFEST_NAME, reason=type(exc).__name__)]) from exc
+        raise invalid(
+            [issue("manifest_not_json", path=MANIFEST_NAME, reason=type(exc).__name__)]
+        ) from exc
 
 
 def _shown(text: str) -> str:
-    """Text of a manifest that has not passed the text rule yet, as an issue may carry it: a key can hold anything
-    JSON can escape, including what cannot be encoded again."""
+    """Text of a manifest that has not passed the text rule yet, as an issue may carry it: a key can hold anything JSON can escape, including what cannot be encoded again."""
     return "".join(char if char.isprintable() else "?" for char in text)
 
 
@@ -291,7 +308,13 @@ def _schema_issues(doc: Any) -> list[Issue]:
     found = []
     for text in contracts.first_errors(MANIFEST_SCHEMA, doc, limit=MAX_ISSUES + 1):
         where, _, reason = _shown(text).partition(": ")
-        found.append(issue("manifest_invalid", path=None if where == "(root)" else where, reason=reason))
+        found.append(
+            issue(
+                "manifest_invalid",
+                path=None if where == "(root)" else where,
+                reason=reason,
+            )
+        )
     return found
 
 
@@ -321,11 +344,15 @@ def _hidden(char: str) -> bool:
     if unicodedata.category(char) in _HIDDEN_CATEGORIES:
         return True
     point = ord(char)
-    return point >= 0x034F and any(low <= point <= high for low, high in _INVISIBLE_RANGES)
+    return point >= _INVISIBLE_RANGES[0][0] and any(
+        low <= point <= high for low, high in _INVISIBLE_RANGES
+    )
 
 
 def _text_issues(manifest: Mapping[str, Any]) -> list[Issue]:
-    paths = dict.fromkeys(path for path, text in _strings(manifest) if _has_hidden_character(text))
+    paths = dict.fromkeys(
+        path for path, text in _strings(manifest) if _has_hidden_character(text)
+    )
     return [issue("text_invalid", path=path) for path in paths]
 
 
@@ -353,7 +380,9 @@ def _core(text: str) -> tuple[int, int, int] | None:
     return (int(match[1]), int(match[2]), int(match[3])) if match else None
 
 
-def engine_range(manifest: Mapping[str, Any]) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+def engine_range(
+    manifest: Mapping[str, Any],
+) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
     """``engines.phasyn`` as ``(lowest, first excluded)`` release numbers."""
     match = _RANGE.fullmatch(str(manifest["engines"]["phasyn"]))
     if match is None:  # the contract's pattern guarantees the form
@@ -373,20 +402,22 @@ def _duplicates(ids: Iterable[tuple[str, str]]) -> list[Issue]:
     return found
 
 
-def _contribution_ids(contributes: Mapping[str, Any], kinds: Sequence[str]) -> Iterator[tuple[str, str]]:
+def _contribution_ids(
+    contributes: Mapping[str, Any], kinds: Sequence[str]
+) -> Iterator[tuple[str, str]]:
     for kind in kinds:
         for index, item in enumerate(contributes.get(kind) or []):
             yield f"contributes/{kind}/{index}/id", str(item["id"])
 
 
 def _portable_char(char: str) -> bool:
-    return char.isascii() or any(low <= ord(char) <= high for low, high in _CASELESS_BLOCKS)
+    return char.isascii() or any(
+        low <= ord(char) <= high for low, high in _CASELESS_BLOCKS
+    )
 
 
 def _portable_pattern(source: str) -> bool:
-    """Whether a built-in pattern stays in what JavaScript and Python read alike: ASCII and the caseless CJK blocks
-    only (outside them the two fold case differently), no class escape other than ``\\b \\B \\d \\D \\w \\W``
-    (``\\s`` differs), and no group syntax other than ``(?:``, ``(?=`` and ``(?!``."""
+    r"""Whether a built-in pattern stays in what JavaScript and Python read alike: ASCII and the caseless CJK blocks only (outside them the two fold case differently), no class escape other than ``\b \B \d \D \w \W`` (``\s`` differs), and no group syntax other than ``(?:``, ``(?=`` and ``(?!``."""
     escapes = _ESCAPE.findall(source)
     groups = _GROUP.findall(source.replace("\\\\", "").replace("\\(", ""))
     return (
@@ -400,7 +431,13 @@ def _regex_issues(path: str, key: str, source: str, *, builtin: bool) -> list[Is
     if not builtin:
         return [issue("regex_not_allowed", path=f"{path}/{key}")]
     if not _portable_pattern(source):
-        return [issue("regex_invalid", path=f"{path}/{key}", reason="outside the JavaScript and Python subset")]
+        return [
+            issue(
+                "regex_invalid",
+                path=f"{path}/{key}",
+                reason="outside the JavaScript and Python subset",
+            )
+        ]
     try:
         re.compile(source, PATTERN_FLAGS)
     except (re.error, RecursionError, OverflowError) as exc:
@@ -408,7 +445,9 @@ def _regex_issues(path: str, key: str, source: str, *, builtin: bool) -> list[Is
     return []
 
 
-def _check_issues(path: str, checks: Mapping[str, Any], *, builtin: bool) -> tuple[list[Issue], list[tuple[str, str]]]:
+def _check_issues(
+    path: str, checks: Mapping[str, Any], *, builtin: bool
+) -> tuple[list[Issue], list[tuple[str, str]]]:
     """The regular-expression problems of the ``forbid`` and ``require`` items under ``path``, and their ids."""
     found = []
     ids = []
@@ -422,8 +461,7 @@ def _check_issues(path: str, checks: Mapping[str, Any], *, builtin: bool) -> tup
 
 
 def _rule_issues(path: str, rule: Mapping[str, Any], *, builtin: bool) -> list[Issue]:
-    """A rule's patterns, and the ids of its checks: one namespace for the whole prompt and the per-shot checks,
-    because a finding names its check by id."""
+    """A rule's patterns, and the ids of its checks: one namespace for the whole prompt and the per-shot checks, because a finding names its check by id."""
     found, ids = _check_issues(path, rule, builtin=builtin)
     shots = rule.get("shots")
     if shots:
@@ -431,44 +469,68 @@ def _rule_issues(path: str, rule: Mapping[str, Any], *, builtin: bool) -> list[I
         found += shot_found
         ids += shot_ids
         if "every_subject" in shots:
-            ids.append((f"{path}/shots/every_subject/id", str(shots["every_subject"]["id"])))
+            ids.append(
+                (f"{path}/shots/every_subject/id", str(shots["every_subject"]["id"]))
+            )
     return [*found, *_duplicates(ids)]
 
 
 def valid_frames(frames: int) -> bool:
     """MiniMax-H3 frame counts are 17n+5."""
-    return frames % 17 == 5
+    return frames % _H3_FRAME_PERIOD == _H3_FRAME_OFFSET
 
 
 def _generation_issues(path: str, generation: Mapping[str, Any]) -> list[Issue]:
     found = []
     frames = (generation.get("defaults") or {}).get("frames")
-    if frames is not None and not valid_frames(frames):
-        found.append(issue("frames_invalid", path=f"{path}/defaults/frames", frames=frames))
+    h3 = generation.get("frame_model") == "h3"
+    if (
+        h3
+        and frames is not None
+        and not (_H3_MIN_FRAMES <= frames <= _H3_MAX_FRAMES and valid_frames(frames))
+    ):
+        found.append(
+            issue("frames_invalid", path=f"{path}/defaults/frames", frames=frames)
+        )
     requirements = generation.get("require") or []
     for index, item in enumerate(requirements):
-        if item["field"] == "frames":
+        if h3 and item["field"] == "frames":
             found += [
                 issue("frames_invalid", path=f"{path}/require/{index}/in", frames=value)
                 for value in item["in"]
-                if not valid_frames(value)
+                if not (
+                    _H3_MIN_FRAMES <= value <= _H3_MAX_FRAMES and valid_frames(value)
+                )
             ]
-    ids = [(f"{path}/require/{index}/id", str(item["id"])) for index, item in enumerate(requirements)]
+    ids = [
+        (f"{path}/require/{index}/id", str(item["id"]))
+        for index, item in enumerate(requirements)
+    ]
     return [*found, *_duplicates(ids)]
 
 
-def _code_issues(manifest: Mapping[str, Any], contributes: Mapping[str, Any]) -> list[Issue]:
+def _code_issues(
+    manifest: Mapping[str, Any], contributes: Mapping[str, Any]
+) -> list[Issue]:
     """``main`` and ``engines.plugin_api`` come together; everything that only code can use needs ``main``."""
     declared_api = "plugin_api" in manifest["engines"]
     if "main" in manifest:
-        return [] if declared_api else [issue("plugin_api_required", path="engines/plugin_api")]
+        return (
+            []
+            if declared_api
+            else [issue("plugin_api_required", path="engines/plugin_api")]
+        )
     needs_code = {
         "engines/plugin_api": declared_api,
         "permissions": bool(manifest.get("permissions")),
         "contributes/commands": bool(contributes.get("commands")),
         "contributes/panels": bool(contributes.get("panels")),
     }
-    return [issue("main_required", path=path) for path, present in needs_code.items() if present]
+    return [
+        issue("main_required", path=path)
+        for path, present in needs_code.items()
+        if present
+    ]
 
 
 def semantic_issues(manifest: Mapping[str, Any], *, builtin: bool) -> list[Issue]:
@@ -498,14 +560,22 @@ def semantic_issues(manifest: Mapping[str, Any], *, builtin: bool) -> list[Issue
 def _permission_issues(permissions: Iterable[str]) -> list[Issue]:
     found = []
     for name in permissions:
-        if name in RESERVED_PERMISSIONS or name.startswith(RESERVED_PERMISSION_PREFIXES):
-            found.append(issue("permission_reserved", path="permissions", permission=name))
+        if name in RESERVED_PERMISSIONS or name.startswith(
+            RESERVED_PERMISSION_PREFIXES
+        ):
+            found.append(
+                issue("permission_reserved", path="permissions", permission=name)
+            )
         elif name not in PERMISSIONS:
-            found.append(issue("permission_unknown", path="permissions", permission=name))
+            found.append(
+                issue("permission_unknown", path="permissions", permission=name)
+            )
     return found
 
 
-def compatibility_issues(manifest: Mapping[str, Any], *, host_version: str) -> list[Issue]:
+def compatibility_issues(
+    manifest: Mapping[str, Any], *, host_version: str
+) -> list[Issue]:
     """Why this host cannot use a valid package (empty = compatible).
 
     ``host_version`` is the Phasyn Studio version: only its release number is compared with ``engines.phasyn``, and a
@@ -516,7 +586,12 @@ def compatibility_issues(manifest: Mapping[str, Any], *, host_version: str) -> l
     host = _core(host_version)
     if host is None or not lowest <= host < excluded:
         found.append(
-            issue("host_version", path="engines/phasyn", required=manifest["engines"]["phasyn"], host=host_version)
+            issue(
+                "host_version",
+                path="engines/phasyn",
+                required=manifest["engines"]["phasyn"],
+                host=host_version,
+            )
         )
     if "main" in manifest and manifest["engines"].get("plugin_api") not in PLUGIN_APIS:
         found.append(
@@ -556,13 +631,15 @@ def _shot_checks(rule: Mapping[str, Any]) -> dict[str, Any] | None:
         "require": [_matcher(item) for item in shots.get("require") or []],
         "every_subject": "every_subject" in shots,
     }
-    return content if content["forbid"] or content["require"] or content["every_subject"] else None
+    return (
+        content
+        if content["forbid"] or content["require"] or content["every_subject"]
+        else None
+    )
 
 
 def rule_rev(rule: Mapping[str, Any]) -> str:
-    """Content revision of a rule: what changes its behaviour (kind, group, matchers, per-shot checks, inject), never
-    its texts. A rule without per-shot checks hashes exactly what it hashed before they existed, so the revisions
-    recorded on takes of such rules stay current."""
+    """Content revision of a rule: what changes its behaviour (kind, group, matchers, per-shot checks, inject), never its texts. A rule without per-shot checks hashes exactly what it hashed before they existed, so the revisions recorded on takes of such rules stay current."""
     content: dict[str, Any] = {
         "kind": rule["kind"],
         "group": rule.get("group"),
@@ -581,7 +658,10 @@ def generation_rev(generation: Mapping[str, Any]) -> str:
     return _rev(
         {
             "defaults": generation.get("defaults") or {},
-            "require": [{"field": item["field"], "in": item["in"]} for item in generation.get("require") or []],
+            "require": [
+                {"field": item["field"], "in": item["in"]}
+                for item in generation.get("require") or []
+            ],
         }
     )
 

@@ -34,7 +34,7 @@ export function LaneRuler({ width }: LaneRulerProps) {
   const panel = useClipPanel();
   const { clip, fps } = panel;
   const duration = clipDuration(clip);
-  const seek = (event: PointerEvent<HTMLDivElement>) => panel.seek(laneFrameAt(clip, event.currentTarget.getBoundingClientRect(), event.clientX));
+  const seek = (event: PointerEvent<HTMLDivElement>) => { panel.seek(laneFrameAt(clip, event.currentTarget.getBoundingClientRect(), event.clientX)); };
   return (
     <div
       title={t("按一下或拖曳：把播放頭移到片段的這個位置")}

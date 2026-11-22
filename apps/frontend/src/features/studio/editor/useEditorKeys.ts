@@ -56,7 +56,7 @@ const ONCE_PER_PRESS: ReadonlySet<EditorCommandId> = new Set<EditorCommandId>([
  * when none could, the first reason is reported.
  */
 function applyDefaultTransitions(editor: Editor, which: DefaultTransitions): void {
-  if (editor.problem) {
+  if (editor.problem != null && editor.problem !== "") {
     editor.warn(editor.problem);
     return;
   }
@@ -104,7 +104,7 @@ export function useEditorKeys(editor: Editor): void {
       else if (direction === 0) transport.stop();
       else transport.shuttle(direction, slow);
     };
-    const step = (frames: number) => (source ? source.step(frames) : transport.step(frames));
+    const step = (frames: number) => { if (source) { source.step(frames); } else { transport.step(frames); } };
     const editPoint = (direction: -1 | 1) => {
       const tracks = editor.targets.size > 0 ? editor.targets : new Set(timeline.tracks.map((track) => track.track_id));
       transport.seek(adjacentEditPoint(timeline, tracks, frame, direction) ?? (direction < 0 ? 0 : timelineDuration(timeline)));
@@ -135,70 +135,70 @@ export function useEditorKeys(editor: Editor): void {
     const toggleLink = () => {
       const clips = timeline.clips.filter((clip) => editor.selected.includes(clip.clip_id));
       if (clips.length === 0) return;
-      editor.command({ type: clips.some((clip) => clip.linked_id) ? "unlink" : "link", clipIds: editor.selected });
+      editor.command({ type: clips.some((clip) => Boolean(clip.linked_id)) ? "unlink" : "link", clipIds: editor.selected });
     };
     const save = () => {
-      if (editor.drafts.commitAll()) void editor.flush().catch(() => editor.warn(t("專案尚未儲存，請查看儲存狀態")));
+      if (editor.drafts.commitAll()) void editor.flush().catch(() => { editor.warn(t("專案尚未儲存，請查看儲存狀態")); });
     };
     const actions: Record<EditorCommandId, () => void> = {
-      playToggle: () => (source ? source.toggle() : transport.toggle()),
-      shuttleBack: () => shuttle(-1, false),
-      shuttleStop: () => shuttle(0, false),
-      shuttleForward: () => shuttle(1, false),
-      shuttleBackSlow: () => shuttle(-1, true),
-      shuttleForwardSlow: () => shuttle(1, true),
-      stepBack: () => step(-1),
-      stepForward: () => step(1),
-      stepBackFive: () => step(-5),
-      stepForwardFive: () => step(5),
-      previousEdit: () => editPoint(-1),
-      nextEdit: () => editPoint(1),
-      goStart: () => (source ? source.seekEdge("start") : transport.seek(0)),
-      goEnd: () => (source ? source.seekEdge("end") : transport.seek(timelineDuration(timeline))),
-      markIn: () => (source?.mark ? source.mark("in") : editor.markRange("in")),
-      markOut: () => (source?.mark ? source.mark("out") : editor.markRange("out")),
-      goIn: () => goMark("in"),
-      goOut: () => goMark("out"),
-      insert: () => place("insert"),
-      overwrite: () => place("overwrite"),
-      rippleTrimPrevious: () => trim("in", true),
-      rippleTrimNext: () => trim("out", true),
-      trimPrevious: () => trim("in", false),
-      trimNext: () => trim("out", false),
+      playToggle: () => { if (source) { source.toggle(); } else { transport.toggle(); } },
+      shuttleBack: () => { shuttle(-1, false); },
+      shuttleStop: () => { shuttle(0, false); },
+      shuttleForward: () => { shuttle(1, false); },
+      shuttleBackSlow: () => { shuttle(-1, true); },
+      shuttleForwardSlow: () => { shuttle(1, true); },
+      stepBack: () => { step(-1); },
+      stepForward: () => { step(1); },
+      stepBackFive: () => { step(-5); },
+      stepForwardFive: () => { step(5); },
+      previousEdit: () => { editPoint(-1); },
+      nextEdit: () => { editPoint(1); },
+      goStart: () => { if (source) { source.seekEdge("start"); } else { transport.seek(0); } },
+      goEnd: () => { if (source) { source.seekEdge("end"); } else { transport.seek(timelineDuration(timeline)); } },
+      markIn: () => { if (source?.mark) { source.mark("in"); } else { editor.markRange("in"); } },
+      markOut: () => { if (source?.mark) { source.mark("out"); } else { editor.markRange("out"); } },
+      goIn: () => { goMark("in"); },
+      goOut: () => { goMark("out"); },
+      insert: () => { place("insert"); },
+      overwrite: () => { place("overwrite"); },
+      rippleTrimPrevious: () => { trim("in", true); },
+      rippleTrimNext: () => { trim("out", true); },
+      trimPrevious: () => { trim("in", false); },
+      trimNext: () => { trim("out", false); },
       extendEdit: extend,
       addEdit: () => void editor.split(),
       addEditAll: () => void editor.split(true),
-      lift: () => editor.removeRange(false),
-      extract: () => editor.removeRange(true),
+      lift: () => { editor.removeRange(false); },
+      extract: () => { editor.removeRange(true); },
       toggleEnabled: () => void editor.toggleEnabled(),
-      defaultVideoTransition: () => applyDefaultTransitions(editor, "video"),
-      defaultAudioTransition: () => applyDefaultTransitions(editor, "audio"),
-      defaultTransitions: () => applyDefaultTransitions(editor, "both"),
+      defaultVideoTransition: () => { applyDefaultTransitions(editor, "video"); },
+      defaultAudioTransition: () => { applyDefaultTransitions(editor, "audio"); },
+      defaultTransitions: () => { applyDefaultTransitions(editor, "both"); },
       delete: () => void editor.remove(false),
       rippleDelete: () => void editor.remove(true),
       addMarker: () => void editor.addMarker(),
       addText: editor.addTextLayer,
-      toggleSnap: () => editor.setSnapping(!editor.snapping),
-      toolSelect: () => editor.setTool("select"),
-      toolRipple: () => editor.setTool("ripple"),
-      toolRoll: () => editor.setTool("roll"),
-      toolRazor: () => editor.setTool("razor"),
-      toolSlip: () => editor.setTool("slip"),
-      toolSlide: () => editor.setTool("slide"),
-      zoomFit: () => requestTimelineZoom("fit"),
-      zoomIn: () => requestTimelineZoom("in"),
-      zoomOut: () => requestTimelineZoom("out"),
+      toggleSnap: () => { editor.setSnapping(!editor.snapping); },
+      toolSelect: () => { editor.setTool("select"); },
+      toolRipple: () => { editor.setTool("ripple"); },
+      toolRoll: () => { editor.setTool("roll"); },
+      toolRazor: () => { editor.setTool("razor"); },
+      toolSlip: () => { editor.setTool("slip"); },
+      toolSlide: () => { editor.setTool("slide"); },
+      zoomFit: () => { requestTimelineZoom("fit"); },
+      zoomIn: () => { requestTimelineZoom("in"); },
+      zoomOut: () => { requestTimelineZoom("out"); },
       undo: editor.undo,
       redo: editor.redo,
       copy: () => void editor.copy(),
       cut: editor.cut,
-      paste: () => editor.paste("overwrite"),
-      pasteInsert: () => editor.paste("insert"),
+      paste: () => { editor.paste("overwrite"); },
+      pasteInsert: () => { editor.paste("insert"); },
       pasteAttributes: () => {
-        if (editor.attributesBlocked) editor.warn(editor.attributesBlocked);
+        if (editor.attributesBlocked != null && editor.attributesBlocked !== "") editor.warn(editor.attributesBlocked);
         else editor.ui.setPastingAttributes(true);
       },
-      selectAll: () => editor.setSelected(timeline.clips.map((clip) => clip.clip_id)),
+      selectAll: () => { editor.setSelected(timeline.clips.map((clip) => clip.clip_id)); },
       deselect: () => {
         transport.stop();
         editor.setSelected([]);
@@ -214,7 +214,7 @@ export function useEditorKeys(editor: Editor): void {
     if (event.defaultPrevented || editor.workspace === "render") return;
     const binding = keyBinding(event, editor.workspace === "edit" ? "edit" : "all");
     if (!binding || isInOverlay(event.target)) return;
-    if (isTextEntry(event.target) ? !binding.inText : keepsKey(event)) return;
+    if (isTextEntry(event.target) ? !(binding.inText === true) : keepsKey(event)) return;
     // Copy with text selected on the page stays the browser's copy
     if (binding.id === "copy" && (window.getSelection()?.toString() ?? "") !== "") return;
     event.preventDefault();
@@ -224,7 +224,7 @@ export function useEditorKeys(editor: Editor): void {
   const onPress = useEffectEvent((event: MouseEvent) => {
     const target = event.target instanceof Element ? event.target : null;
     const control = target?.closest("button, [role=button], [role=radio], [role=tab]");
-    if (event.button !== 0 || !control || !control.closest("[data-keep-focus]") || isTextEntry(target)) return;
+    if (event.button !== 0 || !control?.closest("[data-keep-focus]") || isTextEntry(target)) return;
     // The field that keeps the focus never blurs, so its typed value is taken now: the press may retarget its panel
     editor.drafts.commitAll();
     event.preventDefault();
@@ -235,8 +235,8 @@ export function useEditorKeys(editor: Editor): void {
     if (panel && active instanceof HTMLElement && !panel.contains(active)) active.blur();
   });
   useEffect(() => {
-    const key = (event: KeyboardEvent) => onKey(event);
-    const press = (event: MouseEvent) => onPress(event);
+    const key = (event: KeyboardEvent) => { onKey(event); };
+    const press = (event: MouseEvent) => { onPress(event); };
     window.addEventListener("keydown", key);
     window.addEventListener("mousedown", press, true);
     return () => {

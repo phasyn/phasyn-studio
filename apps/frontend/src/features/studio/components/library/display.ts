@@ -5,7 +5,7 @@ import { formatBytes } from "@/lib/format";
 import { t } from "@/i18n";
 
 export function itemDimensions(item: StudioLibraryItem): string {
-  return item.width !== null && item.height !== null ? `${item.width}×${item.height}` : "—";
+  return item.width !== null && item.height !== null ? `${String(item.width)}×${String(item.height)}` : "—";
 }
 
 /** 長度（m:ss.s；圖片沒有長度）。 */
@@ -19,7 +19,7 @@ function clockDuration(total: number | null): string {
   if (total === null) return t("長度未知");
   const minutes = Math.floor(total / 60);
   const seconds = total - minutes * 60;
-  return `${minutes}:${seconds.toFixed(1).padStart(4, "0")}`;
+  return `${String(minutes)}:${seconds.toFixed(1).padStart(4, "0")}`;
 }
 
 export function itemSize(item: StudioLibraryItem): string {
@@ -32,6 +32,7 @@ export function itemAudioTrack(item: StudioLibraryItem): string | null {
 }
 
 export function itemSource(item: StudioLibraryItem): string {
+  if (item.source?.kind === "run_output") return t("執行輸出") + " · " + item.source.output_key;
   return item.source?.kind === "image_take" ? t("Image Studio 的 take") : t("上傳");
 }
 
@@ -42,7 +43,7 @@ export function totalSize(items: readonly StudioLibraryItem[]): string {
 
 /** 渲染成品（take 或序列匯出）的解析度、長度與大小。 */
 export function renderDimensions(entry: RenderEntry): string {
-  return `${entry.asset.width}×${entry.asset.height}`;
+  return `${String(entry.asset.width)}×${String(entry.asset.height)}`;
 }
 
 export function renderDuration(entry: RenderEntry): string {

@@ -1,0 +1,60 @@
+{
+  "pipeline_id": "wan-edit-extend-after",
+  "label": "Wan VACE · 向後延展",
+  "inputs": [
+    {
+      "name": "prompt",
+      "type_id": "text.prompt.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "Describe the resulting shot"
+    },
+    {
+      "name": "source",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": "Original source clip"
+    },
+    {
+      "name": "reference",
+      "type_id": "media.image.v1",
+      "required": false,
+      "transport": "file",
+      "description": "Optional visual reference"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "edit",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "wan-edit",
+      "inputs": {
+        "prompt": {
+          "from_input": "prompt"
+        },
+        "source": {
+          "from_input": "source"
+        },
+        "reference": {
+          "from_input": "reference"
+        }
+      },
+      "parameters": {
+        "operation": "extend_after",
+        "frames": 24,
+        "deliver": "joined"
+      }
+    }
+  ],
+  "outputs": {
+    "final": {
+      "from_step": "edit",
+      "output": "asset"
+    },
+    "video_file": {
+      "from_step": "edit",
+      "output": "video_file"
+    }
+  }
+}

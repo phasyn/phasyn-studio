@@ -28,20 +28,22 @@ function basename(path: string): string {
 export function settingsSummary(descriptor: Pick<ComponentDescriptor, "settings">): string[] {
   const load: Record<string, unknown> = isRecord(descriptor.settings.stored.load) ? descriptor.settings.stored.load : {};
   const out: string[] = [];
-  const options = isRecord(load.provider_options) ? load.provider_options : {};
-  if (typeof options.variant === "string" && options.variant) out.push(options.variant);
-  if (isRecord(options.lora)) {
-    const source = typeof options.lora.manifest_path === "string" ? options.lora.manifest_path : typeof options.lora.name === "string" ? options.lora.name : "";
+  const options = isRecord(load["provider_options"]) ? load["provider_options"] : {};
+  if (typeof options["variant"] === "string" && options["variant"]) out.push(options["variant"]);
+  const loras = Array.isArray(options["loras"]) && options["loras"].length > 0 ? options["loras"] : isRecord(options["lora"]) ? [options["lora"]] : [];
+  for (const lora of loras) {
+    if (!isRecord(lora)) continue;
+    const source = typeof lora["manifest_path"] === "string" ? lora["manifest_path"] : typeof lora["name"] === "string" ? lora["name"] : "";
     const name = source ? basename(source).replace(/\.json$/i, "") : "";
-    const scale = typeof options.lora.scale === "number" && options.lora.scale !== 1 ? ` ×${options.lora.scale}` : "";
+    const scale = typeof lora["scale"] === "number" && lora["scale"] !== 1 ? ` ×${String(lora["scale"])}` : "";
     out.push(`LoRA${name ? ` ${name}` : ""}${scale}`);
   }
-  const precision = isRecord(load.precision) ? load.precision : {};
-  if (isRecord(precision.quantization) && typeof precision.quantization.scheme === "string" && precision.quantization.scheme !== "none") {
-    out.push(precision.quantization.scheme);
+  const precision = isRecord(load["precision"]) ? load["precision"] : {};
+  if (isRecord(precision["quantization"]) && typeof precision["quantization"]["scheme"] === "string" && precision["quantization"]["scheme"] !== "none") {
+    out.push(precision["quantization"]["scheme"]);
   }
-  if (typeof precision.compute_dtype === "string" && precision.compute_dtype !== "native") out.push(precision.compute_dtype);
-  if (isRecord(load.offload) && typeof load.offload.mode === "string") out.push(`offload ${load.offload.mode}`);
+  if (typeof precision["compute_dtype"] === "string" && precision["compute_dtype"] !== "native") out.push(precision["compute_dtype"]);
+  if (isRecord(load["offload"]) && typeof load["offload"]["mode"] === "string") out.push(`offload ${load["offload"]["mode"]}`);
   return out;
 }
 

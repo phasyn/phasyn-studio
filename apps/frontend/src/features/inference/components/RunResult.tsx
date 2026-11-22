@@ -58,7 +58,7 @@ function StepProgress({ steps }: { steps: readonly RunStepView[] }) {
 }
 
 function StepRow({ step, lookup, now }: { step: RunStepView; lookup: DescriptorLookup; now: number | null }) {
-  const descriptor = step.node_id && step.component_id ? lookup(step.node_id, step.component_id) : null;
+  const descriptor = (step.node_id != null && step.node_id !== "") && (step.component_id != null && step.component_id !== "") ? lookup(step.node_id, step.component_id) : null;
   const kind = providerKind(descriptor?.provider_id);
   return (
     <li className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 border-b border-line-subtle px-3 py-1.5 transition-colors duration-(--duration-fast) last:border-b-0 hover:bg-raised/50">
@@ -70,7 +70,7 @@ function StepRow({ step, lookup, now }: { step: RunStepView; lookup: DescriptorL
       <StatusBadge kind="step" value={step.state} />
       <span />
       <span className="machine col-span-2 text-caption text-fg-tertiary">
-        {`${step.started_at ? t("耗時 {elapsedMs}", { elapsedMs: formatElapsed(elapsedMs(step.started_at, step.finished_at, step.state === "running" ? now : null)) }) : t("尚未開始")}${step.remote_outcome_unknown ? t("・遠端結果未知") : ""}`}
+        {`${(step.started_at != null && step.started_at !== "") ? t("耗時 {elapsedMs}", { elapsedMs: formatElapsed(elapsedMs(step.started_at, step.finished_at, step.state === "running" ? now : null)) }) : t("尚未開始")}${step.remote_outcome_unknown ? t("・遠端結果未知") : ""}`}
       </span>
     </li>
   );
@@ -82,7 +82,7 @@ function RunBody({ run, lookup, pipelineId }: { run: WireRun; lookup: Descriptor
   // The Cancel button that asked (non-null while confirming); it leaves with the running state, and focus then goes
   // to the link to this run's record beside it
   const [cancelOpener, setCancelOpener] = useState<HTMLElement | null>(null);
-  const recordLink = useRef<HTMLAnchorElement>(null);
+  const recordLinkRef = useRef<HTMLAnchorElement>(null);
   const steps = runSteps(run);
   const outputs = Object.entries(asTypedValueMap(run.outputs));
   const stepMedia = runValues(run).filter((value) => value.stepId !== null && MEDIA_OUTPUT.test(value.value.type_id));
@@ -105,12 +105,12 @@ function RunBody({ run, lookup, pipelineId }: { run: WireRun; lookup: Descriptor
         id={run.run_id}
         actions={
           <>
-            <Link ref={recordLink} to={runPath(run.run_id)} className={buttonVariants({ variant: "secondary", size: "sm" })}>
+            <Link ref={recordLinkRef} to={runPath(run.run_id)} className={buttonVariants({ variant: "secondary", size: "sm" })}>
               <ExternalLink aria-hidden />
               {t("在執行紀錄開啟")}
             </Link>
             {running ? (
-              <ActionButton size="sm" variant="danger" icon={<Ban aria-hidden />} onClick={(event) => setCancelOpener(event.currentTarget)} title={t("中止進行中的步驟（只結束這個 run 呼叫的元件程序）；不會自動重跑")}>
+              <ActionButton size="sm" variant="danger" icon={<Ban aria-hidden />} onClick={(event) => { setCancelOpener(event.currentTarget); }} title={t("中止進行中的步驟（只結束這個 run 呼叫的元件程序）；不會自動重跑")}>
                 {t("取消 run…")}
               </ActionButton>
             ) : null}
@@ -120,7 +120,7 @@ function RunBody({ run, lookup, pipelineId }: { run: WireRun; lookup: Descriptor
       <DockBody className="relative">
         <div className="grid gap-2 border-b border-line-subtle px-3 py-3">
           <StepProgress steps={steps} />
-          {pipelineId && run.request.pipeline.pipeline_id !== pipelineId ? (
+          {(pipelineId != null && pipelineId !== "") && run.request.pipeline.pipeline_id !== pipelineId ? (
             <p className="text-caption text-warning">{t("這個 run 來自元件組合 {pipeline_id}，不是目前選的元件組合。", { pipeline_id: run.request.pipeline.pipeline_id })}</p>
           ) : null}
           {run.state === "interrupted" ? <p className="text-caption text-warning">{t("run 已中斷（Controller 曾重新啟動）；沒有恢復，需要時請重新建立。")}</p> : null}
@@ -160,8 +160,8 @@ function RunBody({ run, lookup, pipelineId }: { run: WireRun; lookup: Descriptor
         <CancelRunDialog
           run={run}
           open
-          onOpenChange={(open) => (open ? undefined : setCancelOpener(null))}
-          onCloseAutoFocus={(event) => returnFocusOr(event, cancelOpener, recordLink.current)}
+          onOpenChange={(open) => { if (!(open)) { setCancelOpener(null); } }}
+          onCloseAutoFocus={(event) => { returnFocusOr(event, cancelOpener, recordLinkRef.current); }}
         />
       ) : null}
     </div>
@@ -181,10 +181,10 @@ export function RunResult({
   onSelectRun: (runId: string | null) => void;
 }) {
   const query = useRun(runId);
-  if (!runId) return <RecentRuns pipelineId={pipelineId} onSelectRun={onSelectRun} />;
+  if (!(runId != null && runId !== "")) return <RecentRuns pipelineId={pipelineId} onSelectRun={onSelectRun} />;
   const back = (
     <div className="flex h-9 shrink-0 items-center border-b border-line-subtle px-1.5">
-      <Button size="sm" variant="quiet" icon={<ArrowLeft aria-hidden />} onClick={() => onSelectRun(null)} className="min-h-7 px-2">
+      <Button size="sm" variant="quiet" icon={<ArrowLeft aria-hidden />} onClick={() => { onSelectRun(null); }} className="min-h-7 px-2">
         {t("最近的 run")}
       </Button>
     </div>
@@ -225,12 +225,12 @@ export function RunResult({
 
 function RecentRuns({ pipelineId, onSelectRun }: { pipelineId: string | null; onSelectRun: (runId: string) => void }) {
   const runs = useRunList();
-  const items = (runs.data?.pages[0]?.items ?? []).filter((run) => !pipelineId || run.request.pipeline.pipeline_id === pipelineId).slice(0, 12);
+  const items = (runs.data?.pages[0]?.items ?? []).filter((run) => !(pipelineId != null && pipelineId !== "") || run.request.pipeline.pipeline_id === pipelineId).slice(0, 12);
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b border-line-subtle px-3 text-data font-semibold text-fg">
         <History aria-hidden className="size-4 text-fg-tertiary" />
-        {pipelineId ? t("這個元件組合最近的 run") : t("最近的 run")}
+        {(pipelineId != null && pipelineId !== "") ? t("這個元件組合最近的 run") : t("最近的 run")}
       </div>
       <DockBody className="relative">
         {runs.isPending ? (
@@ -242,14 +242,14 @@ function RecentRuns({ pipelineId, onSelectRun }: { pipelineId: string | null; on
             <ErrorCallout error={runs.error} title={t("無法讀取 run 列表")} onRetry={() => void runs.refetch()} retrying={runs.isFetching} />
           </div>
         ) : items.length === 0 ? (
-          <EmptyState icon={<ListVideo />} size="compact" title={t("還沒有 run")} description={pipelineId ? t("在左邊填好輸入後按「建立 run」，結果會出現在這裡。") : t("先在左側選一個元件組合。")} />
+          <EmptyState icon={<ListVideo />} size="compact" title={t("還沒有 run")} description={(pipelineId != null && pipelineId !== "") ? t("在左邊填好輸入後按「建立 run」，結果會出現在這裡。") : t("先在左側選一個元件組合。")} />
         ) : (
           <ul aria-label={t("最近的 run")} className="">
             {items.map((run, index) => (
               <li key={run.run_id} ref={reveal(index)} className={"border-b border-line-subtle last:border-b-0"}>
                 <button
                   type="button"
-                  onClick={() => onSelectRun(run.run_id)}
+                  onClick={() => { onSelectRun(run.run_id); }}
                   className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-0.5 px-3 py-2 text-left outline-none hover:bg-raised focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-inset active:bg-sunken"
                   title={t("{value}（{created_at}）", { value: runDisplayName(run), created_at: formatTimestamp(run.created_at) })}
                 >

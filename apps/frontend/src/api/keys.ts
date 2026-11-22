@@ -14,6 +14,8 @@ export const qk = {
   /** mutation key＋scope（分類與排序的保存依序執行）。 */
   pipelineLayoutSave: () => ["pipeline-layout-save"] as const,
   runs: () => ["runs"] as const,
+  /** The newest run (outside runs(): invalidating the lists never re-reads it, and it never invalidates itself). */
+  runHead: () => ["run-head"] as const,
   runList: (limit: number, archived: "exclude" | "include" | "only" = "exclude") => ["runs", "list", limit, archived] as const,
   run: (runId: string) => ["run", runId] as const,
   /** DELETE dry-run of one run (outside the runs() prefix so list invalidation never re-sends it). */
@@ -47,6 +49,8 @@ export const POLL = {
   catalog: 3000,
   activeRun: 2000,
   runList: 3000,
+  /** The newest run only (a few KB) while nothing runs: notices runs started outside this tab (MCP, another tab). */
+  runHead: 4000,
   /** Waiting for a started component to become ready. */
   componentStart: 1500,
   /** A running weight download (the Node reports the bytes it has received). */

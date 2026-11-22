@@ -1,3 +1,4 @@
+import { optionalField } from "@/lib/json";
 import { ArrowUpRight, CircleAlert, CircleCheck, FileInput, ListTree, SearchX, Trash, TriangleAlert } from "lucide-react";
 import type { WirePipeline } from "@/api/types";
 import { CommitInput } from "@/components/common/CommitInput";
@@ -65,7 +66,7 @@ export function PipelineOutline({
           detail: step.component_id || t("未選元件"),
           title: `${step.step_id} · ${step.component_id || t("未選元件")}${own.length ? `\n${own.map((issue) => issue.message).join("\n")}` : ""}`,
           dot: errors > 0 ? "danger" : own.length > 0 ? "warning" : null,
-          dotLabel: errors > 0 ? t("{errors} 個錯誤", { errors }) : own.length > 0 ? t("{ownCount} 個提醒", { ownCount: own.length }) : undefined,
+          ...optionalField("dotLabel", errors > 0 ? t("{errors} 個錯誤", { errors }) : own.length > 0 ? t("{ownCount} 個提醒", { ownCount: own.length }) : undefined),
         } satisfies TreeItem;
       }),
     },
@@ -83,7 +84,7 @@ export function PipelineOutline({
           detail: `${target.from_step}.${target.output}`,
           title: `${name} ← ${target.from_step}.${target.output}${missing ? t("\n來源步驟不存在") : ""}`,
           dot: missing ? "danger" : null,
-          dotLabel: missing ? t("來源步驟不存在") : undefined,
+          ...(missing ? { dotLabel: t("來源步驟不存在") } : {}),
         } satisfies TreeItem;
       }),
     },
@@ -194,7 +195,7 @@ export function OutputInspector({
                 value={name}
                 onCommit={(next) => {
                   const error = exportNameError(pipeline, name, next);
-                  if (error) return error;
+                  if (error != null && error !== "") return error;
                   onChange(renameExport(pipeline, name, next));
                   onSelect({ kind: "output", id: next });
                   return null;
@@ -223,12 +224,12 @@ export function OutputInspector({
                 ))}
               </Select>
             </PropertyRow>
-            <PropertyRow label="type_id" mono hint={typeId ? undefined : source ? t("來源步驟是未知元件，無法確認型別。") : t("來源步驟不存在：請改選來源或移除。")}>
+            <PropertyRow label="type_id" mono hint={(typeId != null && typeId !== "") ? undefined : source ? t("來源步驟是未知元件，無法確認型別。") : t("來源步驟不存在：請改選來源或移除。")}>
               {typeId ?? t("未知")}
             </PropertyRow>
           </PropertyGrid>
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button size="sm" variant="quiet" disabled={!source} onClick={() => onSelect({ kind: "step", id: target.from_step })}>
+            <Button size="sm" variant="quiet" disabled={!source} onClick={() => { onSelect({ kind: "step", id: target.from_step }); }}>
               {t("選取來源步驟")}
             </Button>
             <Button
@@ -264,7 +265,7 @@ export function IssuesPanel({ issues, onSelectStep }: { issues: readonly Pipelin
     <div className="min-h-0 flex-1 overflow-auto">
       <ul aria-label={t("接線問題")} className="grid">
         {issues.map((issue, index) => (
-          <li key={`${issue.code}-${issue.stepId ?? ""}-${issue.port ?? ""}-${index}`} className="flex min-h-7 items-start gap-2 border-b border-line-subtle px-3 py-1.5 text-data">
+          <li key={`${issue.code}-${issue.stepId ?? ""}-${issue.port ?? ""}-${String(index)}`} className="flex min-h-7 items-start gap-2 border-b border-line-subtle px-3 py-1.5 text-data">
             {issue.severity === "error" ? (
               <CircleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0 text-danger" />
             ) : (
@@ -273,10 +274,10 @@ export function IssuesPanel({ issues, onSelectStep }: { issues: readonly Pipelin
             <StatusChip tone={issue.severity === "error" ? "danger" : "warning"} label={issue.severity === "error" ? t("錯誤") : t("提醒")} />
             <code className="machine shrink-0 text-caption text-fg-tertiary">{issue.code}</code>
             <span className="min-w-0 flex-1 [overflow-wrap:anywhere] text-fg-secondary">{issue.message}</span>
-            {issue.stepId ? (
+            {(issue.stepId != null && issue.stepId !== "") ? (
               <button
                 type="button"
-                onClick={() => onSelectStep(issue.stepId ?? "")}
+                onClick={() => { onSelectStep(issue.stepId ?? ""); }}
                 title={t("選取步驟 {stepId}", { stepId: issue.stepId })}
                 className="pressable machine shrink-0 rounded-md px-1.5 text-caption text-action-fg outline-none hover:bg-raised hover:text-fg focus-visible:ring-2 focus-visible:ring-focus active:bg-sunken"
               >

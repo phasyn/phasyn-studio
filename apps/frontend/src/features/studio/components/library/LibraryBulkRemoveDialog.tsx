@@ -46,7 +46,7 @@ export function LibraryBulkRemoveDialog({
       }}
     >
       {items ? (
-        <DialogContent onKeyDown={(event) => event.stopPropagation()}>
+        <DialogContent onKeyDown={(event) => { event.stopPropagation(); }}>
           <DialogHeader>
             <DialogTitle>{t("從專案素材庫移除 {count} 個素材？", { count: removable.length })}</DialogTitle>
             <DialogDescription>
@@ -59,7 +59,7 @@ export function LibraryBulkRemoveDialog({
             <ul aria-label={t("要移除的素材")} className="grid max-h-72 gap-1 overflow-y-auto">
               {removable.map((item) => (
                 <li key={item.item_id} className="grid min-w-0 grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-2 rounded-md border border-line-subtle bg-canvas/60 p-1.5">
-                  <span className="grid aspect-video place-items-center overflow-hidden rounded border border-line-subtle bg-stage">
+                  <span className="grid aspect-video place-items-center overflow-hidden rounded-sm border border-line-subtle bg-stage">
                     <LibraryThumb item={item} />
                   </span>
                   <span className="truncate text-caption text-fg">{item.name}</span>

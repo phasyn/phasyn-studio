@@ -1,3 +1,4 @@
+import { isFiniteNumber, isRecord } from "@/lib/json";
 // The Program monitor in its own window (UI list #25): a same-origin window that the main window renders into
 // through a React portal, so it is the same component tree and state; play, scrub, edits, captions and effects are in
 // step by construction, and the window only shows (it saves nothing). The page's stylesheets and theme are copied in;
@@ -26,10 +27,11 @@ export function popoutVisible(): boolean {
 function readPlace(): Place | null {
   try {
     const raw = window.localStorage.getItem(PLACE_KEY);
-    if (!raw) return null;
-    const place = JSON.parse(raw) as Partial<Place>;
-    const numbers = [place.left, place.top, place.width, place.height];
-    return numbers.every((value) => typeof value === "number" && Number.isFinite(value)) ? (place as Place) : null;
+    if (!(raw != null && raw !== "")) return null;
+    const place: unknown = JSON.parse(raw);
+    if (!isRecord(place)) return null;
+    const {left, top, width, height} = place;
+    return isFiniteNumber(left) && isFiniteNumber(top) && isFiniteNumber(width) && isFiniteNumber(height) ? {left, top, width, height} : null;
   } catch {
     return null;
   }
@@ -44,6 +46,12 @@ function savePlace(popup: Window): void {
   }
 }
 
+declare global {
+  interface Window {
+    getScreenDetails?: () => Promise<{ screens: ScreenDetail[]; currentScreen: ScreenDetail }>;
+  }
+}
+
 interface ScreenDetail {
   availLeft: number;
   availTop: number;
@@ -53,10 +61,9 @@ interface ScreenDetail {
 
 /** Another screen than the page's, when the Window Management API is there and the user allows it (else null). */
 async function otherScreen(): Promise<Place | null> {
-  const api = window as unknown as { getScreenDetails?: () => Promise<{ screens: ScreenDetail[]; currentScreen: ScreenDetail }> };
-  if (typeof api.getScreenDetails !== "function") return null;
+  if (typeof window.getScreenDetails !== "function") return null;
   try {
-    const details = await Promise.race([api.getScreenDetails(), new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000))]);
+    const details = await Promise.race([window.getScreenDetails(), new Promise<null>((resolve) => void setTimeout(() => { resolve(null); }, 3000))]);
     const other = details?.screens.find((screen) => screen !== details.currentScreen);
     if (!other) return null;
     return { left: other.availLeft, top: other.availTop, width: other.availWidth, height: other.availHeight };
@@ -67,7 +74,7 @@ async function otherScreen(): Promise<Place | null> {
 
 function features(place: Place | null): string {
   const size = place ?? { left: window.screenX + 80, top: window.screenY + 80, ...DEFAULT_SIZE };
-  return `popup=yes,left=${Math.round(size.left)},top=${Math.round(size.top)},width=${Math.round(size.width)},height=${Math.round(size.height)}`;
+  return `popup=yes,left=${String(Math.round(size.left))},top=${String(Math.round(size.top))},width=${String(Math.round(size.width))},height=${String(Math.round(size.height))}`;
 }
 
 /** The new window's page: the main page's stylesheets, theme attributes and language, and an empty root. */
@@ -123,13 +130,13 @@ export interface ProgramPopout {
 
 export function useProgramPopout(title: string): ProgramPopout {
   const [state, setState] = useState<{ popup: Window; container: HTMLElement } | null>(null);
-  const live = useRef(state);
+  const liveRef = useRef(state);
   useEffect(() => {
-    live.current = state;
+    liveRef.current = state;
   });
 
   const close = useCallback(() => {
-    const current = live.current;
+    const current = liveRef.current;
     if (!current) return;
     savePlace(current.popup);
     openWindow = null;
@@ -138,7 +145,7 @@ export function useProgramPopout(title: string): ProgramPopout {
   }, []);
 
   const open = useCallback(async () => {
-    const current = live.current;
+    const current = liveRef.current;
     if (current && !current.popup.closed) {
       current.popup.focus();
       return true;
@@ -150,7 +157,7 @@ export function useProgramPopout(title: string): ProgramPopout {
     forwardKeys(popup);
     // Closing the window by its own button, or reloading it, brings the monitor back
     popup.addEventListener("pagehide", () => {
-      if (live.current?.popup !== popup) return;
+      if (liveRef.current?.popup !== popup) return;
       savePlace(popup);
       openWindow = null;
       setState(null);
@@ -163,7 +170,7 @@ export function useProgramPopout(title: string): ProgramPopout {
 
   // The window lives only as long as the editor: leaving the page or the workspace closes it
   useEffect(() => {
-    const leave = () => close();
+    const leave = () => { close(); };
     window.addEventListener("pagehide", leave);
     return () => {
       window.removeEventListener("pagehide", leave);

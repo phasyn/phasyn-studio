@@ -1,3 +1,5 @@
+import { validClock } from "./studioGenerationBinding";
+import { fieldValue, changedItems, isNonzeroNumber } from "@/lib/json";
 // Studio 專案文件的純邏輯：建立、編輯（reducer）、鏡頭狀態。專案只保存使用者的編輯狀態與 run 參照，
 // 事實來源仍是 run 與 recording（take 的結果由 run 讀回後填入）。
 import type { StudioExport, StudioLibraryItem, StudioProject, StudioShot, StudioTake } from "@/api/generated/contracts";
@@ -16,6 +18,7 @@ export type ShotPatch = Partial<
   Pick<
     StudioShot,
     | "title"
+    | "previs"
     | "prompt"
     | "frames"
     | "seed"
@@ -112,10 +115,10 @@ export const EXPORT_SIZE_PRESETS: readonly ExportSizePreset[] = [
 ];
 
 /** 匯出的尺寸與縮放方式：沒有 export_format 時就是渲染尺寸（fit 為 undefined＝請求不帶 fit，與以前完全相同）。 */
-export function exportGeometry(project: StudioProject): { width: number; height: number; fit: ExportFit | undefined } {
+export function exportGeometry(project: StudioProject): { width: number; height: number; fit?: ExportFit } {
   const format = project.export_format;
-  if (!format) return { width: project.format.width, height: project.format.height, fit: undefined };
-  return { width: format.width, height: format.height, fit: format.fit };
+  if (!format) return { width: project.format.width, height: project.format.height };
+  return { width: format.width, height: format.height, ...(typeof format.fit === "string" ? { fit: format.fit } : {}) };
 }
 
 export { localId };
@@ -124,7 +127,7 @@ export function randomSeed(): number {
   return (crypto.getRandomValues(new Uint32Array(1))[0] ?? 0) & MAX_SEED;
 }
 
-export function newProject(title: string, options: { width?: number; height?: number; frames?: number; route?: string } = {}): StudioProject {
+export function newProject(title: string, options: { width?: number; height?: number; frames?: number; route?: string; fps?: StudioProject["format"]["fps"] } = {}): StudioProject {
   const now = new Date().toISOString();
   return {
     project_id: localId("p"),
@@ -132,7 +135,7 @@ export function newProject(title: string, options: { width?: number; height?: nu
     revision: 0,
     created_at: now,
     updated_at: now,
-    format: { width: options.width ?? 768, height: options.height ?? 448, fps: { num: H3_FPS, den: 1 } },
+    format: { width: options.width ?? 768, height: options.height ?? 448, fps: options.fps ?? { num: H3_FPS, den: 1 } },
     defaults: { frames: options.frames ?? DEFAULT_FRAMES, route: options.route ?? UNASSIGNED_ROUTE, steps: null },
     shots: [],
     exports: [],
@@ -167,11 +170,31 @@ export function newShot(project: StudioProject, patch: NewShotFields = {}): Stud
  */
 export function continuedShotFields(previous: StudioShot | null | undefined): NewShotFields {
   if (!previous) return {};
-  return { frames: previous.frames, ...(previous.references?.length ? { references: structuredClone(previous.references) } : {}) };
+  return { frames: previous.frames, ...(isNonzeroNumber(previous.references?.length) ? { references: structuredClone(previous.references) } : {}) };
+}
+
+type TimelineSource = NonNullable<StudioProject["timeline"]>["sources"][number];
+type ProxyPatch = { [K in "proxy" | "proxy_error" | "proxy_run_id" | "proxy_source_sha256"]?: TimelineSource[K] | undefined };
+
+function withProxyPatch(source: TimelineSource, patch: ProxyPatch): TimelineSource {
+  const updated = Object.assign({ ...source }, patch);
+  if (updated.proxy === undefined) delete updated.proxy;
+  if (updated.proxy_error === undefined) delete updated.proxy_error;
+  if (updated.proxy_run_id === undefined) delete updated.proxy_run_id;
+  if (updated.proxy_source_sha256 === undefined) delete updated.proxy_source_sha256;
+  return updated;
+}
+
+export function canChangeProjectRate(project: StudioProject): boolean {
+  const timeline = project.timeline;
+  return project.shots.length === 0 && project.exports.length === 0 &&
+    (!timeline || (timeline.sources.length === 0 && timeline.clips.length === 0 && !timeline.captions.length &&
+      !timeline.markers.length && !timeline.work_area));
 }
 
 export type ProjectAction =
-  | { type: "patchTimelineSource"; sourceId: string; patch: Partial<NonNullable<StudioProject["timeline"]>["sources"][number]> }
+  | { type: "setFrameRate"; rate: StudioProject["format"]["fps"] }
+  | { type: "patchTimelineSource"; sourceId: string; patch: ProxyPatch }
   | { type: "setTimeline"; timeline: NonNullable<StudioProject["timeline"]> }
   | { type: "rename"; title: string }
   | { type: "setFormat"; width: number; height: number }
@@ -210,14 +233,11 @@ function hasShot(project: StudioProject, shotId: string): boolean {
 }
 
 function mapShot(project: StudioProject, shotId: string, fn: (shot: StudioShot) => StudioShot): StudioProject {
-  let changed = false;
-  const shots = project.shots.map((shot) => {
+  const shots = changedItems(project.shots, (shot) => {
     if (shot.shot_id !== shotId) return shot;
-    const next = fn(shot);
-    changed ||= next !== shot;
-    return next;
+    return fn(shot);
   });
-  return changed ? { ...project, shots } : project;
+  return shots !== null ? { ...project, shots } : project;
 }
 
 /** 純函式；不合法或無效的動作回傳原物件（呼叫端據此判斷是否需要保存）。 */
@@ -226,7 +246,7 @@ export function duplicatedShot(project: StudioProject, shotId: string, newShotId
   const source = project.shots.find((shot) => shot.shot_id === shotId);
   if (!source || project.shots.length >= MAX_SHOTS || hasShot(project, newShotId)) return null;
   const take = playableTake(source);
-  const takes = take && newTakeId ? [{ ...take, take_id: newTakeId }] : [];
+  const takes = take && (newTakeId != null && newTakeId !== "") ? [{ ...take, take_id: newTakeId }] : [];
   // The copy is a new shot of the same generation settings: the edit of the original stays with its clips. It starts
   // off the timeline (an enabled shot that never had a place would be appended after the last clip, lengthening the
   // film); 加入時間軸 places it where the editor wants it.
@@ -246,12 +266,17 @@ export function duplicatedShot(project: StudioProject, shotId: string, newShotId
 export function projectReducer(project: StudioProject, action: ProjectAction): StudioProject {
   switch (action.type) {
     case "patchTimelineSource":
-      return project.timeline ? { ...project, timeline: { ...project.timeline, sources: project.timeline.sources.map((source) => source.source_id === action.sourceId ? { ...source, ...action.patch } : source) } } : project;
+      return project.timeline ? { ...project, timeline: { ...project.timeline, sources: project.timeline.sources.map((source) => source.source_id === action.sourceId ? withProxyPatch(source, action.patch) : source) } } : project;
     case "setTimeline":
       return project.timeline === action.timeline ? project : { ...project, timeline: action.timeline };
     case "rename": {
       const title = action.title.trim();
       return title && title !== project.title ? { ...project, title: title.slice(0, 200) } : project;
+    }
+    case "setFrameRate": {
+      const { rate } = action;
+      if (!canChangeProjectRate(project) || !validClock(rate.num, rate.den)) return project;
+      return { ...project, format: { ...project.format, fps: rate }, ...(project.timeline ? { timeline: { ...project.timeline, fps: rate } } : {}) };
     }
     case "setFormat":
       return { ...project, format: { ...project.format, width: action.width, height: action.height } };
@@ -273,7 +298,7 @@ export function projectReducer(project: StudioProject, action: ProjectAction): S
       }
       const current = project.export_format;
       const next = action.exportFormat;
-      if (current && current.width === next.width && current.height === next.height && current.fit === next.fit) return project;
+      if (current?.width === next.width && current.height === next.height && current.fit === next.fit) return project;
       return { ...project, export_format: { width: next.width, height: next.height, fit: next.fit } };
     }
     case "setDefaults":
@@ -296,7 +321,7 @@ export function projectReducer(project: StudioProject, action: ProjectAction): S
       return withoutLibraryItem(project, action.itemId);
     case "addShot": {
       if (project.shots.length >= MAX_SHOTS) return project;
-      const index = action.afterShotId ? project.shots.findIndex((shot) => shot.shot_id === action.afterShotId) : -1;
+      const index = (action.afterShotId != null && action.afterShotId !== "") ? project.shots.findIndex((shot) => shot.shot_id === action.afterShotId) : -1;
       const shots = [...project.shots];
       shots.splice(index >= 0 ? index + 1 : shots.length, 0, action.shot);
       return { ...project, shots };
@@ -311,7 +336,7 @@ export function projectReducer(project: StudioProject, action: ProjectAction): S
     case "updateShot":
       return mapShot(project, action.shotId, (shot) => {
         // 沒有實際改變（例如編輯器回呼同樣的值）時不產生新文件，免得觸發自動保存
-        if ((Object.keys(action.patch) as (keyof ShotPatch)[]).every((key) => shot[key] === action.patch[key])) return shot;
+        if (Object.entries(action.patch).every(([key, value]) => fieldValue(shot, key) === value)) return shot;
         return { ...shot, ...action.patch };
       });
     case "removeShot": {
@@ -319,7 +344,7 @@ export function projectReducer(project: StudioProject, action: ProjectAction): S
       if (shots.length === project.shots.length) return project;
       // The shot leaves the film with it; clips a locked track keeps stay as plain media (the dialog says so first)
       const timeline = project.timeline ? withoutShot(project.timeline, action.shotId) : null;
-      return { ...project, shots, ...(timeline?.ok ? { timeline: timeline.value } : {}) };
+      return { ...project, shots, ...((timeline?.ok === true) ? { timeline: timeline.value } : {}) };
     }
     case "moveShot": {
       const from = project.shots.findIndex((shot) => shot.shot_id === action.shotId);
@@ -336,14 +361,14 @@ export function projectReducer(project: StudioProject, action: ProjectAction): S
       const byId = new Map(project.shots.map((shot) => [shot.shot_id, shot]));
       if (action.order.length !== project.shots.length || new Set(action.order).size !== action.order.length) return project;
       const shots = action.order.map((id) => byId.get(id));
-      if (shots.some((shot) => !shot)) return project;
-      const ordered = shots as StudioShot[];
+      if (!shots.every((shot) => shot !== undefined)) return project;
+      const ordered = shots;
       return ordered.every((shot, index) => shot === project.shots[index]) ? project : { ...project, shots: ordered };
     }
     case "setActiveTake":
       return mapShot(project, action.shotId, (shot) => {
-        const take = action.takeId ? shot.takes.find((item) => item.take_id === action.takeId) : undefined;
-        const seed = action.adoptSeed && take && shot.seed !== RANDOM_SEED ? take.seed : shot.seed;
+        const take = (action.takeId != null && action.takeId !== "") ? shot.takes.find((item) => item.take_id === action.takeId) : undefined;
+        const seed = (action.adoptSeed === true) && take && take.seed !== null && shot.seed !== RANDOM_SEED ? take.seed : shot.seed;
         if (shot.active_take_id === action.takeId && seed === shot.seed) return shot;
         return { ...shot, active_take_id: action.takeId, seed };
       });
@@ -355,8 +380,7 @@ export function projectReducer(project: StudioProject, action: ProjectAction): S
       return next;
     }
     case "updateTake": {
-      let changed = false;
-      const shots = project.shots.map((shot) => {
+      const shots = changedItems(project.shots, (shot) => {
         const index = shot.takes.findIndex((take) => take.run_id === action.runId && take.output_key === action.outputKey);
         if (index < 0) return shot;
         const current = shot.takes[index];
@@ -364,11 +388,15 @@ export function projectReducer(project: StudioProject, action: ProjectAction): S
         const updated = { ...current, ...action.patch };
         const takes = [...shot.takes];
         takes[index] = updated;
-        changed = true;
-        const activate = action.activateOnSuccess && updated.state === "succeeded" && current.state !== "succeeded";
-        return { ...shot, takes, active_take_id: activate ? updated.take_id : shot.active_take_id };
+        if (updated.state !== "succeeded" || current.state === "succeeded") return { ...shot, takes };
+        const selected = activeTake(shot);
+        if (selected) return { ...shot, takes, active_take_id: selected.take_id };
+        if (action.activateOnSuccess !== true) return { ...shot, takes };
+        const variation = shot.takes.some((take) => take !== current && take.run_id === action.runId);
+        const seed = variation && shot.seed !== RANDOM_SEED && updated.seed !== null ? updated.seed : shot.seed;
+        return { ...shot, takes, active_take_id: updated.take_id, seed };
       });
-      return changed ? { ...project, shots } : project;
+      return shots !== null ? { ...project, shots } : project;
     }
     case "removeTake":
       return mapShot(project, action.shotId, (shot) => ({
@@ -381,13 +409,11 @@ export function projectReducer(project: StudioProject, action: ProjectAction): S
       return { ...project, exports: exports.slice(Math.max(0, exports.length - MAX_EXPORTS)) };
     }
     case "updateExport": {
-      let changed = false;
-      const exports = project.exports.map((record) => {
+      const exports = changedItems(project.exports, (record) => {
         if (record.run_id !== action.runId) return record;
-        changed = true;
         return { ...record, ...action.patch };
       });
-      return changed ? { ...project, exports } : project;
+      return exports !== null ? { ...project, exports } : project;
     }
     case "removeExport":
       return { ...project, exports: project.exports.filter((record) => record.export_id !== action.exportId) };
@@ -396,7 +422,7 @@ export function projectReducer(project: StudioProject, action: ProjectAction): S
 
 /** 使用中的 take：明確選取的那個；沒有選取時用最新的成功 take。 */
 export function activeTake(shot: StudioShot): StudioTake | null {
-  const chosen = shot.active_take_id ? shot.takes.find((take) => take.take_id === shot.active_take_id) : undefined;
+  const chosen = (shot.active_take_id != null && shot.active_take_id !== "") ? shot.takes.find((take) => take.take_id === shot.active_take_id) : undefined;
   if (chosen) return chosen;
   for (let i = shot.takes.length - 1; i >= 0; i -= 1) {
     const take = shot.takes[i];
@@ -425,9 +451,9 @@ export function neighbourShotId(project: StudioProject, shotId: string): string 
 /** 只列出與 take 不同的設定（用於「設定已變更」的說明）；空陣列＝一致。seed -1（每次隨機）時任何 seed 都算一致。 */
 export function changedSinceTake(take: StudioTake, shot: StudioShot, project: StudioProject): string[] {
   const out: string[] = [];
-  if (take.prompt !== shot.prompt) out.push("prompt");
+  if (take.prompt !== null && take.prompt !== shot.prompt) out.push("prompt");
   if (!samePlugins(take.prompt_plugins, project.prompt_plugins, take.prompt_plugin_revs)) out.push(t("Prompt 插件"));
-  if (shot.seed !== RANDOM_SEED && take.seed !== shot.seed) out.push("seed");
+  if (take.seed !== null && shot.seed !== RANDOM_SEED && take.seed !== shot.seed) out.push("seed");
   if (take.frames !== shot.frames) out.push(t("時長"));
   if (take.route !== shot.route) out.push(t("運算路由"));
   if (take.steps !== shot.steps) out.push(t("步數"));
@@ -435,7 +461,7 @@ export function changedSinceTake(take: StudioTake, shot: StudioShot, project: St
   // ref2va take：送出的參考素材（alias、檔案、裁切）與鏡頭目前的參考不同也算變更
   if (take.task === "ref2va" && !sameTakeReferences(take, takeReferences(shot.references ?? [], project.library ?? []))) out.push(t("參考素材"));
   const continuity = continuityChange(take, shot, project);
-  if (continuity) out.push(continuity);
+  if (continuity != null && continuity !== "") out.push(continuity);
   return out;
 }
 
@@ -484,11 +510,6 @@ export function runsInProgress(project: StudioProject): string[] {
   const ids = new Set<string>();
   for (const shot of project.shots) for (const take of shot.takes) if (take.state === "rendering") ids.add(take.run_id);
   for (const record of project.exports) if (record.state === "rendering") ids.add(record.run_id);
-  for (const source of project.timeline?.sources ?? []) if (source.proxy_run_id && !source.proxy && !source.proxy_error) ids.add(source.proxy_run_id);
+  for (const source of project.timeline?.sources ?? []) if ((source.proxy_run_id != null && source.proxy_run_id !== "") && !source.proxy && !(source.proxy_error != null && source.proxy_error !== "")) ids.add(source.proxy_run_id);
   return [...ids];
-}
-
-/** 工具列「渲染」分頁旁的進行中數量（渲染＋匯出）。 */
-export function renderTaskCount(project: StudioProject): number {
-  return runsInProgress(project).length;
 }

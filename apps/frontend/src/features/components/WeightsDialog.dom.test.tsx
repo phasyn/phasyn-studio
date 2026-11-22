@@ -107,12 +107,12 @@ describe("WeightsDialog", () => {
 
     await user.click(within(dialog).getByRole("checkbox", { name: /我已閱讀並同意上面列出的授權條款/ }));
     await user.click(within(dialog).getByRole("button", { name: /^下載（4\.00 GiB）/ }));
-    await waitFor(() => expect(posts(calls)).toEqual([[`${BASE}/download`, { accept_licenses: true, replace_mismatched: false }]]));
+    await waitFor(() => { expect(posts(calls)).toEqual([[`${BASE}/download`, { accept_licenses: true, replace_mismatched: false }]]); });
 
     expect(await within(dialog).findByRole("progressbar", { name: "權重下載進度" })).toBeInTheDocument();
     expect(within(dialog).getByText(/正在下載：/)).toHaveTextContent("qwen-image-2.1/transformer/model-00001.safetensors");
     await user.click(within(dialog).getByRole("button", { name: "取消下載" }));
-    await waitFor(() => expect(posts(calls).at(-1)).toEqual([`${BASE}/cancel`, undefined]));
+    await waitFor(() => { expect(posts(calls).at(-1)).toEqual([`${BASE}/cancel`, undefined]); });
     expect(await within(dialog).findByText("下載已取消")).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: /^繼續下載（4\.00 GiB）/ })).toBeInTheDocument();
   });

@@ -1,3 +1,4 @@
+import { isNonzeroNumber } from "@/lib/json";
 // The work section (summary.cost): what this load or invoke actually computed, per stage, as the duration estimator fits
 // it (not a prediction), with the call's generic facts. A recording without it says why instead of showing zeros.
 import { Sigma } from "lucide-react";
@@ -39,7 +40,7 @@ export function CostSection({ recording }: { recording: Recording }) {
               { key: "loadavg", label: t("loadavg（1 分鐘，開始 → 結束）"), value: loadavgText(cost.loadavg), mono: true },
               { key: "device", label: "device_id", value: cost.device_id ?? <Missing />, mono: cost.device_id !== null },
               { key: "revision", label: "source_revision", value: cost.source_revision ?? <Missing />, mono: cost.source_revision !== null },
-              { key: "digest", label: "load_digest", value: cost.load_digest ? <IdText value={cost.load_digest} length={12} /> : <Missing /> },
+              { key: "digest", label: "load_digest", value: (cost.load_digest != null && cost.load_digest !== "") ? <IdText value={cost.load_digest} length={12} /> : <Missing /> },
             ]}
           />
           {rows.length === 0 ? (
@@ -57,7 +58,7 @@ export function CostSection({ recording }: { recording: Recording }) {
                 </thead>
                 <tbody>
                   {rows.map((row, index) => (
-                    <Tr key={`${index}-${row.stage}`}>
+                    <Tr key={`${String(index)}-${row.stage}`}>
                       <Td className="machine text-fg">{row.stage}</Td>
                       <Td className="machine whitespace-nowrap">
                         <span className="text-fg" title={`${row.work.toLocaleString("en-US")} ${row.unit}`}>
@@ -93,7 +94,7 @@ export function CostSection({ recording }: { recording: Recording }) {
               </Table>
             </TableScroll>
           )}
-          {cost.dropped_stages ? (
+          {isNonzeroNumber(cost.dropped_stages) ? (
             <p className="text-caption text-warning">{t("另有 {dropped_stages} 個 stage 沒有記錄（每筆紀錄最多保留 64 個 stage）。", { dropped_stages: cost.dropped_stages })}</p>
           ) : null}
         </>

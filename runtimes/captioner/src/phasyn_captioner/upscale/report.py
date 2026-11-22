@@ -1,7 +1,9 @@
 """``actual_settings`` of a ``media.upscale`` output: method, source identity, sizes, durations and processing notes.
 
-The source is identified by its FileRef (node, file id, SHA-256, size) and asset id, never by a local path; the
-timing and memory blocks are added by the provider after the call.
+The source is identified by its node, file id and SHA-256 (as the restore and interpolation reports do) and its asset
+id, never by a local path. The record must not have the shape of a FileRef (node_id, file_id, sha256 and size_bytes):
+adopting the output as a take walks the asset for FileRefs and refuses one without a media type. The timing and memory
+blocks are added by the provider after the call.
 """
 
 from __future__ import annotations
@@ -54,7 +56,6 @@ def actual_settings(
                 "node_id": ref.get("node_id"),
                 "file_id": ref.get("file_id"),
                 "sha256": ref.get("sha256"),
-                "size_bytes": ref.get("size_bytes"),
                 "width": source.width,
                 "height": source.height,
                 "frames": source.frames,

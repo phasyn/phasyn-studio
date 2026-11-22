@@ -29,26 +29,38 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import glob
 import logging
+import re
 import threading
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
+from importlib import import_module
+from pathlib import Path
 from typing import Any
 
-from phasyn_components.errors import ComponentError, exception_message, host_memory_insufficient
+from phasyn_components.errors import (
+    ComponentError,
+    exception_message,
+    host_memory_insufficient,
+)
 from phasyn_components.recorder import Recorder
 
 from .config import DEFAULT_CHIP_ZONE_GLOB, AdmissionConfig, ThermalLimits
+
 
 log = logging.getLogger("phasyn_node.admission")
 
 GIB = 1024**3
 THERMAL = "thermal"  # the chip temperature's pause source: the only one so far, and it ends by itself
 MEMORY = "memory"
-PLAUSIBLE_C = (-40.0, 200.0)  # a zone outside this range is broken, not hot: skipped, never trusted
-FALLBACK_INTERVAL_S = 5.0  # unused in practice: a valid admission block always has thermal or memory
+PLAUSIBLE_C = (
+    -40.0,
+    200.0,
+)  # a zone outside this range is broken, not hot: skipped, never trusted
+FALLBACK_INTERVAL_S = (
+    5.0  # unused in practice: a valid admission block always has thermal or memory
+)
 
 Clock = Callable[[], float]
 Sleep = Callable[[float], Awaitable[None]]
@@ -64,8 +76,7 @@ def _nothing() -> None:
 
 @dataclass(frozen=True)
 class Sensors:
-    """The guard's readers. Each runs in a worker thread and raises when it cannot read; the GPU reader returns
-    None for a device that has no GPU temperature (not CUDA)."""
+    """The guard's readers. Each runs in a worker thread and raises when it cannot read; the GPU reader returns None for a device that has no GPU temperature (not CUDA)."""
 
     chip_c: Callable[[], float]
     gpu_c: Callable[[Mapping[str, Any]], float | None]
@@ -73,33 +84,52 @@ class Sensors:
     close: Callable[[], None] = _nothing
 
 
+def _zone_paths(pattern: Path) -> list[Path]:
+    paths = [Path(pattern.anchor)]
+    parts = pattern.parts[1:] if pattern.anchor else pattern.parts
+    for part in parts:
+        # glob.glob() without recursive=True treats ** exactly like *.
+        wildcard = re.sub(r"\*+", "*", part)
+        paths = [
+            match
+            for parent in paths
+            for match in parent.glob(wildcard)
+            if part.startswith(".") or not match.name.startswith(".")
+        ]
+    return sorted(paths)
+
+
 class ThermalZones:
     """The chip temperature: the hottest zone of ``pattern`` (m°C). Unreadable or implausible zones are skipped."""
 
     def __init__(self, pattern: str) -> None:
+        """Remember the host thermal-zone glob for lazy sampling."""
         self.pattern = pattern
-        self._paths: list[str] = []
+        self._paths: list[Path] = []
 
     def __call__(self) -> float:
+        """Read the hottest configured thermal zone in degrees Celsius."""
         if not self._paths:  # listed once; looked for again while there is none
-            self._paths = sorted(glob.glob(self.pattern))
+            self._paths = _zone_paths(Path(self.pattern))
         values: list[float] = []
         for path in self._paths:
             try:
-                with open(path, encoding="ascii") as fh:
+                with path.open(encoding="ascii") as fh:
                     value = int(fh.read().strip()) / 1000.0
             except (OSError, ValueError):
                 continue
             if PLAUSIBLE_C[0] < value < PLAUSIBLE_C[1]:
                 values.append(value)
         if not values:
-            raise SensorError(f"{self.pattern} 沒有讀得到的溫度（{len(self._paths)} 個 zone）")
+            raise SensorError(
+                f"{self.pattern} 沒有讀得到的溫度（{len(self._paths)} 個 zone）"
+            )
         return max(values)
 
 
 def read_available_bytes(path: str = "/proc/meminfo") -> int:
     """``MemAvailable`` of /proc/meminfo, in bytes."""
-    with open(path, encoding="ascii") as fh:
+    with Path(path).open(encoding="ascii") as fh:
         for line in fh:
             name, _, rest = line.partition(":")
             if name == "MemAvailable":
@@ -111,9 +141,11 @@ def read_available_bytes(path: str = "/proc/meminfo") -> int:
 class NvmlTemperatures:
     """GPU temperature (NVML ``NVML_TEMPERATURE_GPU``) of a CUDA device, opened by UUID or index as the sampler does.
 
-    NVML that cannot start, or a device it does not know, keeps failing with the same reason: it is not retried."""
+    NVML that cannot start, or a device it does not know, keeps failing with the same reason: it is not retried.
+    """
 
     def __init__(self) -> None:
+        """Prepare lazy NVML access for temperature readings."""
         self._lock = threading.Lock()
         self._nv: Any = None
         self._failed: str | None = None
@@ -121,6 +153,7 @@ class NvmlTemperatures:
         self._unknown: dict[str, str] = {}
 
     def __call__(self, device: Mapping[str, Any]) -> float | None:
+        """Read the temperature of the selected CUDA device."""
         if str(device.get("kind") or "cpu") != "cuda":
             return None
         device_id = str(device.get("id") or "")
@@ -134,11 +167,15 @@ class NvmlTemperatures:
             raise SensorError(self._failed)
         if self._nv is None:
             try:
-                import pynvml
+                pynvml = import_module("pynvml")
 
                 pynvml.nvmlInit()
             except Exception as exc:
-                self._failed = f"NVML 無法使用：{type(exc).__name__}: {exception_message(exc)}"[:500]
+                self._failed = (
+                    f"NVML 無法使用：{type(exc).__name__}: {exception_message(exc)}"[
+                        :500
+                    ]
+                )
                 raise SensorError(self._failed) from exc
             self._nv = pynvml
         return self._nv
@@ -154,13 +191,16 @@ class NvmlTemperatures:
                 else:
                     handle = nv.nvmlDeviceGetHandleByIndex(int(device_id))
             except Exception as exc:
-                reason = f"NVML 找不到裝置 {device_id}：{type(exc).__name__}: {exception_message(exc)}"[:500]
+                reason = f"NVML 找不到裝置 {device_id}：{type(exc).__name__}: {exception_message(exc)}"[
+                    :500
+                ]
                 self._unknown[device_id] = reason
                 raise SensorError(reason) from exc
             self._handles[device_id] = handle
         return handle
 
     def close(self) -> None:
+        """Release the NVML temperature sensor."""
         with self._lock:
             nv, self._nv = self._nv, None
             self._handles.clear()
@@ -172,8 +212,17 @@ class NvmlTemperatures:
 def default_sensors(config: AdmissionConfig) -> Sensors:
     """This host's readers: thermal zones, NVML and /proc/meminfo (nothing is opened before the first reading)."""
     nvml = NvmlTemperatures()
-    pattern = config.thermal.chip_zone_glob if config.thermal is not None else DEFAULT_CHIP_ZONE_GLOB
-    return Sensors(chip_c=ThermalZones(pattern), gpu_c=nvml, available_bytes=read_available_bytes, close=nvml.close)
+    pattern = (
+        config.thermal.chip_zone_glob
+        if config.thermal is not None
+        else DEFAULT_CHIP_ZONE_GLOB
+    )
+    return Sensors(
+        chip_c=ThermalZones(pattern),
+        gpu_c=nvml,
+        available_bytes=read_available_bytes,
+        close=nvml.close,
+    )
 
 
 def _gib(value: int) -> str:
@@ -192,20 +241,25 @@ class PauseLatch:
     """The pause sources that hold new gated calls back (a pause never touches a running call).
 
     Only ``thermal`` exists so far, and only the chip temperature ends it. Another source (a memory watchdog, a
-    deployment, a person) would come with its own release rule; the temperature never ends it."""
+    deployment, a person) would come with its own release rule; the temperature never ends it.
+    """
 
     def __init__(self) -> None:
+        """Start without any active admission holds."""
         self._sources: dict[str, Pause] = {}
 
     @property
     def paused(self) -> bool:
+        """Report whether any source is holding admission."""
         return bool(self._sources)
 
     @property
     def sources(self) -> tuple[str, ...]:
+        """Return the sources currently holding admission."""
         return tuple(sorted(self._sources))
 
     def get(self, source: str) -> Pause | None:
+        """Return the active hold for the indicated source."""
         return self._sources.get(source)
 
     def pause(self, source: str, pause: Pause) -> bool:
@@ -239,7 +293,9 @@ class Trip:
     threshold: float | int
     text: str
 
-    def error(self, *, process_killed: bool, process_exited: bool | None) -> dict[str, Any]:
+    def error(
+        self, *, process_killed: bool, process_exited: bool | None
+    ) -> dict[str, Any]:
         """The call's error once the cancel path has stopped it."""
         message = self.text + (
             "；cooperative 取消逾時，已終止自有 process group（模型已卸載，需要時請手動 start）"
@@ -262,7 +318,8 @@ class Trip:
 class AdmissionGuard:
     """The host protection of one Node (``NodeConfig.admission``; see the module docstring).
 
-    ``sensors``, ``clock`` and ``sleep`` are injected so tests run on fake readings and a fast clock."""
+    ``sensors``, ``clock`` and ``sleep`` are injected so tests run on fake readings and a fast clock.
+    """
 
     def __init__(
         self,
@@ -272,12 +329,15 @@ class AdmissionGuard:
         clock: Clock = time.monotonic,
         sleep: Sleep = asyncio.sleep,
     ) -> None:
+        """Set up host admission thresholds and sensor readers."""
         self.config = config
         self.sensors = sensors if sensors is not None else default_sensors(config)
         self.clock = clock
         self.sleep = sleep
         self.latch = PauseLatch()
-        self.chip_c: float | None = None  # the newest chip reading (None: none yet, or unreadable)
+        self.chip_c: float | None = (
+            None  # the newest chip reading (None: none yet, or unreadable)
+        )
         self.waiting = 0  # gated calls held back right now
         self._failing: set[str] = set()
         self._task: asyncio.Task[None] | None = None
@@ -296,6 +356,7 @@ class AdmissionGuard:
 
     # ------------------------------------------------------------------ lifecycle
     def start(self) -> None:
+        """Start monitoring configured host limits."""
         if self._task is not None:
             return
         log.info(
@@ -311,6 +372,7 @@ class AdmissionGuard:
             self._task = task
 
     async def stop(self) -> None:
+        """Stop monitoring and release sensor resources."""
         task, self._task = self._task, None
         if task is not None:
             task.cancel()
@@ -333,7 +395,9 @@ class AdmissionGuard:
             )
 
     # ------------------------------------------------------------------ readings
-    async def _read[T](self, key: str, read: Callable[..., T], *args: Any, what: str) -> T | None:
+    async def _read[T](
+        self, key: str, read: Callable[..., T], *args: Any, what: str
+    ) -> T | None:
         """One reading in a worker thread. A failure is no reading (fail-open), warned once until it reads again."""
         try:
             value = await asyncio.to_thread(read, *args)
@@ -344,6 +408,7 @@ class AdmissionGuard:
                     "主機保護：讀不到「%s」（%s）；這項檢查先停用（fail-open），讀得到時自動恢復",
                     what,
                     exception_message(exc),
+                    exc_info=True,
                 )
             return None
         if key in self._failing:
@@ -362,7 +427,8 @@ class AdmissionGuard:
     def observe_chip(self, chip: float | None) -> None:
         """Move the thermal pause by one reading: pause at ``pause_at_c``, resume only below ``resume_below_c``.
 
-        An unreadable chip never holds calls back: it ends a thermal pause (fail-open)."""
+        An unreadable chip never holds calls back: it ends a thermal pause (fail-open).
+        """
         limits = self.config.thermal
         if limits is None:
             return
@@ -383,7 +449,10 @@ class AdmissionGuard:
             return
         paused_s = self.clock() - ended.since
         if chip is None:
-            log.warning("主機保護：讀不到晶片溫度，解除溫度暫停（fail-open；暫停了 %.0f 秒）", paused_s)
+            log.warning(
+                "主機保護：讀不到晶片溫度，解除溫度暫停（fail-open；暫停了 %.0f 秒）",
+                paused_s,
+            )
         else:
             log.info(
                 "主機保護：晶片溫度 %.1f°C < %g°C，恢復受保護的呼叫（暫停了 %.0f 秒）",
@@ -400,17 +469,22 @@ class AdmissionGuard:
             warm = self.latch.get(THERMAL) is not None or (
                 self.chip_c is not None and self.chip_c >= limits.resume_below_c
             )
-            intervals.append(limits.hot_sample_seconds if warm else limits.sample_seconds)
+            intervals.append(
+                limits.hot_sample_seconds if warm else limits.sample_seconds
+            )
         if memory and self.config.memory is not None:
             intervals.append(self.config.memory.sample_seconds)
         return min(intervals, default=FALLBACK_INTERVAL_S)
 
     def hold_interval(self, holds: Sequence[Hold]) -> float:
+        """Choose the next sampling delay for the current holds."""
         return self._interval(
-            thermal=any(hold.reason != MEMORY for hold in holds), memory=any(hold.reason == MEMORY for hold in holds)
+            thermal=any(hold.reason != MEMORY for hold in holds),
+            memory=any(hold.reason == MEMORY for hold in holds),
         )
 
     def watch_interval(self) -> float:
+        """Return the time between emergency checks."""
         return self._interval(thermal=True, memory=True)
 
     # ------------------------------------------------------------------ admission
@@ -419,7 +493,11 @@ class AdmissionGuard:
         found: list[Hold] = []
         thermal, memory = self.config.thermal, self.config.memory
         chip = await self.read_chip()
-        if thermal is not None and chip is not None and self.latch.get(THERMAL) is not None:
+        if (
+            thermal is not None
+            and chip is not None
+            and self.latch.get(THERMAL) is not None
+        ):
             found.append(_thermal_hold(chip, thermal))
         found += [
             Hold(source, f"等待暫停解除：{source}", {"reason": source})
@@ -427,7 +505,9 @@ class AdmissionGuard:
             if source != THERMAL
         ]
         if memory is not None:
-            available = await self._read(MEMORY, self.sensors.available_bytes, what="可用主記憶體")
+            available = await self._read(
+                MEMORY, self.sensors.available_bytes, what="可用主記憶體"
+            )
             if available is not None and available < memory.start_min_available_bytes:
                 found.append(
                     Hold(
@@ -442,8 +522,13 @@ class AdmissionGuard:
                 )
         return found
 
-    def admission(self, *, recorder: Recorder, component_id: str, call_id: str) -> AdmissionWait:
-        return AdmissionWait(self, recorder=recorder, component_id=component_id, call_id=call_id)
+    def admission(
+        self, *, recorder: Recorder, component_id: str, call_id: str
+    ) -> AdmissionWait:
+        """Create the admission wait for the next call."""
+        return AdmissionWait(
+            self, recorder=recorder, component_id=component_id, call_id=call_id
+        )
 
     # ------------------------------------------------------------------ emergency
     async def emergency(self, device: Mapping[str, Any]) -> Trip | None:
@@ -461,7 +546,12 @@ class AdmissionGuard:
                     f"重新送出的呼叫會等晶片降到 {thermal.resume_below_c:g}°C 以下才開始",
                 )
             device_id = str(device.get("id") or "")
-            gpu = await self._read(f"gpu:{device_id}", self.sensors.gpu_c, device, what=f"GPU {device_id} 溫度")
+            gpu = await self._read(
+                f"gpu:{device_id}",
+                self.sensors.gpu_c,
+                device,
+                what=f"GPU {device_id} 溫度",
+            )
             if gpu is not None and gpu >= thermal.cancel_gpu_at_c:
                 return Trip(
                     THERMAL,
@@ -471,8 +561,13 @@ class AdmissionGuard:
                     f"主機保護：GPU 溫度 {gpu:.1f}°C ≥ 緊急門檻 {thermal.cancel_gpu_at_c:g}°C，已取消這個呼叫；降溫後再送出",
                 )
         if memory is not None:
-            available = await self._read(MEMORY, self.sensors.available_bytes, what="可用主記憶體")
-            if available is not None and available < memory.cancel_below_available_bytes:
+            available = await self._read(
+                MEMORY, self.sensors.available_bytes, what="可用主記憶體"
+            )
+            if (
+                available is not None
+                and available < memory.cancel_below_available_bytes
+            ):
                 return Trip(
                     MEMORY,
                     MEMORY,
@@ -483,7 +578,10 @@ class AdmissionGuard:
                 )
         return None
 
-    def watch(self, device: Mapping[str, Any], on_trip: Callable[[Trip], bool]) -> EmergencyWatch:
+    def watch(
+        self, device: Mapping[str, Any], on_trip: Callable[[Trip], bool]
+    ) -> EmergencyWatch:
+        """Watch a running call for an emergency threshold."""
         return EmergencyWatch(self, device, on_trip)
 
 
@@ -504,19 +602,33 @@ def _thermal_hold(chip: float, limits: ThermalLimits) -> Hold:
 class AdmissionWait:
     """A gated call right before its runtime phase: ``check`` once, then ``run`` while anything holds it back."""
 
-    def __init__(self, guard: AdmissionGuard, *, recorder: Recorder, component_id: str, call_id: str) -> None:
+    def __init__(
+        self,
+        guard: AdmissionGuard,
+        *,
+        recorder: Recorder,
+        component_id: str,
+        call_id: str,
+    ) -> None:
+        """Track the holds and deadline of one pending admission."""
         self.guard = guard
         self.recorder = recorder
         self.component_id = component_id
         self.call_id = call_id
-        self.holds: list[Hold] = []  # the last reasons it was held back (kept for the deadline error)
+        self.holds: list[
+            Hold
+        ] = []  # the last reasons it was held back (kept for the deadline error)
         self.started: float | None = None
 
     def text(self) -> str:
+        """Describe the current admission holds for the caller."""
         return "；".join(hold.text for hold in self.holds)
 
     def waited_s(self) -> float:
-        return 0.0 if self.started is None else max(0.0, self.guard.clock() - self.started)
+        """Return elapsed time spent waiting for admission."""
+        return (
+            0.0 if self.started is None else max(0.0, self.guard.clock() - self.started)
+        )
 
     async def check(self) -> bool:
         """Fresh readings: True when the call may start now."""
@@ -528,11 +640,21 @@ class AdmissionWait:
         guard = self.guard
         self.started = guard.clock()
         guard.waiting += 1
-        log.info("主機保護：元件 %s 的呼叫 %s 等待放行：%s", self.component_id, self.call_id, self.text())
+        log.info(
+            "主機保護：元件 %s 的呼叫 %s 等待放行：%s",
+            self.component_id,
+            self.call_id,
+            self.text(),
+        )
         level = "warning"
         try:
             while True:
-                self.recorder.log(level, self.text(), phase="admission", holds=[hold.fields for hold in self.holds])
+                self.recorder.log(
+                    level,
+                    self.text(),
+                    phase="admission",
+                    holds=[hold.fields for hold in self.holds],
+                )
                 level = "info"
                 await guard.sleep(guard.hold_interval(self.holds))
                 holds = await guard.holds()
@@ -543,9 +665,17 @@ class AdmissionWait:
             guard.waiting -= 1
         waited = self.waited_s()
         self.recorder.log(
-            "info", f"主機保護放行：等待 {waited:.0f} 秒後開始執行", phase="admission", waited_seconds=round(waited, 3)
+            "info",
+            f"主機保護放行：等待 {waited:.0f} 秒後開始執行",
+            phase="admission",
+            waited_seconds=round(waited, 3),
         )
-        log.info("主機保護：元件 %s 的呼叫 %s 放行（等待 %.0f 秒）", self.component_id, self.call_id, waited)
+        log.info(
+            "主機保護：元件 %s 的呼叫 %s 放行（等待 %.0f 秒）",
+            self.component_id,
+            self.call_id,
+            waited,
+        )
 
     def timeout_error(self, timeout_seconds: int) -> dict[str, Any]:
         """The deadline came while the call was held back: nothing ran."""
@@ -557,25 +687,36 @@ class AdmissionWait:
         }
         if self.holds and all(hold.reason == MEMORY for hold in self.holds):
             finding = f"主機保護：等到呼叫期限（timeout_seconds={timeout_seconds}）主記憶體仍不足（{self.text()}）"
-            return host_memory_insufficient(finding, details={"reason": MEMORY, **details}).to_dict()
+            return host_memory_insufficient(
+                finding, details={"reason": MEMORY, **details}
+            ).to_dict()
         return ComponentError(
             "HOST_PROTECTION",
             f"主機保護：等到呼叫期限（timeout_seconds={timeout_seconds}）仍未放行（{self.text()}）；呼叫沒有執行",
-            details={"reason": self.holds[0].reason if self.holds else THERMAL, **details},
+            details={
+                "reason": self.holds[0].reason if self.holds else THERMAL,
+                **details,
+            },
         ).to_dict()
 
 
 class EmergencyWatch:
-    """A running gated call, sampled until its first emergency. ``on_trip`` turns that into a cancel, or declines
-    when the call already has an outcome or a cancel under way; ``trip`` is the emergency that cancelled it."""
+    """A running gated call, sampled until its first emergency. ``on_trip`` turns that into a cancel, or declines when the call already has an outcome or a cancel under way; ``trip`` is the emergency that cancelled it."""
 
-    def __init__(self, guard: AdmissionGuard, device: Mapping[str, Any], on_trip: Callable[[Trip], bool]) -> None:
+    def __init__(
+        self,
+        guard: AdmissionGuard,
+        device: Mapping[str, Any],
+        on_trip: Callable[[Trip], bool],
+    ) -> None:
+        """Associate an active device with its emergency callback."""
         self.guard = guard
         self.device = dict(device)
         self.on_trip = on_trip
         self.trip: Trip | None = None
 
     async def run(self) -> None:
+        """Monitor active work until cancellation or a configured emergency threshold."""
         guard = self.guard
         while True:
             await guard.sleep(guard.watch_interval())

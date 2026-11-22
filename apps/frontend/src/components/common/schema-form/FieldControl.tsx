@@ -1,3 +1,4 @@
+import { optionalField } from "@/lib/json";
 // The input of one schema field, chosen by its control kind (see controlKind in @/lib/schema): fixed and null-only
 // values read-only, enums and optional booleans as a select, a switch, numbers, text, comma lists, else JSON.
 import type { ReactNode } from "react";
@@ -77,7 +78,7 @@ export function FieldControl({
           )}
           <Badge title={t("provider 只接受 null：此設定由 provider 決定，不提供任意值")}>{t("只接受 null")}</Badge>
           {value !== null && (value !== undefined || required) && !locked ? (
-            <Button size="sm" variant="quiet" onClick={() => onChange(null)}>
+            <Button size="sm" variant="quiet" onClick={() => { onChange(null); }}>
               {value === undefined ? t("設為 null") : t("改為 null")}
             </Button>
           ) : null}
@@ -116,7 +117,7 @@ export function FieldControl({
           checked={value === true}
           disabled={locked}
           aria-describedby={describedBy}
-          onChange={(event) => onChange(event.target.checked)}
+          onChange={(event) => { onChange(event.target.checked); }}
         />
       );
     case "number":
@@ -129,9 +130,9 @@ export function FieldControl({
             emptyValue={allowUnset ? undefined : ""}
             onChange={onChange}
             disabled={locked || isNull}
-            describedBy={describedBy}
+            {...(describedBy === undefined ? {} : { describedBy })}
             invalid={invalid}
-            placeholder={isNull ? t("null（未設定）") : defaultPlaceholder}
+            {...optionalField("placeholder", isNull ? t("null（未設定）") : defaultPlaceholder)}
             compact={compact}
           />
         </NullableRow>
@@ -164,13 +165,14 @@ export function FieldControl({
             itemKind={scalarListItemKind(info, value, rootSchema) ?? "string"}
             onChange={onChange}
             disabled={locked || isNull}
-            describedBy={describedBy}
+            {...(describedBy === undefined ? {} : { describedBy })}
             invalid={invalid}
-            placeholder={isNull ? t("null（未設定）") : undefined}
+            {...(isNull ? { placeholder: t("null（未設定）") } : {})}
             compact={compact}
           />
         </NullableRow>
       );
+    case "json":
     default:
       return isNull ? (
         <p id={id} aria-labelledby={labelId} className="flex min-h-10 items-center text-data text-fg-tertiary">
@@ -181,7 +183,7 @@ export function FieldControl({
           id={id}
           label={name}
           labelledBy={labelId}
-          value={value === undefined ? initialValueFor(info) : value}
+          value={value ?? initialValueFor(info)}
           onChange={onChange}
           issues={issues}
           rows={info.kind === "array" ? 3 : 4}

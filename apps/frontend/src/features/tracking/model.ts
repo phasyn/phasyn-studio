@@ -8,7 +8,7 @@ import type { ComponentDescriptor, SettingsView } from "@/api/generated/contract
 import { CONTRACT_ROOT, RECORDER_CONFIG_SCHEMA } from "@/lib/contractSchemas";
 import { domId } from "@/lib/dom";
 import { toErrorInfo, writeOutcomeUnknown } from "@/lib/errors";
-import { isRecord, valuesEqual, type JsonObject } from "@/lib/json";
+import { withRecordValue, isRecord, valuesEqual, type JsonObject } from "@/lib/json";
 import { applyMergePatch, diffToPatch } from "@/lib/merge";
 import { schemaDefaults, validateValue, type SchemaIssue } from "@/lib/schema";
 import { sectionSchemas } from "@/features/components";
@@ -32,7 +32,7 @@ export type ToggleKey = "gpu_event_timing" | "capture_prompt";
  * 表格內可直接切換的開關（其他欄位在右側檢視器）。capture_stderr 不在這裡：Node 一律擷取 stderr，
  * 這個欄位目前不影響行為（見 lib/recorderSupport.ts）。
  */
-export const TOGGLE_FIELDS: ReadonlyArray<{ key: ToggleKey; short: string; label: string }> = [
+export const TOGGLE_FIELDS: readonly { key: ToggleKey; short: string; label: string }[] = [
   { key: "gpu_event_timing", short: "GPU", label: t("GPU event 計時") },
   { key: "capture_prompt", short: "prompt", label: t("記錄 prompt") },
 ];
@@ -120,7 +120,7 @@ export function buildRows(entries: readonly ComponentEntry[], local: ReadonlyMap
   return entries.map((entry) => {
     const d = entry.descriptor;
     const view = newestView(d.settings, local.get(entry.key));
-    const stored = isRecord(view.stored.recording) ? (view.stored.recording as unknown as JsonObject) : {};
+    const stored = isRecord(view.stored.recording) ? view.stored.recording : {};
     return {
       key: entry.key,
       nodeId: entry.node.node_id,
@@ -175,13 +175,13 @@ export interface TrackingSelection {
 export function selectionFromParams(params: URLSearchParams): TrackingSelection | null {
   const nodeId = params.get("node");
   const componentId = params.get("component");
-  return nodeId && componentId ? { nodeId, componentId } : null;
+  return (nodeId != null && nodeId !== "") && (componentId != null && componentId !== "") ? { nodeId, componentId } : null;
 }
 
 /** 修改篩選（空字串＝移除；未列出的鍵不變），保留選取。 */
 export function withFilterParams(params: URLSearchParams, changes: Partial<TrackingFilters>): URLSearchParams {
   const next = new URLSearchParams(params);
-  for (const key of Object.keys(FILTER_PARAM) as Array<keyof TrackingFilters>) {
+  for (const key of ["q", "node", "mode"] as const) {
     const value = changes[key];
     if (value === undefined) continue;
     if (value) next.set(FILTER_PARAM[key], value);
@@ -282,9 +282,9 @@ function finalize(baseRevision: number, base: JsonObject, value: JsonObject): Ro
  */
 export function setDraftField(row: TrackingRow, draft: RowDraft | undefined, key: string, next: unknown): RowDraft | undefined {
   const base = draft?.base ?? row.stored;
-  const value: JsonObject = { ...(draft?.value ?? row.stored) };
-  if (!Object.hasOwn(base, key) && Object.hasOwn(RECORDER_DEFAULTS, key) && valuesEqual(next, RECORDER_DEFAULTS[key])) delete value[key];
-  else value[key] = next;
+  const current = draft?.value ?? row.stored;
+  const clear = !Object.hasOwn(base, key) && Object.hasOwn(RECORDER_DEFAULTS, key) && valuesEqual(next, RECORDER_DEFAULTS[key]);
+  const value = clear ? withRecordValue(current, key, undefined) : { ...current, [key]: next };
   return finalize(draft?.baseRevision ?? row.revision, base, value);
 }
 
@@ -295,9 +295,9 @@ export function replaceDraftValue(row: TrackingRow, draft: RowDraft | undefined,
 
 /** 重新讀取後把「我的變更」套到最新版上；與最新版相同時草稿消失。 */
 export function rebaseDraft(draft: RowDraft, latest: SettingsView): RowDraft | undefined {
-  const base = isRecord(latest.stored.recording) ? (latest.stored.recording as unknown as JsonObject) : {};
+  const base = isRecord(latest.stored.recording) ? latest.stored.recording : {};
   const mine = draftPatch(draft).patch;
-  const value = mine ? (applyMergePatch(base, mine) as JsonObject) : base;
+  const value = mine ? applyMergePatch(base, mine) : base;
   return finalize(latest.stored_revision, base, value);
 }
 
@@ -318,7 +318,7 @@ export function issueFieldKeys(issues: readonly SchemaIssue[]): Set<string> {
   for (const issue of issues) {
     if (!issue.path.startsWith("recording.")) continue;
     const key = issue.path.slice("recording.".length).split(/[.[]/)[0];
-    if (key) keys.add(key);
+    if (key != null && key !== "") keys.add(key);
   }
   return keys;
 }

@@ -12,8 +12,8 @@ const MAX_WAVEFORM_CACHE = 32;
 const MAX_WAVEFORM_PENDING = 256;
 const MAX_AUDIO_FILE_BYTES = 64 * 1024 * 1024;
 const WAVEFORM_DEADLINE_MS = 60_000;
-type WaveformJob = { users: number; controller: AbortController; promise: Promise<Float32Array> };
-export type WaveformPreview = { peaks: Float32Array | null; error: WaveformError | null };
+interface WaveformJob { users: number; controller: AbortController; promise: Promise<Float32Array> }
+export interface WaveformPreview { peaks: Float32Array | null; error: WaveformError | null }
 const EMPTY_WAVEFORM: WaveformPreview = { peaks: null, error: null };
 let queue: Promise<unknown> = Promise.resolve();
 
@@ -80,9 +80,9 @@ async function captureFrames(url: string, count: number, width: number): Promise
 /** 一支影片的 count 張等距縮圖（寬 width px）。url 為 null 時回傳空陣列。 */
 export function useFilmstrip(url: string | null, count: number, width = 96): string[] {
   const [result, setResult] = useState<{ key: string; frames: string[] } | null>(null);
-  const key = url ? `${url}|${count}|${width}` : "";
+  const key = (url != null && url !== "") ? `${url}|${String(count)}|${String(width)}` : "";
   useEffect(() => {
-    if (!url || count <= 0) return;
+    if (!(url != null && url !== "") || count <= 0) return;
     let cancelled = false;
     let promise = filmstripCache.get(key);
     if (!promise) {
@@ -96,7 +96,7 @@ export function useFilmstrip(url: string | null, count: number, width = 96): str
       cancelled = true;
     };
   }, [key, url, count, width]);
-  return result && result.key === key ? result.frames : [];
+  return result?.key === key ? result.frames : [];
 }
 
 export const WAVEFORM_BUCKETS = 600;
@@ -107,7 +107,7 @@ function abortError(signal: AbortSignal): WaveformError {
 
 function observeAbort<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
   return new Promise((resolve, reject) => {
-    const cancel = () => reject(abortError(signal));
+    const cancel = () => { reject(abortError(signal)); };
     if (signal.aborted) cancel();
     else signal.addEventListener("abort", cancel, { once: true });
     void work.then(
@@ -143,11 +143,15 @@ async function readAudio(url: string, signal: AbortSignal): Promise<ArrayBuffer>
   return bytes.buffer;
 }
 
-async function decodePeaks(url: string, signal: AbortSignal): Promise<Float32Array> {
+function requireActive(signal: AbortSignal): void {
   if (signal.aborted) throw abortError(signal);
+}
+
+async function decodePeaks(url: string, signal: AbortSignal): Promise<Float32Array> {
+  requireActive(signal);
   const buffer = await readAudio(url, signal);
   const audio = await new OfflineAudioContext(1, 1, 48000).decodeAudioData(buffer);
-  if (signal.aborted) throw abortError(signal);
+  requireActive(signal);
   const length = audio.length * audio.numberOfChannels;
   if (audio.numberOfChannels <= 0 || audio.numberOfChannels > MAX_PCM_CHANNELS || length <= 0 || length > MAX_PCM_SAMPLES) throw new WaveformError("INPUT_BOUNDS");
   // AudioBuffer owns its channel views. Snapshot once into planar PCM before
@@ -170,7 +174,7 @@ function acquireWaveform(url: string): { promise: Promise<Float32Array>; release
   if (!job) {
     if (waveformPending.size >= MAX_WAVEFORM_PENDING) return { promise: Promise.reject(new WaveformError("INPUT_BOUNDS")), release: () => undefined };
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(new WaveformError("TIMEOUT")), WAVEFORM_DEADLINE_MS);
+    const timer = setTimeout(() => { controller.abort(new WaveformError("TIMEOUT")); }, WAVEFORM_DEADLINE_MS);
     // Keep the actual native decode in the serial queue until it finishes, even
     // when observers cancel. Web Audio decoding itself cannot be interrupted.
     const work = serial(() => decodePeaks(url, controller.signal));
@@ -204,7 +208,7 @@ function acquireWaveform(url: string): { promise: Promise<Float32Array>; release
 export function useWaveformPreview(url: string | null): WaveformPreview {
   const [result, setResult] = useState<(WaveformPreview & { url: string }) | null>(null);
   useEffect(() => {
-    if (!url) return;
+    if (!(url != null && url !== "")) return;
     let active = true;
     const lease = acquireWaveform(url);
     void lease.promise.then(
@@ -213,7 +217,7 @@ export function useWaveformPreview(url: string | null): WaveformPreview {
     );
     return () => { active = false; lease.release(); };
   }, [url]);
-  return result && result.url === url ? result : EMPTY_WAVEFORM;
+  return result?.url === url ? result : EMPTY_WAVEFORM;
 }
 
 /** Backward-compatible waveform-only facade. */

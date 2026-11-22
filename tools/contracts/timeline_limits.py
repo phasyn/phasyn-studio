@@ -224,6 +224,7 @@ def render_python(values: Mapping[str, Any]) -> str:
         "",
         "from typing import Final",
         "",
+        "",
     ]
     for name, value in values.items():
         if name == "EFFECT_BOUNDS":

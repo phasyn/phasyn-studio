@@ -49,7 +49,7 @@ export function tagAliases(references: readonly StudioReference[], library?: rea
     const labels = presentationLabels(references, library);
     for (const ref of orderedReferences(references)) {
       const soundtrack = labels.get(ref.ref_id)?.soundtrack?.label;
-      if (soundtrack && !out.has(soundtrack)) out.set(soundtrack, ref.alias);
+      if ((soundtrack != null && soundtrack !== "") && !out.has(soundtrack)) out.set(soundtrack, ref.alias);
     }
   }
   return out;
@@ -64,7 +64,7 @@ export function mentionCount(prompt: string, alias: string): number {
 /** prompt 中直接寫這些 H3 標籤（參考自己的標籤、影片原聲的標籤）的次數；null／重複的標籤略過。 */
 export function tagUseCount(prompt: string, tags: readonly (string | null | undefined)[]): number {
   let count = 0;
-  for (const tag of new Set(tags)) if (tag) count += prompt.split(tag).length - 1;
+  for (const tag of new Set(tags)) if (tag != null && tag !== "") count += prompt.split(tag).length - 1;
   return count;
 }
 
@@ -75,7 +75,7 @@ export function compilePrompt(source: string, references: readonly StudioReferen
   const used: string[] = [];
   const mentioned: string[] = [];
   const add = (list: string[], alias: string | undefined) => {
-    if (alias && !list.includes(alias)) list.push(alias);
+    if ((alias != null && alias !== "") && !list.includes(alias)) list.push(alias);
   };
   // 依出現順序記錄用到的參考：@ 名稱與直接寫的 H3 標籤一起掃描
   for (const match of source.matchAll(new RegExp(`${MENTION_SOURCE}|${H3_TAG_SOURCE}`, "g"))) {
@@ -89,7 +89,7 @@ export function compilePrompt(source: string, references: readonly StudioReferen
   }
   const text = source.replace(mentionPattern(), (match, alias: string) => {
     const label = labels.get(alias);
-    if (!label) {
+    if (!(label != null && label !== "")) {
       problems.push(t("prompt 用到 @{alias}，但這個鏡頭沒有這個參考素材", { alias }));
       return match;
     }

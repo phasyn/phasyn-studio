@@ -66,10 +66,10 @@ async function captureFrame(url: string, seconds: number, width: number): Promis
 
 /** 影片第 frameIndex 幀（0 起）的預覽縮圖（寬 width px）。url 為 null 時為 idle。 */
 export function useFramePreview(url: string | null, frameIndex: number, fps: number, width = 160): FramePreview {
-  const key = url ? `${url}|${frameIndex}|${fps}|${width}` : "";
+  const key = (url != null && url !== "") ? `${url}|${String(frameIndex)}|${String(fps)}|${String(width)}` : "";
   const [result, setResult] = useState<{ key: string; src: string | null } | null>(null);
   useEffect(() => {
-    if (!url || !(fps > 0)) return;
+    if (!(url != null && url !== "") || !(fps > 0)) return;
     let cancelled = false;
     let promise = cache.get(key);
     if (!promise) {
@@ -83,8 +83,8 @@ export function useFramePreview(url: string | null, frameIndex: number, fps: num
       cancelled = true;
     };
   }, [key, url, frameIndex, fps, width]);
-  if (!url) return { status: "idle", src: null };
+  if (!(url != null && url !== "")) return { status: "idle", src: null };
   if (!(fps > 0)) return { status: "error", src: null };
-  if (!result || result.key !== key) return { status: "loading", src: null };
-  return result.src ? { status: "ready", src: result.src } : { status: "error", src: null };
+  if (result?.key !== key) return { status: "loading", src: null };
+  return (result.src != null && result.src !== "") ? { status: "ready", src: result.src } : { status: "error", src: null };
 }

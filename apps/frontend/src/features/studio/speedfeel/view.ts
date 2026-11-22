@@ -99,7 +99,7 @@ export type OutcomeTone = "kept" | "skipped" | "generation";
  */
 export function outcomeText(decision: AccentDecision, analysis: SpeedFeelAnalysis, effects: AccentEffects | null, blocked: string | null): { text: string; tone: OutcomeTone } {
   if (decision.kept) {
-    if (blocked) return { text: t("略過：{reason}", { reason: blocked }), tone: "skipped" };
+    if (blocked != null && blocked !== "") return { text: t("略過：{reason}", { reason: blocked }), tone: "skipped" };
     if (effects) return { text: t("加：{effects}", { effects: effectsText(effects) }), tone: "kept" };
     return { text: t("不加：整段判定不需要加效果"), tone: "skipped" };
   }
@@ -151,7 +151,7 @@ export function flashCheck(analysis: SpeedFeelAnalysis): { warning: boolean; tex
 /** How the history names the clip: 「第 03 段」 in a one-click swap, else the clip's name. */
 export function clipTitle(project: StudioProject, timeline: StudioTimeline, clip: TimelineClip): string {
   const shotId = timeline.sources.find((source) => source.source_id === clip.source_id)?.shot_id;
-  if (shotId && findSwapJob(project)) {
+  if ((shotId != null && shotId !== "") && findSwapJob(project)) {
     const placed = placedShotIds(timeline);
     const segments = project.shots.filter((shot) => placed.has(shot.shot_id));
     const index = segments.findIndex((shot) => shot.shot_id === shotId);

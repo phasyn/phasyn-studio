@@ -1,3 +1,4 @@
+import { hasSlotContent } from "@/lib/dom";
 // 鏡頭設定表單共用的欄位：標籤列與數字欄位（屬性面板與渲染引擎的生成設定共用）。
 import { useState, type ReactNode } from "react";
 import { Input } from "@/components/ui/controls";
@@ -16,7 +17,7 @@ export function Row({ label, htmlFor, children, hint, className }: { label: stri
         {label}
       </label>
       {children}
-      {hint ? <div className="text-caption text-fg-tertiary">{hint}</div> : null}
+      {hasSlotContent(hint) ? <div className="text-caption text-fg-tertiary">{hint}</div> : null}
     </div>
   );
 }
@@ -33,6 +34,7 @@ export function NumberField({
   integer = false,
   className,
   describedBy,
+  accepts,
 }: {
   id: string;
   value: number | null;
@@ -44,6 +46,7 @@ export function NumberField({
   integer?: boolean;
   className?: string;
   describedBy?: string;
+  accepts?: (value: number) => boolean;
 }) {
   const [draft, setDraft] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -59,12 +62,16 @@ export function NumberField({
         setError(t("請輸入 {min}–{max} 之間的{value}", { min, max, value: integer ? t("整數") : t("數字") }));
         return;
       }
+      if (accepts && !accepts(parsed)) {
+        setError(t("這個值不符合目前路由的參數限制。"));
+        return;
+      }
       onCommit(parsed);
     }
     setDraft(null);
     setError(null);
   };
-  const described = [describedBy, error ? `${id}-error` : null].filter(Boolean).join(" ") || undefined;
+  const described = [describedBy, (error != null && error !== "") ? `${id}-error` : null].filter(Boolean).join(" ") || undefined;
   return (
     <span className={cn("grid gap-1", className)}>
       <Input
@@ -73,9 +80,9 @@ export function NumberField({
         inputMode={integer ? "numeric" : "decimal"}
         value={shown}
         placeholder={placeholder}
-        aria-invalid={error ? true : undefined}
+        aria-invalid={(error != null && error !== "") ? true : undefined}
         aria-describedby={described}
-        onChange={(event) => setDraft(event.target.value)}
+        onChange={(event) => { setDraft(event.target.value); }}
         onBlur={commit}
         onKeyDown={(event) => {
           if (event.key === "Enter") commit();
@@ -86,7 +93,7 @@ export function NumberField({
         }}
         className="machine"
       />
-      {error ? (
+      {(error != null && error !== "") ? (
         <span id={`${id}-error`} className="text-caption text-danger">
           {error}
         </span>

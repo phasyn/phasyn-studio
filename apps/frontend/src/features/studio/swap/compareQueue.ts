@@ -78,9 +78,9 @@ async function runComparison(target: CompareTargetReady, signal: AbortSignal, pr
   const frames = [...new Set([...plan.metric, ...plan.strip])].sort((a, b) => a - b);
   const wanted = { metric: new Set(plan.metric), strip: new Set(plan.strip), slack: 0.5 / target.fps };
   const takeTime = (frame: number) => (frame + 0.5) / target.fps;
-  const take = await readVideo(target.takeUrl, signal, (reader) => readClip(reader, frames, takeTime, wanted, (done, total) => progress("take", done, total)));
+  const take = await readVideo(target.takeUrl, signal, (reader) => readClip(reader, frames, takeTime, wanted, (done, total) => { progress("take", done, total); }));
   if (!take.ok) return take.aborted ? null : { status: "failed", reason: t("讀取生成的影片失敗：{reason}", { reason: take.reason }) };
-  const original = await readVideo(target.originalUrl, signal, (reader) => readClip(reader, frames, (frame) => target.refStart + takeTime(frame), wanted, (done, total) => progress("original", done, total)));
+  const original = await readVideo(target.originalUrl, signal, (reader) => readClip(reader, frames, (frame) => target.refStart + takeTime(frame), wanted, (done, total) => { progress("original", done, total); }));
   if (!original.ok) return original.aborted ? null : { status: "failed", reason: t("讀取原片失敗：{reason}", { reason: original.reason }) };
   const metrics = compareFrames({ original: original.value.luma, take: take.value.luma, offsets: plan.metric.map((frame) => frame - target.first), fps: target.fps });
   if (!metrics) return { status: "failed", reason: t("讀到的影格不夠，無法比對") };
@@ -124,8 +124,8 @@ async function pump(): Promise<void> {
 export function requestComparison(target: CompareTargetReady, options: { auto?: boolean; force?: boolean } = {}): void {
   const { key } = target;
   if ((running?.key === key && !running.controller.signal.aborted) || queue.some((job) => job.target.key === key)) return;
-  if (store.get(key)?.status === "done" && !options.force) return;
-  if (options.auto) {
+  if (store.get(key)?.status === "done" && !(options.force === true)) return;
+  if (options.auto === true) {
     // Only the newest automatic check waits
     for (const job of queue) if (job.auto) store.delete(job.target.key);
     queue = queue.filter((job) => !job.auto);
@@ -148,4 +148,4 @@ export function useComparisons(): ReadonlyMap<string, CompareStatus> {
   return useSyncExternalStore(store.subscribe, store.snapshot);
 }
 
-if (import.meta.hot) import.meta.hot.dispose(() => cancelComparisons());
+if (import.meta.hot) import.meta.hot.dispose(() => { cancelComparisons(); });

@@ -1,13 +1,12 @@
-// The generation row of a shot, under the prompt: the settings a person changes for every render, one field each —
-// 方式 (how it is generated), 時長, Seed and 數量 — each opening its popover. Always one 40 px line: from 22.5rem
-// (360 px) of row width every field shows its chevron and a fixed seed its number (the 420 px inspector leaves 394 px;
-// the four fields need at most about 350); narrower, the chevrons go and a fixed seed reads 固定, its number in the
-// tooltip and the name (the 352 px inspector leaves 326 px, the 300 px minimum 274 px; the fields then need at most
-// about 256).
-// The row keeps no state of the shot: every field edits it (one project edit each), 數量 starts variants (seeds,
+// The generation settings of a shot, under the prompt: the settings a person changes for every render, as a titled
+// section of four framed fields in a 2×2 grid — 方式 (how it is generated), 時長 / Seed, 數量 — each with its label over
+// its value and opening its popover (a single line of four segments reads as cramped). A value that cannot render as it is (the route is not ready, the mode has a problem, the previous shot has
+// nothing to continue from) is stated once, in one status line under the grid; the field shows the warning frame and
+// names that line as its description.
+// The section keeps no state of the shot: every field edits it (one project edit each), 數量 starts variants (seeds,
 // a reference's file, routes; VariationsControl.tsx) without editing it, and a 方式 change leaves one notice with 復原
-// just above the row.
-import { Dices } from "lucide-react";
+// just above the section.
+import { Dices, TriangleAlert } from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import { useCallback, useId, useRef, useState, type Ref } from "react";
 import type { StudioShot } from "@/api/generated/contracts";
@@ -18,6 +17,8 @@ import { RANDOM_SEED } from "../../model/project";
 import { findRoute } from "../../model/routes";
 import { useStudio } from "../../studioContext";
 import { VariationsControl } from "../VariationsControl";
+import { frameLimits } from "../../model/studioGenerationBinding";
+import { FrameCountInput } from "./FrameCountInput";
 import { DurationList } from "./DurationList";
 import { ModeNotice, type AppliedMode } from "./ModeNotice";
 import { ModePicker } from "./ModePicker";
@@ -32,18 +33,25 @@ export interface GenerationRowProps {
   shot: StudioShot;
 }
 
-/** Hairline between two fields (on the field's left). */
-const DIVIDER = "before:pointer-events-none before:absolute before:inset-y-2 before:-left-px before:w-px before:bg-line-subtle";
-
-function ModeField({ shot, onApplied, ref }: { shot: StudioShot; onApplied: (applied: Omit<AppliedMode, "id">) => void; ref: Ref<HTMLButtonElement> }) {
+/** Why the shot's mode cannot render as it is, or null: the one status the section states. */
+function useModeWarning(shot: StudioShot): string | null {
   const { project, engine, catalog } = useStudio();
+  const route = findRoute(engine.routes, shot.route);
+  const reading = readMode(shot, route, engine.status === "ready");
+  const { problem } = readingText(reading);
+  const notReady = reading.mode && route && !reading.issue && engine.status === "ready" && !routeReadyForMode(route, reading.mode, catalog) ? t("路線還沒準備好：{summary}", { summary: route.summary }) : null;
+  const source = reading.mode === "continue" ? continuitySource(project, shot).problem : null;
+  const warning = problem ?? source ?? notReady;
+  return warning != null && warning !== "" ? warning : null;
+}
+
+function ModeField({ shot, warningId, onApplied, ref }: { shot: StudioShot; warningId: string | null; onApplied: (applied: Omit<AppliedMode, "id">) => void; ref: Ref<HTMLButtonElement> }) {
+  const { engine } = useStudio();
   const id = useId();
   const popover = usePopover();
   const route = findRoute(engine.routes, shot.route);
   const reading = readMode(shot, route, engine.status === "ready");
-  const { value, problem } = readingText(reading);
-  const notReady = reading.mode && route && !reading.issue && engine.status === "ready" && !routeReadyForMode(route, reading.mode, catalog) ? t("路線還沒準備好：{summary}", { summary: route.summary }) : null;
-  const source = reading.mode === "continue" ? continuitySource(project, shot).problem : null;
+  const { value } = readingText(reading);
   return (
     <>
       <SegmentButton
@@ -51,8 +59,9 @@ function ModeField({ shot, onApplied, ref }: { shot: StudioShot; onApplied: (app
         label={t("方式")}
         value={value}
         valueText={value}
-        icon={reading.mode ? MODE_ICON[reading.mode] : undefined}
-        warning={problem ?? source ?? notReady}
+        {...(reading.mode ? { icon: MODE_ICON[reading.mode] } : {})}
+        warning={warningId !== null}
+        {...(warningId === null ? {} : { describedBy: warningId })}
         open={popover.open}
         popoverId={id}
         onClick={popover.toggle}
@@ -64,36 +73,41 @@ function ModeField({ shot, onApplied, ref }: { shot: StudioShot; onApplied: (app
   );
 }
 
-function DurationField({ shot, className }: { shot: StudioShot; className?: string }) {
-  const { dispatch } = useStudio();
+function DurationField({ shot }: { shot: StudioShot }) {
+  const { dispatch, project, engine } = useStudio();
   const id = useId();
   const popover = usePopover();
-  const value = formatDuration(shot.frames);
+  const route = findRoute(engine.routes, shot.route);
+  const limits = frameLimits([route]);
+  // A route driven by media (表演影片, 音訊驅動) takes its length from that media: the shot's frames are not sent
+  const driven = route?.family === "creative";
+  const value = driven ? t("跟隨素材") : formatDuration(shot.frames, project.format.fps.num / project.format.fps.den);
+  const apply = (frames: number) => {
+    if (frames !== shot.frames) dispatch({ type: "updateShot", shotId: shot.shot_id, patch: { frames } });
+    popover.close(true);
+  };
   return (
     <>
       <SegmentButton
         label={t("時長")}
         value={value}
-        valueText={t("{duration}（{frames} 影格）", { duration: value, frames: shot.frames })}
+        valueText={driven ? t("長度跟隨驅動素材") : t("{duration}（{frames} 影格）", { duration: value, frames: shot.frames })}
         open={popover.open}
         popoverId={id}
         onClick={popover.toggle}
-        className={className}
       />
       <Popover id={id} open={popover.open} anchor={popover.anchor} label={t("時長")} onClose={popover.close} className="w-60">
-        <DurationList
-          frames={shot.frames}
-          onPick={(frames) => {
-            if (frames !== shot.frames) dispatch({ type: "updateShot", shotId: shot.shot_id, patch: { frames } });
-            popover.close(true);
-          }}
-        />
+        {driven ? (
+          <p className="p-3 text-caption text-fg-secondary">{t("這條路線生成的長度跟隨表演影片或驅動音訊，不用設定時長。")}</p>
+        ) : limits.h3 ? <DurationList frames={shot.frames} onPick={apply} /> : (
+          <div className="p-2"><FrameCountInput key={shot.frames} initial={shot.frames} limits={limits} onApply={apply} /></div>
+        )}
       </Popover>
     </>
   );
 }
 
-function SeedField({ shot, className }: { shot: StudioShot; className?: string }) {
+function SeedField({ shot }: { shot: StudioShot }) {
   const id = useId();
   const popover = usePopover();
   const random = shot.seed === RANDOM_SEED;
@@ -102,13 +116,11 @@ function SeedField({ shot, className }: { shot: StudioShot; className?: string }
       <SegmentButton
         label="Seed"
         value={random ? t("隨機") : <span className="machine">{shot.seed}</span>}
-        compactValue={random ? t("隨機") : t("固定")}
         valueText={random ? t("每次隨機") : String(shot.seed)}
-        icon={random ? Dices : undefined}
+        {...(random ? { icon: Dices } : {})}
         open={popover.open}
         popoverId={id}
         onClick={popover.toggle}
-        className={className}
       />
       <Popover id={id} open={popover.open} anchor={popover.anchor} label="Seed" onClose={popover.close} className="w-72">
         <SeedForm shot={shot} />
@@ -117,7 +129,7 @@ function SeedField({ shot, className }: { shot: StudioShot; className?: string }
   );
 }
 
-function CountField({ shot, className }: { shot: StudioShot; className?: string }) {
+function CountField({ shot }: { shot: StudioShot }) {
   const id = useId();
   const popover = usePopover();
   return (
@@ -130,7 +142,6 @@ function CountField({ shot, className }: { shot: StudioShot; className?: string 
         open={popover.open}
         popoverId={id}
         onClick={popover.toggle}
-        className={className}
       />
       <Popover id={id} open={popover.open} anchor={popover.anchor} label={t("變體")} onClose={popover.close} className="w-[26rem] max-w-[calc(100vw-1rem)]">
         <VariationsControl shot={shot} onSent={popover.close} />
@@ -141,24 +152,34 @@ function CountField({ shot, className }: { shot: StudioShot; className?: string 
 
 export function GenerationRow({ shot }: GenerationRowProps) {
   const [notice, setNotice] = useState<AppliedMode | null>(null);
-  const modeField = useRef<HTMLButtonElement>(null);
-  const notices = useRef(0);
-  const dismiss = useCallback(() => setNotice(null), []);
+  const modeFieldRef = useRef<HTMLButtonElement>(null);
+  const noticesRef = useRef(0);
+  const headingId = useId();
+  const warningId = useId();
+  const warning = useModeWarning(shot);
+  const dismiss = useCallback(() => { setNotice(null); }, []);
   const applied = useCallback((change: Omit<AppliedMode, "id">) => {
-    notices.current += 1;
-    setNotice({ ...change, id: notices.current });
+    noticesRef.current += 1;
+    setNotice({ ...change, id: noticesRef.current });
   }, []);
   return (
-    <div role="group" aria-label={t("生成設定")} className="@container/genrow relative flex h-10 shrink-0 items-center border-t border-line-subtle px-1">
+    <div role="group" aria-labelledby={headingId} className="relative grid shrink-0 gap-1.5 border-t border-line-subtle pt-2.5">
       <AnimatePresence>
-        {notice ? <ModeNotice key={notice.id} shot={shot} notice={notice} onDismiss={dismiss} returnFocus={() => modeField.current?.focus({ preventScroll: true })} /> : null}
+        {notice ? <ModeNotice key={notice.id} shot={shot} notice={notice} onDismiss={dismiss} returnFocus={() => modeFieldRef.current?.focus({ preventScroll: true })} /> : null}
       </AnimatePresence>
-      <div className="grid w-full min-w-0 grid-cols-[repeat(4,minmax(0,auto))]">
-        <ModeField ref={modeField} shot={shot} onApplied={applied} />
-        <DurationField shot={shot} className={DIVIDER} />
-        <SeedField shot={shot} className={DIVIDER} />
-        <CountField shot={shot} className={DIVIDER} />
+      <h3 id={headingId} className="text-caption font-medium text-fg-secondary">{t("生成設定")}</h3>
+      <div className="grid min-w-0 grid-cols-2 gap-2">
+        <ModeField ref={modeFieldRef} shot={shot} warningId={warning === null ? null : warningId} onApplied={applied} />
+        <DurationField shot={shot} />
+        <SeedField shot={shot} />
+        <CountField shot={shot} />
       </div>
+      {warning === null ? null : (
+        <p id={warningId} role="status" className="flex min-w-0 items-start gap-1.5 text-caption text-warning animate-reveal">
+          <TriangleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+          <span className="line-clamp-2 min-w-0 [overflow-wrap:anywhere]" title={warning}>{warning}</span>
+        </p>
+      )}
     </div>
   );
 }

@@ -110,9 +110,9 @@ function hairPhrase(clauses: readonly string[], appearance: string): string {
     if (match) return phraseAround(clause, match, 8).replace(HAIR_TAIL_RE, "");
   }
   const haired = HAIRED_RE.exec(appearance)?.[1];
-  if (haired) return `${haired.toLowerCase()} hair`;
+  if (haired != null && haired !== "") return `${haired.toLowerCase()} hair`;
   const colour = HAIR_COLOUR_RE.exec(appearance)?.[1];
-  return colour ? (HAIR_COLOUR[colour.toLowerCase()] ?? "") : "";
+  return (colour != null && colour !== "") ? (HAIR_COLOUR[colour.toLowerCase()] ?? "") : "";
 }
 
 function accessoryPhrase(clauses: readonly string[]): string {

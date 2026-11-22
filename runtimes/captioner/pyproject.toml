@@ -16,6 +16,7 @@ Repository = "https://github.com/phasyn/phasyn-studio"
 
 [project.entry-points."phasyn.providers"]
 "qwen_vl.describe" = "phasyn_captioner.provider:QwenVLDescribeProvider"
+"qwen_vl.clip_review" = "phasyn_captioner.clip_review:ClipReviewProvider"
 "media.upscale" = "phasyn_captioner.upscale.provider:UpscaleProvider"
 
 [build-system]

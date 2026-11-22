@@ -1,3 +1,4 @@
+import { withOccurrenceKeys } from "@/lib/occurrenceKeys";
 import { CircleHelp, RotateCcw } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -5,7 +6,7 @@ import { Callout } from "@/components/ui/callout";
 import { tServer, t } from "@/i18n";
 import { cn } from "@/lib/cn";
 import { REMOTE_UNKNOWN_TEXT, toErrorInfo, writeOutcomeUnknown } from "@/lib/errors";
-import { displayText, isRecord, previewValue } from "@/lib/json";
+import { isNonzeroNumber, displayText, isRecord, previewValue } from "@/lib/json";
 import { Disclosure } from "./Disclosure";
 import { JsonView } from "./JsonView";
 import { formatList } from "@/i18n/format";
@@ -28,16 +29,15 @@ function DetailValue({ value }: { value: unknown }) {
   if (Array.isArray(value) && value.every(isPrimitive)) {
     return <span className="machine">{value.length === 0 ? t("（空）") : formatList(value.map((item) => displayText(item)))}</span>;
   }
-  if (Array.isArray(value) && value.every((item) => isRecord(item) && typeof item.message === "string")) {
+  if (Array.isArray(value) && value.every((item: unknown): item is Record<string, unknown> & { message: string } => isRecord(item) && typeof item["message"] === "string")) {
     return (
       <ul className="grid gap-1">
-        {value.map((item, index) => {
-          const record = item as Record<string, unknown>;
-          const path = typeof record.path === "string" ? record.path : typeof record.field === "string" ? record.field : null;
+        {withOccurrenceKeys(value, (record) => record.message).map(({ item: record, key }) => {
+          const path = typeof record["path"] === "string" ? record["path"] : typeof record["field"] === "string" ? record["field"] : null;
           return (
-            <li key={index} className="text-caption">
-              {path ? <span className="machine text-fg">{path || t("（根）")}</span> : null}
-              {path ? t("：") : null}
+            <li key={key} className="text-caption">
+              {(path != null && path !== "") ? <span className="machine text-fg">{path || t("（根）")}</span> : null}
+              {(path != null && path !== "") ? t("：") : null}
               {displayText(record.message)}
             </li>
           );
@@ -80,7 +80,7 @@ export function ErrorCallout({
   title,
   write = false,
   onRetry,
-  retryLabel = t("重新讀取"),
+  retryLabel: retryLabelProp,
   retrying = false,
   children,
   className,
@@ -95,6 +95,7 @@ export function ErrorCallout({
   children?: ReactNode;
   className?: string;
 }) {
+  const retryLabel = retryLabelProp ?? t("重新讀取");
   const info = toErrorInfo(error);
   const unknownOutcome = info.remoteOutcomeUnknown || (write && writeOutcomeUnknown(error));
   const message = tServer(info.message);
@@ -110,9 +111,9 @@ export function ErrorCallout({
         ) : null}
         <p className="machine text-caption text-fg-tertiary">
           {info.code}
-          {info.status ? ` · HTTP ${info.status}` : ""}
+          {isNonzeroNumber(info.status) ? ` · HTTP ${String(info.status)}` : ""}
         </p>
-        {info.hint ? <p className="text-caption text-fg-secondary">{info.hint}</p> : null}
+        {(info.hint != null && info.hint !== "") ? <p className="text-caption text-fg-secondary">{info.hint}</p> : null}
         <ErrorDetails details={info.details} />
         {children}
         {onRetry ? (

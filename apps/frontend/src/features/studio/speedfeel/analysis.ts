@@ -164,14 +164,26 @@ export function frameDifference(before: ArrayLike<number>, after: ArrayLike<numb
 /** Mean luminance (0–255) of a grayscale frame. */
 export function frameLuma(frame: ArrayLike<number>): number {
   let sum = 0;
-  for (let index = 0; index < frame.length; index += 1) sum += frame[index] ?? 0;
+  // ArrayLike also accepts indexed buffers without an iterator.
+  let index = 0;
+  while (index < frame.length) {
+    const sample = frame[index] ?? 0;
+    sum += sample;
+    index += 1;
+  }
   return frame.length > 0 ? sum / frame.length : 0;
 }
 
 /** Mean luminance of the frame as the export's negative impact frame draws it: negated, gray, contrast 1.8 (phasyn_media impact_chain). */
 export function impactLuma(frame: ArrayLike<number>): number {
   let sum = 0;
-  for (let index = 0; index < frame.length; index += 1) sum += clamp(Math.round((127 - (frame[index] ?? 0)) * 1.8 + 128), 0, 255);
+  // ArrayLike also accepts indexed buffers without an iterator.
+  let index = 0;
+  while (index < frame.length) {
+    const sample = frame[index] ?? 0;
+    sum += clamp(Math.round((127 - sample) * 1.8 + 128), 0, 255);
+    index += 1;
+  }
   return frame.length > 0 ? sum / frame.length : 0;
 }
 

@@ -42,7 +42,7 @@ function segments(raw: string): (string | number)[] {
 
 /** "load.part_overrides[0].settings.x" style. */
 export function dottedPath(path: SettingsPath): string {
-  return path.reduce<string>((out, part) => (typeof part === "number" ? `${out}[${part}]` : out ? `${out}.${part}` : part), "");
+  return path.reduce<string>((out, part) => (typeof part === "number" ? `${out}[${String(part)}]` : out ? `${out}.${part}` : part), "");
 }
 
 function jumpFor(path: SettingsPath): string {
@@ -71,16 +71,16 @@ function readErrors(errors: readonly unknown[], unknown: SettingsPath[], values:
 
 /** The problems a refused definition reports, or null when the last error is not a refused definition. */
 export function definitionProblems(error: ApiErrorBody | null | undefined): DefinitionProblems | null {
-  if (!error || error.code !== "UNSUPPORTED_SETTING") return null;
+  if (error?.code !== "UNSUPPORTED_SETTING") return null;
   const details = isRecord(error.details) ? error.details : {};
   const unknownFields: SettingsPath[] = [];
   const values: ValueProblem[] = [];
-  if (Array.isArray(details.errors)) readErrors(details.errors, unknownFields, values);
-  const index = typeof details.index === "number" && Number.isInteger(details.index) ? details.index : null;
-  if (index !== null && Array.isArray(details.rejected_fields)) {
-    for (const field of details.rejected_fields) if (typeof field === "string") unknownFields.push(["load", "part_overrides", index, "settings", field]);
-  } else if (index !== null && details.matched === 0 && typeof details.selector === "string") {
-    values.push({ path: `${PART_OVERRIDES}[${index}].selector`, jump: PART_OVERRIDES, message: t("selector「{selector}」沒有命中任何子部件", { selector: details.selector }) });
+  if (Array.isArray(details["errors"])) readErrors(details["errors"], unknownFields, values);
+  const index = typeof details["index"] === "number" && Number.isInteger(details["index"]) ? details["index"] : null;
+  if (index !== null && Array.isArray(details["rejected_fields"])) {
+    for (const field of details["rejected_fields"]) if (typeof field === "string") unknownFields.push(["load", "part_overrides", index, "settings", field]);
+  } else if (index !== null && details["matched"] === 0 && typeof details["selector"] === "string") {
+    values.push({ path: `${PART_OVERRIDES}[${String(index)}].selector`, jump: PART_OVERRIDES, message: t("selector「{selector}」沒有命中任何子部件", { selector: details["selector"] }) });
   }
   return { unknownFields, values };
 }
@@ -91,10 +91,10 @@ export function withoutFields(settings: InstanceSettings, paths: readonly Settin
   for (const path of paths) {
     let node: unknown = copy;
     for (const part of path.slice(0, -1)) {
-      node = Array.isArray(node) && typeof part === "number" ? (node as unknown[])[part] : isRecord(node) && typeof part === "string" ? node[part] : undefined;
+      node = Array.isArray(node) && typeof part === "number" ? (node as unknown[])[part] : isRecord(node) && typeof part === "string" && Object.hasOwn(node, part) ? node[part] : undefined;
     }
     const last = path.at(-1);
-    if (isRecord(node) && typeof last === "string") delete node[last];
+    if (isRecord(node) && typeof last === "string" && Object.hasOwn(node, last)) Reflect.deleteProperty(node, last);
   }
   return copy;
 }

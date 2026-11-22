@@ -3,6 +3,7 @@
 import { labelPlan } from "./labels";
 import { scanPrompt } from "./parse";
 import { finding, type RuleContext } from "./rules/context";
+import { measuredRules } from "./rules/measured";
 import { referenceRules } from "./rules/references";
 import { shotRules } from "./rules/shots";
 import { soundAndTextRules } from "./rules/sound";
@@ -12,8 +13,37 @@ import { wordingRules } from "./rules/wording";
 import { clipTiming, formatSeconds, H3_MAX_SECONDS, H3_MIN_SECONDS } from "./timing";
 import { SEVERITY_ORDER, type AnalyzeInput, type Finding, type Severity } from "./types";
 import { t } from "@/i18n";
+import { DEFAULT_PROMPT_RULES, H3_RULES, type PromptRules } from "../../model/providerTraits";
+
+/** Checks that hold for any model: an empty prompt, Studio's own length limit and the route's frame range. */
+function genericFindings(input: AnalyzeInput, rules: PromptRules): Finding[] {
+  const out: Finding[] = [];
+  const frames = input.frames;
+  if (rules.frames && frames > 0 && (frames < rules.frames.min || frames > rules.frames.max)) {
+    const seconds = (value: number) => formatSeconds(value / rules.fps);
+    out.push(
+      finding("mode.duration-range", {
+        title: frames < rules.frames.min ? t("鏡頭太短：這條路線至少要 {seconds} 秒", { seconds: seconds(rules.frames.min) }) : t("鏡頭太長：這條路線最多 {seconds} 秒", { seconds: seconds(rules.frames.max) }),
+        detail: t("把鏡頭的「時長」調到 {min}–{max} 秒之間（現在是 {requestedSeconds} 秒）；超出這個範圍的鏡頭送出後會被拒絕。", { min: seconds(rules.frames.min), max: seconds(rules.frames.max), requestedSeconds: seconds(frames) }),
+      }),
+    );
+  }
+  if (input.text.trim() === "") out.push(finding("format.empty", { title: t("prompt 是空的"), detail: t("寫下畫面、動作與聲音；空的 prompt 不能渲染。") }));
+  if (input.text.length > 16384) {
+    out.push(
+      finding("length.studio-limit", {
+        title: t("{textCount} 字元，超過 16,384 字元上限", { textCount: input.text.length.toLocaleString("en-US") }),
+        detail: t("刪減到 16,384 字元以內；超過的部分無法儲存。"),
+      }),
+    );
+  }
+  return out;
+}
 
 export function analyzePrompt(input: AnalyzeInput): Finding[] {
+  const rules = input.rules ?? DEFAULT_PROMPT_RULES;
+  // The H3 advisor (sections, tags, timeline, wording, 4–15 s) only applies where an H3 DiT renders
+  if (!rules.h3) return sortFindings(genericFindings(input, rules));
   const text = input.text;
   const mode = input.mode ?? null;
   const timing = clipTiming(input.frames);
@@ -31,8 +61,8 @@ export function analyzePrompt(input: AnalyzeInput): Finding[] {
   } else if (timing.requestedSeconds < H3_MIN_SECONDS - 1e-9 || timing.requestedSeconds > H3_MAX_SECONDS + 1e-9) {
     out.push(
       finding("mode.duration-range", {
-        title: timing.requestedSeconds < H3_MIN_SECONDS ? t("鏡頭太短：H3 至少要 4 秒") : t("鏡頭太長：H3 最多 15 秒"),
-        detail: t("把鏡頭的「時長」調到 4–15 秒之間（現在是 {requestedSeconds} 秒）；超出這個範圍的鏡頭送出後會被拒絕。", { requestedSeconds: formatSeconds(timing.requestedSeconds) }),
+        title: timing.requestedSeconds < H3_MIN_SECONDS ? t("鏡頭太短：H3 至少要 {seconds} 秒", { seconds: H3_RULES.minSeconds }) : t("鏡頭太長：H3 最多 {seconds} 秒", { seconds: H3_RULES.maxSeconds }),
+        detail: t("把鏡頭的「時長」調到 {min}–{max} 秒之間（現在是 {requestedSeconds} 秒）；超出這個範圍的鏡頭送出後會被拒絕。", { min: H3_RULES.minSeconds, max: H3_RULES.maxSeconds, requestedSeconds: formatSeconds(timing.requestedSeconds) }),
       }),
     );
   }
@@ -50,8 +80,9 @@ export function analyzePrompt(input: AnalyzeInput): Finding[] {
     plan: labelPlan(input.references, input.library),
     references: input.references,
     library: input.library,
+    rules,
   };
-  out.push(...structureRules(ctx), ...timelineRules(ctx), ...referenceRules(ctx), ...shotRules(ctx), ...soundAndTextRules(ctx), ...wordingRules(ctx));
+  out.push(...structureRules(ctx), ...timelineRules(ctx), ...referenceRules(ctx), ...shotRules(ctx), ...soundAndTextRules(ctx), ...wordingRules(ctx), ...measuredRules(ctx));
   return sortFindings(out);
 }
 
@@ -70,7 +101,7 @@ export function countBySeverity(findings: readonly Finding[]): Record<Severity, 
 
 /** React key／比對用：同一條規則的不同發現以位置與標題區分。 */
 export function findingKey(item: Finding): string {
-  return `${item.id}|${item.range?.start ?? ""}|${item.title}`;
+  return `${item.id}|${String(item.range?.start ?? "")}|${item.title}`;
 }
 
 export interface KeyedFinding {
@@ -84,6 +115,6 @@ export function keyFindings(findings: readonly Finding[]): KeyedFinding[] {
   return findings.map((item) => {
     const index = seen.get(item.id) ?? 0;
     seen.set(item.id, index + 1);
-    return { key: `${item.id}#${index}`, item };
+    return { key: `${item.id}#${String(index)}`, item };
   });
 }

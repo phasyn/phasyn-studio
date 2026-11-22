@@ -16,6 +16,7 @@ import unicodedata
 from enum import Enum
 from functools import lru_cache
 
+
 _RTL_CLASSES = frozenset({"R", "AL", "RLE", "RLO", "RLI"})
 # The canvas text preparation replaces ASCII white space by U+0020; the two Unicode line separators
 # (never a line break in the editor's layout) are treated the same way.

@@ -18,7 +18,7 @@ import { usePersistentChoice } from "@/lib/usePersistentSize";
 import { ActionMenu, MenuTriggerButton } from "@/components/ui/action-menu";
 import type { MenuAnchor } from "@/components/ui/menuModel";
 import { useImageStudio } from "../imageStudioContext";
-import { imageShots, takeNumber } from "../model/shots";
+import { activeImageTake, imageShots, takeNumber } from "../model/shots";
 import type { ImageAsset, ImageStudioProject, StudioImageShot, StudioImageTake } from "../types";
 import { BACKDROP_CLASS, BACKDROP_LABELS, type Backdrop } from "./display";
 import { Segmented } from "./fields";
@@ -56,7 +56,7 @@ export function Viewer() {
   const { project, selectedShotId, selectedTakeId, compareTakeId, setCompareTakeId, addShot } = useImageStudio();
   const { menuItems } = useTakeActions();
   const menuId = useId();
-  const tools = useRef<HTMLDivElement>(null);
+  const toolsRef = useRef<HTMLDivElement>(null);
   // The run being confirmed for cancelling and the button that asked. The dialog lives here, not in the progress view,
   // so it stays open with its result after the run has ended and the progress view has left.
   const [cancelling, setCancelling] = useState<{ run: WireRun; opener: HTMLElement } | null>(null);
@@ -67,19 +67,19 @@ export function Viewer() {
   const [variant, setVariant] = useState<"image" | "white">("image");
   const shot = imageShots(project).find((item) => item.image_shot_id === selectedShotId) ?? null;
   const take = shot?.takes.find((item) => item.take_id === selectedTakeId) ?? null;
-  const other = shot && compareTakeId ? (shot.takes.find((item) => item.take_id === compareTakeId) ?? null) : null;
+  const other = shot && (compareTakeId != null && compareTakeId !== "") ? (shot.takes.find((item) => item.take_id === compareTakeId) ?? null) : null;
   const done = take?.state === "succeeded" && take.image !== null;
   const comparing = done && other !== null && other.take_id !== take.take_id && other.state === "succeeded" && other.image !== null;
   const assetA = done ? assetOf(take, variant) : null;
   const assetB = comparing ? assetOf(other, variant) : null;
 
   /** This take's menu button in the toolbar: focus goes there when the control that had it leaves the viewer. */
-  const takeMenu = () => tools.current?.querySelector<HTMLElement>('button[aria-haspopup="menu"]') ?? null;
+  const takeMenu = () => toolsRef.current?.querySelector<HTMLElement>('button[aria-haspopup="menu"]') ?? null;
   const focusTakeMenu = () => takeMenu()?.focus();
   const endCompare = () => {
     // End Comparison leaves with the comparison: focus goes to the compared take's tile (where the comparison was
     // started), else the monitored take's tile, else this take's menu; never to the page.
-    const tile = (compareTakeId ? takeTile(compareTakeId) : null) ?? (take ? takeTile(take.take_id) : null);
+    const tile = ((compareTakeId != null && compareTakeId !== "") ? takeTile(compareTakeId) : null) ?? (take ? takeTile(take.take_id) : null);
     if (tile) tile.focus();
     else focusTakeMenu();
     setCompareTakeId(null);
@@ -130,7 +130,7 @@ export function Viewer() {
       </div>
     );
   } else if (take.state === "rendering") {
-    body = <TakeProgress key={take.take_id} take={take} onCancel={(run, opener) => setCancelling({ run, opener })} onFocusLeave={progressLeftWithFocus} />;
+    body = <TakeProgress key={take.take_id} take={take} onCancel={(run, opener) => { setCancelling({ run, opener }); }} onFocusLeave={progressLeftWithFocus} />;
   } else if (!done || !assetA) {
     body = (
       <div className="grid size-full place-items-center overflow-y-auto p-6">
@@ -157,7 +157,7 @@ export function Viewer() {
         />
       </div>
     );
-  } else if (comparing && assetB && other) {
+  } else if (comparing && assetB) {
     body =
       compareMode === "wipe" ? (
         <Wipe a={assetA} b={assetB} labelA={takeLabel(shot, take)} labelB={takeLabel(shot, other)} backdrop={backdrop} />
@@ -187,13 +187,13 @@ export function Viewer() {
           {take ? <span className="machine shrink-0 text-caption text-fg-tertiary">{takeLabel(shot, take)}</span> : null}
         </span>
         {take ? <TakeStateMark state={take.state} compact /> : null}
-        {take && shot.active_take_id === take.take_id ? (
+        {take && activeImageTake(shot)?.take_id === take.take_id ? (
           <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-brand-blue/40 bg-brand-gradient-soft px-2 text-caption text-fg">
             <Star aria-hidden className="size-3 text-brand-cyan" />
             {t("使用中")}
           </span>
         ) : null}
-        <div ref={tools} className="ml-auto flex min-w-0 items-center gap-1.5">
+        <div ref={toolsRef} className="ml-auto flex min-w-0 items-center gap-1.5">
           {comparing ? (
             <>
               <Segmented
@@ -250,21 +250,21 @@ export function Viewer() {
                 aria-pressed={zoom === "actual"}
                 aria-label={zoom === "fit" ? t("原始大小（1:1）") : t("符合視窗")}
                 title={zoom === "fit" ? t("原始大小（1:1，可捲動）") : t("符合視窗")}
-                onClick={() => setZoom(zoom === "fit" ? "actual" : "fit")}
+                onClick={() => { setZoom(zoom === "fit" ? "actual" : "fit"); }}
               >
                 {zoom === "fit" ? <Maximize2 aria-hidden /> : <Minimize2 aria-hidden />}
               </Button>
             </>
           ) : null}
           {take ? (
-            <MenuTriggerButton menuId={menuId} open={menu !== null} label={t("這個 take 的動作")} onOpen={(element, focus) => setMenu({ anchor: { kind: "element", element }, returnFocus: element, focus })} onClose={() => setMenu(null)} className="size-7 [&_svg]:size-4">
+            <MenuTriggerButton menuId={menuId} open={menu !== null} label={t("這個 take 的動作")} onOpen={(element, focus) => { setMenu({ anchor: { kind: "element", element }, returnFocus: element, focus }); }} onClose={() => { setMenu(null); }} className="size-7 [&_svg]:size-4">
               <Ellipsis aria-hidden />
             </MenuTriggerButton>
           ) : null}
         </div>
       </div>
       <div className="relative min-h-0 flex-1 bg-stage">{body}</div>
-      {comparing && other && take ? (
+      {comparing ? (
         <div className="shrink-0 border-t border-line-subtle bg-canvas pt-1.5">
           <p className="flex items-center gap-1.5 px-3 pb-1 text-caption text-fg-tertiary">
             <ArrowLeftRight aria-hidden className="size-3.5" />
@@ -275,16 +275,16 @@ export function Viewer() {
       ) : take && done ? (
         <Facts take={take} />
       ) : null}
-      {menu && take ? <ActionMenu id={menuId} label={t("這個 take 的動作")} items={menuItems(shot, take)} anchor={menu.anchor} returnFocus={menu.returnFocus} initialFocus={menu.focus} onClose={() => setMenu(null)} /> : null}
+      {menu && take ? <ActionMenu id={menuId} label={t("這個 take 的動作")} items={menuItems(shot, take)} anchor={menu.anchor} returnFocus={menu.returnFocus} initialFocus={menu.focus} onClose={() => { setMenu(null); }} /> : null}
       {cancelling ? (
         <CancelRunDialog
           run={cancelling.run}
           open
-          onOpenChange={(open) => (open ? undefined : setCancelling(null))}
+          onOpenChange={(open) => { if (!(open)) { setCancelling(null); } }}
           scope={cancelScope(project, cancelling.run.run_id)}
           // Back to the cancel button while it is on the page; once the run has ended it has left with the progress
           // view, so focus goes to this take's menu instead of the page
-          onCloseAutoFocus={(event) => returnFocusOr(event, cancelling.opener, takeMenu())}
+          onCloseAutoFocus={(event) => { returnFocusOr(event, cancelling.opener, takeMenu()); }}
         />
       ) : null}
     </section>

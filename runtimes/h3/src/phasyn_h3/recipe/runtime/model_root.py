@@ -11,16 +11,22 @@ from pathlib import Path
 
 from .errors import ModelFilesMissing
 
+
 MODEL_ROOT_ENV = "PHASYN_MODEL_ROOT"
 
 
 def model_root() -> Path:
+    """Resolve the selected model snapshot directory."""
     raw = os.environ.get(MODEL_ROOT_ENV)
     if not raw:
-        raise ModelFilesMissing("MODEL_ROOT_UNSET", f"未設定 {MODEL_ROOT_ENV}；runtime 不會自動下載權重")
+        raise ModelFilesMissing(
+            "MODEL_ROOT_UNSET", f"未設定 {MODEL_ROOT_ENV}；runtime 不會自動下載權重"
+        )
     root = Path(raw)
     if not root.is_dir():
-        raise ModelFilesMissing("MODEL_ROOT_MISSING", f"{MODEL_ROOT_ENV}（load.model_path）不存在或不是目錄")
+        raise ModelFilesMissing(
+            "MODEL_ROOT_MISSING", f"{MODEL_ROOT_ENV}（load.model_path）不存在或不是目錄"
+        )
     return root.resolve()
 
 

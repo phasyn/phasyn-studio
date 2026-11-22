@@ -34,19 +34,19 @@ export function useLevelMeters(): LevelMeters {
   const playing = usePlaying(playhead);
   const leftRef = useRef<LevelMeterHandle>(null);
   const rightRef = useRef<LevelMeterHandle>(null);
-  const meter = useRef(METER_AT_REST);
+  const meterRef = useRef(METER_AT_REST);
   const [clipped, setClipped] = useState(NO_CLIP);
   const [loudest, setLoudest] = useState(-Infinity);
 
   useEffect(() => {
-    if (!playing && meterAtRest(meter.current)) return;
+    if (!playing && meterAtRest(meterRef.current)) return;
     let handle = 0;
     let previous: number | null = null;
     const frame = (now: number) => {
       const input = playing ? audio.levels() : SILENCE;
-      const next = stepMeter(meter.current, input, now, previous === null ? 0 : Math.max(0, now - previous), playing);
+      const next = stepMeter(meterRef.current, input, now, previous === null ? 0 : Math.max(0, now - previous), playing);
       previous = now;
-      meter.current = next;
+      meterRef.current = next;
       leftRef.current?.set(next.left.level, next.left.peak);
       rightRef.current?.set(next.right.level, next.right.peak);
       const over: ClipLamps = { left: input.left >= FULL_SCALE_DB, right: input.right >= FULL_SCALE_DB };
@@ -59,7 +59,7 @@ export function useLevelMeters(): LevelMeters {
       if (playing || !meterAtRest(next)) handle = requestAnimationFrame(frame);
     };
     handle = requestAnimationFrame(frame);
-    return () => cancelAnimationFrame(handle);
+    return () => { cancelAnimationFrame(handle); };
   }, [audio, playing]);
 
   const reset = () => {

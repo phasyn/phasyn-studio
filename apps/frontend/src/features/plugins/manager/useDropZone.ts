@@ -7,10 +7,10 @@ const hasFiles = (event: DragEvent<HTMLElement>) => event.dataTransfer.types.inc
 
 export function useDropZone(onFile: (file: File) => void, blocked: string | null) {
   const [dropping, setDropping] = useState<DropVerdict | null>(null);
-  const verdict: DropVerdict = blocked ? "reject" : "accept";
+  const verdict: DropVerdict = (blocked != null && blocked !== "") ? "reject" : "accept";
   return {
     dropping,
-    reset: () => setDropping(null),
+    reset: () => { setDropping(null); },
     handlers: {
       onDragEnter: (event: DragEvent<HTMLElement>) => {
         if (!hasFiles(event)) return;
@@ -20,18 +20,18 @@ export function useDropZone(onFile: (file: File) => void, blocked: string | null
       onDragOver: (event: DragEvent<HTMLElement>) => {
         if (!hasFiles(event)) return;
         event.preventDefault();
-        event.dataTransfer.dropEffect = blocked ? "none" : "copy";
+        event.dataTransfer.dropEffect = (blocked != null && blocked !== "") ? "none" : "copy";
         if (dropping !== verdict) setDropping(verdict);
       },
       onDragLeave: (event: DragEvent<HTMLElement>) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(null);
+        if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) setDropping(null);
       },
       onDrop: (event: DragEvent<HTMLElement>) => {
         if (!hasFiles(event)) return;
         event.preventDefault();
         setDropping(null);
         const file = event.dataTransfer.files[0];
-        if (file && !blocked) onFile(file);
+        if (file && !(blocked != null && blocked !== "")) onFile(file);
       },
     },
   };

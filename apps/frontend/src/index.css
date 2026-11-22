@@ -9,7 +9,7 @@
  * shadow-glow、shadow-glow-sm、shadow-window、shadow-popover、animate-shimmer、animate-glow-pulse、animate-rise-in、pressable、
  * stagger、--ease-spring-*／--duration-spring-*。
  * 對比（WCAG 2.x，sRGB 計算，含 brand-soft 疊在 surface／raised 上）：fg ≥ 12.8、fg-secondary ≥ 7.7、
- * fg-tertiary ≥ 5.3、action-fg ≥ 6.4、各語意色 ≥ 5.9；line-control（必要控制邊界）≥ 3.5；focus ≥ 8.5（2026-10-18 對所有表面重算）；
+ * fg-tertiary ≥ 5.3、action-fg ≥ 6.4、各語意色 ≥ 5.9；line-control（必要控制邊界）≥ 3.5；focus ≥ 8.5（對所有表面重算）；
  * 白字在 action 深色漸層三個色標上 ≥ 5.1（主要按鈕）；on-accent 深色字在亮色漸層四個色標上 ≥ 5.7。
  * `dark:` variant 綁定在 index.html 靜態的 data-theme 標記上，不跟隨作業系統偏好。
  */

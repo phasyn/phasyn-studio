@@ -52,7 +52,7 @@ function recordingSource(recording: Recording, options: RecordingLineOptions): L
 
 function recordingSubject(recording: Recording): string {
   const { context } = recording;
-  if (context.operation === "controller") return context.run_id ? `controller run ${shortId(context.run_id)}` : "controller";
+  if (context.operation === "controller") return (context.run_id != null && context.run_id !== "") ? `controller run ${shortId(context.run_id)}` : "controller";
   if (context.operation === "node") return "node";
   return `${context.operation} ${context.component_id}`;
 }
@@ -74,11 +74,11 @@ export function lineFromRecording(recording: Recording, options: RecordingLineOp
   const runGoing = runInProgress(recording, options.activeRuns);
   const inProgress = runGoing || callInProgress(recording, options.activeCalls);
   // 契約外的狀態字串：照原文顯示，不猜成功或失敗。
-  const state: { level: LogLevel; verb: string } = inProgress ? RECORDING_STATE.running : (RECORDING_STATE[summary.state] ?? { level: "info", verb: summary.state });
+  const state: { level: LogLevel; verb: string } = inProgress ? RECORDING_STATE.running : (Object.hasOwn(RECORDING_STATE, summary.state) ? RECORDING_STATE[summary.state] : { level: "info", verb: summary.state });
   const notes: readonly unknown[] = Array.isArray(summary.notes) ? summary.notes : [];
   const error = summary.state === "failed" ? recordingError(notes) : null;
   // 執行中的 host_wall_ms 只是到目前為止的值，不當成結果顯示；結束後才放進訊息。
-  const wall = summary.state === "running" || inProgress ? undefined : summary.metrics.host_wall_ms;
+  const wall = summary.state === "running" || inProgress ? undefined : summary.metrics["host_wall_ms"];
   const measured = wall ? t("host_wall_ms {wall}（{quality}）", { wall: formatMetric(wall), quality: wall.quality }) : null;
   // Fixed notes (the server catalog has them) read in the interface language, one by one, then joined in it too
   const otherNotes = notes.filter((note): note is string => typeof note === "string" && !note.startsWith(ERROR_NOTE_PREFIX)).map((note) => tServer(note));
@@ -92,11 +92,11 @@ export function lineFromRecording(recording: Recording, options: RecordingLineOp
       joinParts([
         `recording ${context.recording_id}`,
         context.provider_id && `provider ${context.provider_id}`,
-        context.run_id && `run ${context.run_id}`,
-        context.call_id && `call ${context.call_id}`,
+        context.run_id != null && context.run_id !== "" && `run ${context.run_id}`,
+        context.call_id != null && context.call_id !== "" && `call ${context.call_id}`,
         error && measured,
-        wall?.reason && t("host_wall_ms：{reason}", { reason: tServer(wall.reason) }),
-        summary.context_available === false && t("context 未取得（Node 尚未送出）"),
+        wall?.reason != null && wall.reason !== "" && t("host_wall_ms：{reason}", { reason: tServer(wall.reason) }),
+        !summary.context_available && t("context 未取得（Node 尚未送出）"),
         inProgress && (runGoing ? t("run 仍在執行，summary 在 run 結束後才會收到") : t("呼叫仍在進行（目錄或 run 回報），summary 結束後才會收到")),
         otherNotes.join(t("；")),
       ]),

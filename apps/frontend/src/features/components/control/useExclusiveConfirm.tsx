@@ -7,13 +7,13 @@ import { ExclusiveConfirmDialog, type PendingConfirm } from "./ExclusiveConfirmD
 
 /** `confirm` for requestStart() plus the dialog element the caller renders once. */
 export function useExclusiveConfirm(): { confirm: ConfirmReplace; dialog: ReactNode } {
-  const queue = useRef<PendingConfirm[]>([]);
+  const queueRef = useRef<PendingConfirm[]>([]);
   const [current, setCurrent] = useState<PendingConfirm | null>(null);
 
   useEffect(
     () => () => {
-      const waiting = queue.current;
-      queue.current = [];
+      const waiting = queueRef.current;
+      queueRef.current = [];
       for (const item of waiting) item.resolve(false);
     },
     [],
@@ -22,15 +22,15 @@ export function useExclusiveConfirm(): { confirm: ConfirmReplace; dialog: ReactN
   const confirm = useCallback<ConfirmReplace>(
     (conflict, target) =>
       new Promise<boolean>((resolve) => {
-        queue.current = [...queue.current, { conflict, target, resolve }];
-        setCurrent(queue.current[0] ?? null);
+        queueRef.current = [...queueRef.current, { conflict, target, resolve }];
+        setCurrent(queueRef.current[0] ?? null);
       }),
     [],
   );
 
   const settle = useCallback((confirmed: boolean) => {
-    const [head, ...rest] = queue.current;
-    queue.current = rest;
+    const [head, ...rest] = queueRef.current;
+    queueRef.current = rest;
     setCurrent(rest[0] ?? null);
     head?.resolve(confirmed);
   }, []);

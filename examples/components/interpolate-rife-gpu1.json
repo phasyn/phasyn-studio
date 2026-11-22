@@ -1,0 +1,22 @@
+{
+  "component_id": "interpolate-rife-gpu1",
+  "label": "影片補幀 RIFE v4.26（GPU 1）",
+  "provider_id": "media.interpolate",
+  "runtime_id": "x86_64",
+  "autostart": false,
+  "folder": "生成/影片/補幀",
+  "settings": {
+    "load": {
+      "model_path": "/path/to/models/practical-rife-4.26/RIFEv4.26_0921.zip",
+      "device": {
+        "kind": "cuda",
+        "id": "GPU-REPLACE-1",
+        "resource_group": "gpu-1"
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "mode": "detailed"
+    }
+  }
+}

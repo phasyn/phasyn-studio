@@ -72,11 +72,11 @@ function thumbRender(status: ShotStatus, activity: ActivityItem | undefined): Th
 /** The front of the second line while the shot renders: the measured percentage, or rendering / waiting in words. */
 function RenderLead({ render, activity }: { render: ThumbRender; activity: ActivityItem | undefined }) {
   const progress = activity?.dit?.progress;
-  const detail = progress && progress.completed !== null && progress.total !== null ? t("{label}：{detail}", { label: "DiT", detail: t("已完成 {done}／{total} 步", { done: progress.completed, total: progress.total }) }) : undefined;
+  const detail = progress?.completed != null && progress.total !== null ? t("{label}：{detail}", { label: "DiT", detail: t("已完成 {done}／{total} 步", { done: progress.completed, total: progress.total }) }) : undefined;
   if (render.fraction !== null) {
     return (
       <span title={detail} className="machine shrink-0 text-info">
-        {`${Math.round(render.fraction * 100)}%`}
+        {`${String(Math.round(render.fraction * 100))}%`}
       </span>
     );
   }
@@ -94,7 +94,7 @@ const CandidateLead = memo(function CandidateLead({ shot, status, reports }: { s
   // While the engine cannot tell yet every shot would look blocked: the batch button says that once instead
   const reason = engineUnavailable(engine) === null ? (block.preflight?.text ?? null) : null;
   useReportBlock(reports, shot.shot_id, reason);
-  if (!reason) return <ShotStatusMark status={status} compact />;
+  if (!(reason != null && reason !== "")) return <ShotStatusMark status={status} compact />;
   return (
     <span title={reason} className="inline-flex shrink-0 text-warning [&_svg]:size-3.5">
       <TriangleAlert aria-hidden />
@@ -127,14 +127,15 @@ export function ShotRow(props: ShotRowProps) {
   const badge = routeBadge(project, shot, engine);
   const link = continuityLink(project, shot, placed);
   const title = shot.title || t("未命名鏡頭");
-  const facts = `${formatDuration(shot.frames)}${t("・{takesCount} take", { takesCount: playableTakeCount(shot) })}`;
+  const facts = `${formatDuration(shot.frames, project.format.fps.num / project.format.fps.den)}${t("・{takesCount} take", { takesCount: playableTakeCount(shot) })}`;
   const below = (event: DragEvent<HTMLElement>) => {
     const box = event.currentTarget.getBoundingClientRect();
     return event.clientY > box.top + box.height / 2;
   };
+  const rowClass = current ? (selected ? ROW_STATE.both : ROW_STATE.current) : selected ? ROW_STATE.selected : ROW_STATE.idle;
   const tooltip = [title, facts, SHOT_STATUS_LABELS[status], badge?.title, link?.text, placed ? t("拖曳可調整在影片中的順序") : null].filter(Boolean).join("\n");
   return (
-    <div
+    <div /* eslint-disable-line jsx-a11y-x/click-events-have-key-events, jsx-a11y-x/interactive-supports-focus -- The owning composite keeps keyboard focus and exposes the active option with aria-activedescendant. */
       ref={reveal(index)}
       id={optionId}
       role="option"
@@ -143,7 +144,7 @@ export function ShotRow(props: ShotRowProps) {
       data-current={current || undefined}
       title={tooltip}
       draggable={placed}
-      onClick={(event) => props.onPointer(event, shot.shot_id)}
+      onClick={(event) => { props.onPointer(event, shot.shot_id); }}
       onContextMenu={(event) => {
         event.preventDefault();
         props.onMenu(shot.shot_id, { kind: "point", x: event.clientX, y: event.clientY });
@@ -154,7 +155,7 @@ export function ShotRow(props: ShotRowProps) {
         event.dataTransfer.effectAllowed = "move";
         props.onDragShot(shot.shot_id);
       }}
-      onDragEnd={() => props.onDragShot(null)}
+      onDragEnd={() => { props.onDragShot(null); }}
       onDragOver={(event) => {
         if (!placed || !hasShotDrag(event.dataTransfer.types)) return;
         event.preventDefault();
@@ -170,7 +171,7 @@ export function ShotRow(props: ShotRowProps) {
       className={cn(
         "group/tile flex cursor-default items-center gap-2 pr-0.5 pl-2 select-none",
         LIST_ROW,
-        ROW_STATE[current ? (selected ? "both" : "current") : selected ? "selected" : "idle"],
+        rowClass,
         placed && "cursor-grab active:cursor-grabbing",
         "group-focus-visible/shots:data-current:outline-2 group-focus-visible/shots:data-current:-outline-offset-2 group-focus-visible/shots:data-current:outline-focus",
       )}

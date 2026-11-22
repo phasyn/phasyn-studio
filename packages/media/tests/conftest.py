@@ -7,11 +7,14 @@ import pytest
 
 def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
-        "markers", "slow: real FFmpeg exports of synthetic timelines (seconds each); run with -m slow"
+        "markers",
+        "slow: real FFmpeg exports of synthetic timelines (seconds each); run with -m slow",
     )
 
 
-def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
     """Leave the slow tests out of a run whose marker expression does not name them."""
     if "slow" in (config.option.markexpr or ""):
         return

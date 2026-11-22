@@ -48,7 +48,7 @@ function Rows({ items, mac }: { items: readonly (Shortcut & { group?: string })[
           </dt>
           <dd className="grid min-w-0 text-data text-fg">
             <span className="[overflow-wrap:anywhere]">{item.action}</span>
-            {item.where || item.group ? <span className="truncate text-caption text-fg-tertiary">{[item.group, item.where].filter(Boolean).join(t("・"))}</span> : null}
+            {(item.where ?? "") || (item.group != null && item.group !== "") ? <span className="truncate text-caption text-fg-tertiary">{[item.group, item.where].filter(Boolean).join(t("・"))}</span> : null}
           </dd>
         </div>
       ))}
@@ -73,7 +73,7 @@ function ShortcutList() {
       <div className="flex shrink-0 items-center gap-2 px-6 pb-3">
         <div className="relative min-w-0 flex-1">
           <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-fg-tertiary" />
-          <Input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("搜尋動作或按鍵")} aria-label={t("搜尋快速鍵")} className="pl-8" />
+          <Input type="search" value={query} onChange={(event) => { setQuery(event.target.value); }} placeholder={t("搜尋動作或按鍵")} aria-label={t("搜尋快速鍵")} className="pl-8" />
         </div>
       </div>
       {wanted ? null : (
@@ -107,9 +107,9 @@ function ShortcutList() {
 export function ShortcutsDialog() {
   const [open, setOpen] = useState(false);
   useEffect(() => {
-    const show = () => setOpen(true);
+    const show = () => { setOpen(true); };
     window.addEventListener(SHORTCUTS_OPEN_EVENT, show);
-    return () => window.removeEventListener(SHORTCUTS_OPEN_EVENT, show);
+    return () => { window.removeEventListener(SHORTCUTS_OPEN_EVENT, show); };
   }, []);
 
   const onKey = useEffectEvent((event: KeyboardEvent) => {
@@ -118,14 +118,14 @@ export function ShortcutsDialog() {
     setOpen(true);
   });
   useEffect(() => {
-    const listener = (event: KeyboardEvent) => onKey(event);
+    const listener = (event: KeyboardEvent) => { onKey(event); };
     window.addEventListener("keydown", listener);
-    return () => window.removeEventListener("keydown", listener);
+    return () => { window.removeEventListener("keydown", listener); };
   }, []);
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent wide onKeyDown={(event) => event.stopPropagation()}>
+      <DialogContent wide onKeyDown={(event) => { event.stopPropagation(); }}>
         <DialogHeader>
           <DialogTitle>{t("鍵盤快速鍵")}</DialogTitle>
           <DialogDescription>{t("播放、導覽、縮放與復原在「鏡頭」和「編輯」都有效，其餘只在「編輯」；按鍵作用在有焦點框的面板上，文字欄位、選單與對話框內不會觸發。")}</DialogDescription>

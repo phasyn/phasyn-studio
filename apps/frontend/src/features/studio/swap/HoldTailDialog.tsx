@@ -51,20 +51,20 @@ export function HoldTailFact({ progress, info }: { progress: SwapProgress; info:
       <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <span>{state}</span>
         {held < total ? (
-          <Button size="sm" variant="quiet" className="min-h-7 px-2" icon={<Snowflake aria-hidden />} onClick={() => setDialog((current) => ({ open: true, session: (current?.session ?? 0) + 1 }))}>
+          <Button size="sm" variant="quiet" className="min-h-7 px-2" icon={<Snowflake aria-hidden />} onClick={() => { setDialog((current) => ({ open: true, session: (current?.session ?? 0) + 1 })); }}>
             {t("改用段尾凍結…")}
           </Button>
         ) : null}
       </span>
-      <AnimatePresence>{applied ? <HoldTailNotice key={applied.id} applied={applied} onDismiss={() => setApplied(null)} /> : null}</AnimatePresence>
+      <AnimatePresence>{applied ? <HoldTailNotice key={applied.id} applied={applied} onDismiss={() => { setApplied(null); }} /> : null}</AnimatePresence>
       {dialog ? (
         <HoldTailDialog
           key={dialog.session}
           open={dialog.open}
           shots={shots}
           info={info}
-          onApplied={(changes) => setApplied({ id: dialog.session, changes })}
-          onClose={() => setDialog((current) => (current ? { ...current, open: false } : current))}
+          onApplied={(changes) => { setApplied({ id: dialog.session, changes }); }}
+          onClose={() => { setDialog((current) => (current ? { ...current, open: false } : current)); }}
         />
       ) : null}
     </Fact>
@@ -103,7 +103,7 @@ function HoldTailDialog({
   onClose: () => void;
 }) {
   const { project, dispatch } = useStudio();
-  const applyButton = useRef<HTMLButtonElement>(null);
+  const applyButtonRef = useRef<HTMLButtonElement>(null);
   const live = useMemo(() => holdTailPlan(shots, { fps: info.job.fps, library: project.library ?? [] }), [shots, info.job.fps, project.library]);
   /** The plan as it was applied (shown while the dialog fades out). */
   const [done, setDone] = useState<HoldTailPlan | null>(null);
@@ -134,9 +134,9 @@ function HoldTailDialog({
       <DialogContent
         wide
         onOpenAutoFocus={(event) => {
-          if (!applyButton.current) return;
+          if (!applyButtonRef.current) return;
           event.preventDefault();
-          applyButton.current.focus();
+          applyButtonRef.current.focus();
         }}
         onKeyDown={(event) => {
           // The keys stay in the dialog: the swap panel and the editor have their own
@@ -185,7 +185,7 @@ function HoldTailDialog({
           <DialogClose asChild>
             <Button>{t("取消")}</Button>
           </DialogClose>
-          <ActionButton ref={applyButton} variant="primary" icon={<Snowflake aria-hidden />} disabledReason={reason} aria-keyshortcuts="Control+Enter Meta+Enter" onClick={apply}>
+          <ActionButton ref={applyButtonRef} variant="primary" icon={<Snowflake aria-hidden />} disabledReason={reason} aria-keyshortcuts="Control+Enter Meta+Enter" onClick={apply}>
             {count > 0 ? t("改用段尾凍結 {count} 段", { count }) : t("改用段尾凍結")}
           </ActionButton>
         </DialogFooter>
@@ -202,7 +202,7 @@ function HoldTailNotice({ applied, onDismiss }: { applied: AppliedHold; onDismis
     const byId = new Map(project.shots.map((shot) => [shot.shot_id, shot]));
     return applied.changes.filter((change) => {
       const shot = byId.get(change.shotId);
-      return shot !== undefined && shot.prompt === change.after.prompt && sameReferences(shot.references ?? [], change.after.references);
+      return shot?.prompt === change.after.prompt && sameReferences(shot.references ?? [], change.after.references);
     });
   }, [project.shots, applied.changes]);
   const changedSince = applied.changes.length - undoable.length;

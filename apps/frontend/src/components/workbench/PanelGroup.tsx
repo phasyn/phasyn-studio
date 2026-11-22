@@ -52,7 +52,7 @@ export function PanelGroup({ idPrefix, label, tabs, value, onChange, side, colla
     const Expand = side === "left" ? PanelLeftOpen : PanelRightOpen;
     return (
       <section ref={enter} aria-label={label} {...frameProps} className={cn("flex min-h-0 w-11 shrink-0 flex-col items-center gap-1 overflow-hidden rounded-xl border border-line-subtle bg-surface py-1.5 shadow-edge", className)}>
-        <button type="button" data-panel-toggle="" className={cn(TOOL_BUTTON, "size-9 [&_svg]:size-4")} aria-label={t("展開{label}", { label })} title={t("展開{label}", { label })} onClick={() => toggle(false)}>
+        <button type="button" data-panel-toggle="" className={cn(TOOL_BUTTON, "size-9 [&_svg]:size-4")} aria-label={t("展開{label}", { label })} title={t("展開{label}", { label })} onClick={() => { toggle(false); }}>
           <Expand aria-hidden />
         </button>
         <span aria-hidden className="h-px w-6 bg-line-subtle" />
@@ -87,7 +87,7 @@ export function PanelGroup({ idPrefix, label, tabs, value, onChange, side, colla
         actions={
           <span className="flex items-center gap-1 pr-1">
             {actions}
-            <button type="button" data-panel-toggle="" className={cn(TOOL_BUTTON, "text-fg-tertiary")} aria-label={t("收合{label}", { label })} title={t("收合{label}", { label })} onClick={() => toggle(true)}>
+            <button type="button" data-panel-toggle="" className={cn(TOOL_BUTTON, "text-fg-tertiary")} aria-label={t("收合{label}", { label })} title={t("收合{label}", { label })} onClick={() => { toggle(true); }}>
               <Collapse aria-hidden />
             </button>
           </span>

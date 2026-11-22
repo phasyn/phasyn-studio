@@ -1,3 +1,4 @@
+import { hasSlotContent } from "@/lib/dom";
 import { isValidElement, useEffect, useRef, type ReactNode } from "react";
 import { AreaIcon } from "@/components/common/AreaIcon";
 import { useLocation } from "react-router";
@@ -33,12 +34,12 @@ export function PageHeader({
   return (
     <header className={cn("flex min-h-12 flex-wrap items-center justify-between gap-x-4 gap-y-2", className)}>
       <div className="flex min-w-0 items-center gap-3">
-        {icon && isValidElement(icon) && icon.type === AreaIcon ? (
+        {hasSlotContent(icon) && isValidElement(icon) && icon.type === AreaIcon ? (
           // 工作區玻璃圖示自己就是圖塊，不再包一層框
           <span aria-hidden className="grid shrink-0 place-items-center">
             {icon}
           </span>
-        ) : icon ? (
+        ) : hasSlotContent(icon) ? (
           <span
             aria-hidden
             className="grid size-9 shrink-0 place-items-center rounded-lg border border-action/25 bg-brand-gradient-soft text-brand-cyan shadow-edge [&_svg]:size-[18px]"
@@ -55,11 +56,11 @@ export function PageHeader({
           >
             {title}
           </h1>
-          {description ? <div className="text-data text-fg-secondary">{description}</div> : null}
-          {meta ? <div className="mt-1 flex flex-wrap items-center gap-2">{meta}</div> : null}
+          {hasSlotContent(description) ? <div className="text-data text-fg-secondary">{description}</div> : null}
+          {hasSlotContent(meta) ? <div className="mt-1 flex flex-wrap items-center gap-2">{meta}</div> : null}
         </div>
       </div>
-      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+      {hasSlotContent(actions) ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
     </header>
   );
 }

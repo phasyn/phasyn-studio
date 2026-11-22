@@ -6,6 +6,7 @@ Source: ``contracts/component.schema.json``. Regenerate with
 
 from typing import Final
 
+
 MAX_SEQUENCE_FRAMES: Final[int] = 100000
 MAX_SEQUENCE_SECONDS: Final[int] = 3600
 MIN_FPS: Final[int] = 1
@@ -28,7 +29,7 @@ MAX_TEXT_CHARS: Final[int] = 200
 MIN_GAIN_DB: Final[float] = -60.0
 MAX_GAIN_DB: Final[float] = 12.0
 MIN_SPEED_PERCENT: Final[int] = 50
-MAX_SPEED_PERCENT: Final[int] = 200
+MAX_SPEED_PERCENT: Final[int] = 1000
 MIN_VOLUME_DB: Final[float] = -60.0
 MAX_VOLUME_DB: Final[float] = 12.0
 MAX_HOLD_FRAMES: Final[int] = 240

@@ -18,10 +18,10 @@ export function providerEntries(catalog: Catalog | undefined, recordings: readon
 /** 正在進行的呼叫：目錄中各元件的 active_call_id，加上 run 中執行中步驟的 call_id（排序、去重）。 */
 export function activeCallIds(catalog: Catalog | undefined, runs: readonly WireRun[] = []): string[] {
   const out = new Set<string>();
-  for (const node of catalog?.nodes ?? []) for (const component of node.components) if (component.active_call_id) out.add(component.active_call_id);
+  for (const node of catalog?.nodes ?? []) for (const component of node.components) if (component.active_call_id != null && component.active_call_id !== "") out.add(component.active_call_id);
   for (const run of runs) {
     if (run.state !== "running") continue;
-    for (const step of runSteps(run)) if (step.state === "running" && step.call_id) out.add(step.call_id);
+    for (const step of runSteps(run)) if (step.state === "running" && (step.call_id != null && step.call_id !== "")) out.add(step.call_id);
   }
   return [...out].sort();
 }
@@ -53,7 +53,7 @@ export function unseenRunIds(runs: readonly WireRun[], recordings: readonly Reco
   const out = new Set<string>();
   for (const item of recordings) {
     const runId = item.context.run_id;
-    if (!runId || known.has(runId)) continue;
+    if (!(runId != null && runId !== "") || known.has(runId)) continue;
     const at = Date.parse(item.context.created_at);
     if (!Number.isNaN(at) && at >= newest) out.add(runId);
   }

@@ -1,11 +1,12 @@
 // 用字規則（多數是製作建議）：抽象品質詞、感受詞、輸出規格字、速度只寫成形容詞、節奏矛盾、括號運鏡指令、
-// 一鏡多種運鏡、整份中文、否定寫法（鏡頭行以外；鏡頭行裡的由 shots.ts 的 shot.negation 回報）；以及長度規則（參考素材
-// 鏡頭 350–500 字、API 7000 字元、Studio 16384 字元）。
+// 一鏡多種運鏡、讓角色朝鏡頭的寫法、整份中文、否定寫法（鏡頭行以外；鏡頭行裡的由 shots.ts 的 shot.negation 回報）；以及
+// 長度規則（參考素材鏡頭 350–500 字、API 7000 字元、Studio 16384 字元）。
+// 「讓角色朝鏡頭的寫法」的提醒讀內建動作插件的 camera-cue 條件；這個版本沒有內建插件，所以不提醒。
 // 「整份中文」的主句說模型怎麼看待中文（可以渲染、官方範例用英文），不把「複製改寫指令」當成主要做法。
 import { sectionOf, type Segment } from "../parse";
 import { blank, clauses, countCjk, englishWords, mostlyEnglish, proseOnly } from "../text";
 import { bracketCameraCommands, bracketCameraToSentences } from "../transforms";
-import type { Finding } from "../types";
+import type { Finding, TextRange } from "../types";
 import { fieldName, fieldWithKey } from "../words";
 import { excerpt, finding, listSome, type RuleContext } from "./context";
 import { shotRanges } from "./shots";
@@ -39,10 +40,29 @@ const CAMERA_MOVES: readonly (readonly [string, RegExp])[] = [
 ];
 const NEGATION = /不要|避免|禁止|不得|請勿|切勿|不可(?:以)?(?:出現|有)|不能(?:出現|有)|別讓|\bavoid(?:s|ing)?\b|\bdo not\b|\bdon't\b|\bno [A-Za-z][A-Za-z-]*(?: [A-Za-z-]+)?,/gi;
 
+/** 內建動作插件的 camera-cue 條件；這個版本沒有內建插件。 */
+function cameraCuePattern(): RegExp | null {
+  return null;
+}
+
+const CAMERA_CUE = cameraCuePattern();
+/** 中文條件為了放過「背朝鏡頭」多比對了前一個字（[^背]朝鏡頭）：提醒裡不顯示那個字。 */
+const CUE_LEAD = /^[^\p{ASCII}](?=朝|衝|冲|撲|扑|奔|跑|飛|飞|迎|轉|转|面|正)/u; // i18n-ignore: 比對用的中文
+
+function cameraCues(text: string): { terms: string[]; first: TextRange | null } {
+  if (!CAMERA_CUE) return { terms: [], first: null };
+  const hits = [...text.matchAll(CAMERA_CUE)].map((match) => {
+    const lead = CUE_LEAD.exec(match[0])?.[0].length ?? 0;
+    return { term: match[0].slice(lead), start: match.index + lead, end: match.index + match[0].length };
+  });
+  const first = hits[0];
+  return { terms: [...new Set(hits.map((hit) => hit.term))], first: first ? { start: first.start, end: first.end } : null };
+}
+
 /** 畫面描述的文字（不含兩個聲音欄位，避免把「快速鼓點」當成動作速度）；位置不變。 */
 function visualText(ctx: RuleContext): string {
-  const ranges = ["overall_soundscape", "non_diegetic_music"].flatMap((name) => {
-    const section = sectionOf(ctx.scan, name as "overall_soundscape" | "non_diegetic_music");
+  const ranges = (["overall_soundscape", "non_diegetic_music"] as const).flatMap((name) => {
+    const section = sectionOf(ctx.scan, name);
     return section ? [{ start: section.lineStart, end: section.end }] : [];
   });
   return blank(ctx.text, ranges);
@@ -171,6 +191,16 @@ function cameraRules(ctx: RuleContext): Finding[] {
     );
   }
   const visual = visualText(ctx);
+  const cues = cameraCues(visual);
+  if (cues.first) {
+    out.push(
+      finding("wording.camera-cue", {
+        title: t("讓角色朝鏡頭的寫法：{terms}", { terms: listSome(cues.terms) }),
+        detail: t("把動作改成朝向對手或場景裡的目標，例如 bursts toward <Subject 2>、swings at her guard。寫了朝鏡頭衝、面向鏡頭、繞到正面或眼睛特寫的鏡頭，角色多半會正面看著鏡頭。"),
+        range: cues.first,
+      }),
+    );
+  }
   const crowded: { segment: Segment; moves: string[] }[] = [];
   for (const segment of ctx.scan.segments) {
     const moves = new Set<string>();
@@ -230,6 +260,7 @@ function negationRule(ctx: RuleContext): Finding[] {
 
 function lengthRules(ctx: RuleContext): Finding[] {
   const { text, mode, scan } = ctx;
+  const apiLimit = ctx.rules.apiPromptCharacters;
   const out: Finding[] = [];
   if (text.length > 16384) {
     out.push(
@@ -238,10 +269,10 @@ function lengthRules(ctx: RuleContext): Finding[] {
         detail: t("刪減到 16,384 字元以內；超過的部分無法儲存。"),
       }),
     );
-  } else if (text.length > 7000) {
+  } else if (apiLimit !== null && text.length > apiLimit) {
     out.push(
       finding("length.api-limit", {
-        title: t("{textCount} 字元，超過 MiniMax 線上 API 的 7,000 字元", { textCount: text.length.toLocaleString("en-US") }),
+        title: t("{textCount} 字元，超過 MiniMax 線上 API 的 {limit} 字元", { textCount: text.length.toLocaleString("en-US"), limit: apiLimit.toLocaleString("en-US") }),
         detail: t("在這台機器渲染不受這個限制（上限是 16,384 字元），只有改用 MiniMax 線上 API 時才要縮短。較長的 prompt 會讓文字編碼與生成用掉更多記憶體與時間（沒有量測）。"),
       }),
     );

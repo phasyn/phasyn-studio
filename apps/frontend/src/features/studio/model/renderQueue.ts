@@ -142,7 +142,7 @@ export function stageSteps(run: WireRun, lookup: ProviderLookup, now: number | n
       const ms = only ? elapsedMs(only.started_at, only.finished_at, only.state === "running" ? now : null) : null;
       detail = ms !== null ? formatElapsed(ms) : undefined;
     }
-    return { id: column.base, label: column.label, state, detail };
+    return { id: column.base, label: column.label, state, ...(detail === undefined ? {} : { detail }) };
   });
 }
 

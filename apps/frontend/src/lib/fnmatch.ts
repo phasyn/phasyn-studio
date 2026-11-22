@@ -49,7 +49,7 @@ export function fnmatchToRegExp(pattern: string): RegExp {
           out += negate ? "." : "(?!)";
         } else {
           // '-' 保留為範圍符號（首尾的 '-' 在字元類別中本來就是字面值）
-          out += `[${negate ? "^" : ""}${[...stuff].map(escapeClassChar).join("")}]`;
+          out += `[${negate ? "^" : ""}${Array.from(stuff).map(escapeClassChar).join("")}]`;
         }
       }
     } else {

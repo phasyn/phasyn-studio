@@ -1,6 +1,6 @@
-"""鏡頭切換偵測（``media.probe`` 的 invoke 參數 ``scenes``；契約 ``MediaInfo.scene_cuts_seconds``／``scene_detection``）。
+"""鏡頭切換偵測（``media.probe`` 的 invoke 參數 ``scenes``；契約 ``MediaInfo.scene_cuts_seconds``／``scene_detection``）.
 
-- 分數來源：FFmpeg ``select`` filter 的 ``scene`` 變數（0–1；與前一影格的平均絕對差的變化量，跟常見的
+- 分數來源：FFmpeg ``select`` filter 的 ``scene`` 變數（0-1；與前一影格的平均絕對差的變化量，跟常見的
   ``select='gt(scene,0.3)'`` 用法同一個尺度）。分數大於 ``threshold`` 的影格算一個候選切換點，時間是
   該影格（新鏡頭第一幀）的 PTS。
 - 時間軸：``setpts=PTS-STARTPTS`` 讓影片軌第一個解碼影格為 0 秒，``settb=AVTB`` 讓 PTS 以微秒整數輸出
@@ -8,7 +8,7 @@
 - 合併：只保留 (0, duration) 內的候選；相距小於 ``min_gap_seconds`` 的候選只留分數最高的一個（同分留較早的），
   所以輸出的任兩個切換點至少相距 ``min_gap_seconds``。
 - 只解碼選定的影片軌（``0:V:0``，不含封面圖），不輸出任何檔案；子程序同樣走 ``run_tool``（argv、逾時、取消、
-  有界輸出）與 ``file:`` URL＋protocol／demuxer 白名單。
+  有界輸出）與 ``file:`` URL+protocol／demuxer 白名單。
 """
 
 from __future__ import annotations
@@ -20,12 +20,12 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from ._validate import invalid as _invalid
-from ._validate import number as _number
+from ._validate import invalid as _invalid, number as _number
 from .errors import MediaError
 from .files import check_local_file, unchanged_since
 from .limits import DEFAULT_LIMITS, MediaLimits
 from .tools import find_ffmpeg, input_url, redact, run_tool, summarize_stderr
+
 
 THRESHOLD_MIN = 0.05
 THRESHOLD_MAX = 0.9
@@ -41,15 +41,20 @@ _US = 1_000_000
 
 @dataclass(frozen=True)
 class SceneDetection:
+    """Configuration for detecting changes between adjacent video frames."""
+
     threshold: float = THRESHOLD_DEFAULT
     min_gap_seconds: float = MIN_GAP_DEFAULT
 
     def as_dict(self) -> dict[str, float]:
+        """Return the serializable field values."""
         return {"threshold": self.threshold, "min_gap_seconds": self.min_gap_seconds}
 
 
-def parse_scene_detection(value: Any, *, path: str = "parameters.scenes") -> SceneDetection | None:
-    """解析 invoke 參數 ``scenes``：None＝不偵測；object 的欄位可省略（用預設值）；超出範圍 → INVALID_ARGUMENT。"""
+def parse_scene_detection(
+    value: Any, *, path: str = "parameters.scenes"
+) -> SceneDetection | None:
+    """解析 invoke 參數 ``scenes``：None=不偵測；object 的欄位可省略（用預設值）；超出範圍 → INVALID_ARGUMENT."""
     if value is None:
         return None
     if not isinstance(value, Mapping):
@@ -58,9 +63,17 @@ def parse_scene_detection(value: Any, *, path: str = "parameters.scenes") -> Sce
     if unknown:
         raise _invalid(path, f"不支援的欄位 {', '.join(unknown)}")
     return SceneDetection(
-        threshold=_number(value.get("threshold", THRESHOLD_DEFAULT), f"{path}.threshold", THRESHOLD_MIN, THRESHOLD_MAX),
+        threshold=_number(
+            value.get("threshold", THRESHOLD_DEFAULT),
+            f"{path}.threshold",
+            THRESHOLD_MIN,
+            THRESHOLD_MAX,
+        ),
         min_gap_seconds=_number(
-            value.get("min_gap_seconds", MIN_GAP_DEFAULT), f"{path}.min_gap_seconds", MIN_GAP_MIN, MIN_GAP_MAX
+            value.get("min_gap_seconds", MIN_GAP_DEFAULT),
+            f"{path}.min_gap_seconds",
+            MIN_GAP_MIN,
+            MIN_GAP_MAX,
         ),
     )
 
@@ -70,8 +83,10 @@ def parse_scene_detection(value: Any, *, path: str = "parameters.scenes") -> Sce
 
 @dataclass(frozen=True)
 class SceneCandidate:
-    seconds: float  # 新鏡頭第一幀的時間（影片軌第一幀＝0）
-    score: float  # FFmpeg scene 分數（0–1）
+    """A possible scene boundary at a presentation timestamp."""
+
+    seconds: float  # 新鏡頭第一幀的時間（影片軌第一幀=0）
+    score: float  # FFmpeg scene 分數（0-1）
 
 
 _FRAME_LINE = re.compile(r"^frame:\s*\d+\s+pts:\s*(\S+)")
@@ -79,7 +94,7 @@ _SCORE_LINE = re.compile(r"^lavfi\.scene_score=(\S+)$")
 
 
 def parse_scene_scores(text: str) -> tuple[list[SceneCandidate], int]:
-    """解析 ``metadata=mode=print:key=lavfi.scene_score`` 的輸出（PTS 以 AVTB 微秒為單位）。
+    """解析 ``metadata=mode=print:key=lavfi.scene_score`` 的輸出（PTS 以 AVTB 微秒為單位）.
 
     回傳（候選切換點, 沒有 PTS 而無法定位的影格數）。
     """
@@ -116,11 +131,18 @@ def parse_scene_scores(text: str) -> tuple[list[SceneCandidate], int]:
 
 
 def merge_scene_cuts(
-    candidates: Iterable[SceneCandidate], *, duration_seconds: float, min_gap_seconds: float
+    candidates: Iterable[SceneCandidate],
+    *,
+    duration_seconds: float,
+    min_gap_seconds: float,
 ) -> list[float]:
-    """只保留 (0, duration) 內的候選；相距小於 min_gap 的只留分數最高者（同分留較早）。回傳遞增的秒數（微秒精度）。"""
+    """只保留 (0, duration) 內的候選；相距小於 min_gap 的只留分數最高者（同分留較早）。回傳遞增的秒數（微秒精度）."""
     inside = sorted(
-        {(round(c.seconds, 6), c.score) for c in candidates if 0 < round(c.seconds, 6) < duration_seconds},
+        {
+            (round(c.seconds, 6), c.score)
+            for c in candidates
+            if 0 < round(c.seconds, 6) < duration_seconds
+        },
         key=lambda item: (-item[1], item[0]),
     )
     if min_gap_seconds <= 0:
@@ -144,6 +166,8 @@ def merge_scene_cuts(
 
 @dataclass(frozen=True)
 class SceneResult:
+    """The detected scene boundaries and their media timebase."""
+
     detection: SceneDetection
     cuts_seconds: tuple[float, ...]
     candidates: int  # 分數超過門檻的影格數（範圍過濾與合併之前）
@@ -151,19 +175,22 @@ class SceneResult:
     elapsed_seconds: float
 
     def fields(self) -> dict[str, Any]:
-        """併入 MediaInfo 的欄位（契約 MediaInfo.scene_cuts_seconds／scene_detection）。"""
-        return {"scene_cuts_seconds": list(self.cuts_seconds), "scene_detection": self.detection.as_dict()}
+        """併入 MediaInfo 的欄位（契約 MediaInfo.scene_cuts_seconds／scene_detection）."""
+        return {
+            "scene_cuts_seconds": list(self.cuts_seconds),
+            "scene_detection": self.detection.as_dict(),
+        }
 
 
 def scene_filter(threshold: float) -> str:
-    """偵測用的 filtergraph（輸出到 stdout；``repr`` 讓 FFmpeg 解析出與參數完全相同的 double）。"""
+    """偵測用的 filtergraph（輸出到 stdout；``repr`` 讓 FFmpeg 解析出與參數完全相同的 double）."""
     return (
         f"setpts=PTS-STARTPTS,settb=AVTB,select='gt(scene,{float(threshold)!r})',"
         "metadata=mode=print:key=lavfi.scene_score:file=-"
     )
 
 
-def detect_scene_cuts(
+def detect_scene_cuts(  # noqa: PLR0913 - Preserve the public keyword signature.
     path: str | os.PathLike[str],
     detection: SceneDetection,
     *,
@@ -173,7 +200,7 @@ def detect_scene_cuts(
     cancel: Any = None,
     timeout: float | None = None,
 ) -> SceneResult:
-    """解碼影片軌一次，回傳合併後的切換點。切換點超過 ``MAX_SCENE_CUTS`` → INVALID_ARGUMENT（請提高門檻或間隔）。"""
+    """解碼影片軌一次，回傳合併後的切換點。切換點超過 ``MAX_SCENE_CUTS`` → INVALID_ARGUMENT（請提高門檻或間隔）."""
     if not duration_seconds > 0:
         raise MediaError("INVALID_ARGUMENT", "鏡頭切換偵測需要已知的影片時長")
     local = check_local_file(path, limits=limits)
@@ -193,12 +220,22 @@ def detect_scene_cuts(
         what="FFmpeg 鏡頭切換偵測",
     )
     if result.returncode != 0:
-        detail = summarize_stderr(redact(result.stderr, {os.fspath(path): "<input>", url: "<input>"}), 600)
-        raise MediaError("MEDIA_TOOL_FAILED", "鏡頭切換偵測失敗" + (f"：{detail}" if detail else ""))
+        detail = summarize_stderr(
+            redact(result.stderr, {os.fspath(path): "<input>", url: "<input>"}), 600
+        )
+        raise MediaError(
+            "MEDIA_TOOL_FAILED", "鏡頭切換偵測失敗" + (f"：{detail}" if detail else "")
+        )
     if not unchanged_since(local):
         raise MediaError("INTEGRITY_MISMATCH", "媒體檔案在鏡頭切換偵測期間被修改")
-    candidates, untimed = parse_scene_scores(result.stdout.decode("utf-8", errors="replace"))
-    cuts = merge_scene_cuts(candidates, duration_seconds=duration_seconds, min_gap_seconds=detection.min_gap_seconds)
+    candidates, untimed = parse_scene_scores(
+        result.stdout.decode("utf-8", errors="replace")
+    )
+    cuts = merge_scene_cuts(
+        candidates,
+        duration_seconds=duration_seconds,
+        min_gap_seconds=detection.min_gap_seconds,
+    )
     if len(cuts) > MAX_SCENE_CUTS:
         raise MediaError(
             "INVALID_ARGUMENT",

@@ -1,0 +1,203 @@
+{
+  "label": "SAM 2 互動影片遮罩",
+  "kind": "media.prepare",
+  "inputs": [
+    {
+      "name": "video",
+      "type_id": "media.video.v1",
+      "transport": "file",
+      "description": "Source video in presentation order",
+      "required": true
+    },
+    {
+      "name": "annotations",
+      "type_id": "media.mask-annotations.v1",
+      "transport": "inline",
+      "description": "Versioned source-bound object hints in native pixel coordinates",
+      "required": true
+    }
+  ],
+  "outputs": [
+    {
+      "name": "asset",
+      "type_id": "media.asset.v1",
+      "transport": "inline",
+      "description": "Derived silent lossless object mask",
+      "required": true
+    },
+    {
+      "name": "mask_video",
+      "type_id": "media.video.v1",
+      "transport": "file",
+      "description": "Single-object binary mask on the full source clock",
+      "required": true
+    },
+    {
+      "name": "mapping",
+      "type_id": "media.mask-map.v1",
+      "transport": "file",
+      "description": "Source identity, user hints, source PTS, mask coverage and engine identity",
+      "required": true
+    }
+  ],
+  "parameters_schema": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "load": {
+        "type": "object",
+        "properties": {
+          "model_path": {
+            "type": "string",
+            "description": "Node 本機模型路徑（使用者提供，不由主控下載）"
+          },
+          "model_revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "device": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "cuda"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "maxLength": 16384,
+                "pattern": "^[^\\x00-\\x1f\\x7f]*$"
+              },
+              "resource_group": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id",
+              "resource_group"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "model_path",
+          "device"
+        ],
+        "additionalProperties": false
+      },
+      "invoke": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "recording": {
+        "type": "object"
+      }
+    },
+    "required": [
+      "load",
+      "invoke",
+      "recording"
+    ],
+    "additionalProperties": false
+  },
+  "default_settings": {
+    "load": {
+      "device": {
+        "kind": "cuda",
+        "id": "GPU-REPLACE-0",
+        "resource_group": "gpu-0"
+      },
+      "model_path": "/path/to/models/sam2.1-hiera-tiny"
+    },
+    "invoke": {},
+    "recording": {
+      "batch_max_bytes": 262144,
+      "batch_max_events": 256,
+      "capture_prompt": true,
+      "capture_stderr": true,
+      "cuda_pending_event_pairs": 4096,
+      "device_sample_hz": 2,
+      "finite_scan": false,
+      "gpu_event_timing": true,
+      "log_level": "info",
+      "max_detail_bytes_per_recording": 2147483648,
+      "mode": "detailed",
+      "parts": [],
+      "publish_interval_ms": 1000,
+      "queue_max_bytes": 16777216,
+      "queue_max_events": 8192,
+      "record_shapes": false,
+      "segment_bytes": 67108864,
+      "steps": [],
+      "tensor_dump": false,
+      "trace_parts": [],
+      "trace_steps": [
+        0,
+        1
+      ],
+      "with_stack": false
+    }
+  },
+  "schema_version": "1.0",
+  "provider_id": "media.segment_video",
+  "entry_point": "phasyn_segmentation.provider:SegmentVideoProvider",
+  "operations": [
+    "segment_video"
+  ],
+  "capability_version": "1.0.0",
+  "license": "Apache-2.0",
+  "models": [
+    {
+      "id": "facebook/sam2.1-hiera-tiny",
+      "revision": "de431c4043854a71d8101e17995dfe596bf101a5",
+      "license": "Apache-2.0",
+      "variants": [
+        "hiera-tiny"
+      ],
+      "files": [
+        {
+          "path": "sam2.1_hiera_tiny.pt",
+          "size_bytes": 156008466,
+          "sha256": "7402e0d864fa82708a20fbd15bc84245c2f26dff0eb43a4b5b93452deb34be69"
+        }
+      ],
+      "file_scope": "Complete single native checkpoint; its configuration ships in the pinned SAM 2 runtime."
+    }
+  ],
+  "resources": {
+    "devices": [
+      "cuda"
+    ],
+    "required_modules": [
+      "torch",
+      "sam2",
+      "av",
+      "numpy",
+      "PIL"
+    ],
+    "executables": [
+      "ffmpeg",
+      "ffprobe"
+    ],
+    "vram_bytes": null,
+    "memory_basis": "Unmeasured. Model frame and state tensors are offloaded to host memory."
+  },
+  "execution": {
+    "cache": "none",
+    "retry": "verify_stopped_first",
+    "cancellation": "cooperative",
+    "progress": [
+      "stage"
+    ],
+    "error_contract": "ComponentError",
+    "retry_condition": "Confirm the prior attempt stopped and inspect any published output before requesting another run."
+  }
+}

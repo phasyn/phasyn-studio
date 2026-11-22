@@ -1,0 +1,97 @@
+{
+  "wan.generate": {
+    "studio_creative": {
+      "version": 1,
+      "medium": "video",
+      "inputs": {"prompt": "prompt", "first_frame": "first_frame", "reference_1": "reference"},
+      "output": "asset"
+    },
+    "studio_generation": {
+      "version": 1,
+      "max_fps": 120,
+      "parameters": {
+        "width": "width",
+        "height": "height",
+        "frames": "frames",
+        "seed": "seed",
+        "steps": "steps",
+        "fps_num": "fps_num",
+        "fps_den": "fps_den"
+      },
+      "first_frame": "first_frame"
+    }
+  },
+  "wan.vace": {
+    "studio_edit": {
+      "version": 1,
+      "selector": "operation",
+      "timebase": "frames",
+      "interval": "half_open",
+      "operations": {
+        "native_retake": {
+          "value": "retake",
+          "inputs": {
+            "prompt": "prompt",
+            "source_video": "source",
+            "mask_video": "mask_video",
+            "mask_image": "mask_image"
+          },
+          "parameters": {
+            "start_frame": "start_frame",
+            "end_frame": "end_frame",
+            "context_frames": "context_frames",
+            "mask_required": "mask_required",
+            "composite_unmasked": "composite_unmasked"
+          },
+          "clock": "source",
+          "output_range": "selection_only"
+        },
+        "extend_front": {
+          "value": "extend_before",
+          "inputs": {
+            "prompt": "prompt",
+            "source_video": "source"
+          },
+          "clock": "source",
+          "output_range": "new_frames_only",
+          "parameters": {
+            "frames": "frames",
+            "context_frames": "context_frames"
+          }
+        },
+        "extend_back": {
+          "value": "extend_after",
+          "inputs": {
+            "prompt": "prompt",
+            "source_video": "source"
+          },
+          "clock": "source",
+          "output_range": "new_frames_only",
+          "parameters": {
+            "frames": "frames",
+            "context_frames": "context_frames"
+          }
+        },
+        "fill_gap": {
+          "value": "gap",
+          "inputs": {
+            "prompt": "prompt",
+            "left_frame": "first_frame",
+            "right_frame": "last_frame"
+          },
+          "parameters": {
+            "frames": "frames",
+            "fps_num": "fps_num",
+            "fps_den": "fps_den"
+          },
+          "clock": "requested",
+          "output_range": "between_anchors_exclusive"
+        }
+      },
+      "outputs": {
+        "asset": "asset",
+        "video": "video_file"
+      }
+    }
+  }
+}

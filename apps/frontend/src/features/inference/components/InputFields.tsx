@@ -1,3 +1,4 @@
+import { isRecord } from "@/lib/json";
 import { Film, X } from "lucide-react";
 import type { Asset, FileRef, Port } from "@/api/generated/contracts";
 import { useRunList } from "@/api/runs";
@@ -36,7 +37,7 @@ export function PromptField({ id, port, value, onChange, disabled }: { id: strin
         rows={8}
         spellCheck={false}
         placeholder={t("描述畫面、動作、聲音與時間軸；ref2va 可用 <Picture 1>、<Video 1>、<Audio 1> 引用參考素材")}
-        onChange={(event) => onChange(event.target.value === "" ? null : { type_id: port.type_id, value: event.target.value })}
+        onChange={(event) => { onChange(event.target.value === "" ? null : { type_id: port.type_id, value: event.target.value }); }}
         className="min-h-40 text-data leading-6"
       />
       <p className="flex flex-wrap justify-between gap-2 text-caption text-fg-tertiary">
@@ -61,7 +62,7 @@ function ChosenFile({ file, title, mismatch, onClear, disabled }: { file: FileRe
         </Button>
       </div>
       <MediaPreview file={file} title={title} />
-      {mismatch ? <p className="text-caption text-warning">{t("{mismatch}；元件可能拒絕。", { mismatch })}</p> : null}
+      {(mismatch != null && mismatch !== "") ? <p className="text-caption text-warning">{t("{mismatch}；元件可能拒絕。", { mismatch })}</p> : null}
     </div>
   );
 }
@@ -111,7 +112,7 @@ export function MediaField({ id, pipelineId, port, value, onChange, disabled }: 
 }
 
 function assetTitle(asset: Asset): string {
-  const size = asset.width && asset.height ? `${asset.width}×${asset.height}` : t("畫幅未知");
+  const size = asset.width && asset.height ? `${String(asset.width)}×${String(asset.height)}` : t("畫幅未知");
   const fps = asset.fps && asset.fps.den > 0 ? `${(asset.fps.num / asset.fps.den).toFixed(2)} fps` : t("fps 未知");
   return t("{kind} · {frame_count} 幀 · {fps} · {size}{value}", { kind: asset.kind, frame_count: asset.frame_count, fps, size, value: asset.complete ? "" : t(" · 未完成") });
 }
@@ -124,7 +125,8 @@ export function AssetField({ id, pipelineId, port, value, onChange, disabled }: 
   const runs = useRunList();
   const uploads = useUploads(pipelineId);
   const candidates = assetCandidates(runs.data?.pages.flatMap((page) => page.items) ?? []);
-  const inlineAsset = value && "value" in value ? (candidates.find((candidate) => candidate.asset.asset_id === (value.value as { asset_id?: unknown } | null)?.asset_id) ?? null) : null;
+  const assetId = value && "value" in value && isRecord(value.value) ? value.value["asset_id"] : null;
+  const inlineAsset = candidates.find((candidate) => candidate.asset.asset_id === assetId) ?? null;
   const file = value && "file" in value ? value.file : null;
   const allowsFile = port.transport !== "inline";
   const allowsInline = port.transport !== "file";
@@ -139,7 +141,7 @@ export function AssetField({ id, pipelineId, port, value, onChange, disabled }: 
       ) : value && "value" in value ? (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-line-subtle bg-sunken/50 p-2 text-caption text-fg-secondary">
           <Film aria-hidden className="size-4 text-fg-tertiary" />
-          <T source={"已選擇的 Asset 不在近期 run 清單中（仍會照原樣送出）。<0>清除</0>"} slots={[<Button size="sm" variant="quiet" icon={<X aria-hidden />} disabled={disabled} onClick={clear} className="ml-auto min-h-7 px-2" />]} />
+          <T source={"已選擇的 Asset 不在近期 run 清單中（仍會照原樣送出）。<0>清除</0>"} slots={[<Button key="slot-0" size="sm" variant="quiet" icon={<X aria-hidden />} disabled={disabled} onClick={clear} className="ml-auto min-h-7 px-2" />]} />
         </div>
       ) : null}
       {file ? <ChosenFile file={file} title={fileNameOf(file.file_id) ?? port.name} mismatch={null} onClear={clear} disabled={disabled} /> : null}

@@ -1,0 +1,342 @@
+{
+  "label": "配音與旁白（Qwen CustomVoice）",
+  "kind": "speech.custom_voice",
+  "inputs": [
+    {
+      "name": "text",
+      "type_id": "text.prompt.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "已定稿的單句台詞或旁白"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "audio",
+      "type_id": "media.audio.v1",
+      "required": true,
+      "transport": "file",
+      "description": "可獨立混音的單聲道 WAV"
+    },
+    {
+      "name": "report",
+      "type_id": "json.object.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "語音版本、實際設定與取樣明細"
+    }
+  ],
+  "parameters_schema": {
+    "type": "object",
+    "properties": {
+      "language": {
+        "type": "string",
+        "enum": [
+          "Auto",
+          "Chinese",
+          "English",
+          "Japanese",
+          "Korean",
+          "German",
+          "French",
+          "Russian",
+          "Portuguese",
+          "Spanish",
+          "Italian"
+        ],
+        "default": "Auto"
+      },
+      "speaker": {
+        "type": "string",
+        "enum": [
+          "Vivian",
+          "Serena",
+          "Uncle_Fu",
+          "Dylan",
+          "Eric",
+          "Ryan",
+          "Aiden",
+          "Ono_Anna",
+          "Sohee"
+        ],
+        "default": "Vivian"
+      },
+      "instruct": {
+        "type": "string",
+        "maxLength": 512,
+        "default": ""
+      },
+      "seed": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2147483647,
+        "default": 42
+      }
+    },
+    "additionalProperties": false
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "load": {
+        "type": "object",
+        "properties": {
+          "model_path": {
+            "type": "string",
+            "description": "Node 本機模型路徑（使用者提供，不由主控下載）"
+          },
+          "model_revision": {
+            "const": "0c0e3051f131929182e2c023b9537f8b1c68adfe"
+          },
+          "device": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "cuda",
+                  "cpu"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "maxLength": 16384,
+                "pattern": "^[^\\x00-\\x1f\\x7f]*$"
+              },
+              "resource_group": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id",
+              "resource_group"
+            ],
+            "additionalProperties": false
+          },
+          "precision": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          },
+          "offload": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          },
+          "part_overrides": {
+            "type": "array"
+          },
+          "provider_options": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "model_path",
+          "device",
+          "model_revision"
+        ],
+        "additionalProperties": false
+      },
+      "invoke": {
+        "type": "object",
+        "properties": {
+          "language": {
+            "type": "string",
+            "enum": [
+              "Auto",
+              "Chinese",
+              "English",
+              "Japanese",
+              "Korean",
+              "German",
+              "French",
+              "Russian",
+              "Portuguese",
+              "Spanish",
+              "Italian"
+            ],
+            "default": "Auto"
+          },
+          "speaker": {
+            "type": "string",
+            "enum": [
+              "Vivian",
+              "Serena",
+              "Uncle_Fu",
+              "Dylan",
+              "Eric",
+              "Ryan",
+              "Aiden",
+              "Ono_Anna",
+              "Sohee"
+            ],
+            "default": "Vivian"
+          },
+          "instruct": {
+            "type": "string",
+            "maxLength": 512,
+            "default": ""
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647,
+            "default": 42
+          }
+        },
+        "additionalProperties": false
+      },
+      "recording": {
+        "type": "object"
+      }
+    },
+    "required": [
+      "load",
+      "invoke",
+      "recording"
+    ],
+    "additionalProperties": false
+  },
+  "default_settings": {
+    "load": {
+      "model_path": "/path/to/models/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+      "model_revision": "0c0e3051f131929182e2c023b9537f8b1c68adfe",
+      "device": {
+        "kind": "cuda",
+        "id": "GPU-REPLACE-0",
+        "resource_group": "gpu-0"
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "device_sample_hz": 2,
+      "publish_interval_ms": 1000,
+      "batch_max_events": 256,
+      "batch_max_bytes": 262144,
+      "queue_max_events": 8192,
+      "queue_max_bytes": 16777216,
+      "segment_bytes": 67108864,
+      "max_detail_bytes_per_recording": 2147483648,
+      "cuda_pending_event_pairs": 4096,
+      "trace_steps": [
+        0,
+        1
+      ],
+      "trace_parts": [],
+      "record_shapes": false,
+      "with_stack": false,
+      "capture_prompt": true,
+      "tensor_dump": false,
+      "capture_stderr": true,
+      "finite_scan": false,
+      "gpu_event_timing": true,
+      "log_level": "info",
+      "parts": [],
+      "steps": [],
+      "mode": "detailed"
+    }
+  },
+  "schema_version": "1.0",
+  "provider_id": "speech.custom_voice",
+  "entry_point": "phasyn_speech.provider:CustomVoiceProvider",
+  "operations": [
+    "text_to_speech"
+  ],
+  "capability_version": "1.0.0",
+  "license": "Apache-2.0",
+  "models": [
+    {
+      "id": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+      "revision": "0c0e3051f131929182e2c023b9537f8b1c68adfe",
+      "license": "Apache-2.0",
+      "variants": [
+        "12Hz-1.7B-CustomVoice"
+      ],
+      "files": [
+        {
+          "path": "config.json",
+          "sha256": "17a07f527a1c25ea30b4e023a184482a23d3e279d697b1dc81b1bde498d29cf9",
+          "size_bytes": 4908
+        },
+        {
+          "path": "generation_config.json",
+          "sha256": "f1b90b4513f3b34c62851049e2492d7b4c5940daf1276f89c82b8ef04127f3aa",
+          "size_bytes": 245
+        },
+        {
+          "path": "merges.txt",
+          "sha256": "599bab54075088774b1733fde865d5bd747cbcc7a547c5bc12610e874e26f5e3",
+          "size_bytes": 1671839
+        },
+        {
+          "path": "model.safetensors",
+          "sha256": "38b1d5971bdbd982b561cccec982669a53b0537c3cf5e9bd4778ed07bb2f5137",
+          "size_bytes": 3833402552
+        },
+        {
+          "path": "preprocessor_config.json",
+          "sha256": "efdde1022ea9d76928bf7a9cd53139138f5ba2e466e837f08f6105ab1af1c119",
+          "size_bytes": 127
+        },
+        {
+          "path": "speech_tokenizer/config.json",
+          "sha256": "ee65bb901c876664ab8707c487157aa1a6ee57c65969b28fb5ec9dc211e68167",
+          "size_bytes": 2336
+        },
+        {
+          "path": "speech_tokenizer/configuration.json",
+          "sha256": "6bc26d64eb5024b4d1dab5a52371958b429256d6c9d59787f1f5294a54e0cebd",
+          "size_bytes": 76
+        },
+        {
+          "path": "speech_tokenizer/model.safetensors",
+          "sha256": "836b7b357f5ea43e889936a3709af68dfe3751881acefe4ecf0dbd30ba571258",
+          "size_bytes": 682293092
+        },
+        {
+          "path": "speech_tokenizer/preprocessor_config.json",
+          "sha256": "fcb3805e597e786d4067706e602f6688524640f8d3396790e2e09b5942fcbdfb",
+          "size_bytes": 234
+        },
+        {
+          "path": "tokenizer_config.json",
+          "sha256": "dc3c31c3bdaedd5016382bb3cbe07323026775ad51f5a4fb564505992ae4a670",
+          "size_bytes": 7344
+        },
+        {
+          "path": "vocab.json",
+          "sha256": "ca10d7e9fb3ed18575dd1e277a2579c16d108e32f27439684afa0e10b1440910",
+          "size_bytes": 2776833
+        }
+      ],
+      "file_scope": "All model, tokenizer and configuration files required for local inference."
+    }
+  ],
+  "resources": {
+    "devices": [
+      "cuda",
+      "cpu"
+    ],
+    "required_modules": [
+      "torch",
+      "qwen_tts",
+      "numpy",
+      "soundfile"
+    ],
+    "executables": [],
+    "vram_bytes": null,
+    "memory_basis": "Runtime measurement pending on target GPU."
+  },
+  "execution": {
+    "cache": "none",
+    "retry": "verify_stopped_first",
+    "cancellation": "cooperative",
+    "progress": [
+      "stage"
+    ],
+    "error_contract": "ComponentError",
+    "retry_condition": "Confirm the prior attempt stopped and inspect any published output before requesting another run."
+  }
+}

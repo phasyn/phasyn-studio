@@ -1,0 +1,9 @@
+# Wheel-only runtime and hatch build backend for the three local packages.
+# First-party dependencies transitively need jsonschema, referencing and numpy.
+faster-whisper==1.2.1
+# Deterministic Simplified → Taiwan-Traditional conversion of Chinese transcripts
+opencc==1.1.9
+numpy>=1.26
+jsonschema>=4.26
+referencing>=0.37
+hatchling>=1.33

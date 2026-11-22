@@ -43,7 +43,7 @@ export function ComparisonsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const rawIds = searchParams.get("ids");
   const ids = useMemo(() => parseIds(rawIds), [rawIds]);
-  const requested = rawIds ? new Set(rawIds.split(",").map((id) => id.trim()).filter(Boolean)).size : 0;
+  const requested = (rawIds != null && rawIds !== "") ? new Set(rawIds.split(",").map((id) => id.trim()).filter(Boolean)).size : 0;
   const comparison = useComparison(ids);
   const states = useRecordingsByIds(ids);
   const byId = useMemo(() => new Map(ids.map((id, index) => [id, { id, ...(states[index] ?? { data: undefined, error: null, isPending: true }) }])), [ids, states]);
@@ -62,10 +62,9 @@ export function ComparisonsPage() {
     [comparison.data, contexts],
   );
   const conditions = useMemo(() => conditionRows(serverIds, contexts), [serverIds, contexts]);
-  const anySynthetic = pickerColumns.some((column) => column.data?.context.synthetic);
+  const anySynthetic = pickerColumns.some((column) => Boolean(column.data?.context.synthetic));
 
-  const setIds = (next: string[]) =>
-    setSearchParams(
+  const setIds = (next: string[]) => { setSearchParams(
       (previous) => {
         const params = new URLSearchParams(previous);
         const clean = parseIds(next.join(","));
@@ -74,7 +73,7 @@ export function ComparisonsPage() {
         return params;
       },
       { preventScrollReset: true },
-    );
+    ); };
 
   const data = comparison.data;
   const links = sectionLinks({ hasData: data !== undefined, conditionRows: conditions.length });
@@ -113,7 +112,7 @@ export function ComparisonsPage() {
               text={link.label}
               icon={<Icon aria-hidden />}
               disabledReason={link.disabledReason}
-              onClick={() => jumpTo(link.id)}
+              onClick={() => { jumpTo(link.id); }}
             />
           );
         })}

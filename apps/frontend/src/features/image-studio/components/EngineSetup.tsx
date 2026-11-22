@@ -47,7 +47,7 @@ function SlotRow({ row, index, loading, onChoose }: { row: SlotChoice; index: nu
           {t("讀取主控上的元件…")}
         </span>
       ) : chosen && candidates.length > 1 ? (
-        <Select compact aria-labelledby={labelId} value={chosen.value} title={optionName(chosen)} onChange={(event) => onChoose(event.target.value)}>
+        <Select compact aria-labelledby={labelId} value={chosen.value} title={optionName(chosen)} onChange={(event) => { onChoose(event.target.value); }}>
           {candidates.map((option) => (
             <option key={option.value} value={option.value}>
               {optionName(option)}
@@ -80,14 +80,14 @@ function EngineSetupForm({ mode, save, onCancel, onCreate }: { mode: ImageMode; 
   const rows = slotChoices(spec, componentOptions(catalog, providers), choices);
   const taken = new Set((pipelines.data?.items ?? []).map((item) => item.pipeline_id));
   const plan: EnginePlan = providers.loading ? { pipeline: null, problem: t("讀取主控上的元件…"), details: [] } : planEngine(spec, rows, taken, catalog, mode);
-  const notReady = rows.filter((row) => row.chosen && !optionUsable(row.chosen)).length;
+  const notReady = rows.filter((row) => Boolean(row.chosen && !optionUsable(row.chosen))).length;
 
   return (
     <>
       <DialogBody className="grid content-start gap-3">
         <ol aria-label={t("範本需要的元件")} className="grid gap-1.5">
           {rows.map((row, index) => (
-            <SlotRow key={row.slot.id} row={row} index={index} loading={providers.loading} onChoose={(value) => setChoices((current) => ({ ...current, [row.slot.id]: value }))} />
+            <SlotRow key={row.slot.id} row={row} index={index} loading={providers.loading} onChoose={(value) => { setChoices((current) => ({ ...current, [row.slot.id]: value })); }} />
           ))}
         </ol>
         {providers.failedNodes.size > 0 ? (
@@ -96,8 +96,8 @@ function EngineSetupForm({ mode, save, onCancel, onCreate }: { mode: ImageMode; 
             {t("{count} 個 Node 讀不到元件類型（可能離線），它們的元件沒有列出。", { count: providers.failedNodes.size })}
           </p>
         ) : null}
-        {notReady > 0 && !plan.problem ? <p className="text-caption text-fg-secondary">{t("{count} 個元件還沒就緒：建立後在「生成引擎」啟動它們，就能生成。", { count: notReady })}</p> : null}
-        {plan.problem && !providers.loading ? (
+        {notReady > 0 && !(plan.problem != null && plan.problem !== "") ? <p className="text-caption text-fg-secondary">{t("{count} 個元件還沒就緒：建立後在「生成引擎」啟動它們，就能生成。", { count: notReady })}</p> : null}
+        {(plan.problem != null && plan.problem !== "") && !providers.loading ? (
           <Callout tone="warning" title={plan.problem}>
             {plan.details.length > 0 ? <p className="text-caption text-fg-tertiary [overflow-wrap:anywhere]">{plan.details.join(t("；"))}</p> : null}
             <Link to="/admin/pipelines" className="inline-flex text-caption">
@@ -105,13 +105,13 @@ function EngineSetupForm({ mode, save, onCancel, onCreate }: { mode: ImageMode; 
             </Link>
           </Callout>
         ) : null}
-        {save.error ? <ErrorCallout error={save.error} write title={t("沒有建立生圖引擎")} /> : null}
+        {(save.error != null) ? <ErrorCallout error={save.error} write title={t("沒有建立生圖引擎")} /> : null}
       </DialogBody>
       <DialogFooter>
         <Button variant="quiet" onClick={onCancel}>
           {t("取消")}
         </Button>
-        <ActionButton variant="primary" icon={<LayoutTemplate aria-hidden />} pending={save.pending} disabledReason={plan.problem} onClick={() => (plan.pipeline ? onCreate(plan.pipeline, notReady) : undefined)}>
+        <ActionButton variant="primary" icon={<LayoutTemplate aria-hidden />} pending={save.pending} disabledReason={plan.problem} onClick={() => { if (plan.pipeline) { onCreate(plan.pipeline, notReady); } }}>
           {t("建立生圖引擎")}
         </ActionButton>
       </DialogFooter>
@@ -148,18 +148,18 @@ export function EngineSetupDialog({
   useEffect(() => {
     if (open) reset();
   }, [open, reset]);
-  const created = useRef(false);
+  const createdRef = useRef(false);
   const create = (pipeline: WirePipeline, notReady: number) => {
     if (save.isPending) return;
     save.mutate(pipeline, {
       onSuccess: (saved) => {
-        created.current = true;
+        createdRef.current = true;
         dispatch({ type: "updateImageShot", shotId, patch: { route: saved.pipeline_id } });
         notify({
           tone: "success",
           title: t("已建立生圖引擎「{label}」", { label: saved.label || saved.pipeline_id }),
-          detail: notReady > 0 ? t("{count} 個元件還沒就緒：在「生成引擎」啟動它們，就能生成。", { count: notReady }) : undefined,
-          link: notReady > 0 ? { label: t("開啟生成引擎"), to: "#engine" } : undefined,
+          ...(notReady > 0 ? { detail: t("{count} 個元件還沒就緒：在「生成引擎」啟動它們，就能生成。", { count: notReady }) } : {}),
+          ...(notReady > 0 ? { link: { label: t("開啟生成引擎"), to: "#engine" } } : {}),
         });
         onOpenChange(false);
       },
@@ -172,10 +172,10 @@ export function EngineSetupDialog({
       <DialogContent
         className="max-w-2xl"
         onCloseAutoFocus={(event) => {
-          if (!created.current) return;
-          created.current = false;
+          if (!createdRef.current) return;
+          createdRef.current = false;
           const target = focusAfterCreate.current;
-          if (!target?.isConnected) return;
+          if (!(target?.isConnected === true)) return;
           event.preventDefault();
           target.focus();
         }}
@@ -184,7 +184,7 @@ export function EngineSetupDialog({
           <DialogTitle>{t("用範本建立生圖引擎")}</DialogTitle>
           <DialogDescription>{t("把這台主控上的元件接成一個{mode}的元件組合，給這張圖片使用。只保存元件組合，不會啟動元件或生成。", { mode: MODE_LABELS[mode] })}</DialogDescription>
         </DialogHeader>
-        {mounted ? <EngineSetupForm mode={mode} save={{ pending: save.isPending, error: save.error }} onCancel={() => onOpenChange(false)} onCreate={create} /> : null}
+        {mounted ? <EngineSetupForm mode={mode} save={{ pending: save.isPending, error: save.error }} onCancel={() => { onOpenChange(false); }} onCreate={create} /> : null}
       </DialogContent>
     </Dialog>
   );

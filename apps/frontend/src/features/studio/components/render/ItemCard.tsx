@@ -3,6 +3,8 @@
 // ring), 「DiT 第 3／8 步」 or the stage that runs, and this item's estimated time left when the run has several items.
 // Finished: the video, a two-line title, badges for seed and length only, the route only when it differs from the
 // shot's current one, and the actions: 設為使用中 (or a quiet 使用中 ✓), 比較 in the Shots monitor, and download.
+import { AssetVideo } from "@/components/common/AssetMedia";
+import { linkedCaptions } from "@/components/common/linkedCaptions";
 import { Check, Columns2, LoaderCircle } from "lucide-react";
 import { Link } from "react-router";
 import { mediaUrl } from "@/api/http";
@@ -86,14 +88,14 @@ function TakeActions({ entry }: { entry: RunItem }) {
           {t("使用中")}
         </span>
       ) : (
-        <Button size="sm" variant="primary" onClick={() => dispatch({ type: "setActiveTake", shotId: shot.shot_id, takeId: take.take_id, adoptSeed: true })} title={t("時間軸與匯出改用這個 take")}>
+        <Button size="sm" variant="primary" onClick={() => { dispatch({ type: "setActiveTake", shotId: shot.shot_id, takeId: take.take_id, adoptSeed: true }); }} title={t("時間軸與匯出改用這個 take")}>
           {t("設為使用中")}
         </Button>
       )}
-      {comparable && reference ? (
+      {comparable ? (
         <Link
           to={link.href(shot.shot_id)}
-          onClick={() => link.prepare(shot.shot_id, { source: reference.take_id, compare: take.take_id })}
+          onClick={() => { link.prepare(shot.shot_id, { source: reference.take_id, compare: take.take_id }); }}
           title={t("到「鏡頭」的監看器並排：A＝使用中的 take、B＝這個 take")}
           className={cn(buttonVariants({ variant: "secondary", size: "sm" }), "no-underline")}
         >
@@ -107,7 +109,7 @@ function TakeActions({ entry }: { entry: RunItem }) {
 }
 
 export function ItemCard({ item, entry, index, showLeft }: { item: QueueItem; entry: RunItem; index: number; showLeft: boolean }) {
-  const { engine } = useStudio();
+  const { engine, project } = useStudio();
   const { shot, take } = entry;
   // The queue's own entry: a variation is numbered by its place among the run's takes
   const queueTake = take ? item.takes.find((candidate) => candidate.take.take_id === take.take_id) : undefined;
@@ -119,7 +121,7 @@ export function ItemCard({ item, entry, index, showLeft }: { item: QueueItem; en
   return (
     <li ref={reveal(index)} className={cn(CARD, LIFT, "grid min-w-0 content-start gap-2 rounded-xl p-2", marked && "border-transparent border-brand-gradient")}>
       {file ? (
-        <video src={mediaUrl(file.node_id, file.file_id)} controls preload="metadata" aria-label={t("{label}・seed {seed}", { label, seed: take?.seed ?? "" })} className="aspect-video w-full rounded-md bg-stage object-contain" />
+        <AssetVideo captions={linkedCaptions(file.metadata)} src={mediaUrl(file.node_id, file.file_id)} controls preload="metadata" aria-label={take?.seed == null ? label : t("{label}・seed {seed}", { label, seed: take.seed })} className="aspect-video w-full rounded-md bg-stage object-contain" />
       ) : entry.state === "running" ? (
         <RunningMedia entry={entry} showLeft={showLeft} label={label} />
       ) : (
@@ -130,9 +132,9 @@ export function ItemCard({ item, entry, index, showLeft }: { item: QueueItem; en
       </p>
       {take ? (
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <Badge className="machine">seed {take.seed}</Badge>
-          <Badge className="machine">{formatDuration(take.frames)}</Badge>
-          {route ? (
+          {take.seed !== null ? <Badge className="machine">seed {take.seed}</Badge> : null}
+          <Badge className="machine">{formatDuration(take.frames, project.format.fps.num / project.format.fps.den)}</Badge>
+          {(route != null && route !== "") ? (
             <span className="min-w-0 flex-1 truncate text-caption text-fg-tertiary" title={t("運算路由：{label}（與鏡頭目前的設定不同）", { label: route })}>
               {routeName(route).name}
             </span>

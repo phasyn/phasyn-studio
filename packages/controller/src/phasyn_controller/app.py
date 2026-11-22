@@ -16,16 +16,27 @@ import httpx
 from fastapi import APIRouter, FastAPI, Request
 from phasyn_components import PROTOCOL_VERSION
 from phasyn_server import DataDirLock, HostPolicy, HttpLimits, create_api
-from phasyn_server.http import compressed_json_response, json_response, query_bool, read_json
+from phasyn_server.http import (
+    compressed_json_response,
+    json_response,
+    query_bool,
+    read_json,
+)
 from starlette.responses import JSONResponse, Response
 
 from . import (
     VERSION,
     cost_profiles,
+    creative_library,
+    draft_plans,
     files,
     forward,
+    inference_presets,
+    inference_recipes,
+    lora_training,
     pipeline_layout,
     pipelines,
+    placement,
     plugins,
     presets,
     prompt_library,
@@ -33,9 +44,15 @@ from . import (
     recordings,
     run_previews,
     runs_api,
+    storage,
     studio,
+    studio_media_take,
+    studio_portable,
     studio_reviews,
+    studio_submissions,
+    studio_take_attach,
     studio_timeline,
+    studio_writes,
     telemetry,
 )
 from .config import ControllerConfig
@@ -61,7 +78,9 @@ def _core_routes(ctl: Controller) -> APIRouter:
         Both are gzipped when accepted: the full catalog is mostly parts and every open tab polls it.
         """
         include_parts = query_bool(request.query_params, "parts", default=True)
-        doc = await asyncio.to_thread(ctl.catalog.catalog if include_parts else ctl.catalog.catalog_lite)
+        doc = await asyncio.to_thread(
+            ctl.catalog.catalog if include_parts else ctl.catalog.catalog_lite
+        )
         return await compressed_json_response(request, doc)
 
     @router.get("/api/controller")
@@ -113,7 +132,9 @@ def create_app(
         limits=HttpLimits(config.max_json_body_bytes, config.max_upload_bytes),
         lifespan=lifespan,
         hosts=HostPolicy.for_service(
-            config.allowed_hosts, advertise_url=config.advertise_url, bind_host=config.bind_host
+            config.allowed_hosts,
+            advertise_url=config.advertise_url,
+            bind_host=config.bind_host,
         ),
     )
     app.state.controller = ctl
@@ -122,6 +143,8 @@ def create_app(
         pipelines,
         pipeline_layout,
         runs_api,
+        inference_presets,
+        inference_recipes,
         run_previews,
         telemetry,
         recordings,
@@ -129,11 +152,21 @@ def create_app(
         presets,
         studio,
         studio_reviews,
+        studio_submissions,
+        creative_library,
+        draft_plans,
+        lora_training,
+        studio_portable,
+        studio_media_take,
+        studio_take_attach,
         studio_timeline,
+        studio_writes,
         prompt_library,
         prompt_studies,
         plugins,
         cost_profiles,
+        placement,
+        storage,
     ):
         app.include_router(module.routes(ctl))
     app.include_router(_core_routes(ctl))

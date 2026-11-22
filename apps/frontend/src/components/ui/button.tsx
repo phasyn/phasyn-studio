@@ -1,6 +1,6 @@
 import type { VariantProps } from "class-variance-authority";
 import { LoaderCircle } from "lucide-react";
-import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from "react";
+import type { Ref, ButtonHTMLAttributes, ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { buttonVariants } from "./variants";
 
@@ -13,9 +13,8 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>, Va
   icon?: ReactNode;
 }
 
-export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { className, variant, size, pending = false, icon, children, type = "button", disabled, onClick, ...props },
-  ref,
+export function Button(
+  { ref, className, variant, size, pending = false, icon, children, type = "button", disabled, onClick, ...props }: ButtonProps & { ref?: Ref<HTMLButtonElement> | undefined },
 ) {
   return (
     <button
@@ -38,4 +37,4 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       {children}
     </button>
   );
-});
+}

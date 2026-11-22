@@ -27,7 +27,7 @@ export class LazyBoundary extends Component<{ children: ReactNode; className?: s
     return (
       <Callout role="alert" tone="warning" title={t("這部分沒有載入成功")} className={this.props.className}>
         <p>{t("可能是網路中斷，或服務剛更新、舊版的程式檔已不存在。請重新載入頁面。")}</p>
-        <Button size="sm" variant="secondary" className="mt-1" onClick={() => window.location.reload()}>
+        <Button size="sm" variant="secondary" className="mt-1" onClick={() => { window.location.reload(); }}>
           <RotateCcw aria-hidden />
           {t("重新載入")}
         </Button>

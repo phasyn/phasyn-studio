@@ -18,7 +18,7 @@ const focusWhenShown = (node: HTMLElement | null) => {
 
 export function InlineConfirm({ question, action, onConfirm, onCancel }: InlineConfirmProps) {
   return (
-    <span
+    <span /* eslint-disable-line jsx-a11y-x/no-noninteractive-element-interactions -- Keyboard events from this panel’s focusable controls bubble here so navigation and dismissal share one handler. */
       ref={focusWhenShown}
       role="group"
       aria-label={question}

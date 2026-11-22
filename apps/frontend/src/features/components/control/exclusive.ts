@@ -1,3 +1,4 @@
+import { isListed, isRecord } from "@/lib/json";
 // Exclusive groups (contract `exclusive_group`): components that must never be loaded together on one Node. The example
 // configs put every DiT in group "dit" because each one needs a lot of host memory. Only the Node enforces the rule, on
 // start/restart: a busy member (loading, stopping or running a call) → 409 EXCLUSIVE_GROUP_BUSY; idle members only →
@@ -35,7 +36,7 @@ const CONFLICT_CODES: ReadonlySet<string> = new Set(["EXCLUSIVE_GROUP_CONFLICT",
 /** The holders the catalog snapshot shows (advisory: the Node decides when the request arrives). Pure. */
 export function exclusiveConflict(target: ExclusiveTarget, catalog: Pick<Catalog, "nodes"> | undefined): ExclusiveConflict | null {
   const group = target.exclusive_group;
-  if (!group || !catalog) return null;
+  if (!(group != null && group !== "") || !catalog) return null;
   const node = catalog.nodes.find((item) => item.node_id === target.node_id);
   const holders = (node?.components ?? [])
     .filter((item) => item.exclusive_group === group && item.component_id !== target.component_id && HOLDING.has(item.state))
@@ -68,14 +69,13 @@ export function exclusiveReplaceNote(conflict: ExclusiveConflict): string {
 function parseHolders(value: unknown): ExclusiveHolder[] | null {
   if (!Array.isArray(value)) return null;
   const holders: ExclusiveHolder[] = [];
-  for (const item of value as unknown[]) {
-    if (item === null || typeof item !== "object") return null;
-    const record = item as Record<string, unknown>;
-    if (typeof record.component_id !== "string" || typeof record.state !== "string") return null;
+  for (const record of value) {
+    if (!isRecord(record)) return null;
+    if (typeof record["component_id"] !== "string" || !isListed(record["state"], ["stopped", "loading", "ready", "busy", "stopping", "error"] as const)) return null;
     holders.push({
-      component_id: record.component_id,
-      state: record.state as ComponentState,
-      active_call_id: typeof record.active_call_id === "string" ? record.active_call_id : null,
+      component_id: record["component_id"],
+      state: record["state"],
+      active_call_id: typeof record["active_call_id"] === "string" ? record["active_call_id"] : null,
     });
   }
   return holders;
@@ -84,8 +84,8 @@ function parseHolders(value: unknown): ExclusiveHolder[] | null {
 /** The conflict a 409 EXCLUSIVE_GROUP_CONFLICT / EXCLUSIVE_GROUP_BUSY response describes (contract ExclusiveGroupDetails). */
 export function conflictFromError(error: unknown): { conflict: ExclusiveConflict; busy: boolean } | null {
   if (!isApiError(error) || !CONFLICT_CODES.has(error.code)) return null;
-  const group = error.details.group;
-  const holders = parseHolders(error.details.holders);
+  const group = error.details["group"];
+  const holders = parseHolders(error.details["holders"]);
   if (typeof group !== "string" || holders === null) return null;
   return { conflict: { group, holders }, busy: error.code === "EXCLUSIVE_GROUP_BUSY" };
 }
@@ -132,7 +132,7 @@ export async function requestStart(target: ExclusiveTarget, options: RequestStar
   const send = options.send ?? ((body: ControlRequest) => sendControl(target, body));
   const known = exclusiveConflict(target, options.catalog);
   const blocked = exclusiveBlockReason(known);
-  if (known && blocked) throw new ExclusiveBusy(known, blocked);
+  if (known && (blocked != null && blocked !== "")) throw new ExclusiveBusy(known, blocked);
   if (known && !(await options.confirm(known, target))) return { kind: "declined" };
   try {
     const descriptor = await send(known ? { action, replace_exclusive: true } : { action });

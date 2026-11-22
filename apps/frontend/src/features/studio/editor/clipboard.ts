@@ -95,11 +95,11 @@ export function pasteClips(
   const clips: TimelineClip[] = [];
   for (const clip of structuredClone(clipboard.clips)) {
     const trackId = tracks.get(clip.track_id);
-    if (!trackId) return { ok: false, error: t("找不到要貼上的軌道") };
+    if (!(trackId != null && trackId !== "")) return { ok: false, error: t("找不到要貼上的軌道") };
     const next = { ...clip, clip_id: allocate("clip"), track_id: trackId };
-    if (clip.linked_id) {
+    if (clip.linked_id != null && clip.linked_id !== "") {
       let link = links.get(clip.linked_id);
-      if (!link) {
+      if (!(link != null && link !== "")) {
         link = allocate("link");
         links.set(clip.linked_id, link);
       }

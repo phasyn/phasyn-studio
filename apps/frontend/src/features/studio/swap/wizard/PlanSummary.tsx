@@ -20,7 +20,7 @@ export function PlanSummary({ derived }: { derived: WizardDerived }) {
     const segments = risk === "oom" ? risks.oom : risks.beyondMeasured;
     return segments.length > 0 ? [{ risk, segments: formatList(segments.map((index) => String(index + 1))), count: segments.length }] : [];
   });
-  const range = eta && eta.lowSeconds !== null && eta.highSeconds !== null ? t("範圍 {low}–{high}", { low: formatEta(eta.lowSeconds), high: formatEta(eta.highSeconds, { approx: false }) }) : undefined;
+  const range = eta?.lowSeconds != null && eta.highSeconds !== null ? t("範圍 {low}–{high}", { low: formatEta(eta.lowSeconds), high: formatEta(eta.highSeconds, { approx: false }) }) : undefined;
   return (
     <div className="grid gap-2">
       <div className="flex flex-wrap items-center gap-2" role="status">
@@ -45,7 +45,7 @@ export function PlanSummary({ derived }: { derived: WizardDerived }) {
         </Badge>
       </div>
       <p className="text-caption text-fg-tertiary">
-        {eta && each ? (
+        {eta && (each != null && each !== "") ? (
           t("{plan}；每段{each}。", { plan: planEtaText(eta), each })
         ) : pending && missing === null ? (
           t("估算中…")

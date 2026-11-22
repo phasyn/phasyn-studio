@@ -1,7 +1,7 @@
 // Video Studio's workspace state (implemented by StudioProvider); panels read and write the project only through here.
 // The shell state (save state, conflict actions, notices, engine sheet) lives in the studio-shell context, so saving or
 // a notice does not re-render the workspaces; `notify` and `setEngineOpen` are repeated here as stable references.
-import { createContext, useContext } from "react";
+import { createContext, use } from "react";
 import type { Catalog, StudioProject, StudioShot, StudioTimeline, StudioTimelineCommand, TimelineSource } from "@/api/generated/contracts";
 import type { PluginRegistry } from "@/features/plugins";
 import type { NoticeInput } from "@/features/studio-shell";
@@ -42,6 +42,8 @@ export interface StudioContextValue {
    * continues from the document the Controller answers. Rejects with the Controller's reason when a command is
    * refused; nothing is saved then.
    */
+  adoptMedia: (shotId: string, runId: string, output: string, parent: string | null) => Promise<void>;
+  attachRunTake: (shotId: string, runId: string, output: string) => Promise<void>;
   runTimelineCommands: (commands: StudioTimelineCommand[]) => Promise<void>;
   catalog: Catalog | undefined;
   /** 渲染引擎：Studio 路由（＝元件組合）與各步驟元件狀態、序列匯出元件。 */
@@ -75,8 +77,8 @@ export interface StudioContextValue {
   renderVariants: (shotId: string, variants: readonly ShotVariant[]) => Promise<void>;
   /** 多個鏡頭的變體（每個鏡頭 2–8 個，model/variantBatch.ts）放進同一個批次 run，各成為自己鏡頭的 take；送出了回傳 true。 */
   renderVariantBatch: (groups: readonly ShotVariants[]) => Promise<boolean>;
-  /** 匯出序列；options 未填用 media.concat 預設（crf 18、preset medium）。 */
-  exportSequence: (options?: ExportOptions) => Promise<void>;
+  /** 匯出序列；options 未填用 media.concat 預設（crf 18、preset medium）；送出了回傳 true（沒送出時已用通知說明原因）。 */
+  exportSequence: (options?: ExportOptions) => Promise<boolean>;
   addShot: (afterShotId?: string | null) => void;
   /** 已封存的 run（渲染佇列、Takes、素材預設隱藏；時間軸仍照常使用）。 */
   archivedRunIds: ReadonlySet<string>;
@@ -93,7 +95,7 @@ export interface StudioContextValue {
 export const StudioContext = createContext<StudioContextValue | null>(null);
 
 export function useStudio(): StudioContextValue {
-  const value = useContext(StudioContext);
+  const value = use(StudioContext);
   if (!value) throw new Error(t("useStudio 必須在 StudioProvider 內使用"));
   return value;
 }

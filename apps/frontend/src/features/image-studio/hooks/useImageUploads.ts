@@ -25,22 +25,22 @@ const aborted = () => new DOMException("aborted", "AbortError");
 
 export function useImageUploads(projectId: string) {
   const queue = useUploadQueue<null>(projectId);
-  const current = useRef(projectId);
+  const currentRef = useRef(projectId);
 
   useLayoutEffect(() => {
-    current.current = projectId;
+    currentRef.current = projectId;
   });
 
   const upload =
     (file: File, scope: string, onAdded: (item: ImageLibraryItem) => string | null): UploadRun =>
     async (signal, phase) => {
       // 換了專案（中止前的空檔也算）：檔案不加進任何專案
-      const stale = () => signal.aborted || current.current !== scope;
+      const stale = () => signal.aborted || currentRef.current !== scope;
       phase("reading");
       const facts = await readMediaFacts(file, "image");
       if (facts.width === null || facts.height === null) throw new UploadProblem(t("瀏覽器無法解碼這張圖片"));
       const tooBig = importSizeProblem(facts.width, facts.height);
-      if (tooBig) throw new UploadProblem(tooBig);
+      if (tooBig != null && tooBig !== "") throw new UploadProblem(tooBig);
       if (stale()) throw aborted();
       phase("uploading");
       const ref = await uploadFile(file, signal);
@@ -65,11 +65,11 @@ export function useImageUploads(projectId: string) {
     tasks: queue.tasks,
     /** onAdded：上傳完成後（呼叫端把素材寫進專案、需要時加成參考）；回傳要顯示的訊息。 */
     addFiles: (list: readonly File[], onAdded: (item: ImageLibraryItem) => string | null) => {
-      const scope = current.current;
+      const scope = currentRef.current;
       queue.add(
         list.map((file) => {
           const problem = uploadProblem(file);
-          return problem ? { file, info: null, problem } : { file, info: null, run: upload(file, scope, onAdded) };
+          return (problem != null && problem !== "") ? { file, info: null, problem } : { file, info: null, run: upload(file, scope, onAdded) };
         }),
       );
     },

@@ -37,10 +37,18 @@ from numpy.typing import NDArray
 from .fonts import BOLD_FROM_WEIGHT, FontBook
 from .glyphs import UNSCALED, GlyphKey, GlyphRasterizer, Mask
 from .hb import HarfBuzz
-from .layout import LEGACY_FONT_FAMILY, LEGACY_FONT_WEIGHT, Band, TitleLayout, js_round, layout_title
+from .layout import (
+    LEGACY_FONT_FAMILY,
+    LEGACY_FONT_WEIGHT,
+    Band,
+    TitleLayout,
+    js_round,
+    layout_title,
+)
 from .model import TextSpec, TextStyle
 from .png import NO_FILTER
 from .shaping import LineShaper, ShapedLine
+
 
 STROKE_OPACITY = 0.85  # rgba(0, 0, 0, 0.85)
 BAND_OPACITY = 0.55  # rgba(0, 0, 0, 0.55)
@@ -59,15 +67,19 @@ class Box(NamedTuple):
 
     @property
     def width(self) -> int:
+        """Return the horizontal span of this box."""
         return self.x1 - self.x0
 
     @property
     def height(self) -> int:
+        """Return the vertical span of this box."""
         return self.y1 - self.y0
 
     def within(self, outer: Box) -> tuple[slice, slice]:
         """Index of this box in an array that covers ``outer``."""
-        return slice(self.y0 - outer.y0, self.y1 - outer.y0), slice(self.x0 - outer.x0, self.x1 - outer.x0)
+        return slice(self.y0 - outer.y0, self.y1 - outer.y0), slice(
+            self.x0 - outer.x0, self.x1 - outer.x0
+        )
 
 
 def union(boxes: Iterable[Box]) -> Box | None:
@@ -94,6 +106,8 @@ class Stamp:
 
 @dataclass(frozen=True, slots=True)
 class LinePlan:
+    """Glyphs laid out for one line of text."""
+
     box: Box | None  # the visible pixels of the line; None when it draws nothing
     stamps: tuple[Stamp, ...]
 
@@ -110,6 +124,7 @@ class Plan:
 
     @property
     def stamps(self) -> int:
+        """Iterate the positioned stamps used to paint the layout."""
         return sum(len(line.stamps) for line in self.lines)
 
 
@@ -123,6 +138,7 @@ class Picture:
 
     @property
     def box(self) -> Box:
+        """Return the pixel bounds of the rendered picture."""
         rows, columns = self.pixels.shape[:2]
         return Box(self.x, self.y, self.x + columns, self.y + rows)
 
@@ -131,7 +147,12 @@ def _visible_box(mask: Mask, stamp: Stamp, canvas: Box) -> Box | None:
     """The canvas pixels a stamped mask touches."""
     x, y = stamp.x + mask.left, stamp.y + mask.top
     rows, columns = mask.pixels.shape
-    x0, y0, x1, y1 = max(x, canvas.x0), max(y, canvas.y0), min(x + columns, canvas.x1), min(y + rows, canvas.y1)
+    x0, y0, x1, y1 = (
+        max(x, canvas.x0),
+        max(y, canvas.y0),
+        min(x + columns, canvas.x1),
+        min(y + rows, canvas.y1),
+    )
     if x0 >= x1 or y0 >= y1:
         return None
     if (x1 - x0, y1 - y0) == (columns, rows):
@@ -142,27 +163,41 @@ def _visible_box(mask: Mask, stamp: Stamp, canvas: Box) -> Box | None:
         return None
     seen_columns = np.flatnonzero(inside.any(axis=0))
     return Box(
-        x0 + int(seen_columns[0]), y0 + int(seen_rows[0]), x0 + int(seen_columns[-1]) + 1, y0 + int(seen_rows[-1]) + 1
+        x0 + int(seen_columns[0]),
+        y0 + int(seen_rows[0]),
+        x0 + int(seen_columns[-1]) + 1,
+        y0 + int(seen_rows[-1]) + 1,
     )
 
 
-def _stamp_into(target: NDArray[np.generic], box: Box, mask: Mask, stamp: Stamp, combine: np.ufunc) -> None:
+def _stamp_into(
+    target: NDArray[np.generic], box: Box, mask: Mask, stamp: Stamp, combine: np.ufunc
+) -> None:
     """Combine a stamped mask into ``target``, an array covering ``box``."""
     x, y = stamp.x + mask.left, stamp.y + mask.top
     rows, columns = mask.pixels.shape
-    x0, y0, x1, y1 = max(x, box.x0), max(y, box.y0), min(x + columns, box.x1), min(y + rows, box.y1)
+    x0, y0, x1, y1 = (
+        max(x, box.x0),
+        max(y, box.y0),
+        min(x + columns, box.x1),
+        min(y + rows, box.y1),
+    )
     if x0 < x1 and y0 < y1:
         part = target[y0 - box.y0 : y1 - box.y0, x0 - box.x0 : x1 - box.x0]
         combine(part, mask.pixels[y0 - y : y1 - y, x0 - x : x1 - x], out=part)
 
 
-def _edge_coverage(low: float, high: float, limit: int) -> tuple[int, NDArray[np.float64]]:
+def _edge_coverage(
+    low: float, high: float, limit: int
+) -> tuple[int, NDArray[np.float64]]:
     """How much of each pixel in ``[0, limit)`` the interval ``[low, high)`` covers, from the first touched pixel."""
     first, last = max(0, math.floor(low)), min(limit, math.ceil(high))
     if last <= first:
         return first, np.zeros(0)
     edges = np.arange(first, last + 1, dtype=np.float64)
-    return first, np.clip(np.minimum(edges[1:], high) - np.maximum(edges[:-1], low), 0.0, 1.0)
+    return first, np.clip(
+        np.minimum(edges[1:], high) - np.maximum(edges[:-1], low), 0.0, 1.0
+    )
 
 
 def _band_mask(band: Band, canvas: Box) -> tuple[Box, NDArray[np.uint8]] | None:
@@ -176,11 +211,16 @@ def _band_mask(band: Band, canvas: Box) -> tuple[Box, NDArray[np.uint8]] | None:
     columns = np.flatnonzero(coverage.any(axis=0))
     top, left = int(rows[0]), int(columns[0])
     trimmed = coverage[top : int(rows[-1]) + 1, left : int(columns[-1]) + 1]
-    return Box(x + left, y + top, x + left + trimmed.shape[1], y + top + trimmed.shape[0]), trimmed
+    return Box(
+        x + left, y + top, x + left + trimmed.shape[1], y + top + trimmed.shape[0]
+    ), trimmed
 
 
 def _lay_black(
-    alpha: NDArray[np.float32], ink: NDArray[np.float32], coverage: NDArray[np.generic], opacity: float
+    alpha: NDArray[np.float32],
+    ink: NDArray[np.float32],
+    coverage: NDArray[np.generic],
+    opacity: float,
 ) -> None:
     """Source-over of translucent black through ``coverage`` (in place)."""
     cover = coverage.astype(np.float32) * np.float32(opacity) / _FULL
@@ -190,7 +230,9 @@ def _lay_black(
     alpha += cover
 
 
-def _lay_ink(alpha: NDArray[np.float32], ink: NDArray[np.float32], coverage: NDArray[np.generic]) -> None:
+def _lay_ink(
+    alpha: NDArray[np.float32], ink: NDArray[np.float32], coverage: NDArray[np.generic]
+) -> None:
     """Source-over of the opaque fill colour through ``coverage`` (in place)."""
     cover = coverage.astype(np.float32) / _FULL
     keep = np.float32(1) - cover
@@ -200,7 +242,9 @@ def _lay_ink(alpha: NDArray[np.float32], ink: NDArray[np.float32], coverage: NDA
     alpha += cover
 
 
-def _to_rgba(alpha: NDArray[np.float32], ink: NDArray[np.float32], color: tuple[int, int, int]) -> NDArray[np.uint8]:
+def _to_rgba(
+    alpha: NDArray[np.float32], ink: NDArray[np.float32], color: tuple[int, int, int]
+) -> NDArray[np.uint8]:
     """Straight-alpha 8-bit RGBA from the premultiplied planes; transparent pixels are all zero."""
     share = np.divide(ink, alpha, out=np.zeros_like(ink), where=alpha > 0)
     np.minimum(share, np.float32(1), out=share)
@@ -222,8 +266,14 @@ class Painter:
     """Plans and paints the items of one canvas size."""
 
     def __init__(
-        self, book: FontBook, harfbuzz: HarfBuzz, rasterizer: GlyphRasterizer, width: int, height: int
+        self,
+        book: FontBook,
+        harfbuzz: HarfBuzz,
+        rasterizer: GlyphRasterizer,
+        width: int,
+        height: int,
     ) -> None:
+        """Initialize the buffers and glyph renderer used for painting."""
         self._book = book
         self._harfbuzz = harfbuzz
         self._rasterizer = rasterizer
@@ -258,7 +308,9 @@ class Painter:
         def shaper_at(font_px: float) -> LineShaper:
             size = js_round(font_px * 64)
             if size not in shapers:
-                shapers[size] = LineShaper(self._book, self._harfbuzz, family, bold, size)
+                shapers[size] = LineShaper(
+                    self._book, self._harfbuzz, family, bold=bold, size=size
+                )
             return shapers[size]
 
         def measure(text: str, font_px: float, _style: TextStyle | None) -> float:
@@ -266,7 +318,7 @@ class Painter:
 
         layout = layout_title(spec, self._canvas.x1, self._canvas.y1, measure)
         size = js_round(layout.font_px * 64)
-        ascent = self._book.primary(family, bold).em_ascent(size)
+        ascent = self._book.primary(family, bold=bold).em_ascent(size)
         drawing = shaper_at(layout.font_px)
         lines = []
         for index, text in enumerate(layout.lines):
@@ -274,30 +326,54 @@ class Painter:
             stamps = tuple(self._stamps(drawing.shape(text), layout, baseline, size))
             lines.append(LinePlan(union(self._stamp_boxes(stamps)), stamps))
         boxes = [line.box for line in lines if line.box is not None]
-        band = _band_mask(layout.band, self._canvas) if layout.band is not None else None
+        band = (
+            _band_mask(layout.band, self._canvas) if layout.band is not None else None
+        )
         if band is not None:
             boxes.append(band[0])
-        return Plan(union(boxes), layout.band, tuple(lines), _rgb(layout.color), tuple(drawing.missing))
+        return Plan(
+            union(boxes),
+            layout.band,
+            tuple(lines),
+            _rgb(layout.color),
+            tuple(drawing.missing),
+        )
 
-    def _stamps(self, line: ShapedLine, layout: TitleLayout, baseline: int, size: int) -> Iterator[Stamp]:
+    def _stamps(
+        self, line: ShapedLine, layout: TitleLayout, baseline: int, size: int
+    ) -> Iterator[Stamp]:
         """The glyphs of a shaped line at their canvas positions (26.6 split into pixel and remainder)."""
         limit = layout.max_width * 64
         x_scale = UNSCALED if line.width <= limit else (limit << 16) // line.width
         drawn = min(line.width, limit)
         anchor = js_round(layout.x * 64)
-        start = anchor if layout.align == "left" else anchor - drawn if layout.align == "right" else anchor - drawn // 2
+        start = (
+            anchor
+            if layout.align == "left"
+            else anchor - drawn
+            if layout.align == "right"
+            else anchor - drawn // 2
+        )
         radius = layout.stroke_px * 32  # half the line width, 26.6
         for glyph in line.glyphs:
-            x = start + (glyph.x if x_scale == UNSCALED else (glyph.x * x_scale + 0x8000) >> 16)
+            x = start + (
+                glyph.x if x_scale == UNSCALED else (glyph.x * x_scale + 0x8000) >> 16
+            )
             y = baseline - glyph.y
-            key = GlyphKey(glyph.face, size, radius, glyph.glyph, x & 63, y & 63, x_scale)
+            key = GlyphKey(
+                glyph.face, size, radius, glyph.glyph, x & 63, y & 63, x_scale
+            )
             yield Stamp(key, x >> 6, y >> 6)
 
     def _stamp_boxes(self, stamps: Iterable[Stamp]) -> Iterator[Box]:
         for stamp in stamps:
             masks = self._rasterizer.masks(stamp.key)
             for mask in (masks.fill, masks.stroke):
-                box = _visible_box(mask, stamp, self._canvas) if mask is not None else None
+                box = (
+                    _visible_box(mask, stamp, self._canvas)
+                    if mask is not None
+                    else None
+                )
                 if box is not None:
                     yield box
 
@@ -314,11 +390,20 @@ class Painter:
             _lay_black(alpha[where], ink[where], band[1], BAND_OPACITY)
         for line in plan.lines:
             if line.box is not None:
-                self._paint_line(line.stamps, line.box, alpha[line.box.within(box)], ink[line.box.within(box)])
+                self._paint_line(
+                    line.stamps,
+                    line.box,
+                    alpha[line.box.within(box)],
+                    ink[line.box.within(box)],
+                )
         return Picture(box.x0, box.y0, _to_rgba(alpha, ink, plan.color))
 
     def _paint_line(
-        self, stamps: tuple[Stamp, ...], box: Box, alpha: NDArray[np.float32], ink: NDArray[np.float32]
+        self,
+        stamps: tuple[Stamp, ...],
+        box: Box,
+        alpha: NDArray[np.float32],
+        ink: NDArray[np.float32],
     ) -> None:
         stroke = np.zeros((box.height, box.width), dtype=np.uint8)
         fill = np.zeros((box.height, box.width), dtype=np.uint16)
@@ -349,7 +434,9 @@ def compose(pictures: Iterable[Picture], box: Box) -> NDArray[np.uint8]:
         top_alpha = picture.pixels[..., 3:].astype(np.uint32)
         under_weight = under[..., 3:] * (255 - top_alpha)
         total = 255 * top_alpha + under_weight
-        color = 255 * top_alpha * picture.pixels[..., :3] + under_weight * under[..., :3]
+        color = (
+            255 * top_alpha * picture.pixels[..., :3] + under_weight * under[..., :3]
+        )
         under[..., :3] = (2 * color + total) // np.maximum(2 * total, 1)
         under[..., 3:] = (total + 127) // 255
     return frame

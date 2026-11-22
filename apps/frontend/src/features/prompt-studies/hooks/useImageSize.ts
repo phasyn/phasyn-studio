@@ -8,11 +8,11 @@ export function useImageSize(file: FileRef): [{ width: number; height: number } 
   const [state, setState] = useState<{ key: string; size: { width: number; height: number } } | null>(null);
   useEffect(() => {
     const image = new Image();
-    image.onload = () => setState({ key, size: { width: image.naturalWidth, height: image.naturalHeight } });
+    image.onload = () => { setState({ key, size: { width: image.naturalWidth, height: image.naturalHeight } }); };
     image.src = mediaUrl(file.node_id, file.file_id);
     return () => {
       image.onload = null;
     };
   }, [file.node_id, file.file_id, key]);
-  return [state?.key === key ? state.size : null, (size) => setState({ key, size })];
+  return [state?.key === key ? state.size : null, (size) => { setState({ key, size }); }];
 }

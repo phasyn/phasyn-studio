@@ -1,5 +1,6 @@
 // 屬性「圖片」分頁（圖生圖）：參考圖片 1–4 張（上傳或從專案素材庫加入；上移／下移決定送出順序；選一張當底圖）、
 // 參考圖編碼解析度、局部遮罩。文生圖時只說明並保留既有設定（切回圖生圖時使用）。
+import { focusOpenedControl } from "@/lib/dom";
 import { ArrowDown, ArrowUp, CircleX, FolderOpen, ImagePlus, Layers, Upload, X } from "lucide-react";
 import { lazy, Suspense, useId, useLayoutEffect, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -49,8 +50,8 @@ function LibraryPicker({ id, shot, onClose }: { id: string; shot: StudioImageSho
     onClose();
   };
   return (
-    <div id={id} role="region" aria-label={t("從專案素材庫加入參考圖片")} onKeyDown={onKeyDown} className="grid min-w-0 gap-2 rounded-lg border border-line-subtle bg-canvas p-2 animate-rise-in">
-      <Input compact autoFocus value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("搜尋檔名")} aria-label={t("搜尋素材庫檔名")} />
+    <div /* eslint-disable-line jsx-a11y-x/no-noninteractive-element-interactions -- Keyboard events from this panel’s focusable controls bubble here so navigation and dismissal share one handler. */  id={id} role="region" aria-label={t("從專案素材庫加入參考圖片")} onKeyDown={onKeyDown} className="grid min-w-0 gap-2 rounded-lg border border-line-subtle bg-canvas p-2 animate-rise-in">
+      <Input compact ref={focusOpenedControl} value={search} onChange={(event) => { setSearch(event.target.value); }} placeholder={t("搜尋檔名")} aria-label={t("搜尋素材庫檔名")} />
       {items.length === 0 ? (
         <p className="px-1 text-caption text-fg-tertiary">{(project.library ?? []).some((item) => item.kind === "image") ? t("沒有符合的圖片。") : t("專案素材庫還沒有圖片；先上傳，或把生成的圖片「加入素材庫」。")}</p>
       ) : (
@@ -65,7 +66,7 @@ function LibraryPicker({ id, shot, onClose }: { id: string; shot: StudioImageSho
                   <span className="truncate text-data text-fg" title={item.name}>
                     {item.name}
                   </span>
-                  <span className="truncate text-caption text-fg-tertiary">{`${sourceLabel(item)}${item.width !== null && item.height !== null ? t("・{width}×{height}", { width: item.width, height: item.height }) : t("・尺寸未知")}${blocked ? t("・{blocked}", { blocked }) : ""}`}</span>
+                  <span className="truncate text-caption text-fg-tertiary">{`${sourceLabel(item)}${item.width !== null && item.height !== null ? t("・{width}×{height}", { width: item.width, height: item.height }) : t("・尺寸未知")}${(blocked != null && blocked !== "") ? t("・{blocked}", { blocked }) : ""}`}</span>
                 </span>
                 {added ? (
                   <span className="text-caption text-fg-tertiary">{t("已加入")}</span>
@@ -76,7 +77,7 @@ function LibraryPicker({ id, shot, onClose }: { id: string; shot: StudioImageSho
                     className="min-h-7 px-2"
                     disabled={blocked !== null}
                     aria-label={t("加入「{name}」", { name: item.name })}
-                    onClick={() => dispatch({ type: "addImageReference", shotId: shot.image_shot_id, itemId: item.item_id })}
+                    onClick={() => { dispatch({ type: "addImageReference", shotId: shot.image_shot_id, itemId: item.item_id }); }}
                   >
                     {t("加入")}
                   </Button>
@@ -93,8 +94,8 @@ function LibraryPicker({ id, shot, onClose }: { id: string; shot: StudioImageSho
 function References({ shot, disabled }: { shot: StudioImageShot; disabled: boolean }) {
   const { project, dispatch, getProject } = useImageStudio();
   const id = useId();
-  const fileInput = useRef<HTMLInputElement>(null);
-  const pickerButton = useRef<HTMLButtonElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pickerButtonRef = useRef<HTMLButtonElement>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
   const uploads = useImageUploads(project.project_id);
@@ -111,13 +112,13 @@ function References({ shot, disabled }: { shot: StudioImageShot; disabled: boole
   // After a move, focus stays on the moved image: its button for the same direction while it can still move that way,
   // otherwise the other one. Without this, focus falls to the page: the pressed button may have just become disabled
   // (first or last row), or React may have moved its row in the DOM.
-  const moved = useRef<{ itemId: string; delta: -1 | 1 } | null>(null);
+  const movedRef = useRef<{ itemId: string; delta: -1 | 1 } | null>(null);
   useLayoutEffect(() => {
-    const target = moved.current;
-    moved.current = null;
+    const target = movedRef.current;
+    movedRef.current = null;
     if (!target) return;
-    const row = Array.from(listRef.current?.children ?? []).find((child) => child instanceof HTMLElement && child.dataset.itemId === target.itemId);
-    const moveButton = (delta: -1 | 1) => row?.querySelector<HTMLButtonElement>(`button[data-move="${delta}"]`);
+    const row = Array.from(listRef.current?.children ?? []).find((child) => child instanceof HTMLElement && child.dataset["itemId"] === target.itemId);
+    const moveButton = (delta: -1 | 1) => row?.querySelector<HTMLButtonElement>(`button[data-move="${String(delta)}"]`);
     const same = moveButton(target.delta);
     (same && !same.disabled ? same : moveButton(target.delta === -1 ? 1 : -1))?.focus();
   }, [orderKey]);
@@ -127,7 +128,7 @@ function References({ shot, disabled }: { shot: StudioImageShot; disabled: boole
   const move = (itemId: string, delta: -1 | 1) => {
     const next = moveReference(shot, itemId, delta);
     if (!next) return;
-    moved.current = { itemId, delta };
+    movedRef.current = { itemId, delta };
     patch(next);
   };
   const upload = (files: readonly File[]) => {
@@ -149,7 +150,7 @@ function References({ shot, disabled }: { shot: StudioImageShot; disabled: boole
     upload(Array.from(event.dataTransfer.files));
   };
   return (
-    <section
+    <section /* eslint-disable-line jsx-a11y-x/no-noninteractive-element-interactions -- This drop target complements the keyboard-accessible file picker in the same panel. */
       aria-labelledby={`${id}-title`}
       className={cn(
         "relative grid min-w-0 gap-2 rounded-lg transition-[outline-color,background-color] duration-(--duration-fast)",
@@ -161,7 +162,7 @@ function References({ shot, disabled }: { shot: StudioImageShot; disabled: boole
         setDragging(true);
       }}
       onDragLeave={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
+        if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) setDragging(false);
       }}
       onDrop={onDrop}
     >
@@ -178,7 +179,7 @@ function References({ shot, disabled }: { shot: StudioImageShot; disabled: boole
           <Layers aria-hidden className="size-3.5 text-fg-tertiary" />
           {t("參考圖片")}
         </h3>
-        <span className={cn("machine ml-auto rounded-full px-1.5 text-caption", full ? "bg-warning/12 text-warning" : "bg-overlay text-fg-tertiary")}>{`${ordered.length}/${LIMITS.references}`}</span>
+        <span className={cn("machine ml-auto rounded-full px-1.5 text-caption", full ? "bg-warning/12 text-warning" : "bg-overlay text-fg-tertiary")}>{`${String(ordered.length)}/${String(LIMITS.references)}`}</span>
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
         <Button
@@ -188,12 +189,12 @@ function References({ shot, disabled }: { shot: StudioImageShot; disabled: boole
           icon={<Upload aria-hidden />}
           disabled={disabled || full}
           title={full ? t("參考圖片最多 {references} 張", { references: LIMITS.references }) : t("也可以把圖片拖進這裡")}
-          onClick={() => fileInput.current?.click()}
+          onClick={() => fileInputRef.current?.click()}
         >
           {t("上傳圖片")}
         </Button>
         <Button
-          ref={pickerButton}
+          ref={pickerButtonRef}
           size="sm"
           variant={pickerOpen ? "secondary" : "quiet"}
           className="min-h-7 px-2"
@@ -201,12 +202,12 @@ function References({ shot, disabled }: { shot: StudioImageShot; disabled: boole
           disabled={disabled}
           aria-expanded={pickerOpen}
           aria-controls={pickerOpen ? `${id}-picker` : undefined}
-          onClick={() => setPickerOpen((open) => !open)}
+          onClick={() => { setPickerOpen((open) => !open); }}
         >
-          <T source={"從素材庫加入<0>{filterCount}</0>"} values={{ filterCount: library.filter((item) => item.kind === "image").length }} slots={[<span className="machine rounded-full bg-overlay px-1.5 text-caption text-fg-tertiary" />]} />
+          <T source={"從素材庫加入<0>{filterCount}</0>"} values={{ filterCount: library.filter((item) => item.kind === "image").length }} slots={[<span key="slot-0" className="machine rounded-full bg-overlay px-1.5 text-caption text-fg-tertiary" />]} />
         </Button>
         <input
-          ref={fileInput}
+          ref={fileInputRef}
           type="file"
           accept={IMAGE_ACCEPT}
           multiple
@@ -221,7 +222,7 @@ function References({ shot, disabled }: { shot: StudioImageShot; disabled: boole
       {uploads.tasks.length > 0 ? (
         <ul className="grid gap-0.5 rounded-lg border border-line-subtle bg-canvas p-1" aria-label={t("上傳")} aria-live="polite">
           {uploads.tasks.map((task) => (
-            <UploadTaskRow key={task.key} task={task} icon={<ImagePlus aria-hidden className="mt-0.5 size-3.5 text-entity" />} onRetry={() => uploads.retry(task.key)} onDismiss={() => uploads.dismiss(task.key)} />
+            <UploadTaskRow key={task.key} task={task} icon={<ImagePlus aria-hidden className="mt-0.5 size-3.5 text-entity" />} onRetry={() => { uploads.retry(task.key); }} onDismiss={() => { uploads.dismiss(task.key); }} />
           ))}
         </ul>
       ) : null}
@@ -231,7 +232,7 @@ function References({ shot, disabled }: { shot: StudioImageShot; disabled: boole
           shot={shot}
           onClose={() => {
             setPickerOpen(false);
-            pickerButton.current?.focus();
+            pickerButtonRef.current?.focus();
           }}
         />
       ) : null}
@@ -269,10 +270,10 @@ function References({ shot, disabled }: { shot: StudioImageShot; disabled: boole
                   <span className="truncate text-caption text-fg-tertiary">{item ? `${sourceLabel(item)}${item.width !== null && item.height !== null ? t("・{width}×{height}", { width: item.width, height: item.height }) : ""}` : t("這張圖已從素材庫移除")}</span>
                 </span>
                 <span className="flex items-center gap-0.5">
-                  <Button size="icon-sm" variant="quiet" className="size-7" data-move={-1} aria-label={t("把參考圖片 {index} 上移", { index: index + 1 })} title={t("上移")} disabled={disabled || index === 0} onClick={() => move(ref.item_id, -1)}>
+                  <Button size="icon-sm" variant="quiet" className="size-7" data-move={-1} aria-label={t("把參考圖片 {index} 上移", { index: index + 1 })} title={t("上移")} disabled={disabled || index === 0} onClick={() => { move(ref.item_id, -1); }}>
                     <ArrowUp aria-hidden />
                   </Button>
-                  <Button size="icon-sm" variant="quiet" className="size-7" data-move={1} aria-label={t("把參考圖片 {index} 下移", { index: index + 1 })} title={t("下移")} disabled={disabled || index === ordered.length - 1} onClick={() => move(ref.item_id, 1)}>
+                  <Button size="icon-sm" variant="quiet" className="size-7" data-move={1} aria-label={t("把參考圖片 {index} 下移", { index: index + 1 })} title={t("下移")} disabled={disabled || index === ordered.length - 1} onClick={() => { move(ref.item_id, 1); }}>
                     <ArrowDown aria-hidden />
                   </Button>
                   <Button
@@ -283,11 +284,11 @@ function References({ shot, disabled }: { shot: StudioImageShot; disabled: boole
                     aria-label={t("把參考圖片 {index} 設為底圖", { index: index + 1 })}
                     disabled={disabled}
                     title={t("遮罩合成時保留這張的畫面")}
-                    onClick={() => patch(setBaseReference(shot, base ? null : ref.item_id))}
+                    onClick={() => { patch(setBaseReference(shot, base ? null : ref.item_id)); }}
                   >
                     {t("底圖")}
                   </Button>
-                  <Button size="icon-sm" variant="quiet" className="size-7" aria-label={t("移除參考圖片 {index}", { index: index + 1 })} title={t("移除（素材庫的檔案保留）")} disabled={disabled} onClick={() => patch(removeReference(shot, ref.item_id))}>
+                  <Button size="icon-sm" variant="quiet" className="size-7" aria-label={t("移除參考圖片 {index}", { index: index + 1 })} title={t("移除（素材庫的檔案保留）")} disabled={disabled} onClick={() => { patch(removeReference(shot, ref.item_id)); }}>
                     <X aria-hidden />
                   </Button>
                 </span>
@@ -318,9 +319,9 @@ export function ImageTab({ shot }: { shot: StudioImageShot }) {
     return (
       <div className="grid gap-3 p-3">
         <Callout tone="info" title={t("文生圖不使用參考圖片與遮罩")}>
-          <p>{shot.references.length > 0 || shot.mask_item_id ? t("這張圖片已有的參考圖片與遮罩會保留，切回圖生圖時使用；文生圖不會送出它們。") : t("要從參考圖修改或局部重繪，改成圖生圖。")}</p>
+          <p>{shot.references.length > 0 || (shot.mask_item_id != null && shot.mask_item_id !== "") ? t("這張圖片已有的參考圖片與遮罩會保留，切回圖生圖時使用；文生圖不會送出它們。") : t("要從參考圖修改或局部重繪，改成圖生圖。")}</p>
           <div className="pt-1">
-            <Button size="sm" variant="secondary" icon={<ImagePlus aria-hidden />} onClick={() => setMode("i2i")}>
+            <Button size="sm" variant="secondary" icon={<ImagePlus aria-hidden />} onClick={() => { setMode("i2i"); }}>
               {t("改成圖生圖")}
             </Button>
           </div>
@@ -332,7 +333,7 @@ export function ImageTab({ shot }: { shot: StudioImageShot }) {
     <div className="grid gap-4 p-3">
       <References shot={shot} disabled={false} />
       <Row label={t("參考圖編碼解析度")} htmlFor={`${id}-resolution`} info={t("每張參考圖縮放到約這個邊長平方的面積（邊長 32 的倍數），文字條件與參考編碼用同一份；越高細節越多，也越耗時與記憶體。")}>
-        <Select id={`${id}-resolution`} compact value={shot.reference_resolution} onChange={(event) => dispatch({ type: "updateImageShot", shotId: shot.image_shot_id, patch: { reference_resolution: Number(event.target.value) } })}>
+        <Select id={`${id}-resolution`} compact value={shot.reference_resolution} onChange={(event) => { dispatch({ type: "updateImageShot", shotId: shot.image_shot_id, patch: { reference_resolution: Number(event.target.value) } }); }}>
           {REFERENCE_RESOLUTIONS.map((size) => (
             <option key={size} value={size}>
               {size} px

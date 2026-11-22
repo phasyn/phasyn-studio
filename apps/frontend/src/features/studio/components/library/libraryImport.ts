@@ -100,7 +100,7 @@ function importedCopy(item: StudioLibraryItem, itemId: string, addedAt: string):
     height: item.height,
     has_audio: item.has_audio,
   };
-  if (item.note && parseJobNote(item.note) === null) copy.note = item.note;
+  if ((item.note != null && item.note !== "") && parseJobNote(item.note) === null) copy.note = item.note;
   return copy;
 }
 
@@ -142,3 +142,6 @@ export function tileLayout(width: number): TileLayout {
   const tileHeight = thumbHeight + TILE_CHROME + TILE_CAPTION;
   return { columns, thumbHeight, tileHeight, rowHeight: tileHeight + GRID_GAP, gap: GRID_GAP, pad: GRID_PAD };
 }
+
+/** The DOM id of a project row in the import dialog's project list (its listbox's aria-activedescendant). */
+export const rowId = (baseId: string, projectId: string) => `${baseId}-project-${projectId}`;

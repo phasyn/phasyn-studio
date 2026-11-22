@@ -15,7 +15,7 @@ function emit(): void {
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  return () => void listeners.delete(listener);
 }
 
 export function getDraft(pipelineId: string): InferenceDraft {
@@ -81,5 +81,5 @@ export function fileNameOf(fileId: string): string | null {
 /** 素材清單的本機 key（非安全來源的內網 HTTP 沒有 crypto.randomUUID）。 */
 export function nextMaterialKey(fileId: string): string {
   sequence += 1;
-  return `${fileId}:${sequence}`;
+  return `${fileId}:${String(sequence)}`;
 }

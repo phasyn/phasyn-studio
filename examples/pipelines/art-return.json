@@ -1,0 +1,62 @@
+{
+  "pipeline_id": "art-return",
+  "label": "美術修改稿回程",
+  "inputs": [
+    {
+      "name": "image_file",
+      "type_id": "media.image.v1",
+      "required": false,
+      "transport": "file",
+      "description": "參考圖或繪製完成的修改稿"
+    },
+    {
+      "name": "video_file",
+      "type_id": "media.video.v1",
+      "required": false,
+      "transport": "file",
+      "description": "參考影片或繪製完成的修改稿"
+    },
+    {
+      "name": "manifest_file",
+      "type_id": "art.exchange-manifest.v1",
+      "required": true,
+      "transport": "file",
+      "description": "原工作包獨立發布的 manifest"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "exchange",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "art-exchange",
+      "inputs": {
+        "image_file": {
+          "from_input": "image_file"
+        },
+        "video_file": {
+          "from_input": "video_file"
+        },
+        "manifest_file": {
+          "from_input": "manifest_file"
+        }
+      },
+      "parameters": {
+        "operation": "return"
+      }
+    }
+  ],
+  "outputs": {
+    "delivery_file": {
+      "from_step": "exchange",
+      "output": "delivery_file"
+    },
+    "manifest_file": {
+      "from_step": "exchange",
+      "output": "manifest_file"
+    },
+    "report": {
+      "from_step": "exchange",
+      "output": "report"
+    }
+  }
+}

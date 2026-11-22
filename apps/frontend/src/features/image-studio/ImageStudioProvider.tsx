@@ -30,7 +30,7 @@ import { formatList } from "@/i18n/format";
 export function ImageStudioProvider({ initial, children }: { initial: ImageStudioProject; children: ReactNode }) {
   const navigate = useNavigate();
   const document = useImageDocument(initial);
-  const { state, dispatch, flush, reload } = document;
+  const { state, dispatch, flush, reload, transact } = document;
   const shell = useStudioShellValue(document, { offerRebase: true });
   const { notify, setEngineOpen } = shell;
   // A version saved elsewhere (another tab, an AI agent) replaces this one while nothing here is unsaved
@@ -47,7 +47,7 @@ export function ImageStudioProvider({ initial, children }: { initial: ImageStudi
   const loadError = pipelines.data ? catalog.error : (pipelines.error ?? catalog.error);
   const loadErrorText = loadError ? errorText(loadError) : null;
   const engine = useMemo<ImageEngine>(() => {
-    const status = pipelines.data && catalog.data ? "ready" : loadErrorText ? "error" : "loading";
+    const status = pipelines.data && catalog.data ? "ready" : (loadErrorText != null && loadErrorText !== "") ? "error" : "loading";
     return {
       status,
       error: status === "error" ? loadErrorText : null,
@@ -74,22 +74,21 @@ export function ImageStudioProvider({ initial, children }: { initial: ImageStudi
   const selectedShotId = selectedShot?.image_shot_id ?? null;
   const requestedTake = params.get("take");
   const selectedTakeId =
-    (selectedShot?.takes.some((take) => take.take_id === requestedTake) ? requestedTake : null) ??
+    ((selectedShot?.takes.some((take) => take.take_id === requestedTake) === true) ? requestedTake : null) ??
     (selectedShot ? (activeImageTake(selectedShot)?.take_id ?? selectedShot.takes.at(-1)?.take_id ?? null) : null);
 
   const setSearch = useCallback(
-    (patch: Record<string, string | null>) =>
-      setParams(
+    (patch: Record<string, string | null>) => { setParams(
         (current) => {
           const next = new URLSearchParams(current);
           for (const [key, value] of Object.entries(patch)) {
-            if (value) next.set(key, value);
+            if (value != null && value !== "") next.set(key, value);
             else next.delete(key);
           }
           return next;
         },
         { replace: true },
-      ),
+      ); },
     [setParams],
   );
 
@@ -101,13 +100,13 @@ export function ImageStudioProvider({ initial, children }: { initial: ImageStudi
     [setSearch],
   );
 
-  const selectTake = useCallback((takeId: string | null) => setSearch({ take: takeId }), [setSearch]);
+  const selectTake = useCallback((takeId: string | null) => { setSearch({ take: takeId }); }, [setSearch]);
 
   const addShot = useCallback(() => {
     const current = projectRef.current;
     // The first text-to-image pipeline (a ready one first); none → unassigned, and the Basic tab offers the template
-    const route = (engine.status === "ready" ? pickImageRoute(engine.routes, "t2i")?.id : undefined) ?? UNASSIGNED_ROUTE;
-    const shot = newImageShot(current, { route });
+    const route = engine.status === "ready" ? pickImageRoute(engine.routes, "t2i") : undefined;
+    const shot = newImageShot(current, { ...route?.declared?.defaults, route: route?.id ?? UNASSIGNED_ROUTE });
     // The first image brings the settings panel and the take strip: they slide in from their edge
     if (imageShots(current).length === 0) {
       notePanelToggle(PANEL_NAMES.inspector, { refocus: false });
@@ -119,7 +118,7 @@ export function ImageStudioProvider({ initial, children }: { initial: ImageStudi
     return shot.image_shot_id;
   }, [dispatch, engine, selectedShotId, setSearch]);
 
-  const onStarted = useCallback((shotId: string, takeId: string | null) => setSearch({ shot: shotId, take: takeId }), [setSearch]);
+  const onStarted = useCallback((shotId: string, takeId: string | null) => { setSearch({ shot: shotId, take: takeId }); }, [setSearch]);
   const [notSent, setNotSent] = useState<ReadonlyMap<string, string>>(() => new Map());
   const markNotSent = useCallback((shotId: string, reason: string | null) => {
     setNotSent((current) => {
@@ -130,13 +129,13 @@ export function ImageStudioProvider({ initial, children }: { initial: ImageStudi
       return next;
     });
   }, []);
-  const { busy, generate } = useGenerate({ engine, projectRef, dispatch, notify, autoLibrary, runBlockedReason, markNotSent, onStarted });
+  const { busy, generate } = useGenerate({ engine, projectRef, transact, notify, autoLibrary, runBlockedReason, markNotSent, onStarted });
 
   const setRunArchived = useCallback(
     async (runId: string, archived: boolean) => {
       try {
         await archiveRun({ runId, archived });
-        notify({ tone: "success", title: archived ? t("已封存這次生成") : t("已取消封存"), detail: archived ? t("檔案與紀錄都保留；勾選「顯示已封存」可以再看到它。") : undefined });
+        notify({ tone: "success", title: archived ? t("已封存這次生成") : t("已取消封存"), ...(archived ? { detail: t("檔案與紀錄都保留；勾選「顯示已封存」可以再看到它。") } : {}) });
       } catch (error) {
         notify({ tone: "danger", title: archived ? t("封存失敗") : t("取消封存失敗"), detail: errorText(error) });
       }
@@ -144,7 +143,7 @@ export function ImageStudioProvider({ initial, children }: { initial: ImageStudi
     [archiveRun, notify],
   );
 
-  const deleteRuns = useCallback((runIds: string[]) => setDeleteTarget(runIds.length > 0 ? [...new Set(runIds)] : null), []);
+  const deleteRuns = useCallback((runIds: string[]) => { setDeleteTarget(runIds.length > 0 ? [...new Set(runIds)] : null); }, []);
 
   const openVideoStudio = useCallback(
     async (shotId?: string | null) => {
@@ -155,7 +154,7 @@ export function ImageStudioProvider({ initial, children }: { initial: ImageStudi
         notify({ tone: "warning", title: t("沒有切到 Video Studio"), detail: errorText(error) });
         return;
       }
-      await navigate(shotId ? videoShotUrl(id, shotId) : `/studio/generate?project=${encodeURIComponent(id)}`);
+      await navigate((shotId != null && shotId !== "") ? videoShotUrl(id, shotId) : `/studio/generate?project=${encodeURIComponent(id)}`);
     },
     [flush, navigate, notify],
   );
@@ -172,8 +171,8 @@ export function ImageStudioProvider({ initial, children }: { initial: ImageStudi
     if (deleted.length === 0) return;
     // 主控會移除影片鏡頭中的引用並遞增 revision：重新載入；圖片的 take 若主控沒有移除，這裡補移除（已移除時沒有效果）
     reload()
-      .then(() => dispatch({ type: "removeImageTakes", runIds: deleted }))
-      .catch((error: unknown) => notify({ tone: "danger", title: t("重新載入專案失敗"), detail: errorText(error) }));
+      .then(() => { dispatch({ type: "removeImageTakes", runIds: deleted }); })
+      .catch((error: unknown) => { notify({ tone: "danger", title: t("重新載入專案失敗"), detail: errorText(error) }); });
   };
 
   const getProject = useCallback(() => projectRef.current, []);
@@ -242,19 +241,19 @@ export function ImageStudioProvider({ initial, children }: { initial: ImageStudi
   );
 
   return (
-    <StudioShellContext.Provider value={shell}>
-      <ImageStudioContext.Provider value={value}>
+    <StudioShellContext value={shell}>
+      <ImageStudioContext value={value}>
         {children}
         <RunDeleteDialog
           runIds={deleteTarget ?? []}
           open={deleteTarget !== null}
-          onOpenChange={(open) => (open ? undefined : setDeleteTarget(null))}
+          onOpenChange={(open) => { if (!(open)) { setDeleteTarget(null); } }}
           labelOf={runLabel}
           outputKind="image"
           beforeDelete={flush}
           onDone={onDeleted}
         />
-      </ImageStudioContext.Provider>
-    </StudioShellContext.Provider>
+      </ImageStudioContext>
+    </StudioShellContext>
   );
 }

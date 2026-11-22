@@ -43,6 +43,6 @@ export function extendToPlayhead(timeline: StudioTimeline, clip: TimelineClip | 
   const before = ordered[at - 1];
   const after = ordered[at + 1];
   if (edge === "in" && before && clipEnd(before) === clip.start_frame) return { ok: true, value: { type: "roll", leftId: before.clip_id, rightId: clip.clip_id, delta, linked } };
-  if (edge === "out" && after && after.start_frame === end) return { ok: true, value: { type: "roll", leftId: clip.clip_id, rightId: after.clip_id, delta, linked } };
+  if (edge === "out" && after?.start_frame === end) return { ok: true, value: { type: "roll", leftId: clip.clip_id, rightId: after.clip_id, delta, linked } };
   return { ok: true, value: { type: "trim", clipId: clip.clip_id, edge, delta, linked } };
 }

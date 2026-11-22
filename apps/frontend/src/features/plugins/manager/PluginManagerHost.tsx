@@ -2,7 +2,7 @@
 // 以 openPluginManager() 開啟。狀態在這裡，所以關閉再開啟仍保留分頁、篩選、選取與進行中的安裝；視窗的內容在第一次開啟
 // 時才載入。每次開啟都重新讀取登錄表（別的分頁或代理工具可能剛安裝或停用了插件）。
 import { useQueryClient } from "@tanstack/react-query";
-import { lazy, Suspense, useCallback, useEffect, useId, useRef, useState } from "react";
+import { useMemo, lazy, Suspense, useCallback, useEffect, useId, useRef, useState } from "react";
 import type { StudioPluginId, StudioPluginInstallResult } from "@/api/generated/contracts";
 import { PLUGIN_PACKAGE_EXTENSION, pluginKeys } from "@/api/plugins";
 import { LazyBoundary } from "@/components/common/LazyBoundary";
@@ -67,12 +67,12 @@ export function PluginManagerHost({ project, onNotice }: PluginManagerHostProps)
   const registry = usePluginRegistry();
   const client = useQueryClient();
   const descriptionId = useId();
-  const fileInput = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [tab, setTab] = usePersistentChoice<ManagerTab>("plugins.manager.tab", "installed", TABS);
   const [sort, setSort] = usePersistentChoice<PluginSortKey>("plugins.manager.sort", "name", PLUGIN_SORT_KEYS);
   const [descending, setDescending] = usePersistentFlag("plugins.manager.descending", false);
   const [filters, setFilters] = useState<InstalledFilters>(NO_FILTERS);
-  const [projectView, setProjectViewState] = useState<ProjectView>(NO_PROJECT_VIEW);
+  const [projectViewState, setProjectViewState] = useState<ProjectView>(NO_PROJECT_VIEW);
   const [notice, setNotice] = useState<ManagerNotice | null>(null);
   const [removing, setRemoving] = useState<StudioPluginId | null>(null);
   const [appliedSerial, setAppliedSerial] = useState(openState.serial);
@@ -83,7 +83,7 @@ export function PluginManagerHost({ project, onNotice }: PluginManagerHostProps)
   if (openState.serial !== appliedSerial) {
     setAppliedSerial(openState.serial);
     const { tab: wantedTab, ref } = openState.target;
-    if (ref) {
+    if (ref != null && ref !== "") {
       setTab("project");
       setProjectViewState({ ...NO_PROJECT_VIEW, selectedRef: ref });
       setRevealSerial(openState.serial);
@@ -96,14 +96,14 @@ export function PluginManagerHost({ project, onNotice }: PluginManagerHostProps)
     setNotice({ tone: "info", text: t("「{id}」已經不在主控上", { id: removing }), serial: (notice?.serial ?? 0) + 1 });
   }
 
-  const openNow = useRef(openState.open);
-  const outside = useRef(onNotice);
+  const openNowRef = useRef(openState.open);
+  const outsideRef = useRef(onNotice);
   useEffect(() => {
-    openNow.current = openState.open;
-    outside.current = onNotice;
+    openNowRef.current = openState.open;
+    outsideRef.current = onNotice;
   });
   const notify = useCallback((tone: NoticeTone, text: string) => {
-    if (!openNow.current && outside.current) outside.current(tone, text);
+    if (!openNowRef.current && outsideRef.current) outsideRef.current(tone, text);
     else setNotice((current) => ({ tone, text, serial: (current?.serial ?? 0) + 1 }));
   }, []);
   const onInstalled = useCallback(
@@ -119,14 +119,14 @@ export function PluginManagerHost({ project, onNotice }: PluginManagerHostProps)
   // 成功與提示的訊息過一會兒自己收起；失敗的訊息留到使用者按掉（或被下一則訊息取代）
   useEffect(() => {
     if (!notice || notice.tone === "danger") return;
-    const timer = window.setTimeout(() => setNotice(null), NOTICE_MS);
-    return () => window.clearTimeout(timer);
+    const timer = window.setTimeout(() => { setNotice(null); }, NOTICE_MS);
+    return () => { window.clearTimeout(timer); };
   }, [notice]);
 
   useEffect(() => {
     if (flow.phase !== "done") return;
     const timer = window.setTimeout(dismiss, DONE_MS);
-    return () => window.clearTimeout(timer);
+    return () => { window.clearTimeout(timer); };
   }, [flow.phase, dismiss]);
 
   const { open } = openState;
@@ -155,15 +155,15 @@ export function PluginManagerHost({ project, onNotice }: PluginManagerHostProps)
   // 選取跟著清單：沒有指定、或選取的包被篩選掉時選清單的第一個（視窗一開就有內容可看）；清單是空的時沒有選取（右欄顯示空狀態）
   const visible = sortPlugins(filterPlugins(registry.list?.items ?? [], filters), sort, descending);
   const selectedId = visible.find((plugin) => plugin.plugin_id === filters.selectedId)?.plugin_id ?? visible[0]?.plugin_id ?? null;
-  const value: ManagerValue = {
+  const value = useMemo<ManagerValue>(() => ({
     registry,
     project,
     install,
-    pickFile: () => fileInput.current?.click(),
+    pickFile: () => fileInputRef.current?.click(),
     installBlocked,
     notice,
     notify,
-    clearNotice: () => setNotice(null),
+    clearNotice: () => { setNotice(null); },
     installed: { ...filters, selectedId, sort, descending },
     setInstalled: (patch) => {
       const { sort: nextSort, descending: nextDescending, ...rest } = patch;
@@ -171,14 +171,14 @@ export function PluginManagerHost({ project, onNotice }: PluginManagerHostProps)
       if (nextDescending !== undefined) setDescending(nextDescending);
       if (Object.keys(rest).length > 0) setFilters((current) => ({ ...current, ...rest }));
     },
-    projectView,
-    setProjectView: (patch) => setProjectViewState((current) => ({ ...current, ...patch })),
+    projectView: projectViewState,
+    setProjectView: (patch) => { setProjectViewState((current) => ({ ...current, ...patch })); },
     showPlugin: (pluginId) => {
       setTab("installed");
       setFilters({ ...NO_FILTERS, selectedId: pluginId });
     },
     requestRemove: setRemoving,
-  };
+  }), [registry, project, install, installBlocked, notice, notify, filters, selectedId, sort, descending, setSort, setDescending, projectViewState, setTab]);
 
   return (
     <Dialog
@@ -200,7 +200,7 @@ export function PluginManagerHost({ project, onNotice }: PluginManagerHostProps)
         }}
         {...drop.handlers}
       >
-        <ManagerContext.Provider value={value}>
+        <ManagerContext value={value}>
           <ManagerHeader descriptionId={descriptionId} />
           <LazyBoundary className="m-6">
             <Suspense fallback={<WindowFallback />}>
@@ -208,22 +208,22 @@ export function PluginManagerHost({ project, onNotice }: PluginManagerHostProps)
             </Suspense>
           </LazyBoundary>
           <input
-            ref={fileInput}
+            ref={fileInputRef}
             type="file"
             accept={`${PLUGIN_PACKAGE_EXTENSION},.zip,application/zip`}
             hidden
             onChange={(event) => {
               const file = event.target.files?.[0];
               event.target.value = "";
-              if (file && !installBlocked) beginInstall(file);
+              if (file && !(installBlocked != null && installBlocked !== "")) beginInstall(file);
             }}
           />
           <RemoveDialog
             pluginId={removing}
-            onClose={() => setRemoving(null)}
-            onRemoved={(pluginId) => setFilters((current) => (current.selectedId === pluginId ? { ...current, selectedId: null } : current))}
+            onClose={() => { setRemoving(null); }}
+            onRemoved={(pluginId) => { setFilters((current) => (current.selectedId === pluginId ? { ...current, selectedId: null } : current)); }}
           />
-        </ManagerContext.Provider>
+        </ManagerContext>
       </DialogContent>
     </Dialog>
   );

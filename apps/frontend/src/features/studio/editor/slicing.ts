@@ -10,7 +10,7 @@ export function sliceMotion(motion: TimelineMotion, from: number, to: number): T
   const result: TimelineMotion = { ...motion, keyframes: {} };
   for (const key of MOTION_CHANNELS) {
     const points = motion.keyframes[key];
-    if (points?.length) result.keyframes[key] = curveSlice(points, from, to, motion[key]);
+    if (points?.length != null && Boolean(points.length)) result.keyframes[key] = curveSlice(points, from, to, motion[key]);
   }
   return result;
 }
@@ -39,7 +39,7 @@ export function resizeClip(clip: TimelineClip, edge: "in" | "out", delta: number
   const complete = processedDuration(clip);
   if (from >= 0 && to <= complete) return { ok: true, value: { ...clip, start_frame: clip.start_frame + (edge === "in" ? delta : 0), output_window: { start_frame: from, end_frame: to } } };
   const fx = clip.effects;
-  if (fx?.hold?.start || fx?.hold?.end || fx?.fade?.video_in || fx?.fade?.video_out || fx?.fade?.audio_in || fx?.fade?.audio_out || fx?.impact || fx?.camera?.shake_px || activeTransition(fx)) return { ok: false, error: t("延長前請先調整停格、淡入淡出、震動或轉場效果") };
+  if ((fx?.hold?.start ?? 0) || (fx?.hold?.end != null && Boolean(fx.hold.end)) || (fx?.fade?.video_in != null && Boolean(fx.fade.video_in)) || (fx?.fade?.video_out != null && Boolean(fx.fade.video_out)) || (fx?.fade?.audio_in != null && Boolean(fx.fade.audio_in)) || (fx?.fade?.audio_out != null && Boolean(fx.fade.audio_out)) || fx?.impact || (fx?.camera?.shake_px != null && Boolean(fx.camera.shake_px)) || activeTransition(fx)) return { ok: false, error: t("延長前請先調整停格、淡入淡出、震動或轉場效果") };
   const before = Math.max(0, -from); const after = Math.max(0, to - complete);
   const sourceBefore = before * (fx?.speed_percent ?? 100) / 100;
   const sourceAfter = after * (fx?.speed_percent ?? 100) / 100;

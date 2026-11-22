@@ -1,7 +1,9 @@
 import { queryOptions, useQueries, useQuery, type UseQueryResult } from "@tanstack/react-query";
 import type { Catalog, CatalogLite, ComponentDescriptor, DirectoryEntry, NodeSnapshot, Part, ProviderInfo, ProviderList } from "./generated/contracts";
-import { valuesEqual } from "@/lib/json";
-import { apiJson } from "./http";
+import { wireDefinitions } from "@/lib/contractSchemas";
+import { t } from "@/i18n";
+import { nonEmptyText, valuesEqual } from "@/lib/json";
+import { ApiError, apiJson, contractJson, matchesReply } from "./http";
 import { POLL, qk } from "./keys";
 import { instanceKey } from "./types";
 
@@ -28,7 +30,7 @@ export function mergeCatalogParts(lite: CatalogLite, cache: ReadonlyMap<string, 
     for (const component of node.components) {
       const { parts_count: count, parts_digest: digest, facts_digest: factsDigest, ...rest } = component;
       const hit = cache.get(instanceKey(node.node_id, component.component_id));
-      if (!hit || hit.digest !== digest || hit.factsDigest !== factsDigest || hit.parts.length !== count) return null;
+      if (hit?.digest !== digest || hit.factsDigest !== factsDigest || hit.parts.length !== count) return null;
       components.push({ ...rest, parts: hit.parts, facts: hit.facts });
     }
     nodes.push({ ...node, components });
@@ -66,10 +68,15 @@ export function resetCatalogCache(): void {
 
 /** 讀目錄：輕量目錄＋parts 快取；對不到時讀一次完整目錄並更新快取。 */
 async function readCatalog(signal?: AbortSignal): Promise<Catalog> {
-  const lite = await apiJson<CatalogLite>("/api/catalog", { query: { parts: false }, signal });
+  const [lite, definitions] = await Promise.all([apiJson("/api/catalog", { query: { parts: false }, signal }), wireDefinitions()]);
+  if (!matchesReply(lite, "CatalogLite", definitions)) {
+    // Older Controllers ignore the parts query and return the complete catalog.
+    if (matchesReply(lite, "Catalog", definitions)) return lite;
+    throw new ApiError(0, { code: "INVALID_RESPONSE" }, t("回應格式不正確"), "GET");
+  }
   const merged = mergeCatalogParts(lite, partsCache);
   if (merged) return merged;
-  const full = await apiJson<Catalog>("/api/catalog", { signal });
+  const full = await contractJson("Catalog", "/api/catalog", { signal });
   partsCache = partsCacheFrom(full, lite);
   return full;
 }
@@ -196,7 +203,7 @@ export function useCatalog(): UseQueryResult<Catalog>;
 export function useCatalog<T>(select: (catalog: Catalog) => T): UseQueryResult<T>;
 export function useCatalog<T>(select?: (catalog: Catalog) => T): UseQueryResult<Catalog | T> {
   const selector = select ? (catalog: Catalog): Catalog | T => select(withoutTimestamps(catalog)) : undefined;
-  return useQuery({ ...catalogQueryOptions(), select: selector });
+  return useQuery({ ...catalogQueryOptions(), ...(selector ? { select: selector } : {}) });
 }
 
 const stable = (catalog: Catalog) => catalog;
@@ -207,10 +214,19 @@ export function useStableCatalog(): UseQueryResult<Catalog> {
 }
 
 export function fetchProviders(nodeId: string, signal?: AbortSignal): Promise<ProviderList> {
-  return apiJson<ProviderList>(`/api/nodes/${encodeURIComponent(nodeId)}/providers`, { signal });
+  return contractJson("ProviderList", `/api/nodes/${encodeURIComponent(nodeId)}/providers`, { signal });
 }
 
 /** Node 上可建立的 provider（含不可用原因）。 */
+export function useNativeProviders(nodeId: string | null) {
+  return useQuery({
+    queryKey: [...qk.providers(nodeId ?? ""), "capabilities"],
+    queryFn: ({ signal }) => contractJson("NativeProviderCatalog", `/api/nodes/${encodeURIComponent(nodeId ?? "")}/providers/capabilities`, { signal }),
+    enabled: Boolean(nodeId),
+    staleTime: 30_000,
+  });
+}
+
 export function useProviders(nodeId: string | null) {
   return useQuery({
     queryKey: qk.providers(nodeId ?? ""),
@@ -305,7 +321,7 @@ function buildIndex(catalog: Catalog): CatalogIndex {
   const nodes: NodeView[] = catalog.nodes.map((snapshot) => {
     const entry = directory.get(snapshot.node_id) ?? null;
     const liveness: NodeLiveness = entry?.state ?? "unknown";
-    return { node_id: snapshot.node_id, label: snapshot.label || entry?.label || snapshot.node_id, snapshot, directory: entry, liveness, stale: liveness !== "online" };
+    return { node_id: snapshot.node_id, label: nonEmptyText(snapshot.label) ?? nonEmptyText(entry?.label) ?? snapshot.node_id, snapshot, directory: entry, liveness, stale: liveness !== "online" };
   });
   const seen = new Set(nodes.map((view) => view.node_id));
   for (const entry of catalog.directory) {
@@ -320,7 +336,7 @@ function buildIndex(catalog: Catalog): CatalogIndex {
     all: entries.map((entry) => entry.descriptor),
     component: (nodeId, componentId) => byKey.get(instanceKey(nodeId, componentId))?.descriptor ?? null,
     entry: (nodeId, componentId) => byKey.get(instanceKey(nodeId, componentId)) ?? null,
-    nodeLabel: (nodeId) => labels.get(nodeId) || directory.get(nodeId)?.label || null,
+    nodeLabel: (nodeId) => nonEmptyText(labels.get(nodeId)) ?? nonEmptyText(directory.get(nodeId)?.label) ?? null,
     online: (nodeId) => {
       const entry = directory.get(nodeId);
       return entry ? entry.state === "online" : null;
@@ -353,6 +369,28 @@ export function findComponent(catalog: Catalog | undefined, nodeId: string, comp
 }
 
 export function nodeLabel(catalog: Catalog | undefined, nodeId: string | null | undefined): string {
-  if (!nodeId) return "—";
+  if (!(nodeId != null && nodeId !== "")) return "—";
   return indexCatalog(catalog).nodeLabel(nodeId) ?? nodeId;
+}
+
+// ---------------------------------------------------------------- 用到才載入（load_policy，x-phasyn-extension）
+
+/**
+ * 元件能不能接 run 的步驟：
+ * - ready：已載入（ready）或正在呼叫（busy；同一 run 內由 runner 排隊）；
+ * - on_use：load_policy=on_demand 且目前 stopped／loading／stopping——主控在步驟用到時自動載入（必要時替換互斥群組內閒置的
+ *   on_demand 元件），等 ready 再送出呼叫，所以「渲染」不必擋；載入時間的估計在 GET /api/cost-profiles 的 load_ms；
+ * - unavailable：其他情況（resident 元件已停止、error），步驟送出後會失敗。
+ */
+export type ComponentAvailability = "ready" | "on_use" | "unavailable";
+
+export function componentAvailability(descriptor: Pick<ComponentDescriptor, "state" | "load_policy">): ComponentAvailability {
+  if (descriptor.state === "ready" || descriptor.state === "busy") return "ready";
+  if (descriptor.load_policy === "on_demand" && (descriptor.state === "stopped" || descriptor.state === "loading" || descriptor.state === "stopping")) return "on_use";
+  return "unavailable";
+}
+
+/** 步驟可以用這個元件（已就緒，或用到時會自動載入）。 */
+export function componentUsable(descriptor: Pick<ComponentDescriptor, "state" | "load_policy">): boolean {
+  return componentAvailability(descriptor) !== "unavailable";
 }

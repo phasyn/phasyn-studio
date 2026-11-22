@@ -62,7 +62,7 @@ export function randomSeed(): number {
 }
 
 /** 每個 seed 在清單中第幾次出現（0 起算）：重複 seed 的每一張都是獨立的圖。 */
-export function seedOccurrences(seeds: readonly number[]): Array<{ seed: number; occurrence: number }> {
+export function seedOccurrences(seeds: readonly number[]): { seed: number; occurrence: number }[] {
   const counts = new Map<number, number>();
   return seeds.map((seed) => {
     const occurrence = counts.get(seed) ?? 0;

@@ -28,7 +28,7 @@ export function DraftField({
   className?: string;
 }) {
   const [draft, setDraft] = useState<{ base: string; text: string; error: string | null } | null>(null);
-  const active = draft && draft.base === value ? draft : null;
+  const active = draft?.base === value ? draft : null;
   const errorId = `${id}-error`;
   const commit = () => {
     if (!active || active.text === value) {
@@ -36,7 +36,7 @@ export function DraftField({
       return;
     }
     const rejection = onCommit(active.text);
-    setDraft(rejection ? { ...active, error: rejection } : null);
+    setDraft((rejection != null && rejection !== "") ? { ...active, error: rejection } : null);
   };
   return (
     <span className={cn("grid min-w-0 gap-0.5", className)}>
@@ -48,11 +48,11 @@ export function DraftField({
         placeholder={placeholder}
         disabled={disabled}
         inputMode={inputMode}
-        aria-invalid={active?.error ? true : undefined}
-        aria-describedby={active?.error ? errorId : undefined}
+        aria-invalid={(active?.error != null && active.error !== "") ? true : undefined}
+        aria-describedby={(active?.error != null && active.error !== "") ? errorId : undefined}
         data-escape-local={active ? "true" : undefined}
         className={cn("min-h-7 px-2", mono && "machine")}
-        onChange={(event) => setDraft({ base: value, text: event.target.value, error: null })}
+        onChange={(event) => { setDraft({ base: value, text: event.target.value, error: null }); }}
         onBlur={commit}
         onKeyDown={(event) => {
           if (event.key === "Enter" && !event.nativeEvent.isComposing) {
@@ -65,7 +65,7 @@ export function DraftField({
           }
         }}
       />
-      {active?.error ? (
+      {(active?.error != null && active.error !== "") ? (
         <span id={errorId} className="text-caption text-danger">
           {t("{error}（Esc 還原）", { error: active.error })}
         </span>

@@ -39,15 +39,17 @@ import weakref
 from dataclasses import asdict, dataclass
 from fractions import Fraction
 from pathlib import Path
-from typing import Any
+from typing import IO, Any, Self
 
 import numpy as np
+
+from phasyn_media._validate import integer_value
 
 from .errors import MediaCanceled, MediaError, cancel_requested
 from .files import check_output_path, file_sha256, partial_path, publish, remove_quietly
 from .limits import DEFAULT_LIMITS, MediaLimits
 from .mux import container_for_suffix
-from .timeline import check_video_stream, scan_timeline
+from .timeline import TrackCheck, check_video_stream, scan_timeline
 from .tools import (
     ManagedProcess,
     find_ffmpeg,
@@ -59,6 +61,11 @@ from .tools import (
     tool_env,
 )
 
+
+_MAX_QUALITY = 51
+_VIDEO_ARRAY_DIMENSIONS = 4
+
+
 CODECS = ("h264", "hevc", "av1")
 PIXEL_FORMATS = ("yuv420p", "yuv420p10le")
 PROVIDERS = ("cpu_ffmpeg", "nvenc")
@@ -68,28 +75,50 @@ CPU_ENCODERS: dict[str, tuple[str, ...]] = {
     "hevc": ("libx265",),
     "av1": ("libsvtav1", "libaom-av1"),
 }
-NVENC_ENCODERS: dict[str, str] = {"h264": "h264_nvenc", "hevc": "hevc_nvenc", "av1": "av1_nvenc"}
-TRACK_COLOR = {"color_primaries": "bt709", "color_transfer": "bt709", "color_space": "bt709", "color_range": "tv"}
+NVENC_ENCODERS: dict[str, str] = {
+    "h264": "h264_nvenc",
+    "hevc": "hevc_nvenc",
+    "av1": "av1_nvenc",
+}
+TRACK_COLOR = {
+    "color_primaries": "bt709",
+    "color_transfer": "bt709",
+    "color_space": "bt709",
+    "color_range": "tv",
+}
 _PRESET = re.compile(r"^[A-Za-z0-9_\-]{1,16}$")
 _WRITE_SLICE = 4 * 1024 * 1024
 _EOF = object()
 
 
 def _positive_int(name: str, value: Any, maximum: int | None = None) -> int:
-    if isinstance(value, bool) or not isinstance(value, (int, np.integer)) or int(value) <= 0:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, np.integer))
+        or int(value) <= 0
+    ):
         raise MediaError("INVALID_ARGUMENT", f"{name} 必須是正整數", actual=value)
     if maximum is not None and int(value) > maximum:
-        raise MediaError("INVALID_ARGUMENT", f"{name} 超過上限", expected=f"<= {maximum}", actual=value)
+        raise MediaError(
+            "INVALID_ARGUMENT",
+            f"{name} 超過上限",
+            expected=f"<= {maximum}",
+            actual=value,
+        )
     return int(value)
 
 
-def resolve_encoder_name(codec: str, provider: str, *, ffmpeg: str | None = None) -> str:
+def resolve_encoder_name(
+    codec: str, provider: str, *, ffmpeg: str | None = None
+) -> str:
     """Pick the FFmpeg encoder for codec/provider from the encoders actually built in."""
     available = list_encoders(ffmpeg)
     if provider == "nvenc":
         name = NVENC_ENCODERS[codec]
         if name not in available:
-            raise MediaError("UNSUPPORTED_COMBINATION", f"此 FFmpeg 建置沒有 {name} 編碼器")
+            raise MediaError(
+                "UNSUPPORTED_COMBINATION", f"此 FFmpeg 建置沒有 {name} 編碼器"
+            )
         return name
     for name in CPU_ENCODERS[codec]:
         if name in available:
@@ -114,21 +143,46 @@ def video_filter(pixel_format: str, encoder_name: str) -> str:
 
 
 def encoder_args(
-    encoder_name: str, *, quality: int, pixel_format: str, preset: str | None = None, container: str = "mp4"
+    encoder_name: str,
+    *,
+    quality: int,
+    pixel_format: str,
+    preset: str | None = None,
+    container: str = "mp4",
 ) -> list[str]:
     """Quality-mode (CRF/CQ) arguments without B-frames for one encoder."""
     if preset is not None and not _PRESET.match(preset):
         raise MediaError("INVALID_ARGUMENT", "preset 名稱不合法")
     q = str(int(quality))
     if encoder_name == "libx264":
-        args = ["-c:v", "libx264", "-preset", preset or "medium", "-crf", q, "-bf", "0", "-pix_fmt", pixel_format]
+        args = [
+            "-c:v",
+            "libx264",
+            "-preset",
+            preset or "medium",
+            "-crf",
+            q,
+            "-bf",
+            "0",
+            "-pix_fmt",
+            pixel_format,
+        ]
     elif encoder_name == "libx265":
         args = [
             "-c:v", "libx265", "-preset", preset or "medium", "-crf", q,
             "-x265-params", "log-level=error:bframes=0", "-pix_fmt", pixel_format,
         ]  # fmt: skip
     elif encoder_name == "libsvtav1":
-        args = ["-c:v", "libsvtav1", "-preset", preset or "8", "-crf", q, "-pix_fmt", pixel_format]
+        args = [
+            "-c:v",
+            "libsvtav1",
+            "-preset",
+            preset or "8",
+            "-crf",
+            q,
+            "-pix_fmt",
+            pixel_format,
+        ]
     elif encoder_name == "libaom-av1":
         args = [
             "-c:v", "libaom-av1", "-cpu-used", preset or "6", "-row-mt", "1",
@@ -151,6 +205,8 @@ def encoder_args(
 
 @dataclass(frozen=True)
 class EncodedTrack:
+    """A completed single-stream video and its encoding metadata."""
+
     path: Path
     frames: int
     width: int
@@ -175,6 +231,7 @@ class EncodedTrack:
     gpu_uuid: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
+        """Return the serializable field values."""
         doc = asdict(self)
         doc.pop("path")
         return doc
@@ -192,7 +249,27 @@ def _emergency_cleanup(proc: ManagedProcess | None, partial: Path) -> None:
 class StreamingVideoEncoder:
     """FFmpeg companion fed by a bounded queue of RGB uint8 ``[F,H,W,3]`` chunks."""
 
-    def __init__(
+    def _init_queue(self, max_queue_chunks: int) -> None:
+        self._frame_bytes = self.width * self.height * 3
+        self._queue: queue.Queue[Any] = queue.Queue(maxsize=max_queue_chunks)
+        self._lock = threading.Lock()
+        self._error: MediaError | None = None
+        self._started = False
+        self._aborted = False
+        self._finished = False
+        self._track: EncodedTrack | None = None
+        self._frames_queued = 0
+        self._frames_fed = 0
+        self._returncode: int | None = None
+        self._eof_written = threading.Event()
+        self._exited = threading.Event()
+        self._abort_event = threading.Event()
+        self._proc: ManagedProcess | None = None
+        self._threads: list[threading.Thread] = []
+        self._finalizer: Any = None
+        self.encoder_name = ""
+
+    def __init__(  # noqa: PLR0913 - Preserve the public keyword signature.
         self,
         output_path: str | Path,
         *,
@@ -216,40 +293,27 @@ class StreamingVideoEncoder:
         idle_timeout_seconds: float | None = None,
         on_progress: Any = None,
     ) -> None:
+        """Validate the encoding configuration and prepare the output transaction."""
         self._limits = limits
         self.width = _positive_int("width", width, limits.max_width)
         self.height = _positive_int("height", height, limits.max_height)
         if self.width % 2 or self.height % 2:
-            raise MediaError("INVALID_ARGUMENT", "4:2:0 編碼要求寬高為偶數", actual=f"{self.width}x{self.height}")
+            raise MediaError(
+                "INVALID_ARGUMENT",
+                "4:2:0 編碼要求寬高為偶數",
+                actual=f"{self.width}x{self.height}",
+            )
         if self.width * self.height > limits.max_pixels:
             raise MediaError("INVALID_ARGUMENT", "畫面像素數超過上限")
         self.fps_num = _positive_int("fps_num", fps_num, 240_000)
         self.fps_den = _positive_int("fps_den", fps_den, 1001)
-        if codec not in CODECS:
-            raise MediaError(
-                "INVALID_ARGUMENT", f"video codec 必須是 {', '.join(CODECS)}", field_paths=["output.video_codec"]
-            )
-        if pixel_format not in PIXEL_FORMATS:
-            raise MediaError("INVALID_ARGUMENT", "pixel format 不支援", field_paths=["output.pixel_format"])
-        if isinstance(quality, bool) or not isinstance(quality, int) or not 1 <= quality <= 51:
-            raise MediaError("INVALID_ARGUMENT", "quality 必須是 1..51 的整數", field_paths=["output.quality"])
-        if provider not in PROVIDERS:
-            raise MediaError(
-                "INVALID_ARGUMENT", "provider 必須是 cpu_ffmpeg 或 nvenc（auto_validated 須先經 route_codec 解析）"
-            )
-        if provider == "nvenc":
-            if gpu_uuid is None and gpu_index is None:
-                raise MediaError("INVALID_ARGUMENT", "nvenc 需要指定 gpu_uuid 或 gpu_index")
-            if gpu_uuid is not None and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:\-]{0,127}", gpu_uuid):
-                raise MediaError("INVALID_ARGUMENT", "gpu_uuid 格式不合法")
-            if gpu_uuid is None and (isinstance(gpu_index, bool) or not isinstance(gpu_index, int) or gpu_index < 0):
-                raise MediaError("INVALID_ARGUMENT", "gpu_index 必須是非負整數")
-        if isinstance(max_queue_chunks, bool) or not isinstance(max_queue_chunks, int):
-            raise MediaError("INVALID_ARGUMENT", "max_queue_chunks 必須是整數")
-        if not 1 <= max_queue_chunks <= MAX_QUEUE_CHUNKS:
-            raise MediaError("INVALID_ARGUMENT", f"max_queue_chunks 必須介於 1..{MAX_QUEUE_CHUNKS}")
+        _check_encoding(codec, pixel_format, quality)
+        _check_encoder_device(provider, gpu_index, gpu_uuid)
+        _check_queue_capacity(max_queue_chunks)
         if expected_frames is not None:
-            expected_frames = _positive_int("expected_frames", expected_frames, limits.max_frames)
+            expected_frames = _positive_int(
+                "expected_frames", expected_frames, limits.max_frames
+            )
         self.codec = codec
         self.pixel_format = pixel_format
         self.quality = quality
@@ -269,41 +333,28 @@ class StreamingVideoEncoder:
             raise MediaError("INVALID_ARGUMENT", "影片軌輸出副檔名必須是 .mp4 或 .mkv")
         _name, self.container, self.media_type = container
         self._partial = partial_path(self._final)
-        self._frame_bytes = self.width * self.height * 3
-        self._queue: queue.Queue[Any] = queue.Queue(maxsize=max_queue_chunks)
-        self._lock = threading.Lock()
-        self._error: MediaError | None = None
-        self._started = False
-        self._aborted = False
-        self._finished = False
-        self._track: EncodedTrack | None = None
-        self._frames_queued = 0
-        self._frames_fed = 0
-        self._returncode: int | None = None
-        self._eof_written = threading.Event()
-        self._exited = threading.Event()
-        self._abort_event = threading.Event()
-        self._proc: ManagedProcess | None = None
-        self._threads: list[threading.Thread] = []
-        self._finalizer: Any = None
-        self.encoder_name = ""
+        self._init_queue(max_queue_chunks)
 
     # ------------------------------------------------------------------ properties
 
     @property
     def partial_path(self) -> Path:
+        """Return the temporary output path before publication."""
         return self._partial
 
     # ------------------------------------------------------------------ lifecycle
 
-    def __enter__(self) -> StreamingVideoEncoder:
+    def __enter__(self) -> Self:
+        """Open the managed resource for the duration of the context."""
         return self.start()
 
-    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        """Release the managed resource when its context exits."""
         if not self._finished:
             self.abort()
 
-    def start(self) -> StreamingVideoEncoder:
+    def start(self) -> Self:
+        """Start FFmpeg and open the frame input pipe."""
         with self._lock:
             if self._started:
                 return self
@@ -311,12 +362,13 @@ class StreamingVideoEncoder:
                 raise MediaError("INVALID_ARGUMENT", "編碼器已中止")
             self._started = True
         try:
-            if cancel_requested(self._cancel):
-                raise MediaCanceled("影片編碼已取消")
+            _check_start_canceled(self._cancel)
             ffmpeg = self._ffmpeg or find_ffmpeg()
             self._ffmpeg = ffmpeg
             self._ffprobe = self._ffprobe or find_ffprobe()
-            self.encoder_name = resolve_encoder_name(self.codec, self.provider, ffmpeg=ffmpeg)
+            self.encoder_name = resolve_encoder_name(
+                self.codec, self.provider, ffmpeg=ffmpeg
+            )
             argv = self._argv(ffmpeg)
             extra: dict[str, str] = {}
             if self.provider == "nvenc":
@@ -334,8 +386,13 @@ class StreamingVideoEncoder:
                 self._aborted = True
             remove_quietly(self._partial)
             raise
-        self._finalizer = weakref.finalize(self, _emergency_cleanup, self._proc, self._partial)
-        for target, name in ((self._feed, "media-encode-feeder"), (self._watch, "media-encode-watcher")):
+        self._finalizer = weakref.finalize(
+            self, _emergency_cleanup, self._proc, self._partial
+        )
+        for target, name in (
+            (self._feed, "media-encode-feeder"),
+            (self._watch, "media-encode-watcher"),
+        ):
             thread = threading.Thread(target=target, name=name, daemon=True)
             self._threads.append(thread)
             thread.start()
@@ -392,7 +449,7 @@ class StreamingVideoEncoder:
         if isinstance(frames, np.ndarray):
             if (
                 frames.dtype != np.uint8
-                or frames.ndim != 4
+                or frames.ndim != _VIDEO_ARRAY_DIMENSIONS
                 or frames.shape[0] < 1
                 or tuple(frames.shape[1:]) != (self.height, self.width, 3)
             ):
@@ -407,10 +464,14 @@ class StreamingVideoEncoder:
             data = bytes(frames)
             if not data or len(data) % self._frame_bytes:
                 raise MediaError(
-                    "INVALID_ARGUMENT", "raw frames 長度必須是 H×W×3 的整數倍", expected=f"k×{self._frame_bytes}"
+                    "INVALID_ARGUMENT",
+                    "raw frames 長度必須是 H×W×3 的整數倍",
+                    expected=f"k×{self._frame_bytes}",
                 )
             return data, len(data) // self._frame_bytes
-        raise MediaError("INVALID_ARGUMENT", "frames 必須是 numpy uint8 陣列或 raw bytes")
+        raise MediaError(
+            "INVALID_ARGUMENT", "frames 必須是 numpy uint8 陣列或 raw bytes"
+        )
 
     def write_chunk(self, frames: Any) -> None:
         """Queue one chunk; blocks while 4 chunks are pending; raises promptly on failure/cancel."""
@@ -420,8 +481,15 @@ class StreamingVideoEncoder:
         self.raise_if_failed()
         if self._frames_queued + count > self._limits.max_frames:
             self.abort()
-            raise MediaError("INVALID_ARGUMENT", "frame 數超過上限", expected=f"<= {self._limits.max_frames}")
-        if self._expected_frames is not None and self._frames_queued + count > self._expected_frames:
+            raise MediaError(
+                "INVALID_ARGUMENT",
+                "frame 數超過上限",
+                expected=f"<= {self._limits.max_frames}",
+            )
+        if (
+            self._expected_frames is not None
+            and self._frames_queued + count > self._expected_frames
+        ):
             self.abort()
             raise MediaError(
                 "INTEGRITY_MISMATCH",
@@ -437,15 +505,18 @@ class StreamingVideoEncoder:
             self.raise_if_failed()
             try:
                 self._queue.put(item, timeout=0.05)
-                return
             except queue.Full:
                 continue
+            else:
+                return
 
     def raise_if_failed(self) -> None:
         """Raise (and clean up) if the companion failed, cancel was requested or the encoder was aborted."""
         if cancel_requested(self._cancel):
             reason = getattr(self._cancel, "reason", "") or ""
-            self._fail(MediaCanceled("影片編碼已取消" + (f"：{reason}" if reason else "")))
+            self._fail(
+                MediaCanceled("影片編碼已取消" + (f"：{reason}" if reason else ""))
+            )
         error = self._error
         if error is not None:
             self.abort()
@@ -471,11 +542,17 @@ class StreamingVideoEncoder:
             self._proc.kill_tree()
         remove_quietly(self._partial)
 
-    def _feed(self) -> None:
+    def _encoder_input(self) -> tuple[ManagedProcess, IO[bytes]]:
         proc = self._proc
-        assert proc is not None
+        if proc is None:
+            raise RuntimeError("proc is unavailable in this media operation")
         stdin = proc.stdin
-        assert stdin is not None
+        if stdin is None:
+            raise RuntimeError("stdin is unavailable in this media operation")
+        return proc, stdin
+
+    def _feed(self) -> None:
+        proc, stdin = self._encoder_input()
         last_activity = time.monotonic()
         try:
             while not self._abort_event.is_set():
@@ -486,16 +563,7 @@ class StreamingVideoEncoder:
                 try:
                     item = self._queue.get(timeout=0.05)
                 except queue.Empty:
-                    if self._exited.is_set():
-                        return
-                    if time.monotonic() - last_activity > self._idle_timeout:
-                        self._fail(
-                            MediaError(
-                                "RESOURCE_EXHAUSTED",
-                                f"producer 超過 {self._idle_timeout:.0f} 秒未送出 frame，已終止編碼 companion",
-                            )
-                        )
-                        self._terminate()
+                    if self._feeder_idle(last_activity):
                         return
                     continue
                 if item is _EOF:
@@ -503,45 +571,54 @@ class StreamingVideoEncoder:
                     self._eof_written.set()
                     stdin.close()
                     return
-                data, count = item
-                view = memoryview(data)
-                for offset in range(0, len(view), _WRITE_SLICE):
-                    if self._abort_event.is_set():
-                        return
-                    if cancel_requested(self._cancel):
-                        self._fail(MediaCanceled("影片編碼已取消"))
-                        self._terminate()
-                        return
-                    stdin.write(view[offset : offset + _WRITE_SLICE])
-                stdin.flush()
-                self._frames_fed += count
+                if not self._feed_chunk(stdin, item):
+                    return
                 last_activity = time.monotonic()
                 if self._on_progress is not None:
-                    with contextlib.suppress(Exception):  # telemetry must never break the companion
+                    with contextlib.suppress(
+                        Exception
+                    ):  # telemetry must never break the companion
                         self._on_progress(self._frames_fed)
         except (OSError, ValueError):
-            if not self._abort_event.is_set():
-                proc.wait(1.0)
-                rc = proc.poll()
-                status = f"exit {rc}" if rc is not None else "管線中斷"
-                detail = self._stderr()
-                self._fail(
-                    MediaError(
-                        "MEDIA_TOOL_FAILED",
-                        f"FFmpeg 編碼 companion 失敗（{status}）" + (f"：{detail}" if detail else ""),
-                    )
-                )
-                self._terminate()
+            self._handle_write_error(proc)
         finally:
             if not self._eof_written.is_set():
-                try:
+                with contextlib.suppress(OSError, ValueError):
                     stdin.close()
-                except (OSError, ValueError):
-                    pass
+
+    def _feeder_idle(self, last_activity: float) -> bool:
+        if self._exited.is_set():
+            return True
+        if time.monotonic() - last_activity > self._idle_timeout:
+            self._fail(
+                MediaError(
+                    "RESOURCE_EXHAUSTED",
+                    f"producer 超過 {self._idle_timeout:.0f} 秒未送出 frame，已終止編碼 companion",
+                )
+            )
+            self._terminate()
+            return True
+        return False
+
+    def _handle_write_error(self, proc: ManagedProcess) -> None:
+        if not self._abort_event.is_set():
+            proc.wait(1.0)
+            rc = proc.poll()
+            status = f"exit {rc}" if rc is not None else "管線中斷"
+            detail = self._stderr()
+            self._fail(
+                MediaError(
+                    "MEDIA_TOOL_FAILED",
+                    f"FFmpeg 編碼 companion 失敗（{status}）"
+                    + (f"：{detail}" if detail else ""),
+                )
+            )
+            self._terminate()
 
     def _watch(self) -> None:
         proc = self._proc
-        assert proc is not None
+        if proc is None:
+            raise RuntimeError("proc is unavailable in this media operation")
         while True:
             rc = proc.poll()
             if rc is not None:
@@ -554,11 +631,16 @@ class StreamingVideoEncoder:
                 self._fail(
                     MediaError(
                         "MEDIA_TOOL_FAILED",
-                        f"FFmpeg 編碼 companion 失敗（exit {rc}）" + (f"：{detail}" if detail else ""),
+                        f"FFmpeg 編碼 companion 失敗（exit {rc}）"
+                        + (f"：{detail}" if detail else ""),
                     )
                 )
             elif not self._eof_written.is_set():
-                self._fail(MediaError("MEDIA_TOOL_FAILED", "FFmpeg 編碼 companion 在 EOF 前結束"))
+                self._fail(
+                    MediaError(
+                        "MEDIA_TOOL_FAILED", "FFmpeg 編碼 companion 在 EOF 前結束"
+                    )
+                )
         self._exited.set()
 
     # ------------------------------------------------------------------ completion
@@ -574,7 +656,10 @@ class StreamingVideoEncoder:
         if self._frames_queued == 0:
             self.abort()
             raise MediaError("INVALID_ARGUMENT", "沒有任何 frame 可編碼")
-        if self._expected_frames is not None and self._frames_queued != self._expected_frames:
+        if (
+            self._expected_frames is not None
+            and self._frames_queued != self._expected_frames
+        ):
             self.abort()
             raise MediaError(
                 "INTEGRITY_MISMATCH",
@@ -588,38 +673,22 @@ class StreamingVideoEncoder:
             self.raise_if_failed()
             if time.monotonic() > deadline:
                 self.abort()
-                raise MediaError("MEDIA_TOOL_FAILED", "等待 FFmpeg 編碼 companion 結束逾時")
+                raise MediaError(
+                    "MEDIA_TOOL_FAILED", "等待 FFmpeg 編碼 companion 結束逾時"
+                )
         self.raise_if_failed()
         for thread in self._threads:
             thread.join(5.0)
         if self._returncode != 0 or self._frames_fed != self._frames_queued:
             self.abort()
-            raise MediaError("MEDIA_TOOL_FAILED", "FFmpeg 編碼 companion 未完整消耗所有 frames")
+            raise MediaError(
+                "MEDIA_TOOL_FAILED", "FFmpeg 編碼 companion 未完整消耗所有 frames"
+            )
         fps = Fraction(self.fps_num, self.fps_den)
         try:
-            timeline = scan_timeline(
-                self._partial, limits=self._limits, ffprobe=self._ffprobe, cancel=self._cancel, expected_fps=fps
-            )
-            videos = timeline.of_type("video")
-            if len(videos) != 1 or len(timeline.streams) != 1:
-                raise MediaError("INTEGRITY_MISMATCH", "影片軌必須恰有一個 video stream")
-            check = check_video_stream(
-                videos[0],
-                fps=fps,
-                expected_frames=self._frames_queued,
-                width=self.width,
-                height=self.height,
-                codec=self.codec,
-                pixel_format=self.pixel_format,
-            )
-            if abs(check.start_seconds) > videos[0].tick_seconds + 1e-9:
-                raise MediaError("INTEGRITY_MISMATCH", "影片軌起始時間不是 0")
+            check = self._checked_track(fps)
             sha256, size = file_sha256(self._partial, cancel=self._cancel)
-            with self._lock:
-                if self._aborted:
-                    raise MediaCanceled("影片編碼已中止")
-                publish(self._partial, self._final)
-                self._finished = True
+            self._publish_track()
         except BaseException:
             self.abort()
             raise
@@ -646,6 +715,52 @@ class StreamingVideoEncoder:
             **TRACK_COLOR,
         )
         return self._track
+
+    def _feed_chunk(self, stdin: IO[bytes], item: Any) -> bool:
+        data, count = item
+        view = memoryview(data)
+        for offset in range(0, len(view), _WRITE_SLICE):
+            if self._abort_event.is_set():
+                return False
+            if cancel_requested(self._cancel):
+                self._fail(MediaCanceled("影片編碼已取消"))
+                self._terminate()
+                return False
+            stdin.write(view[offset : offset + _WRITE_SLICE])
+        stdin.flush()
+        self._frames_fed += count
+        return True
+
+    def _checked_track(self, fps: Fraction) -> TrackCheck:
+        timeline = scan_timeline(
+            self._partial,
+            limits=self._limits,
+            ffprobe=self._ffprobe,
+            cancel=self._cancel,
+            expected_fps=fps,
+        )
+        videos = timeline.of_type("video")
+        if len(videos) != 1 or len(timeline.streams) != 1:
+            raise MediaError("INTEGRITY_MISMATCH", "影片軌必須恰有一個 video stream")
+        check = check_video_stream(
+            videos[0],
+            fps=fps,
+            expected_frames=self._frames_queued,
+            width=self.width,
+            height=self.height,
+            codec=self.codec,
+            pixel_format=self.pixel_format,
+        )
+        if abs(check.start_seconds) > videos[0].tick_seconds + 1e-9:
+            raise MediaError("INTEGRITY_MISMATCH", "影片軌起始時間不是 0")
+        return check
+
+    def _publish_track(self) -> None:
+        with self._lock:
+            if self._aborted:
+                raise MediaCanceled("影片編碼已中止")
+            publish(self._partial, self._final)
+            self._finished = True
 
     def _cleanup_process(self) -> None:
         for thread in self._threads:
@@ -676,3 +791,61 @@ class StreamingVideoEncoder:
                 break
         self._cleanup_process()
         remove_quietly(self._partial)
+
+
+def _check_encoding(codec: str, pixel_format: str, quality: int) -> None:
+    if codec not in CODECS:
+        raise MediaError(
+            "INVALID_ARGUMENT",
+            f"video codec 必須是 {', '.join(CODECS)}",
+            field_paths=["output.video_codec"],
+        )
+    if pixel_format not in PIXEL_FORMATS:
+        raise MediaError(
+            "INVALID_ARGUMENT",
+            "pixel format 不支援",
+            field_paths=["output.pixel_format"],
+        )
+    if not integer_value(quality) or not 1 <= quality <= _MAX_QUALITY:
+        raise MediaError(
+            "INVALID_ARGUMENT",
+            "quality 必須是 1..51 的整數",
+            field_paths=["output.quality"],
+        )
+
+
+def _check_encoder_device(
+    provider: str, gpu_index: int | None, gpu_uuid: str | None
+) -> None:
+    if provider not in PROVIDERS:
+        raise MediaError(
+            "INVALID_ARGUMENT",
+            "provider 必須是 cpu_ffmpeg 或 nvenc（auto_validated 須先經 route_codec 解析）",
+        )
+    if provider == "nvenc":
+        if gpu_uuid is None and gpu_index is None:
+            raise MediaError("INVALID_ARGUMENT", "nvenc 需要指定 gpu_uuid 或 gpu_index")
+        if gpu_uuid is not None and not re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9_.:\-]{0,127}", gpu_uuid
+        ):
+            raise MediaError("INVALID_ARGUMENT", "gpu_uuid 格式不合法")
+        if gpu_uuid is None and (
+            isinstance(gpu_index, bool)
+            or not isinstance(gpu_index, int)
+            or gpu_index < 0
+        ):
+            raise MediaError("INVALID_ARGUMENT", "gpu_index 必須是非負整數")
+
+
+def _check_queue_capacity(max_queue_chunks: int) -> None:
+    if isinstance(max_queue_chunks, bool) or not isinstance(max_queue_chunks, int):
+        raise MediaError("INVALID_ARGUMENT", "max_queue_chunks 必須是整數")
+    if not 1 <= max_queue_chunks <= MAX_QUEUE_CHUNKS:
+        raise MediaError(
+            "INVALID_ARGUMENT", f"max_queue_chunks 必須介於 1..{MAX_QUEUE_CHUNKS}"
+        )
+
+
+def _check_start_canceled(cancel: Any) -> None:
+    if cancel_requested(cancel):
+        raise MediaCanceled("影片編碼已取消")

@@ -1,3 +1,4 @@
+import { isListed } from "@/lib/json";
 // How many segments of a one-click swap one render sends: a few at a time, so every segment can be checked against the
 // original as soon as it is done and a drifting one fixed before the next batch (a review-as-you-go
 // workflow), or as many as one run holds. Remembered per browser; the run's step limit always applies on top.
@@ -12,7 +13,7 @@ export type BatchSize = (typeof BATCH_SIZES)[number];
 export const swapBatchSize = createPersistentStore<BatchSize>({
   key: "phasyn.studio.swap.batch-size",
   initial: 3,
-  parse: (raw) => (BATCH_SIZES as readonly unknown[]).includes(raw) ? (raw as BatchSize) : 3,
+  parse: (raw) => isListed(raw, BATCH_SIZES) ? raw : 3,
 });
 
 export function batchSizeLabel(size: BatchSize): string {

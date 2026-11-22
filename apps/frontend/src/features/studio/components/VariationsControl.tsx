@@ -33,7 +33,7 @@ export function VariationsControl({ shot, onSent }: { shot: StudioShot; onSent: 
   const id = useId();
   const [choices, setChoices] = useState<VariantChoices>(INITIAL_CHOICES);
   const [pending, setPending] = useState(false);
-  const start = useRef<HTMLButtonElement>(null);
+  const startRef = useRef<HTMLButtonElement>(null);
   const block = useRenderBlock(shot);
   const lanes = useProjectLanes(project.project_id);
   const library = useMemo(() => project.library ?? [], [project.library]);
@@ -55,11 +55,11 @@ export function VariationsControl({ shot, onSent }: { shot: StudioShot; onSent: 
   const eta = useRenderEta(problem === null ? preview : NO_SHOTS);
 
   const submit = () => {
-    if (reason || pending) return;
+    if ((reason ?? "") || pending) return;
     setPending(true);
     void renderVariants(shot.shot_id, variantShots(shot, axes)).finally(() => {
       setPending(false);
-      onSent(document.activeElement === start.current);
+      onSent(document.activeElement === startRef.current);
     });
   };
   return (
@@ -79,15 +79,15 @@ export function VariationsControl({ shot, onSent }: { shot: StudioShot; onSent: 
           <h3 id={`${id}-list`} className="text-caption font-semibold text-fg-secondary">
             {t("會渲染的 take")}
           </h3>
-          {problem ? (
+          {(problem != null && problem !== "") ? (
             <p className="text-caption text-warning animate-fade-in">{problem}</p>
           ) : (
             <ol className="grid gap-1">
               {combos.map((combo, index) => {
                 const badge = comboBadge(shot, axes, combo, routeLabel);
                 return (
-                  <li key={`${combo.route}\n${combo.item?.item_id ?? ""}\n${combo.seed}`} ref={reveal(index)} title={badge.text} className="flex min-w-0 items-center gap-2 rounded-md bg-canvas/50 px-2 py-1 text-caption">
-                    <span className="machine shrink-0 font-semibold text-fg">{`#${shot.takes.length + index + 1}`}</span>
+                  <li key={`${combo.route}\n${combo.item?.item_id ?? ""}\n${String(combo.seed)}`} ref={reveal(index)} title={badge.text} className="flex min-w-0 items-center gap-2 rounded-md bg-canvas/50 px-2 py-1 text-caption">
+                    <span className="machine shrink-0 font-semibold text-fg">{`#${String(shot.takes.length + index + 1)}`}</span>
                     <span className={cn("min-w-0 truncate", badge.same ? "text-fg-tertiary" : "text-fg-secondary")}>{badge.text}</span>
                   </li>
                 );
@@ -98,7 +98,7 @@ export function VariationsControl({ shot, onSent }: { shot: StudioShot; onSent: 
       </div>
       <div className="grid shrink-0 gap-2 border-t border-white/8 p-3">
         {problem === null ? <EtaLine state={eta} /> : null}
-        <ActionButton ref={start} size="md" variant="primary" icon={<Shuffle aria-hidden />} pending={pending} disabledReason={reason} onClick={submit} className="w-full">
+        <ActionButton ref={startRef} size="md" variant="primary" icon={<Shuffle aria-hidden />} pending={pending} disabledReason={reason} onClick={submit} className="w-full">
           {t("渲染 {count} 個變體", { count })}
         </ActionButton>
       </div>

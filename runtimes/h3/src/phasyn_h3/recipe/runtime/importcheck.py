@@ -19,12 +19,20 @@ attributes it reads.
 
 from __future__ import annotations
 
+import argparse
 import ast
 import importlib
 import json
 import os
 import sys
 from pathlib import Path
+
+from phasyn_components.upstream import mismatches
+
+from ._observations import RuntimeObservation
+from .pins import SOURCES, pins
+from .sglang_env import OFFLINE_ENV
+
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 
@@ -37,7 +45,9 @@ def collect_sglang_imports(root: Path = PACKAGE_DIR) -> dict[str, set[str]]:
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
                 if node.module == "sglang" or node.module.startswith("sglang."):
-                    found.setdefault(node.module, set()).update(a.name for a in node.names if a.name != "*")
+                    found.setdefault(node.module, set()).update(
+                        a.name for a in node.names if a.name != "*"
+                    )
             elif isinstance(node, ast.Import):
                 for alias in node.names:
                     if alias.name == "sglang" or alias.name.startswith("sglang."):
@@ -54,18 +64,22 @@ def missing_imports(root: Path = PACKAGE_DIR) -> tuple[int, list[dict[str, str]]
     failures: list[dict[str, str]] = []
     checked = 0
     for module, names in sorted(collect_sglang_imports(root).items()):
-        try:
+        with RuntimeObservation() as package_import:
             mod = importlib.import_module(module)
-        except Exception as exc:  # report every failure, not just the first
-            failures.append({"module": module, "error": f"{type(exc).__name__}: {exc}"[:500]})
+        if (exc := package_import.error) is not None:
+            failures.append(
+                {"module": module, "error": f"{type(exc).__name__}: {exc}"[:500]}
+            )
             continue
         for name in sorted(names):
             checked += 1
             if not hasattr(mod, name):
-                try:  # `from pkg import submodule` is legal without the attribute set
+                with RuntimeObservation() as symbol_import:
                     importlib.import_module(f"{module}.{name}")
-                except Exception:
-                    failures.append({"module": module, "error": f"missing name {name!r}"})
+                if symbol_import.error is not None:
+                    failures.append(
+                        {"module": module, "error": f"missing name {name!r}"}
+                    )
     return checked, failures
 
 
@@ -79,33 +93,33 @@ def pin_report() -> dict[str, object]:
     package queries the device at import) is listed under ``requires_gpu`` instead of failing,
     like the import check above; ``--device`` checks those too.
     """
-    from phasyn_components.upstream import mismatches
-
-    from .pins import SOURCES, pins
-
     requires_gpu: list[str] = []
     checkable = []
     for group in SOURCES:
         for pin in pins(group):
             module = SOURCES[group][pin.label][0]
-            try:
+            with RuntimeObservation() as source_import:
                 importlib.import_module(module)
-            except Exception as exc:  # report, do not stop: the other pins are still checked
-                if NO_GPU_ERROR in str(exc):
-                    requires_gpu.append(pin.label)
-                    continue
+            if (exc := source_import.error) is not None and NO_GPU_ERROR in str(exc):
+                requires_gpu.append(pin.label)
+                continue
             checkable.append(pin)
     found = mismatches(checkable)
     return {
         "checked": len(checkable),
         "requires_gpu": sorted(requires_gpu),
-        "mismatches": [{"label": m.label, "expected": m.expected, "actual": m.actual} for m in found],
+        "mismatches": [
+            {"label": m.label, "expected": m.expected, "actual": m.actual}
+            for m in found
+        ],
     }
 
 
-def run(root: Path = PACKAGE_DIR, device: str | None = None, *, check_pins: bool = False) -> dict[str, object]:
+def run(
+    root: Path = PACKAGE_DIR, device: str | None = None, *, check_pins: bool = False
+) -> dict[str, object]:
+    """Check the imports required by the pinned H3 runtime."""
     os.environ["CUDA_VISIBLE_DEVICES"] = device or ""  # hidden unless one GPU is named
-    from .sglang_env import OFFLINE_ENV
 
     for key, value in OFFLINE_ENV.items():
         os.environ.setdefault(key, value)
@@ -126,14 +140,21 @@ def run(root: Path = PACKAGE_DIR, device: str | None = None, *, check_pins: bool
 
 
 def main(argv: list[str] | None = None) -> int:
-    import argparse
-
+    """Run the H3 runtime import and pin checks."""
     parser = argparse.ArgumentParser(prog="phasyn-h3-importcheck")
-    parser.add_argument("--device", default=None, help="GPU UUID to make visible for modules that need CUDA at import")
-    parser.add_argument("--pins", action="store_true", help="also check the pinned upstream sources (pins.py)")
+    parser.add_argument(
+        "--device",
+        default=None,
+        help="GPU UUID to make visible for modules that need CUDA at import",
+    )
+    parser.add_argument(
+        "--pins",
+        action="store_true",
+        help="also check the pinned upstream sources (pins.py)",
+    )
     args = parser.parse_args(argv)
     report = run(device=args.device, check_pins=args.pins)
-    print(json.dumps(report, indent=2, ensure_ascii=False))
+    sys.stdout.write(json.dumps(report, indent=2, ensure_ascii=False) + "\n")
     pins = report.get("pins")
     mismatched = bool(pins["mismatches"]) if isinstance(pins, dict) else False
     return 1 if report["failures"] or mismatched else 0

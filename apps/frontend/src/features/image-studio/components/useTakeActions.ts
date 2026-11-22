@@ -1,3 +1,4 @@
+import { optionalField } from "@/lib/json";
 // take 的動作（監看器工具列與 take 格子的選單共用）：設為使用中、比較、下載原圖／白底版、加入素材庫（白底版）、
 // 用在影片鏡頭、載入這組參數、用這組參數新增圖片、封存、永久刪除。每個寫入只送一次；不能做時選項保持可聚焦並寫出原因。
 import { Archive, ArchiveRestore, Clapperboard, Columns2, CopyPlus, Download, FolderPlus, SlidersHorizontal, Star, Trash2 } from "lucide-react";
@@ -8,7 +9,7 @@ import { maskDrafts } from "../hooks/maskDrafts";
 import { loadParamsPatch } from "../model/params";
 import { whiteItemId } from "../model/reconcile";
 import { takeLibraryItem, whiteLibraryItem } from "../model/sendToVideo";
-import { localId, takeNumber } from "../model/shots";
+import { activeImageTake, localId, takeNumber } from "../model/shots";
 import type { ImageAsset, StudioImageShot, StudioImageTake } from "../types";
 import { fileUrl } from "./display";
 import { t } from "@/i18n";
@@ -19,12 +20,12 @@ function safeName(text: string): string {
 
 /** 下載檔名：「圖片 1-take3-seed42.png」「…（白底）.png」。 */
 export function downloadName(shot: StudioImageShot, take: StudioImageTake, white: boolean): string {
-  return `${safeName(shot.title || "image")}-take${takeNumber(shot, take.take_id)}-seed${take.seed}${white ? t("（白底）") : ""}.png`;
+  return `${safeName(shot.title || "image")}-take${String(takeNumber(shot, take.take_id))}-seed${String(take.seed)}${white ? t("（白底）") : ""}.png`;
 }
 
 function downloadAsset(asset: ImageAsset, name: string) {
   const url = fileUrl(asset.file);
-  if (!url) return;
+  if (!(url != null && url !== "")) return;
   const anchor = document.createElement("a");
   anchor.href = url;
   anchor.download = name;
@@ -81,7 +82,7 @@ export function useTakeActions() {
       const id = localId("i");
       dispatch({ type: "duplicateImageShot", shotId: shot.image_shot_id, newShotId: id, title: t("{value}・take {takeNumber}", { value: shot.title || t("圖片"), takeNumber: takeNumber(shot, take.take_id) }), patch: loaded.patch });
       selectShot(id);
-      notify({ tone: loaded.warnings.length > 0 ? "warning" : "info", title: t("已用這組參數新增一張圖片"), detail: loaded.warnings.join(t("；")) || undefined });
+      notify({ tone: loaded.warnings.length > 0 ? "warning" : "info", title: t("已用這組參數新增一張圖片"), ...optionalField("detail", loaded.warnings.join(t("；")) || undefined) });
     },
     [dispatch, library, notify, selectShot],
   );
@@ -89,7 +90,7 @@ export function useTakeActions() {
   const menuItems = useCallback(
     (shot: StudioImageShot, take: StudioImageTake): MenuItem[] => {
       const done = take.state === "succeeded" && take.image !== null;
-      const active = shot.active_take_id === take.take_id;
+      const active = activeImageTake(shot)?.take_id === take.take_id;
       const inLibrary = takeLibraryItem(library, shot.image_shot_id, take);
       const archived = archivedRunIds.has(take.run_id);
       const rendering = take.state === "rendering";
@@ -102,14 +103,14 @@ export function useTakeActions() {
           label: active ? t("使用中") : t("設為使用中"),
           icon: Star,
           disabledReason: !done ? t("只有完成的 take 可以設為使用中") : active ? t("已經是使用中的 take") : null,
-          onSelect: () => dispatch({ type: "setActiveImageTake", shotId: shot.image_shot_id, takeId: take.take_id }),
+          onSelect: () => { dispatch({ type: "setActiveImageTake", shotId: shot.image_shot_id, takeId: take.take_id }); },
         },
         {
           id: "compare",
           label: comparing ? t("取消比較") : t("與監看中的 take 比較（B）"),
           icon: Columns2,
           disabledReason: comparing ? null : !done ? t("只有完成的 take 可以比較") : viewing ? t("這就是監看中的 take：先選另一個 take") : null,
-          onSelect: () => setCompareTakeId(comparing ? null : take.take_id),
+          onSelect: () => { setCompareTakeId(comparing ? null : take.take_id); },
         },
         {
           id: "download",
@@ -136,14 +137,14 @@ export function useTakeActions() {
           icon: FolderPlus,
           separatorBefore: true,
           disabledReason: inLibrary ? t("素材庫的「{name}」", { name: inLibrary.name }) : !done ? t("還沒有圖片") : take.image_white ? null : t("這個 take 沒有白底版"),
-          onSelect: () => addToLibrary(shot, take),
+          onSelect: () => { addToLibrary(shot, take); },
         },
         {
           id: "video",
           label: t("用在影片鏡頭…"),
           icon: Clapperboard,
           disabledReason: !done ? t("還沒有圖片") : take.image_white ? null : t("這個 take 沒有白底版"),
-          onSelect: () => setSendTarget({ shotId: shot.image_shot_id, takeId: take.take_id }),
+          onSelect: () => { setSendTarget({ shotId: shot.image_shot_id, takeId: take.take_id }); },
         },
         {
           id: "load",
@@ -155,7 +156,7 @@ export function useTakeActions() {
             loadParams(shot, take);
           },
         },
-        { id: "new", label: t("用這組參數新增一張圖片"), icon: CopyPlus, onSelect: () => newShotFromParams(shot, take) },
+        { id: "new", label: t("用這組參數新增一張圖片"), icon: CopyPlus, onSelect: () => { newShotFromParams(shot, take); } },
         {
           id: "archive",
           label: archived ? t("取消封存這次生成") : t("封存這次生成"),
@@ -170,7 +171,7 @@ export function useTakeActions() {
           icon: Trash2,
           tone: "danger",
           disabledReason: rendering ? t("生成中的 run 不能刪除：先取消或等它結束") : null,
-          onSelect: () => deleteRuns([take.run_id]),
+          onSelect: () => { deleteRuns([take.run_id]); },
         },
       ];
     },

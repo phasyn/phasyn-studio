@@ -25,8 +25,8 @@ const FIT_LEVELS = 5;
 
 export type FlowStatus = "todo" | "running" | "done" | "warning" | "error";
 
-export interface FlowTabItem {
-  id: string;
+export interface FlowTabItem<Id extends string = string> {
+  id: Id;
   /** 中文標籤（不含編號；編號由位置決定，顯示在圓點裡）。 */
   label: string;
   /** 英文副標（裝飾，寬螢幕才顯示）。 */
@@ -53,7 +53,7 @@ const DOT: Record<FlowStatus, string> = {
  * 圖示，不影響寬度。
  */
 function fitContent(tabs: readonly FlowTabItem[], value: string): string {
-  return `${value}\u0002${tabs.map((tab) => `${tab.id}\u0000${tab.label}\u0000${tab.en ?? ""}\u0000${tab.count ?? ""}\u0000${tab.countTone ?? ""}`).join("\u0001")}`;
+  return `${value}\u0002${tabs.map((tab) => `${tab.id}\u0000${tab.label}\u0000${tab.en ?? ""}\u0000${String(tab.count ?? "")}\u0000${tab.countTone ?? ""}`).join("\u0001")}`;
 }
 
 /** 計數的顏色；只剩圓點的步驟把 danger／warning 計數畫成圓點右上角的實心小標記（文字仍在可存取名稱裡）。 */
@@ -77,7 +77,7 @@ function Glyph({ status, index }: { status: FlowStatus; index: number }) {
   return <span className="machine text-[11px] leading-none font-semibold">{index + 1}</span>;
 }
 
-export function FlowTabs({
+export function FlowTabs<Id extends string>({
   tabs,
   value,
   onChange,
@@ -85,14 +85,14 @@ export function FlowTabs({
   label,
   className,
 }: {
-  tabs: readonly FlowTabItem[];
-  value: string;
-  onChange: (id: string) => void;
+  tabs: readonly FlowTabItem<Id>[];
+  value: Id;
+  onChange: (id: Id) => void;
   idPrefix: string;
   label: string;
   className?: string;
 }) {
-  const refs = useRef(new Map<string, HTMLButtonElement>());
+  const refsRef = useRef(new Map<string, HTMLButtonElement>());
   const listRef = useRef<HTMLDivElement>(null);
   const fit = useFitLevel(listRef, FIT_LEVELS, fitContent(tabs, value));
   const tight = fit >= 2;
@@ -103,7 +103,7 @@ export function FlowTabs({
     const tab = tabs[(index + tabs.length) % tabs.length];
     if (!tab) return;
     onChange(tab.id);
-    refs.current.get(tab.id)?.focus();
+    refsRef.current.get(tab.id)?.focus();
   };
   return (
     <div
@@ -122,7 +122,7 @@ export function FlowTabs({
         const selected = tab.id === value;
         const previous = tabs[index - 1];
         const status = STATUS_TEXT[tab.status];
-        const spoken = [status, tab.detail && tab.detail !== status ? tab.detail : null].filter(Boolean).join(t("："));
+        const spoken = [status, (tab.detail != null && tab.detail !== "") && tab.detail !== status ? tab.detail : null].filter(Boolean).join(t("："));
         // 只剩圓點時，名稱（與狀態）放進 title；可存取名稱由下面的報讀文字組成，不變
         const dotOnly = compact && !selected;
         return (
@@ -140,8 +140,8 @@ export function FlowTabs({
             ) : null}
             <button
               ref={(node) => {
-                if (node) refs.current.set(tab.id, node);
-                else refs.current.delete(tab.id);
+                if (node) refsRef.current.set(tab.id, node);
+                else refsRef.current.delete(tab.id);
               }}
               type="button"
               role="tab"
@@ -150,7 +150,7 @@ export function FlowTabs({
               aria-controls={`${idPrefix}-panel-${tab.id}`}
               tabIndex={selected ? 0 : -1}
               title={dotOnly ? `${t("步驟 {index}：", { index: index + 1 })}${tab.label}${spoken ? t("（{spoken}）", { spoken }) : ""}` : (tab.detail ?? undefined)}
-              onClick={() => onChange(tab.id)}
+              onClick={() => { onChange(tab.id); }}
               onKeyDown={(event) => {
                 if (event.key === "ArrowRight") focusAt(index + 1);
                 else if (event.key === "ArrowLeft") focusAt(index - 1);
@@ -186,7 +186,7 @@ export function FlowTabs({
               <StableLabel weight="semibold" className={cn(selected && "font-semibold", dotOnly && "sr-only")}>
                 {tab.label}
               </StableLabel>
-              {tab.en ? (
+              {(tab.en != null && tab.en !== "") ? (
                 <span aria-hidden className={cn(EN_LABEL, fit >= 1 ? "hidden" : "hidden @4xl:inline", selected ? "text-brand-cyan/85" : "text-fg-tertiary")}>
                   {tab.en}
                 </span>
@@ -197,7 +197,7 @@ export function FlowTabs({
           </Fragment>
         );
       })}
-      <ActiveIndicator container={listRef} edge="bottom" inset={14} className={wrapped ? "hidden" : undefined} />
+      <ActiveIndicator container={listRef} edge="bottom" inset={14} {...(wrapped ? { className: "hidden" } : {})} />
     </div>
   );
 }

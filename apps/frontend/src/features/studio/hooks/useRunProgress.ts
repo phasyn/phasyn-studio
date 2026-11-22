@@ -9,7 +9,7 @@ import { fetchRecordingEvents, fetchRecordingPage } from "@/api/recordings";
 import { studioKeys } from "@/api/studioProjects";
 import type { WireRun } from "@/api/types";
 import { buildBranchViews, ditBranches, emptyStepLog, findBranchRecording, foldEvents, type BranchView, type ProviderLookup, type StepLog } from "../model/progress";
-import { t } from "@/i18n";
+import { failureText } from "@/lib/errors";
 
 export const PROGRESS_POLL_MS = 1500;
 const EVENT_PAGE_LIMIT = 1000;
@@ -90,10 +90,10 @@ export function useRunProgress(run: WireRun | undefined, options: { poll: boolea
     ...runRecordingsOptions(runId, running),
     // 只在「DiT 執行中但還找不到它的 recording」時查；找到後交給實測指標面板的輪詢（若有開著）。
     enabled: (query) =>
-      options.poll && running && runId !== "" && branches.some((branch) => branch.step.state === "running" && !branch.step.recording_id && !findBranchRecording(branch.step, query.state.data?.items ?? [])),
+      options.poll && running && runId !== "" && branches.some((branch) => branch.step.state === "running" && !(branch.step.recording_id != null && branch.step.recording_id !== "") && !findBranchRecording(branch.step, query.state.data?.items ?? [])),
   });
   const items = recordings.data?.items ?? [];
-  const known = buildBranchViews(run, items, new Map(), options.lookup).flatMap((view) => (view.recordingId ? [{ recordingId: view.recordingId, live: view.phase === "live" }] : []));
+  const known = buildBranchViews(run, items, new Map(), options.lookup).flatMap((view) => ((view.recordingId != null && view.recordingId !== "") ? [{ recordingId: view.recordingId, live: view.phase === "live" }] : []));
   const logs = useQueries({
     queries: known.map(({ recordingId, live }) => stepLogOptions(recordingId, options.poll && live)),
   });
@@ -105,6 +105,6 @@ export function useRunProgress(run: WireRun | undefined, options: { poll: boolea
   const failed = logs.find((result) => result.isError)?.error;
   return {
     views: buildBranchViews(run, items, byId, options.lookup),
-    error: failed ? (isApiError(failed) ? t("{code}：{message}", { code: failed.code, message: failed.message }) : failed.message) : null,
+    error: failed ? (isApiError(failed) ? failureText(failed.code, failed.message) : failed.message) : null,
   };
 }

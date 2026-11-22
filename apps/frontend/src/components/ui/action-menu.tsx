@@ -23,7 +23,7 @@ function containsFixed(style: CSSStyleDeclaration): boolean {
   if (set(style.transform) || set(style.translate) || set(style.scale) || set(style.rotate) || set(style.perspective)) return true;
   if (set(style.filter) || set(style.backdropFilter)) return true;
   if (/paint|layout|strict|content/.test(style.contain) || CONTAINS_FIXED.test(style.willChange)) return true;
-  return style.containerType !== undefined && style.containerType !== "" && style.containerType !== "normal";
+  return "containerType" in style && style.containerType !== "" && style.containerType !== "normal";
 }
 
 /**
@@ -58,18 +58,18 @@ export function ActionMenu({
   onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const closing = useRef(false);
-  const reasonPrefix = useId();
+  const closingRef = useRef(false);
+  const reasonPrefixId = useId();
 
   const close = (restoreFocus: boolean) => {
-    if (closing.current) return;
-    closing.current = true;
-    if (restoreFocus && returnFocus?.isConnected) returnFocus.focus();
+    if (closingRef.current) return;
+    closingRef.current = true;
+    if (restoreFocus && (returnFocus?.isConnected === true)) returnFocus.focus();
     onClose();
   };
 
   const activate = (item: MenuItem) => {
-    if (item.disabledReason) return;
+    if (item.disabledReason != null && item.disabledReason !== "") return;
     close(true);
     item.onSelect();
   };
@@ -83,15 +83,15 @@ export function ActionMenu({
     // The anchor in the coordinates the menu is placed in
     const rect = { left: seen.left - frame.left, top: seen.top - frame.top, right: seen.right - frame.left, bottom: seen.bottom - frame.top };
     const position = placeMenu(rect, { width: menu.offsetWidth, height: menu.offsetHeight }, { width: frame.width, height: frame.height }, anchor.kind === "point" ? 2 : 4);
-    menu.style.left = `${position.left}px`;
-    menu.style.top = `${position.top}px`;
+    menu.style.left = `${String(position.left)}px`;
+    menu.style.top = `${String(position.top)}px`;
     // 進場位移的方向：選單在錨點上方時由下升起，否則由上落下（pop-in keyframes 讀這個變數）
     menu.style.setProperty("--motion-pop-y", position.top + 1 < rect.top ? "var(--motion-shift)" : "calc(var(--motion-shift) * -1)");
   });
 
   // 開啟（或換位置重新開啟）時聚焦第一個／最後一個選項
   useLayoutEffect(() => {
-    closing.current = false;
+    closingRef.current = false;
     const entries = menuItems(ref.current);
     // preventScroll：選單是 fixed，聚焦不應捲動底下的面板（捲動會關閉選單）
     (initialFocus === "last" ? entries.at(-1) : entries[0])?.focus({ preventScroll: true });
@@ -99,21 +99,21 @@ export function ActionMenu({
 
   const onOutsidePointer = useEffectEvent((event: PointerEvent) => {
     const target = event.target;
-    if (!(target instanceof Node) || ref.current?.contains(target)) return;
+    if (!(target instanceof Node) || Boolean(ref.current?.contains(target))) return;
     // 再按一次選單按鈕：交給按鈕自己的 click 關閉，避免關了又立刻打開（以 Shift+F10 從片段／鏡頭列開啟時照常關閉）
     if (anchor.kind === "element" && anchor.element.getAttribute("aria-haspopup") === "menu" && anchor.element.contains(target)) return;
     close(false);
   });
   const onOutsideScroll = useEffectEvent((event: Event) => {
-    if (event.target instanceof Node && ref.current?.contains(event.target)) return;
+    if (event.target instanceof Node && Boolean(ref.current?.contains(event.target))) return;
     close(false);
   });
-  const onResize = useEffectEvent(() => close(false));
+  const onResize = useEffectEvent(() => { close(false); });
 
   useEffect(() => {
-    const pointer = (event: PointerEvent) => onOutsidePointer(event);
-    const scroll = (event: Event) => onOutsideScroll(event);
-    const resize = () => onResize();
+    const pointer = (event: PointerEvent) => { onOutsidePointer(event); };
+    const scroll = (event: Event) => { onOutsideScroll(event); };
+    const resize = () => { onResize(); };
     document.addEventListener("pointerdown", pointer, true);
     window.addEventListener("scroll", scroll, true);
     window.addEventListener("resize", resize);
@@ -178,29 +178,29 @@ export function ActionMenu({
         if (next instanceof Node && event.currentTarget.contains(next)) return;
         if (next !== null) close(false);
       }}
-      onContextMenu={(event) => event.preventDefault()}
+      onContextMenu={(event) => { event.preventDefault(); }}
       className="material-popover fixed top-0 left-0 z-50 grid max-h-[calc(100vh-1rem)] w-max max-w-80 min-w-56 overflow-y-auto rounded-xl p-1 text-fg outline-none animate-pop-in forced-colors:border forced-colors:border-[CanvasText]"
     >
       {items.map((item) => {
-        const reasonId = item.disabledReason ? `${reasonPrefix}-${item.id}` : undefined;
+        const reasonId = (item.disabledReason != null && item.disabledReason !== "") ? `${reasonPrefixId}-${item.id}` : undefined;
         const Icon = item.icon;
         return (
           <Fragment key={item.id}>
-            {item.separatorBefore ? <div role="separator" className="mx-2 my-1 h-px bg-white/8" /> : null}
+            {(item.separatorBefore === true) ? <div role="separator" className="mx-2 my-1 h-px bg-white/8" /> : null}
             <button
               type="button"
               role="menuitem"
               tabIndex={-1}
-              aria-disabled={item.disabledReason ? true : undefined}
+              aria-disabled={(item.disabledReason != null && item.disabledReason !== "") ? true : undefined}
               aria-describedby={reasonId}
-              onClick={() => activate(item)}
+              onClick={() => { activate(item); }}
               onPointerMove={(event) => {
                 if (document.activeElement !== event.currentTarget) event.currentTarget.focus({ preventScroll: true });
               }}
               className={cn(
                 "flex min-h-8 w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-data outline-none transition-colors duration-(--duration-fast) [&_svg]:mt-0.5 [&_svg]:size-3.5 [&_svg]:shrink-0",
                 "focus-visible:ring-1 focus-visible:ring-brand-blue/55 focus-visible:ring-inset",
-                item.disabledReason
+                (item.disabledReason != null && item.disabledReason !== "")
                   ? "cursor-not-allowed text-fg-disabled focus:bg-white/5"
                   : item.tone === "danger"
                     ? "text-danger hover:bg-danger/12 focus:bg-danger/12"
@@ -210,13 +210,13 @@ export function ActionMenu({
               {Icon ? <Icon aria-hidden /> : <span aria-hidden className="size-3.5 shrink-0" />}
               <span className="grid min-w-0 flex-1">
                 <span>{item.label}</span>
-                {item.disabledReason ? (
+                {(item.disabledReason != null && item.disabledReason !== "") ? (
                   <span id={reasonId} className="text-caption text-fg-tertiary">
                     {item.disabledReason}
                   </span>
                 ) : null}
               </span>
-              {item.shortcut ? <kbd className="machine ml-3 shrink-0 text-caption text-fg-tertiary">{item.shortcut}</kbd> : null}
+              {(item.shortcut != null && item.shortcut !== "") ? <kbd className="machine ml-3 shrink-0 text-caption text-fg-tertiary">{item.shortcut}</kbd> : null}
             </button>
           </Fragment>
         );
@@ -251,7 +251,7 @@ export function MenuTriggerButton({
       aria-controls={open ? menuId : undefined}
       aria-label={label}
       title={label}
-      onClick={(event) => (open ? onClose() : onOpen(event.currentTarget, "first"))}
+      onClick={(event) => { if (open) { onClose(); } else { onOpen(event.currentTarget, "first"); } }}
       onKeyDown={(event) => {
         // 空白鍵／Enter 交給按鈕原生的 click（不讓監看器的全域空白鍵把它當成播放）
         if (event.key === " " || event.key === "Enter") {

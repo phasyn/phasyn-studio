@@ -20,7 +20,8 @@ import { T } from "@/i18n/T";
 
 const LIFECYCLE_GROUP = METRIC_GROUPS.find((group) => group.id === "lifecycle");
 
-function Value({ value, kind, nullText = t("未知") }: { value: Reported; kind: "bytes" | "count" | "ms" | "gbps"; nullText?: string }) {
+function Value({ value, kind, nullText: nullTextProp }: { value: Reported; kind: "bytes" | "count" | "ms" | "gbps"; nullText?: string }) {
+  const nullText = nullTextProp ?? t("未知");
   if (value === undefined) return <span className="text-fg-tertiary">{t("未回報")}</span>;
   if (value === null) return <span className="text-warning">{nullText}</span>;
   const text = kind === "bytes" ? formatBytes(value) : kind === "count" ? formatCount(value) : kind === "ms" ? formatMs(value) : formatGbps(value);
@@ -99,7 +100,7 @@ export function TransferSection({
             <label htmlFor={filterId} className="text-caption text-fg-tertiary">
               {t("類別篩選")}
             </label>
-            <Select id={filterId} value={filter} onChange={(event) => setFilter(event.target.value)} className="min-h-9 text-data">
+            <Select id={filterId} value={filter} onChange={(event) => { setFilter(event.target.value); }} className="min-h-9 text-data">
               {CATEGORY_FILTERS.map((entry) => (
                 <option key={entry.id} value={entry.id}>
                   {entry.label}
@@ -132,10 +133,10 @@ export function TransferSection({
                 <Th scope="col">logical bytes</Th>
                 <Th scope="col">no-op · pending</Th>
                 <Th scope="col">
-                  <T source={"host 區間加總<0>host monotonic</0>"} slots={[<span className="block font-normal" />]} />
+                  <T source={"host 區間加總<0>host monotonic</0>"} slots={[<span key="slot-0" className="block font-normal" />]} />
                 </Th>
                 <Th scope="col">
-                  <T source={"GPU event 加總<0>cuda_event</0>"} slots={[<span className="block font-normal" />]} />
+                  <T source={"GPU event 加總<0>cuda_event</0>"} slots={[<span key="slot-0" className="block font-normal" />]} />
                 </Th>
                 <Th scope="col">{t("有效頻寬")}</Th>
                 <Th scope="col">owner · byte_basis</Th>
@@ -151,7 +152,7 @@ export function TransferSection({
                     <Td>
                       <button
                         type="button"
-                        onClick={() => onSelectCategory(row.category)}
+                        onClick={() => { onSelectCategory(row.category); }}
                         aria-pressed={selected}
                         className="-mx-1 grid min-h-8 min-w-[9rem] justify-items-start rounded-sm px-1 text-left transition-colors duration-(--duration-fast) hover:bg-raised/60 pointer-coarse:min-h-11"
                       >
@@ -198,7 +199,7 @@ export function TransferSection({
         </TableScroll>
       )}
       <h4 className="text-data font-semibold text-fg-secondary">{t("權重生命週期與 I/O 計數")}</h4>
-      {LIFECYCLE_GROUP?.note ? <p className="text-caption text-fg-tertiary">{LIFECYCLE_GROUP.note}</p> : null}
+      {(LIFECYCLE_GROUP?.note != null && LIFECYCLE_GROUP.note !== "") ? <p className="text-caption text-fg-tertiary">{LIFECYCLE_GROUP.note}</p> : null}
       <MetricTable label={t("權重生命週期與 I/O 計數")} rows={lifecycleRows} />
     </section>
   );

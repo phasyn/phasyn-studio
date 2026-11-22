@@ -31,9 +31,9 @@ export function stepSpec(id: StepId): StepSpec {
  * 從 run 明細「在語意頁查看與編輯」（只帶 describe_run）進來會直接到 Scene。
  */
 export function initialStep(params: { describeRun: string | null; captionRun: string | null; exportRun: string | null }): StepId {
-  if (params.exportRun) return "dataset";
-  if (params.captionRun) return "caption";
-  if (params.describeRun) return "scene";
+  if (params.exportRun != null && params.exportRun !== "") return "dataset";
+  if (params.captionRun != null && params.captionRun !== "") return "caption";
+  if (params.describeRun != null && params.describeRun !== "") return "scene";
   return "describe";
 }
 
@@ -76,7 +76,7 @@ export function captionBlockReason(input: {
   hasScenePort: boolean;
   issueCount: number;
 }): string | null {
-  if (input.sceneBlock) return input.sceneBlock;
+  if (input.sceneBlock != null && input.sceneBlock !== "") return input.sceneBlock;
   if (!input.hasScene) return t("沒有 Scene");
   if (!input.hasDescriptor) return t("目錄中沒有 caption.compile 元件");
   if (!input.hasScenePort) return t("此元件沒有 video.scene.v1 輸入");
@@ -106,8 +106,8 @@ const FAILED_TEXT: Record<string, string> = { failed: t("失敗"), interrupted: 
 
 /** run 的最終失敗狀態（失敗、中斷、取消）→ 錯誤；其他回傳 null。 */
 function failure(state: string | null, what: string): StepFlow | null {
-  const text = state ? FAILED_TEXT[state] : undefined;
-  return text ? { status: "error", detail: `${what}${text}` } : null;
+  const text = (state != null && state !== "") ? FAILED_TEXT[state] : undefined;
+  return (text != null && text !== "") ? { status: "error", detail: `${what}${text}` } : null;
 }
 
 export function semanticsFlow(input: {

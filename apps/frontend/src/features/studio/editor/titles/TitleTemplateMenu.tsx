@@ -38,7 +38,7 @@ export function TitleTemplateMenu({ labelled = false }: { labelled?: boolean }) 
     label: template.label,
     icon: template.icon,
     disabledReason: editor.problem,
-    onSelect: () => add(template),
+    onSelect: () => { add(template); },
   }));
 
   return (
@@ -47,8 +47,8 @@ export function TitleTemplateMenu({ labelled = false }: { labelled?: boolean }) 
         menuId={menuId}
         open={menu !== null}
         label={name}
-        onOpen={(anchor, focus) => setMenu({ anchor, focus })}
-        onClose={() => setMenu(null)}
+        onOpen={(anchor, focus) => { setMenu({ anchor, focus }); }}
+        onClose={() => { setMenu(null); }}
         className={cn(
           "[&_svg]:size-4",
           labelled ? "min-h-8 gap-1.5 border border-line-strong bg-raised px-3 text-data font-medium text-fg hover:border-action/60 hover:bg-overlay" : "size-7 [&_svg]:size-3.5",
@@ -70,7 +70,7 @@ export function TitleTemplateMenu({ labelled = false }: { labelled?: boolean }) 
           anchor={{ kind: "element", element: menu.anchor }}
           returnFocus={menu.anchor}
           initialFocus={menu.focus}
-          onClose={() => setMenu(null)}
+          onClose={() => { setMenu(null); }}
         />
       ) : null}
     </>

@@ -35,7 +35,7 @@ function AttributesForm({ onClose }: { onClose: () => void }) {
     else setError(refused);
   };
   return (
-    <DialogContent onKeyDown={(event) => event.stopPropagation()}>
+    <DialogContent onKeyDown={(event) => { event.stopPropagation(); }}>
       <DialogHeader>
         <DialogTitle>{t("貼上屬性")}</DialogTitle>
         <DialogDescription>{t("把「{clip}」的屬性貼到選取的 {count} 個片段。", { clip: copied?.name ?? "", count })}</DialogDescription>
@@ -50,12 +50,12 @@ function AttributesForm({ onClose }: { onClose: () => void }) {
                 description={choice.reason ?? choice.detail}
                 checked={chosen.has(choice.id)}
                 disabled={choice.reason !== null}
-                onChange={(event) => toggle(choice.id, event.target.checked)}
+                onChange={(event) => { toggle(choice.id, event.target.checked); }}
               />
             </div>
           ))}
         </div>
-        {error ? (
+        {(error != null && error !== "") ? (
           <p role="alert" className="mt-2 text-data text-danger [overflow-wrap:anywhere]">
             {error}
           </p>
@@ -76,7 +76,7 @@ function AttributesForm({ onClose }: { onClose: () => void }) {
 export function PasteAttributesDialog() {
   const editor = useEditor();
   const open = editor.ui.pastingAttributes;
-  const close = () => editor.ui.setPastingAttributes(false);
+  const close = () => { editor.ui.setPastingAttributes(false); };
   return (
     <Dialog
       open={open}

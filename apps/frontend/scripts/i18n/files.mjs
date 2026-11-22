@@ -82,6 +82,7 @@ const AREA_RULES = [
   ["src/features/inference/", "inference"],
   ["src/features/prompt-studies/", "inference"],
   ["src/features/semantics/", "inference"],
+  ["src/features/lora-training/", "inference"],
   ["src/features/components/", "components"],
   ["src/features/pipelines/", "components"],
   ["src/features/recordings/", "records"],

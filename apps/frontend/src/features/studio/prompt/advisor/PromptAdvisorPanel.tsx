@@ -3,6 +3,7 @@
 // 不連網、不自動改字；「沒有發現問題」只代表規則沒有偵測到，不代表 prompt 一定能生成預期畫面。
 // 面板本身不捲動：由外層容器（編輯器側欄）負責捲動。
 // 外觀：嚴重度是膠囊小籤（顏色只表示嚴重度，一律配圖示與文字）；清單俐落、不發光；展開的範本與預覽以 reveal 出現。
+import { focusOpenedControl } from "@/lib/dom";
 import { ClipboardCopy, LayoutTemplate, ListChecks, LoaderCircle } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { StudioLibraryItem, StudioReference } from "@/api/generated/contracts";
@@ -74,7 +75,7 @@ function ShotFacts({ mode, frames, references }: { mode: PromptMode | null; fram
 
 export function PromptAdvisorPanel({ text, mode = null, frames, references, library, firstFrame, onApplyFix, onRevealRange, onInsertTemplate, disabled = false }: PromptAdvisorPanelProps) {
   const id = useId();
-  const { findings, stale } = useAdvisorFindings({ text, mode, frames, references, library, firstFrame });
+  const { findings, stale } = useAdvisorFindings({ text, mode, frames, references, library, ...(firstFrame === undefined ? {} : { firstFrame }) });
   const keyed = useMemo(() => keyFindings(findings), [findings]);
   const counts = countBySeverity(findings);
   const templates = useMemo(() => promptTemplates({ mode, frames, references, library }), [mode, frames, references, library]);
@@ -114,7 +115,7 @@ export function PromptAdvisorPanel({ text, mode = null, frames, references, libr
     let range = item.range;
     if (stale) {
       // 分析的是前一版文字：重新找一次同一個發現的位置
-      const fresh = analyzePrompt({ text, mode, frames, references, library, firstFrame }).filter((other) => other.id === item.id);
+      const fresh = analyzePrompt({ text, mode, frames, references, library, ...(firstFrame === undefined ? {} : { firstFrame }) }).filter((other) => other.id === item.id);
       const match = fresh.find((other) => other.title === item.title) ?? fresh[0];
       if (match?.range) range = match.range;
     }
@@ -123,7 +124,7 @@ export function PromptAdvisorPanel({ text, mode = null, frames, references, libr
 
   const copyRequest = async () => {
     if (copyPending) return;
-    const request = buildRewriteRequest({ text, mode, frames, references, library, firstFrame });
+    const request = buildRewriteRequest({ text, mode, frames, references, library, ...(firstFrame === undefined ? {} : { firstFrame }) });
     setCopyPending(true);
     const ok = await copyText(request);
     setCopyPending(false);
@@ -138,7 +139,7 @@ export function PromptAdvisorPanel({ text, mode = null, frames, references, libr
   };
 
   const insertTemplate = (template: PromptTemplate) => {
-    if (!onInsertTemplate || disabled || template.unavailable) return;
+    if (!onInsertTemplate || disabled || (template.unavailable != null && template.unavailable !== "")) return;
     onInsertTemplate(template.text);
     setTemplatesOpen(false);
     announce(t("已插入範本「{title}」。", { title: template.title }), true);
@@ -156,9 +157,9 @@ export function PromptAdvisorPanel({ text, mode = null, frames, references, libr
           open={open?.key === key ? open.kind : null}
           blockedReason={disabled ? DISABLED_REASON : null}
           canReveal={Boolean(onRevealRange)}
-          onToggle={(kind) => setOpen((current) => (current?.key === key && current.kind === kind ? null : { key, kind }))}
-          onReveal={() => reveal(item)}
-          onApply={(kind) => apply(item, kind)}
+          onToggle={(kind) => { setOpen((current) => (current?.key === key && current.kind === kind ? null : { key, kind })); }}
+          onReveal={() => { reveal(item); }}
+          onApply={(kind) => { apply(item, kind); }}
         />
       ))}
     </ul>
@@ -202,7 +203,7 @@ export function PromptAdvisorPanel({ text, mode = null, frames, references, libr
             icon={<LayoutTemplate aria-hidden />}
             aria-expanded={templatesOpen}
             aria-controls={templatesOpen ? `${id}-templates` : undefined}
-            onClick={() => setTemplatesOpen((value) => !value)}
+            onClick={() => { setTemplatesOpen((value) => !value); }}
           >
             {t("範本")}
           </Button>
@@ -223,7 +224,7 @@ export function PromptAdvisorPanel({ text, mode = null, frames, references, libr
             id={`${id}-templates`}
             templates={templates}
             mode={mode}
-            onInsert={onInsertTemplate ? insertTemplate : undefined}
+            {...(onInsertTemplate ? { onInsert: insertTemplate } : {})}
             insertBlockedReason={disabled ? DISABLED_REASON : null}
             onCopy={(template) => void copyTemplate(template)}
           />
@@ -235,14 +236,14 @@ export function PromptAdvisorPanel({ text, mode = null, frames, references, libr
           <div className="grid gap-1.5">
             <textarea
               readOnly
-              autoFocus
+              ref={focusOpenedControl}
               rows={6}
               value={fallback}
               aria-label={t("要複製的文字")}
-              onFocus={(event) => event.currentTarget.select()}
+              onFocus={(event) => { event.currentTarget.select(); }}
               className="w-full resize-y rounded-lg border border-line-control bg-sunken px-2 py-1.5 font-sans text-caption leading-5 text-fg"
             />
-            <Button size="sm" variant="quiet" className="min-h-7 justify-self-end px-2" onClick={() => setFallback(null)}>
+            <Button size="sm" variant="quiet" className="min-h-7 justify-self-end px-2" onClick={() => { setFallback(null); }}>
               {t("關閉")}
             </Button>
           </div>

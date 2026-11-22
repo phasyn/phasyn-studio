@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { formatMs } from "./format";
 
 export function isoToMs(iso: string | null | undefined): number | null {
-  if (!iso) return null;
+  if (!(iso != null && iso !== "")) return null;
   const value = Date.parse(iso);
   return Number.isNaN(value) ? null : value;
 }
@@ -26,7 +26,7 @@ export function useNow(active: boolean, intervalMs = 1000): number | null {
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
     if (!active) return;
-    const tick = () => setNow(Date.now());
+    const tick = () => { setNow(Date.now()); };
     const first = window.setTimeout(tick, 0);
     const timer = window.setInterval(tick, intervalMs);
     return () => {

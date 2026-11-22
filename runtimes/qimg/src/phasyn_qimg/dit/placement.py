@@ -9,7 +9,7 @@
   ``low_cpu_mem_usage`` follows ``pin_memory`` explicitly); a static pin must first pass the RAM admission.
 
 Available VRAM for admission comes from the shared helper (``admission.fill_device_memory`` →
-``phasyn_qimg.memory``): ``mem_get_info`` free on a discrete GPU, MemAvailable − reserve on an
+``phasyn_qimg.memory``): ``mem_get_info`` free on a discrete GPU, MemAvailable - reserve on an
 integrated/unified-memory GPU (``memory_model`` or ``is_integrated``).
 """
 
@@ -25,12 +25,16 @@ from phasyn_components.errors import ComponentError
 
 from ..memory import DEFAULT_UNIFIED_RESERVE_BYTES
 from . import admission
+from .loading import block_layout
+
 
 GROUP_HOOK = "group_offloading"
 
 
 @dataclass
 class PlacementState:
+    """The actual device placement and retained offload hooks."""
+
     mode: str
     device: Any
     pin_memory: str | None
@@ -42,6 +46,7 @@ class PlacementState:
 
     @property
     def weight_bytes(self) -> int:
+        """Count the bytes occupied by the weight files."""
         return int(self.layout["total_bytes"])
 
 
@@ -53,14 +58,17 @@ def _has_placement_hooks(module: Any) -> str | None:
 
 
 def _fill_vram(est: admission.Estimate, state: PlacementState) -> admission.Estimate:
-    """共用 helper 量測可用量（先釋放此程序未使用的 CUDA 快取；含其他程序與顯示用量）；量不到 → None＋原因。"""
+    """共用 helper 量測可用量（先釋放此程序未使用的 CUDA 快取；含其他程序與顯示用量）；量不到 → None+原因."""
     return admission.fill_device_memory(
-        est, state.device, memory_model=state.memory_model, unified_reserve_bytes=state.unified_reserve_bytes
+        est,
+        state.device,
+        memory_model=state.memory_model,
+        unified_reserve_bytes=state.unified_reserve_bytes,
     )
 
 
 def find_groups(transformer: Any) -> list[Any]:
-    """group offload 的 ModuleGroup（block 與非 block 的 unmatched group），依出現順序去重。"""
+    """Group offload 的 ModuleGroup（block 與非 block 的 unmatched group），依出現順序去重."""
     groups: list[Any] = []
     seen: set[int] = set()
     for module in transformer.modules():
@@ -75,7 +83,7 @@ def find_groups(transformer: Any) -> list[Any]:
     return groups
 
 
-def apply_load_placement(
+def apply_load_placement(  # noqa: PLR0913 - Keep the published runtime API.
     transformer: Any,
     *,
     mode: str,
@@ -85,16 +93,19 @@ def apply_load_placement(
     memory_model: str = "auto",
     unified_reserve_bytes: int = DEFAULT_UNIFIED_RESERVE_BYTES,
 ) -> PlacementState:
-    """load 階段：依 placement 放置 fresh CPU Transformer；回傳之後 invoke 需要的狀態。"""
+    """Load 階段：依 placement 放置 fresh CPU Transformer；回傳之後 invoke 需要的狀態."""
     import torch
-
-    from .loading import block_layout
 
     hooked = _has_placement_hooks(transformer)
     if hooked is not None:
-        raise ComponentError("RUNTIME_ERROR", f"Transformer 已有 placement hook（{hooked}）；placement 只能套用一次")
+        raise ComponentError(
+            "RUNTIME_ERROR",
+            f"Transformer 已有 placement hook（{hooked}）；placement 只能套用一次",
+        )
     if any(p.device.type != "cpu" for p in transformer.parameters()):
-        raise ComponentError("RUNTIME_ERROR", "placement 需要尚未搬移的 CPU Transformer")
+        raise ComponentError(
+            "RUNTIME_ERROR", "placement 需要尚未搬移的 CPU Transformer"
+        )
     layout = block_layout(transformer)
     state = PlacementState(
         mode=mode,
@@ -119,7 +130,10 @@ def apply_load_placement(
         raise ComponentError("UNSUPPORTED_SETTING", f"placement={mode} 需要 CUDA 裝置")
     if mode == "none":
         if on_cuda:
-            est = _fill_vram(admission.load_vram_estimate(mode, weight_bytes=layout["total_bytes"]), state)
+            est = _fill_vram(
+                admission.load_vram_estimate(mode, weight_bytes=layout["total_bytes"]),
+                state,
+            )
             state.facts["load_admission"] = est.to_dict()
             admission.require(est)
         t0 = time.perf_counter()
@@ -165,7 +179,10 @@ def apply_load_placement(
         )
     else:
         raise ComponentError("UNSUPPORTED_SETTING", f"不支援的 placement {mode}")
-    rec.note(f"qimg.dit placement={mode}" + (f"（pin_memory={pin_memory}）" if pin_memory else ""))
+    rec.note(
+        f"qimg.dit placement={mode}"
+        + (f"（pin_memory={pin_memory}）" if pin_memory else "")
+    )
     return state
 
 
@@ -176,8 +193,7 @@ def invoke_admission(
     branches: list[admission.BranchShape],
     dequant_bytes: int = 0,
 ) -> admission.Estimate:
-    """VRAM admission before the call (estimate + the shared helper's measurement), with the full breakdown:
-    too little → GPU_MEMORY_INSUFFICIENT, not measurable → UNSUPPORTED_SETTING (``admission.require``)."""
+    """VRAM admission before the call (estimate + the shared helper's measurement), with the full breakdown: too little → GPU_MEMORY_INSUFFICIENT, not measurable → UNSUPPORTED_SETTING (``admission.require``)."""
     est = admission.invoke_vram_estimate(
         state.mode,
         dims=dims,
@@ -199,7 +215,7 @@ def invoke_admission(
 def invoke_placement(
     state: PlacementState, transformer: Any, *, rec: Any, pairs: Any = None
 ) -> Iterator[dict[str, Any]]:
-    """phase／gguf_phase：呼叫期間整個 Transformer 在 GPU；結束（含例外）移回 CPU。其他 placement 不動。"""
+    """phase／gguf_phase：呼叫期間整個 Transformer 在 GPU；結束（含例外）移回 CPU。其他 placement 不動."""
     info: dict[str, Any] = {}
     if state.mode not in ("phase", "gguf_phase"):
         yield info
@@ -230,7 +246,13 @@ def invoke_placement(
             reason=f"{state.mode}：呼叫前整個 Transformer 移入 GPU",
         )
         if pairs is not None:
-            pairs.pair(start, end, lambda ms, t=tid: rec.transfer_completed(t, completed_bytes=nbytes, gpu_event_ms=ms))
+            pairs.pair(
+                start,
+                end,
+                lambda ms, t=tid: rec.transfer_completed(
+                    t, completed_bytes=nbytes, gpu_event_ms=ms
+                ),
+            )
         info["h2d_host_ms"] = host_ms
         yield info
     finally:
@@ -261,4 +283,10 @@ def invoke_placement(
                 rec.count("offload_cycle_count", part="transformer")
 
 
-__all__ = ["PlacementState", "apply_load_placement", "find_groups", "invoke_admission", "invoke_placement"]
+__all__ = [
+    "PlacementState",
+    "apply_load_placement",
+    "find_groups",
+    "invoke_admission",
+    "invoke_placement",
+]

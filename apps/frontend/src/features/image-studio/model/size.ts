@@ -27,22 +27,22 @@ export function sideValid(value: number): boolean {
 }
 
 /** 單邊的問題（繁中）；合法時 null。 */
-export function sideProblem(value: number, label: string): string | null {
+export function sideProblem(value: number, label: string, alignment: number = multiple): string | null {
   if (!Number.isFinite(value)) return t("{label}必須是數字", { label });
   if (!Number.isInteger(value)) return t("{label}必須是整數", { label });
   if (value < min || value > max) return t("{label}須介於 {min}–{max}", { label, min, max });
-  if (value % multiple !== 0) return t("{label}必須是 {multiple} 的倍數（最接近的是 {snapSide}）", { label, multiple, snapSide: snapSide(value) });
+  if (value % alignment !== 0) return t("{label}必須是 {multiple} 的倍數（最接近的是 {snapSide}）", { label, multiple: alignment, snapSide: snapSide(value, alignment) });
   return null;
 }
 
-export function sizeProblem(width: number, height: number): string | null {
-  return sideProblem(width, t("寬度")) ?? sideProblem(height, t("高度"));
+export function sizeProblem(width: number, height: number, alignment?: number): string | null {
+  return sideProblem(width, t("寬度"), alignment) ?? sideProblem(height, t("高度"), alignment);
 }
 
 /** 最接近的合法單邊（四捨五入到 32 的倍數，再夾到 256–2048）。 */
-export function snapSide(value: number): number {
+export function snapSide(value: number, alignment: number = multiple): number {
   if (!Number.isFinite(value)) return min;
-  const snapped = Math.round(value / multiple) * multiple;
+  const snapped = Math.round(value / alignment) * alignment;
   return Math.min(max, Math.max(min, snapped));
 }
 
@@ -61,7 +61,7 @@ export function aspectLabel(width: number, height: number): string {
   if (!(width > 0 && height > 0)) return "—";
   const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
   const divisor = gcd(Math.round(width), Math.round(height));
-  return `${Math.round(width) / divisor}:${Math.round(height) / divisor}`;
+  return `${String(Math.round(width) / divisor)}:${String(Math.round(height) / divisor)}`;
 }
 
 /** 兩種解碼方式的固定說明（「採樣」分頁的 ⓘ）。 */

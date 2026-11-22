@@ -63,9 +63,9 @@ function numbers(text: string, pattern: RegExp): number[] {
 function namedKeys(ctx: RuleContext, group: ShotGroup): Set<string> {
   const keys = new Set<string>();
   for (const text of group.texts) {
-    for (const number of numbers(text, SUBJECT_TAG)) keys.add(`<Subject ${number}>`);
-    for (const number of numbers(text, PICTURE_TAG)) keys.add(`<Picture ${number}>`);
-    for (const number of numbers(text, IMAGE_MENTION)) keys.add(ctx.plan.byAlias.get(`Image${number}`)?.label ?? `@Image${number}`);
+    for (const number of numbers(text, SUBJECT_TAG)) keys.add(`<Subject ${String(number)}>`);
+    for (const number of numbers(text, PICTURE_TAG)) keys.add(`<Picture ${String(number)}>`);
+    for (const number of numbers(text, IMAGE_MENTION)) keys.add(ctx.plan.byAlias.get(`Image${String(number)}`)?.label ?? `@Image${String(number)}`);
   }
   return keys;
 }
@@ -73,7 +73,7 @@ function namedKeys(ctx: RuleContext, group: ShotGroup): Set<string> {
 /** A defined label as namedKeys writes it: <Subject 01> and <Subject 1> are the same subject (compared by number). */
 function definedKey(key: string): string {
   const tag = /^<(Subject|Picture)[ \t]*(\d{1,3})>$/.exec(key);
-  return tag ? `<${tag[1]} ${Number(tag[2])}>` : key;
+  return tag ? `<${String(tag[1])} ${String(Number(tag[2]))}>` : key;
 }
 
 function subjectRule(ctx: RuleContext, groups: readonly ShotGroup[]): Finding[] {
@@ -108,7 +108,7 @@ function viewpointRule(groups: readonly ShotGroup[]): Finding[] {
   const missing = groups.filter((group) => group.texts.some((text) => numbers(text, SUBJECT_TAG).length > 0) && statedViewpoint(group.texts.join("\n")) === null);
   const first = missing[0];
   if (!first) return [];
-  const shots = listSome(missing.map((group) => `[Shot ${group.number}]`));
+  const shots = listSome(missing.map((group) => `[Shot ${String(group.number)}]`));
   return [
     finding("shot.viewpoint", {
       title: t("{shots} 沒寫視角", { shots }),
@@ -154,7 +154,7 @@ function negationRule(groups: readonly ShotGroup[]): Finding[] {
   return [
     finding("shot.negation", {
       title: t("{shots} 有否定詞：{words}", {
-        shots: listSome(found.map((item) => `[Shot ${item.group.number}]`)),
+        shots: listSome(found.map((item) => `[Shot ${String(item.group.number)}]`)),
         words: listSome(found.flatMap((item) => item.hits.map((hit) => hit.text))),
       }),
       detail: t(

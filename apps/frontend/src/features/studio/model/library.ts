@@ -14,6 +14,7 @@ export type LibraryUse =
   | { kind: "reference"; shotId: string; index: number; title: string; aliases: string[] }
   /** 影片鏡頭以這張圖片當首幀（fl2va）。 */
   | { kind: "first_frame"; shotId: string; index: number; title: string }
+  | { kind: "previs"; shotId: string; index: number; title: string }
   /** Image Studio 圖片的參考圖。 */
   | { kind: "image_reference"; shotId: string; index: number; title: string }
   /** Image Studio 圖片的遮罩。 */
@@ -69,6 +70,9 @@ export function libraryUses(project: StudioProject, swapSourceId: string | null 
     const aliases = new Map<string, string[]>();
     for (const ref of shot.references ?? []) aliases.set(ref.item_id, [...(aliases.get(ref.item_id) ?? []), `@${ref.alias}`]);
     for (const [itemId, list] of aliases) add(itemId, { kind: "reference", shotId: shot.shot_id, index, title: shot.title, aliases: list });
+    for (const itemId of new Set(shot.previs?.layers.map((layer) => layer.item_id))) {
+      if ((itemId != null && itemId !== "")) add(itemId, { kind: "previs", shotId: shot.shot_id, index, title: shot.title });
+    }
     const frame = firstFrameItemId(shot);
     if (frame !== null) add(frame, { kind: "first_frame", shotId: shot.shot_id, index, title: shot.title });
   });
@@ -95,7 +99,7 @@ export function withoutLibraryItem(project: StudioProject, itemId: string): Stud
   if (!library.some((item) => item.item_id === itemId) || libraryItemUses(project, itemId).length > 0) return project;
   const next: StudioProject = { ...project, library: library.filter((item) => item.item_id !== itemId) };
   const linked = (shot: NonNullable<StudioProject["image_shots"]>[number]) => shot.takes.some((take) => take.library_item_id === itemId);
-  if (project.image_shots?.some(linked)) {
+  if (project.image_shots?.some(linked) === true) {
     next.image_shots = project.image_shots.map((shot) =>
       linked(shot) ? { ...shot, takes: shot.takes.map((take) => (take.library_item_id === itemId ? { ...take, library_item_id: null } : take)) } : shot,
     );
@@ -286,7 +290,7 @@ export function renderMatches(entry: RenderEntry, terms: readonly string[]): boo
   if (terms.length === 0) return true;
   const fields =
     entry.kind === "take"
-      ? [renderEntryName(entry), entry.take.prompt, `seed ${entry.take.seed}`, entry.take.route, entry.take.run_id, entry.take.take_id]
+      ? [renderEntryName(entry), entry.take.prompt, entry.take.seed === null ? "" : `seed ${String(entry.take.seed)}`, entry.take.route, entry.take.run_id, entry.take.take_id]
       : [renderEntryName(entry), entry.record.run_id, entry.record.export_id];
   const text = libraryFold(fields.join("\n"));
   return terms.every((term) => text.includes(term));

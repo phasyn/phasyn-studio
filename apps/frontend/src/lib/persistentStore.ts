@@ -16,9 +16,16 @@ export interface PersistentStoreOptions<T> {
   crossTab?: boolean;
 }
 
+/** A function passed to set always updates the previous value; functions themselves cannot be JSON preferences. */
+type StoreUpdate<T> = Exclude<T, (...args: never[]) => unknown> | ((current: T) => T);
+
+function isUpdater<T>(candidate: StoreUpdate<T>): candidate is (current: T) => T {
+  return typeof candidate === "function";
+}
+
 export interface PersistentStore<T> {
   get(): T;
-  set(next: T | ((current: T) => T)): void;
+  set(next: StoreUpdate<T>): void;
   subscribe(listener: () => void): () => void;
   /** React hook: the current value, re-rendering on every change. */
   use(): T;
@@ -58,8 +65,8 @@ export function createPersistentStore<T>(options: PersistentStoreOptions<T>): Pe
     for (const listener of listeners) listener();
   };
 
-  const set = (next: T | ((current: T) => T)): void => {
-    const value = typeof next === "function" ? (next as (current: T) => T)(get()) : next;
+  const set = (next: StoreUpdate<T>): void => {
+    const value = isUpdater(next) ? next(get()) : next;
     if (Object.is(value, get())) return;
     memory = value;
     snapshot = { value };

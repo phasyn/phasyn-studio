@@ -1,6 +1,13 @@
 // 唯一的 HTTP 傳輸 seam：同源 /api，沒有登入、權杖或驗證標頭。
 // 寫入（POST/PUT/PATCH）一律不自動重送：timeout 表示遠端結果未知，由使用者決定是否建立新的請求。
-import type { ApiErrorBody } from "./generated/contracts";
+import type { ApiErrorBody, PhasynStudioContracts } from "./generated/contracts";
+import type { DeleteComponentResult } from "./components";
+import type { PipelineList } from "./pipelines";
+import type { DeletedPreset } from "./presets";
+import type { PurgeResult } from "./runs";
+import type { RunPage, RunRequestBody, WirePipeline, WireRun } from "./types";
+import { matchesWireShape, wireDefinitions } from "@/lib/contractSchemas";
+import { isRecord } from "@/lib/json";
 import { t } from "@/i18n";
 import { hasDotSegment, pathSegment } from "@/lib/url";
 
@@ -10,7 +17,7 @@ export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
  * This tab, as the Controller's Studio audit trail names it (X-Phasyn-Client): one random id per page load, so a write
  * that lost someone's edit can be traced to the tab that sent it. It identifies a tab, never a person.
  */
-export const CLIENT_ID = `studio-tab/${(globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)).slice(0, 8)}`;
+export const CLIENT_ID = `studio-tab/${Array.from(crypto.getRandomValues(new Uint8Array(4)), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
 export type QueryValue = string | number | boolean | null | undefined;
 
 export interface RequestOptions {
@@ -19,7 +26,7 @@ export interface RequestOptions {
   json?: unknown;
   body?: BodyInit;
   headers?: Record<string, string>;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   /** 頁面卸載時仍送出（例如離開前最後一次保存）；結果不保證可讀回。 */
   keepalive?: boolean;
 }
@@ -37,7 +44,7 @@ export class ApiError extends Error {
     super(body?.message ?? fallback);
     this.name = "ApiError";
     this.status = status;
-    this.code = body?.code ?? (status === 0 ? "NETWORK_ERROR" : `HTTP_${status}`);
+    this.code = body?.code ?? (status === 0 ? "NETWORK_ERROR" : `HTTP_${String(status)}`);
     this.details = body?.details ?? {};
     this.remoteOutcomeUnknown = Boolean(body?.remote_outcome_unknown);
     this.method = method;
@@ -70,11 +77,13 @@ async function readBody(response: Response): Promise<unknown> {
   }
 }
 
-function asErrorBody(value: unknown): Partial<ApiErrorBody> | null {
-  if (value && typeof value === "object" && "code" in value && "message" in value) {
-    return value as Partial<ApiErrorBody>;
-  }
-  return null;
+export function asErrorBody(value: unknown): Partial<ApiErrorBody> | null {
+  if (!isRecord(value) || typeof value["code"] !== "string" || typeof value["message"] !== "string") return null;
+  return {
+    code: value["code"], message: value["message"],
+    ...(isRecord(value["details"]) ? { details: value["details"] } : {}),
+    ...(typeof value["remote_outcome_unknown"] === "boolean" ? { remote_outcome_unknown: value["remote_outcome_unknown"] } : {}),
+  };
 }
 
 /** 發出請求並回傳原始 Response（下載、串流用）；非 2xx 轉成 ApiError。 */
@@ -93,9 +102,9 @@ export async function apiFetch(path: string, options: RequestOptions = {}): Prom
     response = await fetch(buildUrl(path, options.query), {
       method,
       headers,
-      body,
-      signal: options.signal,
-      keepalive: options.keepalive,
+      ...(body === undefined ? {} : { body }),
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
+      ...(options.keepalive === undefined ? {} : { keepalive: options.keepalive }),
       credentials: "same-origin",
     });
   } catch (cause) {
@@ -109,15 +118,63 @@ export async function apiFetch(path: string, options: RequestOptions = {}): Prom
   }
   if (!response.ok) {
     const parsed = await readBody(response);
-    throw new ApiError(response.status, asErrorBody(parsed), `HTTP ${response.status}`, method);
+    throw new ApiError(response.status, asErrorBody(parsed), `HTTP ${String(response.status)}`, method);
   }
   return response;
 }
 
 /** JSON 請求。 */
-export async function apiJson<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const response = await apiFetch(path, options);
-  return (await readBody(response)) as T;
+export async function apiJson(path: string, options: RequestOptions = {}): Promise<unknown> {
+  return readBody(await apiFetch(path, options));
+}
+
+export type ControllerReplies = Required<PhasynStudioContracts> & {
+  WireRunRequest: RunRequestBody; WireRun: WireRun; WirePipeline: WirePipeline; RunPage: RunPage; PipelineList: PipelineList;
+  DeletedPipeline: { pipeline_id: string; deleted: boolean }; DeletedRecording: { recording_id: string; deleted: boolean };
+  DeletedPreset: DeletedPreset; DeleteComponentResult: DeleteComponentResult; PurgeResult: PurgeResult;
+};
+export type ReplyName = keyof ControllerReplies;
+
+const wireNames: Partial<Record<ReplyName, string>> = {
+  WireRunRequest: "RunRequest", ApiErrorBody: "Error", RecordingEvent: "Event", WireRun: "Run", WirePipeline: "Pipeline",
+  RunPage: "ListRuns", PipelineList: "ListPipelines",
+};
+const strings = { type: "array", items: { type: "string" } };
+const integer = { type: "integer" };
+const nullableInteger = { type: ["integer", "null"] };
+const stringField = { type: "string" };
+const removed = (key: string, deleted: { const: true } | { type: "boolean" } = { const: true }) => ({ type: "object", required: [key, "deleted"], properties: { [key]: stringField, deleted } });
+const extensions: Partial<Record<ReplyName, unknown>> = {
+  DeletedPipeline: removed("pipeline_id", { type: "boolean" }), DeletedRecording: removed("recording_id", { type: "boolean" }),
+  DeletedPreset: removed("preset_id"),
+  DeleteComponentResult: removed("component_id"),
+  PurgeResult: {
+    type: "object", required: ["run_id", "dry_run", "deleted", "files", "recordings", "projects"],
+    properties: {
+      run_id: stringField, dry_run: { type: "boolean" }, deleted: { type: "boolean" },
+      files: { type: "array", items: {
+        type: "object", required: ["node_id", "file_id", "size_bytes", "status"],
+        properties: { node_id: stringField, file_id: stringField, size_bytes: nullableInteger, status: { enum: ["planned", "deleted", "missing", "failed"] }, code: stringField, message: stringField },
+      } },
+      recordings: { type: "object", required: ["planned", "deleted"], properties: { planned: integer, deleted: integer } },
+      projects: { type: "array", items: {
+        type: "object", required: ["project_id", "title", "takes_removed", "exports_removed", "revision"],
+        properties: { project_id: stringField, title: stringField, takes_removed: strings, exports_removed: strings, revision: nullableInteger },
+      } },
+    },
+  },
+};
+
+export function matchesReply<K extends ReplyName>(value: unknown, name: K, definitions: Record<string, unknown>): value is ControllerReplies[K] {
+  return matchesWireShape(value, extensions[name] ?? definitions[wireNames[name] ?? name], definitions);
+}
+
+/** Start the HTTP request immediately, including keepalive on page exit; check its reply without resubmitting. */
+export async function contractJson<K extends ReplyName>(name: K, path: string, options: RequestOptions = {}): Promise<ControllerReplies[K]> {
+  const [value, definitions] = await Promise.all([apiJson(path, options), wireDefinitions()]);
+  if (matchesReply(value, name, definitions)) return value;
+  const method = options.method ?? "GET";
+  throw new ApiError(0, { code: "INVALID_RESPONSE", remote_outcome_unknown: method !== "GET" }, t("回應格式不正確"), method);
 }
 
 /** 瀏覽器可直接播放／下載的 Node 檔案 URL（Controller 轉送，支援單一 Range）。 */

@@ -36,7 +36,7 @@ function SetCard({ set, endpoint }: { set: WeightSetStatus; endpoint: string }) 
     <li className="grid gap-2 rounded-lg border border-line-subtle bg-canvas/60 p-3">
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
         <span className="text-data font-semibold text-fg">{set.label}</span>
-        {repoHref ? (
+        {(repoHref != null && repoHref !== "") ? (
           <a className="machine inline-flex items-center gap-1 text-caption" href={repoHref} target="_blank" rel="noreferrer">
             {repoText}
             <ExternalLink aria-hidden className="size-3" />
@@ -72,14 +72,14 @@ function SetCard({ set, endpoint }: { set: WeightSetStatus; endpoint: string }) 
       <div className="flex items-start gap-1.5 text-caption">
         <Scale aria-hidden className="mt-0.5 size-3.5 shrink-0 text-fg-tertiary" />
         <span className="min-w-0">
-          {licenseHref ? (
+          {(licenseHref != null && licenseHref !== "") ? (
             <a href={licenseHref} target="_blank" rel="noreferrer">
               {set.license.name}
             </a>
           ) : (
             <span>{set.license.name}</span>
           )}
-          {set.license.note ? <span className="block text-fg-secondary">{tServer(set.license.note)}</span> : null}
+          {(set.license.note != null && set.license.note !== "") ? <span className="block text-fg-secondary">{tServer(set.license.note)}</span> : null}
         </span>
       </div>
       {missing.length > 0 ? (
@@ -93,7 +93,7 @@ function SetCard({ set, endpoint }: { set: WeightSetStatus; endpoint: string }) 
                 </span>
                 <span className="shrink-0 text-fg-tertiary">{formatBytes(file.size)}</span>
                 <span className={file.status === "mismatch" ? "shrink-0 text-warning" : "shrink-0 text-fg-tertiary"}>
-                  {file.link_from ? t("可共用") : (STATUS_LABEL[file.status]?.() ?? file.status)}
+                  {(file.link_from != null && file.link_from !== "") ? t("可共用") : (STATUS_LABEL[file.status]?.() ?? file.status)}
                 </span>
               </li>
             ))}
@@ -114,7 +114,7 @@ function JobStatus({ job, totals }: { job: WeightsDownloadJob; totals: WeightsTo
           value={fraction}
           tone="running"
           label={t("權重下載進度")}
-          valueText={fraction === null ? undefined : t("已收到 {done}／{total}", { done: formatBytes(job.bytes_done), total: formatBytes(job.bytes_total) })}
+          {...(fraction === null ? {} : { valueText: t("已收到 {done}／{total}", { done: formatBytes(job.bytes_done), total: formatBytes(job.bytes_total) }) })}
         />
         <p className="text-caption text-fg-secondary">
           {t("檔案 {done}／{total}（共用 {linked} 個）・已收到 {bytes}／{total_bytes}", {
@@ -166,7 +166,7 @@ function WeightsContent({ view, totals }: { view: WeightsView; totals: WeightsTo
         </dt>
         <dd className="machine text-fg [overflow-wrap:anywhere]">
           {view.root ?? "—"}
-          {view.root && !view.root_exists ? <span className="font-sans text-caption text-fg-tertiary">{t("（還不存在，下載時建立）")}</span> : null}
+          {(view.root != null && view.root !== "") && !view.root_exists ? <span className="font-sans text-caption text-fg-tertiary">{t("（還不存在，下載時建立）")}</span> : null}
         </dd>
         <dt className="text-fg-tertiary">{t("剩餘空間")}</dt>
         <dd className="text-fg">{view.free_bytes === null ? t("讀不到") : formatBytes(view.free_bytes)}</dd>
@@ -223,10 +223,10 @@ function WeightsBody({ entry, onClose }: { entry: ComponentEntry; onClose: () =>
   const totals = view ? weightsTotals(view, replace) : null;
 
   // 下載結束時重新讀目錄：元件可能已經可以啟動了
-  const lastState = useRef(job?.state);
+  const lastStateRef = useRef(job?.state);
   useEffect(() => {
-    if (lastState.current === "running" && job && job.state !== "running") void client.invalidateQueries({ queryKey: qk.catalog() });
-    lastState.current = job?.state;
+    if (lastStateRef.current === "running" && job && job.state !== "running") void client.invalidateQueries({ queryKey: qk.catalog() });
+    lastStateRef.current = job?.state;
   }, [job, client]);
 
   const blocked = view && totals ? downloadBlockedReason({ descriptor, view, totals, accepted, stale: node.stale }) : t("讀取中…");
@@ -254,7 +254,7 @@ function WeightsBody({ entry, onClose }: { entry: ComponentEntry; onClose: () =>
                 label={t("取代大小不同的檔案（{files} 個）", { files: totals.mismatchFiles })}
                 description={t("下載驗證通過後才取代；不勾選時這些檔案保持原樣。")}
                 checked={replace}
-                onChange={(event) => setReplace(event.target.checked)}
+                onChange={(event) => { setReplace(event.target.checked); }}
               />
             ) : null}
             <Checkbox
@@ -262,7 +262,7 @@ function WeightsBody({ entry, onClose }: { entry: ComponentEntry; onClose: () =>
               label={t("我已閱讀並同意上面列出的授權條款")}
               description={t("權重不隨 Phasyn Studio 散布；下載後依各自的授權使用。")}
               checked={accepted}
-              onChange={(event) => setAccepted(event.target.checked)}
+              onChange={(event) => { setAccepted(event.target.checked); }}
             />
           </div>
         ) : null}
@@ -272,7 +272,7 @@ function WeightsBody({ entry, onClose }: { entry: ComponentEntry; onClose: () =>
           {t("關閉")}
         </Button>
         {running ? (
-          <Button variant="danger" pending={cancel.isPending} onClick={() => cancel.mutate()}>
+          <Button variant="danger" pending={cancel.isPending} onClick={() => { cancel.mutate(); }}>
             {t("取消下載")}
           </Button>
         ) : (
@@ -281,7 +281,7 @@ function WeightsBody({ entry, onClose }: { entry: ComponentEntry; onClose: () =>
             icon={<Download aria-hidden />}
             disabledReason={blocked}
             pending={start.isPending}
-            onClick={() => start.mutate({ accept_licenses: true, replace_mismatched: replace })}
+            onClick={() => { start.mutate({ accept_licenses: true, replace_mismatched: replace }); }}
           >
             {label}
           </ActionButton>
@@ -300,7 +300,7 @@ export function WeightsDialog({ entry, open, onOpenChange }: { entry: ComponentE
           <DialogTitle>{t("模型權重：{label}", { label: entry.descriptor.label || entry.descriptor.component_id })}</DialogTitle>
           <DialogDescription>{t("只在你確認後下載，而且只寫進這個元件設定的模型目錄（load.model_path）；元件載入時仍然只讀本機檔案，不會自己下載。")}</DialogDescription>
         </DialogHeader>
-        {open ? <WeightsBody entry={entry} onClose={() => onOpenChange(false)} /> : null}
+        {open ? <WeightsBody entry={entry} onClose={() => { onOpenChange(false); }} /> : null}
       </DialogContent>
     </Dialog>
   );

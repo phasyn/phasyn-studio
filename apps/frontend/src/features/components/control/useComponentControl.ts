@@ -1,3 +1,4 @@
+import { withRecordValue } from "@/lib/json";
 // Start or stop components: one request each, then wait for the catalog to show the result (never resent).
 // Components on the same Node and resource group run one after another, different groups in parallel, and later clicks
 // queue behind the group's earlier work, so one device never gets two loads at once. A failure stops its group and the
@@ -11,12 +12,13 @@ import { isApiError } from "@/api/http";
 import { qk } from "@/api/keys";
 import { instanceKey } from "@/api/types";
 import { isAbortError } from "@/lib/async";
-import { t, tServer } from "@/i18n";
+import { t } from "@/i18n";
 import { planControlBatches } from "./batches";
 import { requestStart, sendControl } from "./exclusive";
 import { StartCancelled } from "./startWatch";
 import { useExclusiveConfirm } from "./useExclusiveConfirm";
 import { findIn, waitUntilReady, waitUntilStopped, WaitTimeout, type ReadComponent } from "./wait";
+import { failureText } from "@/lib/errors";
 
 export type ControlAction = "start" | "stop";
 export type ControlPhase = "queued" | "starting" | "stopping";
@@ -57,7 +59,7 @@ function failureOf(action: ControlAction, error: unknown): ControlFailure {
   if (error instanceof Declined) return { action, message: t("沒有送出：沒有確認停止互斥群組的其他元件"), unknown: false, skipped: true };
   if (error instanceof WaitTimeout) return { action, message: error.message, unknown: true };
   if (error instanceof StartCancelled) return { action, message: error.message, unknown: error.unknown };
-  if (isApiError(error)) return { action, message: t("{code}：{message}", { code: error.code, message: tServer(error.message) }), unknown: error.status === 0 || error.remoteOutcomeUnknown };
+  if (isApiError(error)) return { action, message: failureText(error.code, error.message), unknown: error.status === 0 || error.remoteOutcomeUnknown };
   return { action, message: error instanceof Error ? error.message : String(error), unknown: false };
 }
 
@@ -74,33 +76,28 @@ export function useComponentControl(options: { onEvent?: (event: ControlEvent) =
   const [phase, setPhase] = useState<Record<string, ControlPhase>>({});
   const [failures, setFailures] = useState<Record<string, ControlFailure>>({});
   /** Keys being worked on (checked synchronously, so double clicks never send twice). */
-  const inFlight = useRef(new Set<string>());
+  const inFlightRef = useRef(new Set<string>());
   /** The tail of each group's queue (runBatch never rejects, so the chain never breaks). */
-  const tails = useRef(new Map<string, Promise<void>>());
+  const tailsRef = useRef(new Map<string, Promise<void>>());
   const abortRef = useRef<AbortController | null>(null);
-  const onEvent = useRef(options.onEvent);
+  const onEventRef = useRef(options.onEvent);
 
   useEffect(() => {
-    onEvent.current = options.onEvent;
+    onEventRef.current = options.onEvent;
   });
 
   useEffect(() => {
     const controller = new AbortController();
     abortRef.current = controller;
-    return () => controller.abort();
+    return () => { controller.abort(); };
   }, []);
 
   const setPhaseOf = useCallback((key: string, value: ControlPhase | null) => {
-    setPhase((current) => {
-      const next = { ...current };
-      if (value) next[key] = value;
-      else delete next[key];
-      return next;
-    });
+    setPhase((current) => withRecordValue(current, key, value ?? undefined));
   }, []);
 
   // Reads through the query cache so every view of the catalog sees the new states while we wait.
-  const readCatalog = useCallback(() => client.fetchQuery({ queryKey: qk.catalog(), queryFn: ({ signal }) => fetchCatalog(signal), staleTime: 0 }), [client]);
+  const readCatalog = useCallback(() => client.query({ queryKey: qk.catalog(), queryFn: ({ signal }) => fetchCatalog(signal), staleTime: 0 }), [client]);
   const read = useCallback<ReadComponent>(async (target) => findIn(await readCatalog(), target), [readCatalog]);
 
   const runOne = useCallback(
@@ -133,7 +130,7 @@ export function useComponentControl(options: { onEvent?: (event: ControlEvent) =
         } catch (error) {
           const rest = batch.slice(index);
           for (const item of rest) {
-            inFlight.current.delete(item.key);
+            inFlightRef.current.delete(item.key);
             setPhaseOf(item.key, null);
           }
           if (isAbortError(error)) return;
@@ -149,14 +146,14 @@ export function useComponentControl(options: { onEvent?: (event: ControlEvent) =
             for (const item of rest.slice(1)) next[item.key] = skipped;
             return next;
           });
-          onEvent.current?.({ target: unit.target, action, outcome: { kind: "failed", failure } });
+          onEventRef.current?.({ target: unit.target, action, outcome: { kind: "failed", failure } });
           return;
         } finally {
           void client.invalidateQueries({ queryKey: qk.catalog() });
         }
-        inFlight.current.delete(unit.key);
+        inFlightRef.current.delete(unit.key);
         setPhaseOf(unit.key, null);
-        onEvent.current?.({ target: unit.target, action, outcome: { kind: "done", replaced } });
+        onEventRef.current?.({ target: unit.target, action, outcome: { kind: "done", replaced } });
       }
     },
     [client, runOne, setPhaseOf],
@@ -168,26 +165,23 @@ export function useComponentControl(options: { onEvent?: (event: ControlEvent) =
       if (!signal || signal.aborted) return;
       const units: Unit[] = components
         .map((target) => ({ key: instanceKey(target.node_id, target.component_id), nodeId: target.node_id, resourceGroup: target.device.resource_group, target }))
-        .filter((unit) => !inFlight.current.has(unit.key));
+        .filter((unit) => !inFlightRef.current.has(unit.key));
       if (units.length === 0) return;
       for (const unit of units) {
-        inFlight.current.add(unit.key);
+        inFlightRef.current.add(unit.key);
         setPhaseOf(unit.key, "queued");
       }
-      setFailures((current) => {
-        const next = { ...current };
-        for (const unit of units) delete next[unit.key];
-        return next;
-      });
+      const cleared = new Set(units.map((unit) => unit.key));
+      setFailures((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !cleared.has(key))));
       await Promise.all(
         planControlBatches(units).map((batch) => {
           const first = batch[0];
           const group = first ? `${first.nodeId}::${first.resourceGroup}` : "";
-          const previous = tails.current.get(group) ?? Promise.resolve();
+          const previous = tailsRef.current.get(group) ?? Promise.resolve();
           const tail = previous.then(() => runBatch(batch, action, signal));
-          tails.current.set(group, tail);
+          tailsRef.current.set(group, tail);
           void tail.then(() => {
-            if (tails.current.get(group) === tail) tails.current.delete(group);
+            if (tailsRef.current.get(group) === tail) tailsRef.current.delete(group);
           });
           return tail;
         }),
@@ -197,11 +191,7 @@ export function useComponentControl(options: { onEvent?: (event: ControlEvent) =
   );
 
   const dismiss = useCallback((key: string) => {
-    setFailures((current) => {
-      const next = { ...current };
-      delete next[key];
-      return next;
-    });
+    setFailures((current) => withRecordValue(current, key, undefined));
   }, []);
 
   return { phase, failures, run, dismiss, dialog };

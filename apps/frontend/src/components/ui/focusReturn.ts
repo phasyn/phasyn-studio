@@ -12,11 +12,11 @@ import { useRef } from "react";
  * The caller's own handlers run first; when its onCloseAutoFocus calls preventDefault, focus is left to the caller.
  */
 export function useFocusReturn({ onOpenAutoFocus, onCloseAutoFocus }: Pick<DialogContentProps, "onOpenAutoFocus" | "onCloseAutoFocus">) {
-  const opener = useRef<HTMLElement | null>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
   return {
     onOpenAutoFocus: (event: Event) => {
       const active = document.activeElement;
-      opener.current = active instanceof HTMLElement && active !== document.body ? active : null;
+      openerRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
       onOpenAutoFocus?.(event);
     },
     onCloseAutoFocus: (event: Event) => {
@@ -27,11 +27,11 @@ export function useFocusReturn({ onOpenAutoFocus, onCloseAutoFocus }: Pick<Dialo
         event.preventDefault();
         return;
       }
-      const fallback = opener.current;
-      opener.current = null;
+      const fallback = openerRef.current;
+      openerRef.current = null;
       // Radix then gives focus to the trigger; without one focus stays on the page, so return it to the opener
       queueMicrotask(() => {
-        if (document.activeElement === document.body && fallback?.isConnected) fallback.focus({ preventScroll: true });
+        if (document.activeElement === document.body && (fallback?.isConnected === true)) fallback.focus({ preventScroll: true });
       });
     },
   };
@@ -43,7 +43,7 @@ export function useFocusReturn({ onOpenAutoFocus, onCloseAutoFocus }: Pick<Dialo
  * as usual; once it is gone, focus goes to `fallback` instead of falling to the page.
  */
 export function returnFocusOr(event: Event, opener: HTMLElement | null, fallback: HTMLElement | null | undefined): void {
-  if (opener?.isConnected || !fallback?.isConnected) return;
+  if ((opener?.isConnected ?? false) || !(fallback?.isConnected === true)) return;
   event.preventDefault();
   fallback.focus();
 }

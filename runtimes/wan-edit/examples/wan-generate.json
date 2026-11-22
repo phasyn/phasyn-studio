@@ -1,0 +1,26 @@
+{
+  "component_id": "wan-generate",
+  "label": "Wan VACE 文字與首幀生成",
+  "provider_id": "wan.generate",
+  "runtime_id": "wan-edit-x86_64",
+  "autostart": false,
+  "folder": "生成/影片/Wan VACE",
+  "exclusive_group": "wan-vace",
+  "settings": {
+    "load": {
+      "device": {
+        "kind": "cuda",
+        "id": "GPU-REPLACE-0",
+        "resource_group": "gpu-0"
+      },
+      "model_path": "/path/to/models/Wan2.1-VACE-1.3B-diffusers",
+      "provider_options": {
+        "residency": "model_offload"
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "mode": "detailed"
+    }
+  }
+}

@@ -35,7 +35,7 @@ function RouteSection({ route, control }: { route: ImageRoute; control: EngineCo
   const conflict = dit ? exclusiveConflict(dit, catalog) : null;
   const block = exclusiveBlockReason(conflict);
   const holders = dit && conflict ? conflict.holders.flatMap((holder) => index.component(dit.node_id, holder.component_id) ?? []) : [];
-  const stepReasons = new Set(route.steps.flatMap((item) => (item.slot.reason ? [item.slot.reason] : [])));
+  const stepReasons = new Set(route.steps.flatMap((item) => ((item.slot.reason != null && item.slot.reason !== "") ? [item.slot.reason] : [])));
   const otherProblems = route.problems.filter((problem) => !stepReasons.has(problem));
   // 就緒的元件數（同一個元件被多個步驟使用只算一次；沒有對應元件的步驟算未就緒）
   const slots = [...new Map(route.steps.map((item) => [item.slot.component ? keyOf(item.slot.component) : `missing:${item.step.step_id}`, item.slot.component] as const)).values()];
@@ -49,7 +49,8 @@ function RouteSection({ route, control }: { route: ImageRoute; control: EngineCo
           {route.label}
         </h3>
         <ModeBadge mode={route.capability} />
-        <VariantBadge variant={route.variant} />
+        {route.capability === "i2i" && route.declared?.requiredReferences === 0 ? <ModeBadge mode="t2i" /> : null}
+        {route.declared ? null : <VariantBadge variant={route.variant} />}
       </div>
       <code className="machine truncate text-[11px] text-fg-tertiary" title={route.id}>
         {t("{id}・{route}", { id: route.id, route: routeFacts(route) })}
@@ -75,10 +76,10 @@ function RouteSection({ route, control }: { route: ImageRoute; control: EngineCo
               title={providerKind(component?.provider_id).label}
               tag={item.step.step_id}
               detail={component ? t("{component_id}・{nodeLabel}", { component_id: component.component_id, nodeLabel: item.slot.nodeLabel }) : item.slot.reason}
-              detailTitle={item.slot.reason ?? undefined}
+              {...(item.slot.reason == null ? {} : { detailTitle: item.slot.reason })}
               phase={component ? control.phaseOf(component) : undefined}
               blockStart={component ? exclusiveBlockReason(exclusiveConflict(component, catalog)) : null}
-              onStart={(target) => control.start([target])}
+              onStart={(target) => { control.start([target]); }}
               onStop={control.stop}
             />
           );
@@ -98,7 +99,7 @@ function RouteSection({ route, control }: { route: ImageRoute; control: EngineCo
                 title={t("{label}・{value}", { label: providerKind(component.provider_id).label, value: component.label || component.component_id })}
                 detail={t("{component_id}・{placeLabel}", { component_id: component.component_id, placeLabel: placeLabel(component.device, index.nodeLabel(component.node_id) ?? component.node_id.slice(0, 8)) })}
                 phase={control.phaseOf(component)}
-                onStart={(target) => control.start([target])}
+                onStart={(target) => { control.start([target]); }}
                 onStop={control.stop}
               />
             ))}
@@ -132,7 +133,7 @@ function RouteSection({ route, control }: { route: ImageRoute; control: EngineCo
             variant="secondary"
             icon={<Power aria-hidden />}
             pending={starting}
-            onClick={() => control.start(stopped)}
+            onClick={() => { control.start(stopped); }}
             title={starting ? t("正在依序啟動（各列顯示目前進度）") : t("只啟動這個元件組合中已停止或錯誤的 {stoppedCount} 個元件；同一張卡依序載入", { stoppedCount: stopped.length })}
           >
             {starting ? t("正在啟動需要的元件…") : t("啟動這個元件組合需要的元件")}
@@ -158,7 +159,7 @@ export function ImageEngineSheet() {
     <EngineSheet
       title={t("生成引擎")}
       description={
-        shot
+        route?.declared ? t("這個路由使用的元件與目前狀態。") : shot
           ? t("圖片「{value}」的運算路由需要的元件。要換運算路由，到「基本」分頁選擇。GPU 元件啟動會把模型載入顯示卡與主記憶體；同一台 Node 上同一個互斥群組（例如 DiT）一次只能載入一個。", { value: shot.title || t("未命名圖片") })
           : t("沒有選取圖片：選一張圖片後，這裡列出它的運算路由需要的元件。GPU 元件啟動會把模型載入顯示卡與主記憶體；同一台 Node 上同一個互斥群組（例如 DiT）一次只能載入一個。")
       }

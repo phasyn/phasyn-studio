@@ -13,6 +13,7 @@ from phasyn_server.files import file_response, receive_upload
 from phasyn_server.http import json_response
 from starlette.responses import JSONResponse, Response
 
+
 if TYPE_CHECKING:
     from ..service import NodeService
 
@@ -20,11 +21,14 @@ log = logging.getLogger("phasyn_node.files")
 
 
 def routes(service: NodeService) -> APIRouter:
+    """Register the NodeGateway endpoints for this resource."""
     router = APIRouter()
 
     @router.post("/api/files")
     async def upload(request: Request) -> JSONResponse:
-        ref = await receive_upload(service.store, request, buffer_bytes=service.config.file_buffer_bytes)
+        ref = await receive_upload(
+            service.store, request, buffer_bytes=service.config.file_buffer_bytes
+        )
         return json_response(ref, status_code=201)
 
     @router.get("/api/files/{file_id}")
@@ -36,7 +40,9 @@ def routes(service: NodeService) -> APIRouter:
         """x-phasyn-extension: explicit permanent delete (the controller's run purge calls it per file; never retried)."""
         fid = require_uuid(file_id, "file_id")
         if not await asyncio.to_thread(service.store.delete, fid):
-            raise ComponentError("FILE_NOT_FOUND", f"找不到已發布檔案 {fid}", details={"file_id": fid})
+            raise ComponentError(
+                "FILE_NOT_FOUND", f"找不到已發布檔案 {fid}", details={"file_id": fid}
+            )
         log.info("已刪除檔案 %s（明確的刪除請求）", fid)
         return json_response({"file_id": fid, "deleted": True})
 

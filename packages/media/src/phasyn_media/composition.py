@@ -31,15 +31,23 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, replace
 from fractions import Fraction
 from functools import partial
-from typing import Any
+from typing import Any, override
 
 from phasyn_components import contracts
 from phasyn_components.errors import ComponentError
-from phasyn_components.timeline import clip_enabled, clip_output_window, validate_timeline
+from phasyn_components.timeline import (
+    clip_enabled,
+    clip_output_window,
+    validate_timeline,
+)
 
 from .effects import ClipEffects, PlannedClip, clip_frames, parse_effects, samples_for
 from .limits import DEFAULT_LIMITS
 from .text import TextSpec, text_direction_problem
+
+
+_MAX_FPS = 240
+
 
 MAX_GRAPH_BYTES = 1024 * 1024
 # One renderer process opens at most this many files (clips, title images, uploaded caption images
@@ -63,6 +71,7 @@ def refusal(code: str, reason: str, message: str, **details: Any) -> ComponentEr
 
 
 def invalid(reason: str, message: str, **details: Any) -> ComponentError:
+    """Build a media validation error for the specified field."""
     return refusal("INVALID_ARGUMENT", reason, message, **details)
 
 
@@ -70,13 +79,18 @@ class BoundedGraph(list[str]):
     """Filter statements of one process; growth is refused while compiling, before strings accumulate."""
 
     def __init__(self) -> None:
+        """Set the maximum size and line count of the filter graph."""
         super().__init__()
         self._size = 0
 
+    @override
     def append(self, item: str) -> None:
+        """Append one graph statement within the configured bounds."""
         self._size += len(item.encode()) + 1
         if self._size > MAX_GRAPH_BYTES:
-            raise refusal("INPUT_TOO_LARGE", "graph_too_large", "時間軸效果運算式超過大小限制")
+            raise refusal(
+                "INPUT_TOO_LARGE", "graph_too_large", "時間軸效果運算式超過大小限制"
+            )
         super().append(item)
 
 
@@ -92,6 +106,8 @@ class TitlePlan:
 
 @dataclass(frozen=True)
 class CaptionPlan:
+    """Caption placement and timing in the output composition."""
+
     index: int
     start: int
     end: int
@@ -101,6 +117,8 @@ class CaptionPlan:
 
 @dataclass(frozen=True)
 class CompositionClip:
+    """A source-backed clip positioned on the composition timeline."""
+
     index: int  # position in timeline.clips; messages count from 1
     document: Mapping[str, Any]
     source: Mapping[str, Any]
@@ -113,18 +131,22 @@ class CompositionClip:
 
     @property
     def visible_frames(self) -> int:
+        """Return the number of frames presented by this clip."""
         return self.window_end - self.window_start
 
     @property
     def start(self) -> int:
+        """Return the first frame on the timeline."""
         return self.plan.start_frame
 
     @property
     def end(self) -> int:
+        """Return the exclusive end frame on the timeline."""
         return self.plan.start_frame + self.visible_frames
 
     @property
     def is_video(self) -> bool:
+        """Return whether the input contains moving video."""
         return bool(self.track["kind"] == "video")
 
     @property
@@ -144,6 +166,7 @@ class CompositionClip:
 
     @property
     def still(self) -> bool:
+        """Return whether the source is a still image."""
         return bool(self.source["kind"] in ("image", "text"))
 
 
@@ -158,11 +181,14 @@ class ClipSlice:
 
     @property
     def frames(self) -> int:
+        """Return the length of the interval in frames."""
         return self.end - self.first
 
 
 @dataclass(frozen=True)
 class Segment:
+    """A contiguous timeline interval with its participating clips."""
+
     index: int
     start: int
     end: int
@@ -171,11 +197,14 @@ class Segment:
 
     @property
     def frames(self) -> int:
+        """Return the length of the interval in frames."""
         return self.end - self.start
 
 
 @dataclass(frozen=True)
 class AudioChunk:
+    """Audio inputs and sample boundaries for one interval."""
+
     index: int
     start: int  # sequence frames
     end: int
@@ -192,6 +221,8 @@ class SkippedClip:
 
 @dataclass(frozen=True)
 class CompositionPlan:
+    """Resolved video segments, audio chunks, and output timing."""
+
     document: Mapping[str, Any]
     clips: tuple[CompositionClip, ...]
     captions: tuple[CaptionPlan, ...]
@@ -210,10 +241,12 @@ class CompositionPlan:
 
     @property
     def output_frames(self) -> int:
+        """Return the total number of output video frames."""
         return self.range_end - self.range_start
 
     @property
     def output_samples(self) -> int:
+        """Return the total number of output audio samples."""
         return samples_for(self.output_frames, self.fps)
 
 
@@ -226,7 +259,11 @@ def _json_value(value: Any) -> Any:
 
 def _browser_key(values: Sequence[Any]) -> str:
     """``JSON.stringify`` of the editor's layout key (numbers without a trailing ``.0``)."""
-    return json.dumps([_json_value(item) for item in values], ensure_ascii=False, separators=(",", ":"))
+    return json.dumps(
+        [_json_value(item) for item in values],
+        ensure_ascii=False,
+        separators=(",", ":"),
+    )
 
 
 def title_image_key(title: Mapping[str, Any], width: int, height: int) -> str:
@@ -239,7 +276,9 @@ def title_image_key(title: Mapping[str, Any], width: int, height: int) -> str:
 
 
 def caption_image_key(caption: Mapping[str, Any], width: int, height: int) -> str:
-    return _browser_key([caption["text"], caption["position"], caption["size"], width, height])
+    return _browser_key(
+        [caption["text"], caption["position"], caption["size"], width, height]
+    )
 
 
 def _uploaded(document: Mapping[str, Any], key: str) -> Mapping[str, Any] | None:
@@ -253,28 +292,43 @@ def _uploaded(document: Mapping[str, Any], key: str) -> Mapping[str, Any] | None
 
 def _text_spec(document: Mapping[str, Any], what: str) -> TextSpec:
     if text_direction_problem(document["text"]):
-        raise invalid("text_direction_unsupported", f"{what}含有由右至左書寫的文字，匯出目前無法排版")
+        raise invalid(
+            "text_direction_unsupported",
+            f"{what}含有由右至左書寫的文字，匯出目前無法排版",
+        )
     return TextSpec.from_document(document)
 
 
-def _title(item: Mapping[str, Any], number: int, length: int, width: int, height: int) -> TitlePlan | None:
+def _title(
+    item: Mapping[str, Any], number: int, length: int, width: int, height: int
+) -> TitlePlan | None:
     """The title of a clip; its range was checked by the validator against the complete processed clip."""
     title = (item.get("effects") or {}).get("title")
     if not title:
         return None
     end = title["end_frame"] if title.get("end_frame") is not None else length
     image = _uploaded(title, title_image_key(title, width, height))
-    media_type = str((image or {}).get("media_type") or "").split(";")[0].strip().lower()
+    media_type = (
+        str((image or {}).get("media_type") or "").split(";")[0].strip().lower()
+    )
     if image is not None and media_type != "image/png":
-        raise invalid("text_image_invalid", f"時間軸片段 {number} 的文字圖層必須是 PNG 圖片")
-    spec = None if image is not None else _text_spec(title, f"時間軸片段 {number} 的文字")
+        raise invalid(
+            "text_image_invalid", f"時間軸片段 {number} 的文字圖層必須是 PNG 圖片"
+        )
+    spec = (
+        None if image is not None else _text_spec(title, f"時間軸片段 {number} 的文字")
+    )
     return TitlePlan(int(title["start_frame"]), int(end), spec, image)
 
 
-def _caption(index: int, caption: Mapping[str, Any], width: int, height: int) -> CaptionPlan:
+def _caption(
+    index: int, caption: Mapping[str, Any], width: int, height: int
+) -> CaptionPlan:
     image = _uploaded(caption, caption_image_key(caption, width, height))
     spec = None if image is not None else _text_spec(caption, f"字幕 {index + 1} ")
-    return CaptionPlan(index, int(caption["start_frame"]), int(caption["end_frame"]), spec, image)
+    return CaptionPlan(
+        index, int(caption["start_frame"]), int(caption["end_frame"]), spec, image
+    )
 
 
 # --------------------------------------------------------------------------- clips
@@ -282,7 +336,11 @@ def _caption(index: int, caption: Mapping[str, Any], width: int, height: int) ->
 
 def _effects_without_title(item: Mapping[str, Any], index: int) -> ClipEffects | None:
     """Legacy effect parsing owns everything but the title: a timeline title needs no uploaded image."""
-    effects = {key: value for key, value in (item.get("effects") or {}).items() if key != "title"}
+    effects = {
+        key: value
+        for key, value in (item.get("effects") or {}).items()
+        if key != "title"
+    }
     return parse_effects(effects or None, path=f"timeline.clips[{index}].effects")
 
 
@@ -299,7 +357,11 @@ def _clip(
     window_start, window_end = clip_output_window(item)
     enabled = clip_enabled(item)
     # A text layer always has its title (the validator refuses one without); only enabled clips draw.
-    title = _title(item, index + 1, length, width, height) if enabled and track["kind"] == "video" else None
+    title = (
+        _title(item, index + 1, length, width, height)
+        if enabled and track["kind"] == "video"
+        else None
+    )
     planned = PlannedClip(
         index,
         item["out_frame"] - item["in_frame"],
@@ -309,7 +371,9 @@ def _clip(
         effects,
         None,
     )
-    return CompositionClip(index, item, source, track, planned, window_start, window_end, enabled, title)
+    return CompositionClip(
+        index, item, source, track, planned, window_start, window_end, enabled, title
+    )
 
 
 def _transition(clip: CompositionClip) -> int:
@@ -336,7 +400,9 @@ def _groups(clips: Sequence[CompositionClip]) -> list[list[int]]:
     return groups
 
 
-def _exported(clips: list[CompositionClip]) -> tuple[tuple[CompositionClip, ...], tuple[tuple[int, ...], ...]]:
+def _exported(
+    clips: list[CompositionClip],
+) -> tuple[tuple[CompositionClip, ...], tuple[tuple[int, ...], ...]]:
     """Drop disabled clips, except where one is the other end of an exported clip's transition."""
     kept: list[CompositionClip] = []
     groups: list[tuple[int, ...]] = []
@@ -361,15 +427,23 @@ def _validate(sequence: Mapping[str, Any]) -> Mapping[str, Any]:
     return document
 
 
-def _geometry(sequence: Mapping[str, Any], document: Mapping[str, Any]) -> tuple[int, int, Fraction]:
+def _geometry(
+    sequence: Mapping[str, Any], document: Mapping[str, Any]
+) -> tuple[int, int, Fraction]:
     fps = Fraction(document["fps"]["num"], document["fps"]["den"])
     if fps != Fraction(sequence["fps"]["num"], sequence["fps"]["den"]):
         raise invalid("fps_mismatch", "時間軸與匯出影格率不同")
     width, height = int(sequence["width"]), int(sequence["height"])
     limits = DEFAULT_LIMITS
-    if not 1 <= fps <= 240 or width % 2 or height % 2:
-        raise invalid("output_size_invalid", "匯出尺寸需為正偶數，影格率需介於 1–240")
-    if width * height > limits.max_pixels or width > limits.max_width or height > limits.max_height:
+    if not 1 <= fps <= _MAX_FPS or width % 2 or height % 2:
+        raise invalid(
+            "output_size_invalid", "匯出尺寸需為正偶數，影格率需介於 1\u2013240"
+        )
+    if (
+        width * height > limits.max_pixels
+        or width > limits.max_width
+        or height > limits.max_height
+    ):
         raise refusal("INPUT_TOO_LARGE", "output_too_large", "多軌匯出尺寸超過媒體限制")
     return width, height, fps
 
@@ -383,7 +457,9 @@ def _render_range(sequence: Mapping[str, Any], total: int) -> tuple[int, int]:
     return start, end
 
 
-def _skipped_reason(item: Mapping[str, Any], track: Mapping[str, Any], solo: Mapping[str, bool]) -> str | None:
+def _skipped_reason(
+    item: Mapping[str, Any], track: Mapping[str, Any], solo: Mapping[str, bool]
+) -> str | None:
     """Why a clip gives no picture and no sound, or ``None`` when it is exported."""
     if track["muted"]:
         return "track_muted"
@@ -399,8 +475,13 @@ def plan_composition(sequence: Mapping[str, Any]) -> CompositionPlan:
     width, height, fps = geometry
     sources = {source["source_id"]: source for source in document["sources"]}
     tracks = {track["track_id"]: track for track in document["tracks"]}
-    order = {track["track_id"]: position for position, track in enumerate(document["tracks"])}
-    solo = {kind: any(t["solo"] for t in document["tracks"] if t["kind"] == kind) for kind in ("video", "audio")}
+    order = {
+        track["track_id"]: position for position, track in enumerate(document["tracks"])
+    }
+    solo = {
+        kind: any(t["solo"] for t in document["tracks"] if t["kind"] == kind)
+        for kind in ("video", "audio")
+    }
     clips: list[CompositionClip] = []
     skipped: list[SkippedClip] = []
     total = 0
@@ -412,8 +493,13 @@ def plan_composition(sequence: Mapping[str, Any]) -> CompositionPlan:
         if reason is not None:
             skipped.append(SkippedClip(str(item["clip_id"]), reason))
         if reason in (None, "disabled"):
-            clips.append(clip)  # a disabled clip may still be the silent, transparent end of a transition
-    captions = tuple(_caption(index, caption, width, height) for index, caption in enumerate(document["captions"]))
+            clips.append(
+                clip
+            )  # a disabled clip may still be the silent, transparent end of a transition
+    captions = tuple(
+        _caption(index, caption, width, height)
+        for index, caption in enumerate(document["captions"])
+    )
     # The validator refused an empty sequence and one longer than the sequence bounds.
     total = max([total, *(caption.end for caption in captions)])
     range_start, range_end = _render_range(sequence, total)
@@ -434,7 +520,9 @@ def plan_composition(sequence: Mapping[str, Any]) -> CompositionPlan:
         range_end,
         skipped=tuple(skipped),
     )
-    return replace(plan, segments=plan_segments(plan), audio_chunks=plan_audio_chunks(plan))
+    return replace(
+        plan, segments=plan_segments(plan), audio_chunks=plan_audio_chunks(plan)
+    )
 
 
 # --------------------------------------------------------------------------- frame arithmetic of a clip
@@ -464,7 +552,10 @@ def source_index(clip: CompositionClip, frame: int) -> int:
     """The source frame (sequence rate, counted from the first source frame) a processed frame shows."""
     effects = clip.plan.effects
     speed = effects.speed_percent if effects else 100
-    return int(clip.document["in_frame"]) + stepped_index(clip, retimed_index(clip, frame)) * speed // 100
+    return (
+        int(clip.document["in_frame"])
+        + stepped_index(clip, retimed_index(clip, frame)) * speed // 100
+    )
 
 
 # --------------------------------------------------------------------------- segments
@@ -475,7 +566,8 @@ def _still_motion(motion: Mapping[str, Any]) -> bool:
     rest = {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1}
     keys = motion.get("keyframes", {})
     return all(
-        motion[name] == value and all(k["value"] == value for k in keys.get(name, [])) for name, value in rest.items()
+        motion[name] == value and all(k["value"] == value for k in keys.get(name, []))
+        for name, value in rest.items()
     )
 
 
@@ -511,7 +603,9 @@ def plain_clip(plan: CompositionPlan, index: int) -> bool:
 def title_in_slice(clip: CompositionClip, first: int, end: int) -> bool:
     """True when processed frames ``[first, end)`` show the clip's title (a text layer always does)."""
     title = clip.title
-    return title is not None and (clip.generated or (title.start_frame < end and title.end_frame > first))
+    return title is not None and (
+        clip.generated or (title.start_frame < end and title.end_frame > first)
+    )
 
 
 def _clip_inputs(clip: CompositionClip) -> int:
@@ -521,20 +615,36 @@ def _clip_inputs(clip: CompositionClip) -> int:
     return (1 if clip.media_file else 0) + (1 if clip.title is not None else 0)
 
 
-def _segment_inputs(plan: CompositionPlan, videos: Sequence[CompositionClip], start: int, end: int) -> int:
-    count = sum(_clip_inputs(clip) for clip in videos if clip.start < end and clip.end > start)
-    shown = [caption for caption in plan.captions if caption.start < end and caption.end > start]
-    return count + sum(caption.image is not None for caption in shown) + any(c.spec is not None for c in shown)
+def _segment_inputs(
+    plan: CompositionPlan, videos: Sequence[CompositionClip], start: int, end: int
+) -> int:
+    count = sum(
+        _clip_inputs(clip) for clip in videos if clip.start < end and clip.end > start
+    )
+    shown = [
+        caption
+        for caption in plan.captions
+        if caption.start < end and caption.end > start
+    ]
+    return (
+        count
+        + sum(caption.image is not None for caption in shown)
+        + any(c.spec is not None for c in shown)
+    )
 
 
-def _longest(start: int, limit: int, cap: int, inputs: Callable[[int, int], int]) -> int | None:
+def _longest(
+    start: int, limit: int, cap: int, inputs: Callable[[int, int], int]
+) -> int | None:
     """The largest end in ``(start, limit]`` whose span opens at most ``cap`` inputs (a longer span opens more)."""
     if inputs(start, start + 1) > cap:
         return None
     low, high = start + 1, limit
     while low < high:
         middle = (low + high + 1) // 2
-        low, high = (middle, high) if inputs(start, middle) <= cap else (low, middle - 1)
+        low, high = (
+            (middle, high) if inputs(start, middle) <= cap else (low, middle - 1)
+        )
     return low
 
 
@@ -554,17 +664,26 @@ def _slices(plan: CompositionPlan, start: int, end: int) -> tuple[ClipSlice, ...
             continue
         shown_from, shown_to = max(clip.start, start), min(clip.end, end)
         first = clip.window_start + shown_from - clip.start
-        slices.append(ClipSlice(index, first, first + shown_to - shown_from, shown_from - start))
+        slices.append(
+            ClipSlice(index, first, first + shown_to - shown_from, shown_from - start)
+        )
     return tuple(slices)
 
 
 def segment_frames(width: int, height: int) -> int:
+    """Return the number of frames allocated to a segment."""
     return max(1, min(SEGMENT_MAX_FRAMES, SEGMENT_PIXEL_FRAMES // (width * height)))
 
 
 def segment_inputs(width: int, height: int) -> int:
     """Inputs a renderer may open beyond what a single frame needs: the memory plan of one process."""
-    return max(1, min(SEGMENT_MAX_INPUTS, SEGMENT_INPUT_BYTES // (SEGMENT_INPUT_BYTES_PER_PIXEL * width * height)))
+    return max(
+        1,
+        min(
+            SEGMENT_MAX_INPUTS,
+            SEGMENT_INPUT_BYTES // (SEGMENT_INPUT_BYTES_PER_PIXEL * width * height),
+        ),
+    )
 
 
 def plan_segments(plan: CompositionPlan) -> tuple[Segment, ...]:
@@ -578,7 +697,10 @@ def plan_segments(plan: CompositionPlan) -> tuple[Segment, ...]:
     while position < plan.range_end:
         limit = min(plan.range_end, position + budget)
         # What this frame shows at once must be opened together; beyond that the memory plan decides.
-        allowed = min(SEGMENT_MAX_INPUTS, max(preferred, _segment_inputs(plan, videos, position, position + 1)))
+        allowed = min(
+            SEGMENT_MAX_INPUTS,
+            max(preferred, _segment_inputs(plan, videos, position, position + 1)),
+        )
         end = _longest(position, limit, allowed, partial(_segment_inputs, plan, videos))
         if end is None:
             raise refusal(
@@ -589,18 +711,28 @@ def plan_segments(plan: CompositionPlan) -> tuple[Segment, ...]:
                 limit=SEGMENT_MAX_INPUTS,
             )
         end = _snap(position, end, plan.range_end, edges)
-        captions = tuple(c.index for c in plan.captions if c.start < end and c.end > position)
-        segments.append(Segment(len(segments), position, end, _slices(plan, position, end), captions))
+        captions = tuple(
+            c.index for c in plan.captions if c.start < end and c.end > position
+        )
+        segments.append(
+            Segment(
+                len(segments), position, end, _slices(plan, position, end), captions
+            )
+        )
         position = end
     return tuple(segments)
 
 
 def plan_audio_chunks(plan: CompositionPlan) -> tuple[AudioChunk, ...]:
     """Cut the render range so that no audio process opens more than ``AUDIO_CHUNK_MAX_INPUTS`` files."""
-    audios = [(index, clip) for index, clip in enumerate(plan.clips) if not clip.is_video]
+    audios = [
+        (index, clip) for index, clip in enumerate(plan.clips) if not clip.is_video
+    ]
 
     def members(start: int, end: int) -> tuple[int, ...]:
-        return tuple(index for index, clip in audios if clip.start < end and clip.end > start)
+        return tuple(
+            index for index, clip in audios if clip.start < end and clip.end > start
+        )
 
     def inputs(start: int, end: int) -> int:
         return sum(plan.clips[index].enabled for index in members(start, end))

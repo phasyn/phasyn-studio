@@ -10,7 +10,7 @@ interface Doc {
 type Action = { type: "add"; item: string } | { type: "noop" };
 
 const apply = (doc: Doc, action: Action): Doc => (action.type === "add" && !doc.items.includes(action.item) ? { ...doc, items: [...doc.items, action.item] } : doc);
-const doc = (revision: number, items: string[] = []): Doc => ({ revision, created_at: "c", updated_at: `u${revision}`, items });
+const doc = (revision: number, items: string[] = []): Doc => ({ revision, created_at: "c", updated_at: `u${String(revision)}`, items });
 const tracked = createDocReducer(apply, { trackPending: true });
 const plain = createDocReducer(apply);
 const run = (reducer: typeof tracked, state: DocState<Doc, Action>, ...events: DocEvent<Doc, Action>[]) => events.reduce(reducer, state);

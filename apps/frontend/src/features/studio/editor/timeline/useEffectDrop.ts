@@ -43,14 +43,14 @@ function targetOf(timeline: StudioTimeline, drag: EffectDrag, point: DropPoint):
 
 export function useEffectDrop(editor: Editor, scroller: RefObject<HTMLDivElement | null>, options: EffectDropOptions) {
   const [preview, setPreview] = useState<EffectDropPreview | null>(null);
-  const shown = useRef<{ target: string; timeline: StudioTimeline; refused: boolean } | null>(null);
-  const live = useRef({ editor, options });
+  const shownRef = useRef<{ target: string; timeline: StudioTimeline; refused: boolean } | null>(null);
+  const liveRef = useRef({ editor, options });
   useLayoutEffect(() => {
-    live.current = { editor, options };
+    liveRef.current = { editor, options };
   });
 
   const clear = () => {
-    shown.current = null;
+    shownRef.current = null;
     setPreview(null);
   };
 
@@ -58,23 +58,23 @@ export function useEffectDrop(editor: Editor, scroller: RefObject<HTMLDivElement
   const pointOf = (event: DragEvent<HTMLElement>): DropPoint | null => {
     const node = scroller.current;
     if (!node) return null;
-    const { zoom, headerWidth } = live.current.options;
+    const { zoom, headerWidth } = liveRef.current.options;
     const frame = node.getBoundingClientRect();
     if (event.clientX < frame.left + headerWidth || event.clientY < frame.top + RULER_HEIGHT) return null;
     let trackId: string | null = null;
     for (const row of node.querySelectorAll<HTMLElement>("[data-timeline-track]")) {
       const rect = row.getBoundingClientRect();
-      if (event.clientY >= rect.top && event.clientY < rect.bottom) trackId = row.dataset.timelineTrack ?? null;
+      if (event.clientY >= rect.top && event.clientY < rect.bottom) trackId = row.dataset["timelineTrack"] ?? null;
     }
     return { trackId, frame: Math.max(0, (event.clientX - (frame.left + headerWidth - node.scrollLeft)) / zoom) };
   };
 
   /** What a release at a point would do, for the preview (or, with real ids, for the drop). */
   const plan = (drag: EffectDrag, point: DropPoint, allocate: AllocateId) => {
-    const { editor: current } = live.current;
+    const { editor: current } = liveRef.current;
     const item = effectItem(drag.itemId);
     if (!item) return { ok: false as const, error: t("效果面板裡已經沒有這個項目"), marks: [] };
-    if (current.problem) return { ok: false as const, error: current.problem, marks: [] };
+    if (current.problem != null && current.problem !== "") return { ok: false as const, error: current.problem, marks: [] };
     return planEffectDrop(current.timeline, item, point, { selected: current.selected, linked: current.linked }, allocate);
   };
 
@@ -85,7 +85,7 @@ export function useEffectDrop(editor: Editor, scroller: RefObject<HTMLDivElement
     if (node) {
       const rect = node.getBoundingClientRect();
       if (event.clientX > rect.right - 24) node.scrollBy({ left: 18 });
-      else if (event.clientX < rect.left + live.current.options.headerWidth + 24) node.scrollBy({ left: -18 });
+      else if (event.clientX < rect.left + liveRef.current.options.headerWidth + 24) node.scrollBy({ left: -18 });
     }
     const point = pointOf(event);
     const drag = activeEffectDrag();
@@ -99,14 +99,14 @@ export function useEffectDrop(editor: Editor, scroller: RefObject<HTMLDivElement
       event.dataTransfer.dropEffect = "copy";
       return;
     }
-    const { timeline } = live.current.editor;
+    const { timeline } = liveRef.current.editor;
     const target = targetOf(timeline, drag, point);
-    if (shown.current?.target !== target || shown.current.timeline !== timeline) {
+    if (shownRef.current?.target !== target || shownRef.current.timeline !== timeline) {
       const next = plan(drag, point, previewId);
-      shown.current = { target, timeline, refused: !next.ok };
+      shownRef.current = { target, timeline, refused: !next.ok };
       setPreview(next.ok ? { hint: next.hint, error: null, marks: next.marks } : { hint: null, error: next.error, marks: next.marks });
     }
-    event.dataTransfer.dropEffect = shown.current.refused ? "none" : "copy";
+    event.dataTransfer.dropEffect = shownRef.current.refused ? "none" : "copy";
   };
 
   const leave = (event: DragEvent<HTMLElement>) => {
@@ -122,7 +122,7 @@ export function useEffectDrop(editor: Editor, scroller: RefObject<HTMLDivElement
     const point = pointOf(event);
     clear();
     if (!drag || !point) return;
-    const { editor: current } = live.current;
+    const { editor: current } = liveRef.current;
     const result = plan(drag, point, localId);
     if (!result.ok) {
       current.warn(result.error);

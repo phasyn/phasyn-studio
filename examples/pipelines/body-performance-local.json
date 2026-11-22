@@ -1,0 +1,50 @@
+{
+  "pipeline_id": "body-performance-local",
+  "label": "以表演影片驅動全身角色圖（2D）",
+  "inputs": [
+    {
+      "name": "video_file",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": "單人表演影片"
+    },
+    {
+      "name": "character",
+      "type_id": "media.image.v1",
+      "required": true,
+      "transport": "file",
+      "description": "可清楚辨識四肢的全身角色圖"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "capture",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "character-body",
+      "inputs": {
+        "video_file": {
+          "from_input": "video_file"
+        },
+        "character": {
+          "from_input": "character"
+        }
+      },
+      "parameters": {}
+    }
+  ],
+  "outputs": {
+    "asset": {
+      "from_step": "capture",
+      "output": "asset"
+    },
+    "video_file": {
+      "from_step": "capture",
+      "output": "video_file"
+    },
+    "landmarks": {
+      "from_step": "capture",
+      "output": "landmarks"
+    }
+  }
+}

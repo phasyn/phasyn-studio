@@ -27,7 +27,7 @@ export function ReferenceList({ options, onInsert, disabled }: { options: readon
             <button
               type="button"
               disabled={disabled}
-              onClick={() => onInsert(option.alias)}
+              onClick={() => { onInsert(option.alias); }}
               aria-label={t("插入 @{alias}（{value}）", { alias: option.alias, value: option.name ?? t("檔案已不在素材庫") })}
               className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] items-center gap-x-2.5 rounded-lg px-2 py-1.5 text-left transition-colors duration-(--duration-fast) hover:bg-raised/70 active:bg-sunken disabled:cursor-not-allowed disabled:text-fg-disabled disabled:hover:bg-transparent"
             >
@@ -35,9 +35,9 @@ export function ReferenceList({ options, onInsert, disabled }: { options: readon
               <span className="grid min-w-0">
                 <span className="flex min-w-0 items-baseline gap-2">
                   <span className="machine text-data text-fg">@{option.alias}</span>
-                  {option.label ? <span className="machine text-caption text-fg-tertiary">→ {option.label}</span> : null}
+                  {(option.label != null && option.label !== "") ? <span className="machine text-caption text-fg-tertiary">→ {option.label}</span> : null}
                 </span>
-                <span className={cn("truncate text-caption", option.name ? "text-fg-tertiary" : "text-warning")}>{option.name ?? t("檔案已不在素材庫")}</span>
+                <span className={cn("truncate text-caption", (option.name != null && option.name !== "") ? "text-fg-tertiary" : "text-warning")}>{option.name ?? t("檔案已不在素材庫")}</span>
               </span>
             </button>
           </li>

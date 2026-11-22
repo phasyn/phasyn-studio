@@ -41,8 +41,11 @@ interface Counter {
 function countingReplace(text: string, pattern: RegExp, replacement: string, counter: Counter): string {
   return text.replace(pattern, (...args: unknown[]) => {
     counter.n += 1;
-    const groups = args.slice(1, -2) as (string | undefined)[];
-    return replacement.replace(/\$(\d)/g, (_, digit: string) => groups[Number(digit) - 1] ?? "");
+    const groups = args.slice(1, -2);
+    return replacement.replace(/\$(\d)/g, (_, digit: string) => {
+      const group = groups[Number(digit) - 1];
+      return typeof group === "string" ? group : "";
+    });
   });
 }
 
@@ -60,7 +63,7 @@ function convertTimeline(text: string, mode: TimelineMode, counter: Counter): st
       const marker =
         mode === "sequential"
           ? cutMarker(shot, shot === 1 ? null : heading.range.start)
-          : `[Shot ${shot}, ${formatClock(heading.range.start)}-${formatClock(heading.range.end)}]`;
+          : `[Shot ${String(shot)}, ${formatClock(heading.range.start)}-${formatClock(heading.range.end)}]`;
       return rest.length > 0 ? `${marker} ${rest}` : marker;
     })
     .join("\n");

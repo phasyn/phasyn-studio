@@ -15,7 +15,7 @@ export function SequenceView() {
     return (
       <div className="flex min-h-0 flex-1 flex-col p-1.5">
         <div className="grid min-h-0 flex-1 place-items-center overflow-y-auto rounded-lg bg-stage">
-          <EmptyState illustration="timeline" size="compact" title={problem ? t("序列無法建立") : t("時間軸是空的")} description={problem ?? t("新增鏡頭後，這裡會播放時間軸上的成片。")} />
+          <EmptyState illustration="timeline" size="compact" title={(problem != null && problem !== "") ? t("序列無法建立") : t("時間軸是空的")} description={problem ?? t("新增鏡頭後，這裡會播放時間軸上的成片。")} />
         </div>
       </div>
     );

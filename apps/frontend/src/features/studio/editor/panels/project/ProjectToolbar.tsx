@@ -41,15 +41,15 @@ interface ChoiceGroupProps<T extends string> {
 
 /** A few options in one frame: one Tab stop, the arrow keys move and choose; a click chooses without taking the focus. */
 function ChoiceGroup<T extends string>({ label, value, options, onChange }: ChoiceGroupProps<T>) {
-  const group = useRef<HTMLDivElement>(null);
+  const groupRef = useRef<HTMLDivElement>(null);
   const step = (index: number) => {
     const next = options[(index + options.length) % options.length];
     if (!next) return;
     onChange(next.value);
-    group.current?.querySelector<HTMLElement>(`[data-value="${next.value}"]`)?.focus();
+    groupRef.current?.querySelector<HTMLElement>(`[data-value="${next.value}"]`)?.focus();
   };
   return (
-    <div ref={group} role="radiogroup" aria-label={label} className="inline-flex h-8 shrink-0 items-stretch gap-0.5 rounded-md border border-line-strong bg-sunken p-0.5">
+    <div ref={groupRef} role="radiogroup" aria-label={label} className="inline-flex h-8 shrink-0 items-stretch gap-0.5 rounded-md border border-line-strong bg-sunken p-0.5">
       {options.map((option, index) => {
         const selected = option.value === value;
         return (
@@ -62,7 +62,7 @@ function ChoiceGroup<T extends string>({ label, value, options, onChange }: Choi
             aria-label={option.icon ? option.label : undefined}
             title={option.label}
             tabIndex={selected ? 0 : -1}
-            onClick={() => onChange(option.value)}
+            onClick={() => { onChange(option.value); }}
             onKeyDown={(event) => {
               if (event.key === "ArrowRight" || event.key === "ArrowDown") step(index + 1);
               else if (event.key === "ArrowLeft" || event.key === "ArrowUp") step(index - 1);
@@ -102,7 +102,7 @@ function SortMenu({ sortKey, direction, onSortKey, onDirection }: SortMenuProps)
   const label = t("排序：{key}・{direction}", { key: SORT_LABELS[sortKey], direction: DIRECTION_LABELS[direction] });
   const items: MenuItem[] = [
     ...SORT_KEYS.map(
-      (key): MenuItem => ({ id: key, label: SORT_LABELS[key], disabledReason: key === sortKey ? t("目前的排序") : null, onSelect: () => onSortKey(key) }),
+      (key): MenuItem => ({ id: key, label: SORT_LABELS[key], disabledReason: key === sortKey ? t("目前的排序") : null, onSelect: () => { onSortKey(key); } }),
     ),
     ...SORT_DIRECTIONS.map(
       (value, index): MenuItem => ({
@@ -111,7 +111,7 @@ function SortMenu({ sortKey, direction, onSortKey, onDirection }: SortMenuProps)
         icon: value === "ascending" ? ArrowUpNarrowWide : ArrowDownWideNarrow,
         separatorBefore: index === 0,
         disabledReason: value === direction ? t("目前的方向") : null,
-        onSelect: () => onDirection(value),
+        onSelect: () => { onDirection(value); },
       }),
     ),
   ];
@@ -124,13 +124,13 @@ function SortMenu({ sortKey, direction, onSortKey, onDirection }: SortMenuProps)
         aria-controls={anchor ? id : undefined}
         aria-label={label}
         title={label}
-        onClick={(event) => setAnchor(anchor ? null : event.currentTarget)}
+        onClick={(event) => { setAnchor(anchor ? null : event.currentTarget); }}
         className={cn(TOOL_BUTTON, "size-8 [&_svg]:size-4", anchor && TOOL_BUTTON_ON)}
       >
         {direction === "ascending" ? <ArrowUpNarrowWide aria-hidden /> : <ArrowDownWideNarrow aria-hidden />}
       </button>
       {anchor ? (
-        <ActionMenu id={id} label={t("素材排序")} items={items} anchor={{ kind: "element", element: anchor }} returnFocus={anchor} onClose={() => setAnchor(null)} />
+        <ActionMenu id={id} label={t("素材排序")} items={items} anchor={{ kind: "element", element: anchor }} returnFocus={anchor} onClose={() => { setAnchor(null); }} />
       ) : null}
     </>
   );
@@ -149,11 +149,11 @@ function NewMenu({ items }: { items: MenuItem[] }) {
         aria-expanded={anchor !== null}
         aria-controls={anchor ? id : undefined}
         title={t("在時間軸的播放頭新增調整圖層或文字圖層")}
-        onClick={(event) => setAnchor(anchor ? null : event.currentTarget)}
+        onClick={(event) => { setAnchor(anchor ? null : event.currentTarget); }}
       >
         {t("新增")}
       </Button>
-      {anchor ? <ActionMenu id={id} label={t("新增項目")} items={items} anchor={{ kind: "element", element: anchor }} returnFocus={anchor} onClose={() => setAnchor(null)} /> : null}
+      {anchor ? <ActionMenu id={id} label={t("新增項目")} items={items} anchor={{ kind: "element", element: anchor }} returnFocus={anchor} onClose={() => { setAnchor(null); }} /> : null}
     </>
   );
 }
@@ -183,7 +183,7 @@ export function ProjectToolbar({ query, onQuery, kind, onKind, view, onView, onI
             aria-label={t("搜尋素材")}
             placeholder={t("搜尋素材")}
             className="pl-8"
-            onChange={(event) => onQuery(event.target.value)}
+            onChange={(event) => { onQuery(event.target.value); }}
             onKeyDown={(event) => {
               if (event.key !== "Escape" || query === "") return;
               event.preventDefault();

@@ -51,27 +51,27 @@ async function readPackage(file: File): Promise<Blob> {
 export function useInstallFlow({ maxBytes, onInstalled }: { maxBytes: number | null; onInstalled: (result: StudioPluginInstallResult) => void }): InstallFlow {
   const client = useQueryClient();
   const [state, setState] = useState<InstallState>(IDLE);
-  const current = useRef<InstallState>(IDLE);
-  const checking = useRef<AbortController | null>(null);
-  const mounted = useRef(true);
+  const currentRef = useRef<InstallState>(IDLE);
+  const checkingRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
 
   const update = useCallback((next: InstallState) => {
-    current.current = next;
-    if (mounted.current) setState(next);
+    currentRef.current = next;
+    if (mountedRef.current) setState(next);
   }, []);
 
   useEffect(() => {
-    mounted.current = true;
+    mountedRef.current = true;
     return () => {
-      mounted.current = false;
-      checking.current?.abort();
+      mountedRef.current = false;
+      checkingRef.current?.abort();
     };
   }, []);
 
   const start = useCallback(
     (file: File) => {
-      if (current.current.phase === "installing") return;
-      checking.current?.abort();
+      if (currentRef.current.phase === "installing") return;
+      checkingRef.current?.abort();
       const picked: Picked = { file, fileName: file.name, size: file.size };
       const tooLarge = maxBytes === null ? null : packageTooLarge(file, maxBytes);
       if (tooLarge) {
@@ -79,10 +79,10 @@ export function useInstallFlow({ maxBytes, onInstalled }: { maxBytes: number | n
         return;
       }
       const controller = new AbortController();
-      checking.current = controller;
+      checkingRef.current = controller;
       update({ phase: "checking", ...picked });
       // This check is still the one in progress (not cancelled, not replaced by another file)
-      const live = () => checking.current === controller && !controller.signal.aborted;
+      const live = () => checkingRef.current === controller && !controller.signal.aborted;
       readPackage(file)
         .then(async (bytes) => {
           if (!live()) return;
@@ -99,7 +99,7 @@ export function useInstallFlow({ maxBytes, onInstalled }: { maxBytes: number | n
   );
 
   const confirm = useCallback(() => {
-    const now = current.current;
+    const now = currentRef.current;
     if (now.phase !== "preview") return;
     const { file, fileName, size, result } = now;
     update({ phase: "installing", file, fileName, size, result });
@@ -109,16 +109,16 @@ export function useInstallFlow({ maxBytes, onInstalled }: { maxBytes: number | n
           update({ phase: "done", fileName, result: installed });
           onInstalled(installed);
         },
-        (error: unknown) => update({ phase: "failed", stage: "install", error, file, fileName, size }),
+        (error: unknown) => { update({ phase: "failed", stage: "install", error, file, fileName, size }); },
       )
       // 不論結果都重新讀取登錄表：連線中斷時，這是唯一能知道有沒有裝上的方法
       .finally(() => void client.invalidateQueries({ queryKey: pluginKeys.all() }));
   }, [client, onInstalled, update]);
 
   const dismiss = useCallback(() => {
-    if (current.current.phase === "installing") return;
-    checking.current?.abort();
-    checking.current = null;
+    if (currentRef.current.phase === "installing") return;
+    checkingRef.current?.abort();
+    checkingRef.current = null;
     update(IDLE);
   }, [update]);
 

@@ -1,0 +1,561 @@
+{
+  "providers": {
+    "image.compose": {
+      "default_settings": {
+        "invoke": {},
+        "load": {
+          "device": {
+            "id": "cpu",
+            "kind": "cpu",
+            "resource_group": "cpu-image-compose"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_qimg.compose:ComposeProvider",
+      "kind": "image.compose",
+      "label": "圖片合成（CPU）：遮罩合成＋白底版本＋PNG metadata",
+      "required_modules": [
+        "PIL",
+        "numpy",
+        "safetensors",
+        "torch"
+      ],
+      "source_pins": [],
+      "synthetic": false
+    },
+    "prompt.scene_compile": {
+      "default_settings": {
+        "invoke": {
+          "intentional_changes": []
+        },
+        "load": {
+          "device": {
+            "id": "cpu",
+            "kind": "cpu",
+            "resource_group": "cpu-text"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_qimg.prompting.provider:SceneCompileProvider",
+      "kind": "prompt.compile",
+      "label": "反推場景編譯（確定性；core／detailed 兩個 prompt 候選）",
+      "required_modules": [],
+      "source_pins": [],
+      "synthetic": false
+    },
+    "prompt.scene_score": {
+      "default_settings": {
+        "invoke": {
+          "op": "loss"
+        },
+        "load": {
+          "device": {
+            "id": "cpu",
+            "kind": "cpu",
+            "resource_group": "cpu-text"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_qimg.prompting.provider:SceneScoreProvider",
+      "kind": "prompt.score",
+      "label": "反推比較評分（確定性；逐區段加權損失、排名、雙順序確認）",
+      "required_modules": [],
+      "source_pins": [],
+      "synthetic": false
+    },
+    "qimg.conditioning": {
+      "default_settings": {
+        "invoke": {},
+        "load": {
+          "device": {
+            "id": "GPU-REPLACE",
+            "kind": "cuda",
+            "resource_group": "gpu"
+          },
+          "model_path": "",
+          "offload": {
+            "after_use": "host",
+            "mode": "sequential"
+          },
+          "part_overrides": [],
+          "precision": {
+            "compute_dtype": "bf16"
+          },
+          "provider_options": {
+            "base": "qwen-image-2.1"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_qimg.conditioning:ConditioningProvider",
+      "kind": "image.conditioning",
+      "label": "Qwen-Image 2.1 文字／參考圖條件（Qwen3-VL hidden states；pipeline 原始模板與 final-norm hook）",
+      "required_modules": [
+        "PIL",
+        "numpy",
+        "safetensors",
+        "torch",
+        "transformers"
+      ],
+      "source_pins": [],
+      "synthetic": false
+    },
+    "qimg.dit": {
+      "default_settings": {
+        "invoke": {
+          "flow_shift_mu": null,
+          "guidance": 1.0,
+          "height": 1024,
+          "preview": {
+            "every": 1,
+            "max_side": 256,
+            "mode": "off"
+          },
+          "sigma_schedule": "native",
+          "steps": 40,
+          "width": 1024
+        },
+        "load": {
+          "device": {
+            "id": "GPU-REPLACE",
+            "kind": "cuda",
+            "resource_group": "gpu"
+          },
+          "model_path": "",
+          "model_revision": null,
+          "offload": {
+            "mode": "phase"
+          },
+          "part_overrides": [],
+          "precision": {
+            "compute_dtype": "bf16"
+          },
+          "provider_options": {
+            "adapters": [],
+            "base": "qwen-image-2.1",
+            "gguf_file": null,
+            "memory_model": "auto",
+            "preview_coefficients": null,
+            "preview_vae": false,
+            "transformer_override": null,
+            "unified_reserve_bytes": 4294967296,
+            "variant": "bf16"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_qimg.dit.provider:QimgDitProvider",
+      "kind": "dit.denoise",
+      "label": "Qwen-Image 2.1 DiT（文生圖／圖生圖去噪；完整迴圈在單次呼叫內，輸出正規化 latent）",
+      "required_modules": [
+        "diffusers",
+        "numpy",
+        "safetensors",
+        "torch"
+      ],
+      "source_pins": [
+        [
+          "diffusers",
+          "578c9b2c6636ab2424a0e56186268b83623656b2"
+        ]
+      ],
+      "synthetic": false
+    },
+    "qimg.prepare": {
+      "default_settings": {
+        "invoke": {},
+        "load": {
+          "device": {
+            "id": "cpu",
+            "kind": "cpu",
+            "resource_group": "cpu-qimg-prepare"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_qimg.prepare:PrepareProvider",
+      "kind": "image.prepare",
+      "label": "Qwen-Image 參考圖／遮罩前處理（CPU；EXIF、ICC→sRGB、縮放到 reference_resolution²）",
+      "required_modules": [
+        "PIL",
+        "numpy"
+      ],
+      "source_pins": [],
+      "synthetic": false
+    },
+    "qimg.vae_decode": {
+      "default_settings": {
+        "invoke": {},
+        "load": {
+          "device": {
+            "id": "GPU-REPLACE",
+            "kind": "cuda",
+            "resource_group": "gpu"
+          },
+          "model_path": "",
+          "offload": {
+            "after_use": "host",
+            "mode": "none",
+            "pinned": true
+          },
+          "part_overrides": [],
+          "precision": {
+            "compute_dtype": "bf16"
+          },
+          "provider_options": {
+            "base": "qwen-image-2.1"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_qimg.vae:VaeDecodeProvider",
+      "kind": "image.decode",
+      "label": "Qwen-Image 2.1 VAE decode → RGBA PNG（full／tiled 明確選擇；只載入 decoder）",
+      "required_modules": [
+        "PIL",
+        "diffusers",
+        "numpy",
+        "safetensors",
+        "torch"
+      ],
+      "source_pins": [
+        [
+          "diffusers",
+          "578c9b2c6636ab2424a0e56186268b83623656b2"
+        ]
+      ],
+      "synthetic": false
+    },
+    "qimg.vae_encode": {
+      "default_settings": {
+        "invoke": {},
+        "load": {
+          "device": {
+            "id": "GPU-REPLACE",
+            "kind": "cuda",
+            "resource_group": "gpu"
+          },
+          "model_path": "",
+          "offload": {
+            "after_use": "host",
+            "mode": "none",
+            "pinned": true
+          },
+          "part_overrides": [],
+          "precision": {
+            "compute_dtype": "bf16"
+          },
+          "provider_options": {
+            "base": "qwen-image-2.1"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_qimg.vae:VaeEncodeProvider",
+      "kind": "image.reference_encode",
+      "label": "Qwen-Image 2.1 參考圖 VAE encode（RGBA 4 通道、argmax、正規化＋攤平；只載入 encoder）",
+      "required_modules": [
+        "diffusers",
+        "numpy",
+        "safetensors",
+        "torch"
+      ],
+      "source_pins": [
+        [
+          "diffusers",
+          "578c9b2c6636ab2424a0e56186268b83623656b2"
+        ]
+      ],
+      "synthetic": false
+    },
+    "qimg.vision": {
+      "default_settings": {
+        "invoke": {
+          "language": "zh-TW",
+          "op": "caption"
+        },
+        "load": {
+          "device": {
+            "id": "GPU-REPLACE",
+            "kind": "cuda",
+            "resource_group": "gpu"
+          },
+          "model_path": "",
+          "offload": {
+            "mode": "none"
+          },
+          "part_overrides": [],
+          "precision": {
+            "compute_dtype": "bf16",
+            "quantization": {
+              "scheme": "none"
+            }
+          },
+          "provider_options": {
+            "activation_reserve_bytes": 1073741824,
+            "attn_implementation": "sdpa",
+            "capacity_check": "enforce",
+            "caption_max_new_tokens": 768,
+            "max_context_tokens": 8192,
+            "max_new_tokens": 3072,
+            "max_pixels": 262144,
+            "memory_model": "auto",
+            "min_pixels": 65536,
+            "output_format": "compact",
+            "reserve_bytes": 1073741824,
+            "unified_reserve_bytes": 4294967296
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_qimg.vision.provider:QwenVisionProvider",
+      "kind": "image.vision",
+      "label": "圖片反推（Qwen3-VL：caption／八區段分析／修訂／原圖與生成圖比較／A/B 比較）",
+      "required_modules": [
+        "PIL",
+        "torch",
+        "transformers"
+      ],
+      "source_pins": [],
+      "synthetic": false
+    }
+  },
+  "schema_version": "1.0"
+}

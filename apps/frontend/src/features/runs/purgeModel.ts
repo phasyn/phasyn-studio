@@ -1,7 +1,6 @@
 // 永久刪除 run 的試算／結果整理（純函式）：合併多個 run 的計畫，供確認對話框顯示影響範圍。
-import { isApiError } from "@/api/http";
+import { isApiError, matchesReply } from "@/api/http";
 import type { PurgeFile, PurgeResult } from "@/api/runs";
-import { isRecord } from "@/lib/json";
 
 export interface ProjectImpact {
   project_id: string;
@@ -57,8 +56,7 @@ export function summarizePlans(plans: readonly PurgeResult[]): PurgeSummary {
 /** 刪除失敗時伺服器在 error.details 帶回的計畫（哪些檔案已刪、哪些失敗）；拿不到時為 null。 */
 export function planFromError(error: unknown): PurgeResult | null {
   const details = isApiError(error) ? error.details : null;
-  if (!isRecord(details) || !Array.isArray(details.files) || typeof details.run_id !== "string") return null;
-  return details as unknown as PurgeResult;
+  return matchesReply(details, "PurgeResult", {}) ? details : null;
 }
 
 /** 失敗的檔案（status＝failed）。 */

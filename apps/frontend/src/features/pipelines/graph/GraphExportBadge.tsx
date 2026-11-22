@@ -31,7 +31,7 @@ export const GraphExportBadge = memo(function GraphExportBadge({ box, port, step
   const selected = selectedName !== null && names.includes(selectedName);
   const lines = port.exports.map((item) => {
     const state = producedText(item.produced);
-    return t("流程輸出 {name}{value}", { name: item.name, value: state ? t("（{state}）", { state }) : "" });
+    return t("流程輸出 {name}{value}", { name: item.name, value: (state != null && state !== "") ? t("（{state}）", { state }) : "" });
   });
   return (
     <button
@@ -40,8 +40,8 @@ export const GraphExportBadge = memo(function GraphExportBadge({ box, port, step
       tabIndex={-1}
       aria-pressed={selected}
       aria-label={t("{lines}，來自 {stepId}.{name}", { lines: formatList(lines), stepId, name: port.name })}
-      title={t("{lines}\n來自 {stepId}.{name}{value}\n點選可在檢視器修改", { lines: lines.join("\n"), stepId, name: port.name, value: port.typeId ? t("（{typeId}）", { typeId: port.typeId }) : "" })}
-      onClick={() => onSelect(selectedName && names.includes(selectedName) ? selectedName : first.name)}
+      title={t("{lines}\n來自 {stepId}.{name}{value}\n點選可在檢視器修改", { lines: lines.join("\n"), stepId, name: port.name, value: (port.typeId != null && port.typeId !== "") ? t("（{typeId}）", { typeId: port.typeId }) : "" })}
+      onClick={() => { onSelect((selectedName != null && selectedName !== "") && names.includes(selectedName) ? selectedName : first.name); }}
       // 選取＝品牌漸層邊＋低透明度品牌底（與選取的節點卡一致）；按下時輕微縮小（pressable）。
       // 顏色過場用全域 button 規則（不另寫 transition，避免蓋掉 pressable 的彈簧）。
       className={cn(

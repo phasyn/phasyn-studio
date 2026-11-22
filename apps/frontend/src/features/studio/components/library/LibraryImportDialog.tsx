@@ -8,37 +8,35 @@
 // 勾選一段、Ctrl／⌘＋A 全選（都選了再按一次＝取消）；Ctrl／⌘＋Enter 加入；Esc 關閉（搜尋欄有字時先清掉）。
 // 動作：專案列依序進場，選到的專案有滑動的品牌底；素材磚依序進場（換專案或類型時重新進場，捲動後新掛上的不再播放），勾選時
 // 角落的勾號彈出；讀取中是掃光的骨架；空狀態與錯誤上升淡入；底部的狀態文字換內容時淡入。
-import { AudioLines, Check, Film, FolderKanban, Image as ImageIcon, Import, Library, LoaderCircle, Plus, RotateCcw, Search, TriangleAlert, type LucideIcon } from "lucide-react";
+import { FolderKanban, Import, Library, Plus, RotateCcw, Search, TriangleAlert } from "lucide-react";
 import { motion } from "motion/react";
-import { useCallback, useId, useLayoutEffect, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from "react";
-import type { StudioLibraryItem, StudioProjectSummary } from "@/api/generated/contracts";
+import { useId, useLayoutEffect, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
+import type { StudioLibraryItem } from "@/api/generated/contracts";
 import { useStudioProjects } from "@/api/studioProjects";
 import { EmptyState } from "@/components/common/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { Input } from "@/components/ui/controls";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { HUD_CHIP, ICON_TILE_BRAND, LIFT, THUMB_ZOOM } from "@/components/ui/look";
-import { motionTransition, reveal } from "@/components/ui/motion";
-import { Skeleton } from "@/components/ui/skeleton";
+import { ICON_TILE_BRAND } from "@/components/ui/look";
+import { motionTransition } from "@/components/ui/motion";
 import { cn } from "@/lib/cn";
 import { errorText } from "@/lib/errors";
-import { formatTimestamp } from "@/lib/format";
 import type { LibraryKindFilter } from "../../model/library";
 import { MAX_LIBRARY_ITEMS } from "../../model/project";
 import { KindIcon } from "../../references/KindIcon";
 import { KIND_LABEL } from "../../references/materials";
-import { LibraryThumb } from "../../references/ReferenceRow";
 import { useStudio } from "../../studioContext";
-import { itemDimensions, itemDuration, itemSize } from "./display";
-import { checkRange, existingItem, importedCopies, libraryFiles, projectMatches, tileLayout, type TileLayout } from "./libraryImport";
-import { useLibrarySources, type LibrarySource } from "./useLibrarySources";
-import { useViewport, virtualRows, type VirtualViewport } from "./useVirtualRows";
+import { ItemGrid, SkeletonGrid } from "./ImportItemGrid";
+import { KindFilter } from "./ImportKindFilter";
+import { ProjectList } from "./ImportProjectList";
+import { checkRange, existingItem, importedCopies, libraryFiles, projectMatches, rowId, tileLayout } from "./libraryImport";
+import { useLibrarySources } from "./useLibrarySources";
+import { useViewport } from "./useVirtualRows";
 import { t } from "@/i18n";
 
 /** 其他專案多於這個數量時顯示搜尋欄。 */
 const SEARCH_FROM = 8;
-const SKELETON_ROWS = 5;
 const NO_ITEMS: StudioLibraryItem[] = [];
 const NO_IDS: ReadonlySet<string> = new Set();
 
@@ -49,8 +47,6 @@ interface Checked {
   anchor: string | null;
 }
 
-const rowId = (baseId: string, projectId: string) => `${baseId}-project-${projectId}`;
-const tileId = (baseId: string, itemId: string) => `${baseId}-item-${itemId}`;
 
 /**
  * 這個對話框只複製已經在檔案庫的檔案，不收拖進來的檔案。拖放事件會沿著 React 樹傳到後面素材庫的放置區（它會在這個對話框
@@ -81,7 +77,7 @@ export function LibraryImportDialog({ open, onOpenChange, sourceId, onSourceChan
         aria-describedby={`${baseId}-description`}
         className="h-[min(46rem,calc(100vh-2.5rem))] max-h-none max-w-[min(74rem,calc(100vw-2rem))]"
         // Keys stay in this dialog: the asset library behind it, on the same React tree, has shortcuts of its own (Ctrl／⌘＋F)
-        onKeyDown={(event) => event.stopPropagation()}
+        onKeyDown={(event) => { event.stopPropagation(); }}
         onEscapeKeyDown={(event) => {
           // Esc in the search field with text clears it first (the field does that itself)
           if (document.activeElement instanceof HTMLElement && document.activeElement.closest("[data-import-local-escape]")) event.preventDefault();
@@ -310,7 +306,7 @@ function ImportBody({ baseId, sourceId, onSourceChange, onImported }: { baseId: 
 
   let pane: ReactNode;
   if (!selected) pane = null;
-  else if (source?.error) {
+  else if (source?.error != null) {
     pane = (
       <div className="p-4">
         <Callout tone="danger" title={t("讀不到「{title}」的素材庫", { title })} className="animate-rise-in">
@@ -321,7 +317,7 @@ function ImportBody({ baseId, sourceId, onSourceChange, onImported }: { baseId: 
         </Callout>
       </div>
     );
-  } else if (!source || source.items === null) {
+  } else if (source?.items == null) {
     pane = <SkeletonGrid layout={layout} label={t("讀取「{title}」的素材庫…", { title })} />;
   } else if (items.length === 0) {
     pane = <EmptyState size="compact" icon={<Library />} title={t("「{title}」的素材庫是空的", { title })} description={t("在那個專案上傳的圖片、影片與聲音會出現在這裡。")} className="h-full content-center" />;
@@ -332,7 +328,7 @@ function ImportBody({ baseId, sourceId, onSourceChange, onImported }: { baseId: 
         icon={<KindIcon kind={kind === "all" ? "image" : kind} className="size-5" />}
         title={t("這個專案沒有{kind}", { kind: kind === "all" ? t("素材") : KIND_LABEL[kind] })}
         action={
-          <Button size="sm" onClick={() => setKind("all")}>
+          <Button size="sm" onClick={() => { setKind("all"); }}>
             {t("清除篩選")}
           </Button>
         }
@@ -364,7 +360,7 @@ function ImportBody({ baseId, sourceId, onSourceChange, onImported }: { baseId: 
   }
 
   return (
-    <div
+    <div /* eslint-disable-line jsx-a11y-x/no-static-element-interactions -- Keyboard events from this panel’s focusable controls bubble here so navigation and dismissal share one handler. */
       className="flex min-h-0 flex-1 flex-col"
       onKeyDown={(event) => {
         if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && !event.nativeEvent.isComposing) {
@@ -409,14 +405,14 @@ function ImportBody({ baseId, sourceId, onSourceChange, onImported }: { baseId: 
             <section aria-label={t("其他專案")} className="flex max-h-56 min-h-0 flex-col border-b border-line-subtle bg-canvas/40 @3xl/import:max-h-none @3xl/import:border-r @3xl/import:border-b-0">
               {showSearch ? (
                 <div className="shrink-0 px-2 pt-2">
-                  <label className="relative block">
+                  <div className="relative block">
                     <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-fg-tertiary" />
                     <Input
                       compact
                       type="search"
                       value={query}
                       data-import-local-escape={query ? "" : undefined}
-                      onChange={(event) => setQuery(event.target.value)}
+                      onChange={(event) => { setQuery(event.target.value); }}
                       onKeyDown={(event) => {
                         if (event.key === "Escape" && query) {
                           event.preventDefault();
@@ -434,7 +430,7 @@ function ImportBody({ baseId, sourceId, onSourceChange, onImported }: { baseId: 
                       autoComplete="off"
                       className="pl-8"
                     />
-                  </label>
+                  </div>
                 </div>
               ) : null}
               <ProjectList
@@ -473,7 +469,7 @@ function ImportBody({ baseId, sourceId, onSourceChange, onImported }: { baseId: 
                   {t("全選")}
                   <span className="machine text-fg-tertiary">{shownSelectable.length}</span>
                 </label>
-                <Button size="sm" variant="quiet" disabled={picks.length === 0} onClick={() => commit(NO_IDS, null)}>
+                <Button size="sm" variant="quiet" disabled={picks.length === 0} onClick={() => { commit(NO_IDS, null); }}>
                   {t("清除選取")}
                 </Button>
               </div>
@@ -534,368 +530,3 @@ function statusLine({ over, room, count, allInLibrary }: { over: boolean; room: 
   return { key: "hint", tone: "hint", text: t("點縮圖勾選・Shift＋點一下勾選一段・Ctrl／⌘＋A 全選") };
 }
 
-/** 左欄的專案清單：一個 listbox（焦點在清單上，↑↓ 換專案）；選到的專案有滑動的品牌底。 */
-function ProjectList({
-  baseId,
-  listRef,
-  loading,
-  projects,
-  sources,
-  selectedId,
-  onChoose,
-  onKeyDown,
-}: {
-  baseId: string;
-  listRef: RefObject<HTMLDivElement | null>;
-  loading: boolean;
-  projects: readonly StudioProjectSummary[];
-  sources: ReadonlyMap<string, LibrarySource>;
-  selectedId: string | null;
-  onChoose: (projectId: string) => void;
-  onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
-}) {
-  const activeShown = selectedId !== null && projects.some((summary) => summary.project_id === selectedId);
-  return (
-    // layoutScroll: the sliding mark measures rows inside a list that scrolls
-    <motion.div
-      ref={listRef}
-      layoutScroll
-      role="listbox"
-      tabIndex={0}
-      aria-label={t("其他專案")}
-      aria-busy={loading || undefined}
-      aria-activedescendant={activeShown && selectedId !== null ? rowId(baseId, selectedId) : undefined}
-      onKeyDown={onKeyDown}
-      className={cn(
-        "group/projects grid min-h-0 flex-1 auto-rows-max content-start gap-0.5 overflow-y-auto p-2",
-        // The focused row carries the ring; with no row shown (a search hid it) the list does
-        activeShown ? "outline-none" : "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus",
-      )}
-    >
-      {loading ? (
-        // Decoration only: the items area next to it says 讀取專案列表… once (role="status")
-        Array.from({ length: SKELETON_ROWS }, (_, index) => (
-          <span key={index} aria-hidden className="flex min-h-12 items-center gap-2.5 px-2.5">
-            <Skeleton className="size-8 shrink-0" />
-            <span className="grid flex-1 gap-1.5">
-              <Skeleton className="h-3.5 w-3/4" />
-              <Skeleton className="h-3 w-1/2" />
-            </span>
-          </span>
-        ))
-      ) : projects.length === 0 ? (
-        <p className="px-2.5 py-3 text-caption text-fg-tertiary animate-fade-in">{t("沒有符合的專案")}</p>
-      ) : (
-        projects.map((summary, index) => {
-          const active = summary.project_id === selectedId;
-          const name = summary.title || t("未命名專案");
-          return (
-            <div
-              key={summary.project_id}
-              ref={reveal(index)}
-              id={rowId(baseId, summary.project_id)}
-              role="option"
-              aria-selected={active}
-              title={name}
-              onClick={() => onChoose(summary.project_id)}
-              className={cn(
-                "relative flex min-h-12 cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-1.5 select-none",
-                active ? "text-fg" : "text-fg-secondary hover:bg-raised/70 hover:text-fg active:bg-sunken",
-                "group-focus-visible/projects:aria-selected:outline-2 group-focus-visible/projects:aria-selected:-outline-offset-2 group-focus-visible/projects:aria-selected:outline-focus",
-              )}
-            >
-              {active ? (
-                <motion.span
-                  layoutId={`${baseId}-project-mark`}
-                  aria-hidden
-                  transition={motionTransition("spring-snappy", "spring-snappy")}
-                  className="absolute inset-0 rounded-lg border border-brand-blue/40 bg-brand-gradient-soft"
-                />
-              ) : null}
-              <span aria-hidden className={cn("relative grid size-8 shrink-0 place-items-center rounded-md [&_svg]:size-4", active ? "bg-brand-gradient text-on-accent shadow-glow-sm" : "bg-entity/12 text-entity")}>
-                <FolderKanban />
-              </span>
-              <span className="relative grid min-w-0 flex-1 gap-0.5">
-                <span className="truncate text-data">{name}</span>
-                <span className="flex min-w-0 items-center gap-1.5 text-caption text-fg-tertiary">
-                  <SourceCount source={sources.get(summary.project_id)} />
-                  <span aria-hidden>·</span>
-                  <span className="machine truncate">{t("更新於 {time}", { time: formatTimestamp(summary.updated_at) })}</span>
-                </span>
-              </span>
-            </div>
-          );
-        })
-      )}
-    </motion.div>
-  );
-}
-
-/** 專案列上的素材數：讀取中是骨架，讀不到時說明（原因在提示），讀到後淡入數字。 */
-function SourceCount({ source }: { source: LibrarySource | undefined }) {
-  if (!source || source.pending) {
-    return (
-      <>
-        <Skeleton className="h-3 w-12 shrink-0" />
-        <span className="sr-only">{t("讀取中…")}</span>
-      </>
-    );
-  }
-  if (source.error) {
-    return (
-      <span title={errorText(source.error)} className="inline-flex shrink-0 items-center gap-1 text-warning animate-fade-in">
-        <TriangleAlert aria-hidden className="size-3" />
-        {t("讀不到")}
-      </span>
-    );
-  }
-  const count = source.items?.length ?? 0;
-  return <span className="machine shrink-0 animate-fade-in">{count === 0 ? t("沒有素材") : t("{count} 個素材", { count })}</span>;
-}
-
-const KIND_FILTERS: readonly { id: LibraryKindFilter; label: string; icon: LucideIcon }[] = [
-  { id: "all", label: t("全部"), icon: Library },
-  { id: "image", label: t("圖片"), icon: ImageIcon },
-  { id: "video", label: t("影片"), icon: Film },
-  { id: "audio", label: t("聲音"), icon: AudioLines },
-];
-
-/** 類型篩選（全部／圖片／影片／聲音，附數量）：目前的類型有滑動的品牌底。 */
-function KindFilter({ baseId, value, counts, disabled, onChange }: { baseId: string; value: LibraryKindFilter; counts: Record<LibraryKindFilter, number>; disabled: boolean; onChange: (kind: LibraryKindFilter) => void }) {
-  return (
-    <div role="group" aria-label={t("類型")} className="flex flex-wrap items-center gap-0.5 rounded-lg border border-line-subtle bg-sunken/60 p-0.5">
-      {KIND_FILTERS.map((entry) => {
-        const active = value === entry.id;
-        return (
-          <button
-            key={entry.id}
-            type="button"
-            aria-pressed={active}
-            disabled={disabled}
-            onClick={() => onChange(entry.id)}
-            className={cn(
-              "pressable relative inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-caption disabled:cursor-not-allowed disabled:text-fg-disabled",
-              active ? "text-fg" : "text-fg-secondary enabled:hover:bg-raised enabled:hover:text-fg",
-            )}
-          >
-            {active ? (
-              <motion.span
-                layoutId={`${baseId}-kind-mark`}
-                aria-hidden
-                transition={motionTransition("spring-snappy", "spring-snappy")}
-                className="absolute inset-0 rounded-md bg-brand-gradient-soft ring-1 ring-brand-blue/40"
-              />
-            ) : null}
-            <entry.icon aria-hidden className={cn("relative size-3.5", active ? "text-brand-cyan" : "text-fg-tertiary")} />
-            <span className="relative">{entry.label}</span>
-            <span className="machine relative text-fg-tertiary">{disabled ? "—" : counts[entry.id]}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-/** 讀取中的素材格：與磚同樣大小的掃光骨架（兩列），上方一行讀取說明。 */
-function SkeletonGrid({ layout, label }: { layout: TileLayout; label: string }) {
-  return (
-    <div className="grid gap-3 animate-fade-in" style={{ padding: layout.pad }}>
-      <p role="status" className="flex items-center gap-1.5 text-caption text-fg-tertiary">
-        <LoaderCircle aria-hidden className="size-3.5 animate-spin" />
-        {label}
-      </p>
-      <div aria-hidden className="grid" style={{ gridTemplateColumns: `repeat(${layout.columns}, minmax(0, 1fr))`, gridAutoRows: layout.tileHeight, gap: layout.gap }}>
-        {Array.from({ length: layout.columns * 2 }, (_, index) => (
-          <span key={index} className="grid content-start gap-1.5 rounded-xl border border-line-subtle bg-canvas/60 p-1.5">
-            <span className="block" style={{ height: layout.thumbHeight }}>
-              <Skeleton className="h-full w-full rounded-lg" />
-            </span>
-            <Skeleton className="h-3 w-3/4" />
-            <Skeleton className="h-2.5 w-1/2" />
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-/**
- * 進場的範圍：每次（重新）掛上時是「還沒捲動」，磚依序進場；之後一捲動，新掛上的磚就直接出現（與素材庫的清單相同）。
- * 以 key＝revealKey 掛上，所以換專案或類型時重新開始。
- */
-function RevealScope({ scrollRef, style, children }: { scrollRef: RefObject<HTMLElement | null>; style: CSSProperties; children: (scrolled: RefObject<boolean>) => ReactNode }) {
-  const scrolled = useRef(false);
-  useLayoutEffect(() => {
-    const element = scrollRef.current;
-    if (!element) return;
-    // Scroll events arrive a frame late: the one from the grid's own reset to the top (a new project or type, see
-    // ImportBody) reaches this new scope and must not count, or the first rows would mount without their entrance
-    const mark = () => {
-      if (element.scrollTop > 0) scrolled.current = true;
-    };
-    element.addEventListener("scroll", mark, { passive: true });
-    return () => element.removeEventListener("scroll", mark);
-  }, [scrollRef]);
-  return <div style={style}>{children(scrolled)}</div>;
-}
-
-function useEnter(scrolled: RefObject<boolean>, stagger: number) {
-  return useCallback(
-    (node: HTMLElement | null) => {
-      if (!node || scrolled.current) return;
-      return reveal(stagger)(node);
-    },
-    [scrolled, stagger],
-  );
-}
-
-interface GridProps {
-  baseId: string;
-  items: readonly StudioLibraryItem[];
-  layout: TileLayout;
-  viewport: VirtualViewport;
-  scrollRef: RefObject<HTMLDivElement | null>;
-  gridRef: RefObject<HTMLDivElement | null>;
-  revealKey: string;
-  checked: ReadonlySet<string>;
-  activeId: string | null;
-  existing: (item: StudioLibraryItem) => StudioLibraryItem | null;
-  label: string;
-  onToggle: (item: StudioLibraryItem, range: boolean) => void;
-  onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => void;
-  onFocus: () => void;
-}
-
-/**
- * 素材格：一個 listbox（aria-multiselectable＋aria-activedescendant）；只掛看得到的列（來源專案最多 500 個素材，影片縮圖是
- * <video preload="metadata">，全部掛上會同時讀幾百個檔頭）。
- */
-function ItemGrid({ baseId, items, layout, viewport, scrollRef, gridRef, revealKey, checked, activeId, existing, label, onToggle, onKeyDown, onFocus }: GridProps) {
-  const { columns, thumbHeight, tileHeight, rowHeight, gap, pad } = layout;
-  const range = virtualRows(viewport, Math.ceil(items.length / columns), rowHeight);
-  const first = range.start * columns;
-  const visible = items.slice(first, range.end * columns);
-  const activeIndex = activeId === null ? -1 : items.findIndex((item) => item.item_id === activeId);
-  const activeMounted = activeIndex >= first && activeIndex < range.end * columns;
-  return (
-    <div
-      ref={gridRef}
-      role="listbox"
-      tabIndex={0}
-      aria-multiselectable
-      aria-label={label}
-      aria-activedescendant={activeMounted && activeId !== null ? tileId(baseId, activeId) : undefined}
-      aria-keyshortcuts="Space Enter Shift+Space Control+A Meta+A Control+Enter Meta+Enter"
-      onKeyDown={onKeyDown}
-      onFocus={onFocus}
-      className="group/listbox outline-none"
-      style={{ padding: pad }}
-    >
-      <RevealScope key={revealKey} scrollRef={scrollRef} style={{ paddingTop: range.padTop, paddingBottom: Math.max(0, range.padBottom - gap) }}>
-        {(scrolled) => (
-          <div className="grid" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gridAutoRows: tileHeight, gap }}>
-            {visible.map((item, offset) => (
-              <ImportTile
-                key={item.item_id}
-                id={tileId(baseId, item.item_id)}
-                item={item}
-                checked={checked.has(item.item_id)}
-                active={item.item_id === activeId}
-                existing={existing(item)}
-                thumbHeight={thumbHeight}
-                stagger={offset}
-                scrolled={scrolled}
-                onToggle={onToggle}
-              />
-            ))}
-          </div>
-        )}
-      </RevealScope>
-    </div>
-  );
-}
-
-/** 滑過影片縮圖時無聲播放，離開時回到開頭（與素材庫的磚相同）。 */
-function playPreview(event: MouseEvent<HTMLElement>) {
-  void event.currentTarget.querySelector("video")?.play().catch(() => undefined);
-}
-
-function stopPreview(event: MouseEvent<HTMLElement>) {
-  const video = event.currentTarget.querySelector("video");
-  if (!video) return;
-  video.pause();
-  video.currentTime = 0.1;
-}
-
-/** 一個素材磚：縮圖、類型與長度；可以勾選的右上角有勾選框，已在素材庫的變淡並寫出來（不能勾選）。 */
-function ImportTile({
-  id,
-  item,
-  checked,
-  active,
-  existing,
-  thumbHeight,
-  stagger,
-  scrolled,
-  onToggle,
-}: {
-  id: string;
-  item: StudioLibraryItem;
-  checked: boolean;
-  active: boolean;
-  /** 這個檔案在目前專案素材庫裡的素材（null＝還沒有，可以勾選）。 */
-  existing: StudioLibraryItem | null;
-  thumbHeight: number;
-  stagger: number;
-  scrolled: RefObject<boolean>;
-  onToggle: (item: StudioLibraryItem, range: boolean) => void;
-}) {
-  const enter = useEnter(scrolled, stagger);
-  const taken = existing !== null;
-  return (
-    <div
-      ref={enter}
-      id={id}
-      role="option"
-      aria-selected={checked}
-      aria-disabled={taken || undefined}
-      data-focused={active || undefined}
-      title={taken ? t("這個檔案已在這個專案的素材庫（「{name}」）", { name: existing.name }) : item.name}
-      onClick={(event) => onToggle(item, event.shiftKey)}
-      onMouseEnter={playPreview}
-      onMouseLeave={stopPreview}
-      className={cn(
-        "group/tile relative grid content-start gap-1 rounded-xl border p-1.5 select-none",
-        taken ? "cursor-not-allowed border-line-subtle bg-canvas/40 opacity-55" : cn("cursor-pointer", LIFT, checked ? "border-brand-blue/80 bg-brand-gradient-soft shadow-glow-sm" : "border-line-subtle bg-canvas/60 hover:border-line-strong"),
-        "data-focused:outline-offset-2 group-focus-visible/listbox:data-focused:outline-2 group-focus-visible/listbox:data-focused:outline-focus",
-      )}
-    >
-      <span className="relative grid place-items-center overflow-hidden rounded-lg border border-line-subtle bg-stage" style={{ height: thumbHeight }}>
-        <LibraryThumb item={item} className={THUMB_ZOOM} />
-        <span className={cn(HUD_CHIP, "absolute top-1.5 left-1.5 inline-flex items-center gap-1 px-1.5 text-[11px]")}>
-          <KindIcon kind={item.kind} className="size-3" />
-          {KIND_LABEL[item.kind]}
-        </span>
-        {item.kind !== "image" ? <span className={cn(HUD_CHIP, "machine absolute right-1.5 bottom-1.5 px-1.5 text-[11px]")}>{itemDuration(item)}</span> : null}
-        {taken ? (
-          <span className={cn(HUD_CHIP, "absolute bottom-1.5 left-1.5 inline-flex items-center gap-1 px-1.5 text-[11px] text-fg-secondary")}>
-            <Check aria-hidden className="size-3" />
-            {t("已在素材庫")}
-          </span>
-        ) : (
-          <span
-            aria-hidden
-            className={cn(
-              "absolute top-1.5 right-1.5 grid size-5 place-items-center rounded-md border shadow-[0_1px_2px_rgb(0_0_0/0.4)]",
-              checked ? "border-transparent bg-brand-gradient text-on-accent" : "border-white/50 bg-sunken/70 group-hover/tile:border-white/80",
-            )}
-          >
-            {checked ? <Check className="size-3.5 animate-pop-in" /> : null}
-          </span>
-        )}
-      </span>
-      <span className="truncate px-0.5 text-caption text-fg">{item.name}</span>
-      <span className="machine truncate px-0.5 text-[11px] leading-4 text-fg-tertiary">{item.kind === "audio" ? itemSize(item) : `${itemDimensions(item)} · ${itemSize(item)}`}</span>
-    </div>
-  );
-}

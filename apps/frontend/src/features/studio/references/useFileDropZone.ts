@@ -18,9 +18,9 @@ function carriesFiles(event: DragEvent): boolean {
 
 export function useFileDropZone(anchor: RefObject<HTMLElement | null>, enabled: boolean, onFiles: (files: File[]) => void): DropHighlight | null {
   const [highlight, setHighlight] = useState<DropHighlight | null>(null);
-  const latest = useRef({ enabled, onFiles });
+  const latestRef = useRef({ enabled, onFiles });
   useEffect(() => {
-    latest.current = { enabled, onFiles };
+    latestRef.current = { enabled, onFiles };
   });
 
   useEffect(() => {
@@ -29,14 +29,14 @@ export function useFileDropZone(anchor: RefObject<HTMLElement | null>, enabled: 
     const zone = node.closest<HTMLElement>('[role="tabpanel"]') ?? node;
     const host = floatingHost(zone);
     const over = (event: DragEvent) => {
-      if (!carriesFiles(event) || !latest.current.enabled) return;
+      if (!carriesFiles(event) || !latestRef.current.enabled) return;
       event.preventDefault();
       if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
       const frame = floatingFrame(host);
       const rect = zone.getBoundingClientRect();
       const box = { left: rect.left - frame.left, top: rect.top - frame.top, width: rect.width, height: rect.height };
       setHighlight((current) =>
-        current && current.box.left === box.left && current.box.top === box.top && current.box.width === box.width && current.box.height === box.height ? current : { host, box },
+        current?.box.left === box.left && current.box.top === box.top && current.box.width === box.width && current.box.height === box.height ? current : { host, box },
       );
     };
     const leave = (event: DragEvent) => {
@@ -46,10 +46,10 @@ export function useFileDropZone(anchor: RefObject<HTMLElement | null>, enabled: 
     const drop = (event: DragEvent) => {
       if (!carriesFiles(event)) return;
       setHighlight(null);
-      if (!latest.current.enabled) return;
+      if (!latestRef.current.enabled) return;
       event.preventDefault();
       const files = [...(event.dataTransfer?.files ?? [])];
-      if (files.length > 0) latest.current.onFiles(files);
+      if (files.length > 0) latestRef.current.onFiles(files);
     };
     zone.addEventListener("dragenter", over);
     zone.addEventListener("dragover", over);

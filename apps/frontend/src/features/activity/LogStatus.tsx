@@ -21,7 +21,8 @@ export function LogMessage({ icon, children, action, className }: { icon: ReactN
   );
 }
 
-export function LogLoading({ label = t("讀取中…") }: { label?: string }) {
+export function LogLoading({ label: labelProp }: { label?: string }) {
+  const label = labelProp ?? t("讀取中…");
   return (
     <div role="status" className="grid gap-1.5 px-3 py-3">
       <span className="flex items-center gap-2 text-data text-fg-secondary">
@@ -40,7 +41,7 @@ export function LogLoading({ label = t("讀取中…") }: { label?: string }) {
 export function LogError({ error, title, onRetry, retrying }: { error: unknown; title: string; onRetry: () => void; retrying?: boolean }) {
   return (
     <div className="p-2">
-      <ErrorCallout error={error} title={title} onRetry={onRetry} retrying={retrying} />
+      <ErrorCallout error={error} title={title} onRetry={onRetry} {...(retrying === undefined ? {} : { retrying })} />
     </div>
   );
 }
@@ -50,7 +51,7 @@ export function LogError({ error, title, onRetry, retrying }: { error: unknown; 
  * 有舊資料＝畫面是過時資料（明講），沒有資料＝這個來源的紀錄缺席。
  */
 export function SourceErrorRow({ status, onRetry, retrying = false }: { status: SourceStatus; onRetry: () => void; retrying?: boolean }) {
-  if (!status.error) return null;
+  if (!(status.error != null)) return null;
   const info = toErrorInfo(status.error);
   // A fixed server message reads in the interface language (other text stays as it is)
   const message = tServer(info.message);

@@ -5,7 +5,7 @@
 // its In and Out animations follow it when it moves (their scale and rotation turn around the text). Used by the Text
 // group of Effect Controls and by the Text dock.
 import { Plus, TextAlignCenter, TextAlignEnd, TextAlignStart, Trash2 } from "lucide-react";
-import { useContext } from "react";
+import { use } from "react";
 import type { TimelineClip } from "@/api/generated/contracts";
 import { t } from "@/i18n";
 import { TITLE_MAX_LENGTH, type Title } from "../../../model/clipEffects";
@@ -59,7 +59,7 @@ export interface TextRowsProps {
 }
 
 export function TextRows({ clip, standalone, edits: plain }: TextRowsProps) {
-  const locked = useContext(FieldLockContext);
+  const locked = use(FieldLockContext);
   const editor = useEditor();
   const frame = exportGeometry(editor.project);
   // A text layer that moves takes its animation presets along, in the same step
@@ -69,7 +69,7 @@ export function TextRows({ clip, standalone, edits: plain }: TextRowsProps) {
   if (!title) {
     return (
       <ActionRow>
-        <TextButton icon={<Plus aria-hidden />} disabledReason={locked} onClick={() => edits.perform(withTitle(clip, newTitle()))}>
+        <TextButton icon={<Plus aria-hidden />} disabledReason={locked} onClick={() => void edits.perform(withTitle(clip, newTitle()))}>
           {t("加入片段文字")}
         </TextButton>
       </ActionRow>
@@ -105,12 +105,12 @@ export function TextRows({ clip, standalone, edits: plain }: TextRowsProps) {
               label={t("文字位置")}
               value={title.position}
               options={TITLE_POSITIONS}
-              onChange={(position) => edits.perform(change({ position }))}
+              onChange={(position) => void edits.perform(change({ position }))}
               className={CHOICE}
             />
           </Row>
           <Row label={t("大小")}>
-            <Segmented label={t("文字大小")} value={title.size} options={TITLE_SIZES} onChange={(size) => edits.perform(change({ size }))} />
+            <Segmented label={t("文字大小")} value={title.size} options={TITLE_SIZES} onChange={(size) => void edits.perform(change({ size }))} />
           </Row>
         </>
       )}
@@ -119,7 +119,7 @@ export function TextRows({ clip, standalone, edits: plain }: TextRowsProps) {
           label={t("字型")}
           value={style.font_family}
           options={TITLE_FONTS}
-          onChange={(font_family) => edits.perform(restyle({ font_family }))}
+          onChange={(font_family) => void edits.perform(restyle({ font_family }))}
           className={CHOICE}
         />
       </Row>
@@ -128,7 +128,7 @@ export function TextRows({ clip, standalone, edits: plain }: TextRowsProps) {
           label={t("字重")}
           value={style.font_weight === 700 ? "bold" : "regular"}
           options={TITLE_WEIGHTS}
-          onChange={(weight) => edits.perform(restyle({ font_weight: weight === "bold" ? 700 : 400 }))}
+          onChange={(weight) => void edits.perform(restyle({ font_weight: weight === "bold" ? 700 : 400 }))}
         />
       </Row>
       <Row label={t("字級")} hint={HINTS.fontSize}>
@@ -143,7 +143,7 @@ export function TextRows({ clip, standalone, edits: plain }: TextRowsProps) {
         />
       </Row>
       <Row label={t("對齊")}>
-        <Segmented label={t("文字對齊")} value={style.align} options={ALIGNMENTS} onChange={(align) => edits.perform(restyle({ align }))} />
+        <Segmented label={t("文字對齊")} value={style.align} options={ALIGNMENTS} onChange={(align) => void edits.perform(restyle({ align }))} />
       </Row>
       <Row label={t("水平位置")} hint={HINTS.x}>
         <UnitField
@@ -202,13 +202,13 @@ export function TextRows({ clip, standalone, edits: plain }: TextRowsProps) {
             <TextButton
               title={t("改回預設的位置與大小排版")}
               disabledReason={locked}
-              onClick={() => edits.perform(withTitle(clip, withoutTitleStyle(title)))}
+              onClick={() => void edits.perform(withTitle(clip, withoutTitleStyle(title)))}
             >
               {t("恢復預設排版")}
             </TextButton>
           ) : null}
           {standalone ? null : (
-            <TextButton tone="danger" icon={<Trash2 aria-hidden />} disabledReason={locked} onClick={() => edits.perform(withoutTitle(clip))}>
+            <TextButton tone="danger" icon={<Trash2 aria-hidden />} disabledReason={locked} onClick={() => void edits.perform(withoutTitle(clip))}>
               {t("移除片段文字")}
             </TextButton>
           )}

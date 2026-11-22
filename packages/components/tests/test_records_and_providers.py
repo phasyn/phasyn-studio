@@ -8,11 +8,14 @@ import zipfile
 from pathlib import Path
 
 import pytest
+
 from phasyn_components import contracts
 from phasyn_components.errors import ComponentError
 from phasyn_components.recorder import Recorder
 from phasyn_components.records import RecordingStore, export
+from phasyn_components.records.export import csv_safe
 from phasyn_components.testing.ids import NODE_A_ID
+
 
 NODE = NODE_A_ID
 
@@ -70,24 +73,41 @@ def test_index_pagination_dedup_and_exports(tmp_path: Path) -> None:
     )
     tampered = dict(events[0], level="error")
     assert (
-        copy.ingest_batch({"node_id": NODE, "contexts": [], "events": [tampered], "summaries": []})["rejected_events"]
+        copy.ingest_batch(
+            {"node_id": NODE, "contexts": [], "events": [tampered], "summaries": []}
+        )["rejected_events"]
         == 1
     )
     assert len(copy.events(ids[0], stream_id="runtime")["events"]) == len(events)
     csv_text = b"".join(export(store, ids[0], "csv").chunks).decode()
     assert "cmd|calc" not in csv_text  # log messages never reach the metric long table
     rows = csv_text.splitlines()
-    assert rows[0] == "recording,node,component,metric,value,unit,quality,method,scope,reason"
+    assert (
+        rows[0]
+        == "recording,node,component,metric,value,unit,quality,method,scope,reason"
+    )
     assert any(row.split(",")[3] == "output_frame_count" for row in rows[1:])
     zdata = b"".join(export(store, ids[0], "zip").chunks)
     names = set(zipfile.ZipFile(io.BytesIO(zdata)).namelist())
-    assert {"README.txt", "context.json", "summary.json", "settings_diff.json", "events/runtime.jsonl"} <= names
+    assert {
+        "README.txt",
+        "context.json",
+        "summary.json",
+        "settings_diff.json",
+        "events/runtime.jsonl",
+    } <= names
     with pytest.raises(ComponentError) as err:
         export(store, ids[0], "trace")
     assert err.value.code == "TRACE_UNAVAILABLE" and err.value.status == 404
 
 
 def test_csv_formula_escape() -> None:
-    from phasyn_components.records.export import csv_safe
 
-    assert [csv_safe(v) for v in ("=1+1", "+x", "-y", "@z", "ok", 5)] == ["'=1+1", "'+x", "'-y", "'@z", "ok", 5]
+    assert [csv_safe(v) for v in ("=1+1", "+x", "-y", "@z", "ok", 5)] == [
+        "'=1+1",
+        "'+x",
+        "'-y",
+        "'@z",
+        "ok",
+        5,
+    ]

@@ -11,8 +11,10 @@ import type {
   Origin,
   Port,
   RecorderConfig,
+  RunStepComponentLoad,
   RunStepPreview,
   SceneDocument,
+  StudioWorkOrigin,
 } from "./generated/contracts";
 import { isRecord } from "@/lib/json";
 
@@ -40,6 +42,7 @@ export interface WirePipeline {
 }
 
 export interface RunRequestBody {
+  recovery_policy?: "observe_only" | "retry_verified";
   pipeline: WirePipeline;
   inputs: Record<string, WireTypedValue>;
   label?: string;
@@ -52,6 +55,7 @@ export type RunState = "running" | "succeeded" | "failed" | "cancelled" | "inter
 export type StepState = "pending" | "waiting" | "running" | "succeeded" | "failed" | "cancelled" | "interrupted" | "skipped";
 
 export interface WireRun {
+  studio_work?: StudioWorkOrigin;
   run_id: string;
   state: RunState;
   request: RunRequestBody;
@@ -86,9 +90,14 @@ export interface RunStepView {
   load_revision: number | null;
   /** 執行中步驟最新的中間預覽（非最終結果）；不是 running 或沒有 → null。 */
   preview: RunStepPreview | null;
+  /**
+   * 用到才載入（x-phasyn-extension）：步驟要用的 on_demand 元件還沒載入時，主控正在做什麼。phase=loading（state=running）＝
+   * 正在載入模型；phase=waiting（state=waiting）＝暫時不能載入，reason／message 說明原因。呼叫送出後沒有這個欄位（null）。
+   */
+  component_load?: RunStepComponentLoad | null;
 }
 
-const STEP_STATES = new Set<string>(["pending", "waiting", "running", "succeeded", "failed", "cancelled", "interrupted", "skipped"]);
+const STEP_STATES: readonly StepState[] = ["pending", "waiting", "running", "succeeded", "failed", "cancelled", "interrupted", "skipped"];
 
 function strOrNull(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
@@ -97,20 +106,29 @@ function strOrNull(value: unknown): string | null {
 export function isFileRef(value: unknown): value is FileRef {
   return (
     isRecord(value) &&
-    typeof value.node_id === "string" &&
-    typeof value.file_id === "string" &&
-    typeof value.size_bytes === "number" &&
-    typeof value.sha256 === "string" &&
-    typeof value.media_type === "string" &&
-    isRecord(value.metadata)
+    typeof value["node_id"] === "string" &&
+    typeof value["file_id"] === "string" &&
+    typeof value["size_bytes"] === "number" &&
+    typeof value["sha256"] === "string" &&
+    typeof value["media_type"] === "string" &&
+    isRecord(value["metadata"])
   );
 }
 
 export function asTypedValue(value: unknown): WireTypedValue | null {
-  if (!isRecord(value) || typeof value.type_id !== "string") return null;
-  if (isFileRef(value.file)) return { type_id: value.type_id, file: value.file };
-  if (Object.hasOwn(value, "value")) return { type_id: value.type_id, value: value.value };
+  if (!isRecord(value) || typeof value["type_id"] !== "string") return null;
+  if (isFileRef(value["file"])) return { type_id: value["type_id"], file: value["file"] };
+  if (Object.hasOwn(value, "value")) return { type_id: value["type_id"], value: value["value"] };
   return null;
+}
+
+/** Every hand-written step input must bind to a pipeline input, a step output, or a typed literal. */
+export function isWireBindings(value: unknown): value is Record<string, WireBinding> {
+  if (!isRecord(value)) return false;
+  return Object.values(value).every((binding) => isRecord(binding) && (
+    typeof binding["from_input"] === "string" || (typeof binding["from_step"] === "string" && typeof binding["output"] === "string")
+      || asTypedValue(binding["literal"]) !== null
+  ));
 }
 
 export function typedFile(value: WireTypedValue): FileRef | null {
@@ -118,18 +136,25 @@ export function typedFile(value: WireTypedValue): FileRef | null {
 }
 
 export function asApiErrorBody(value: unknown): ApiErrorBody | null {
-  if (!isRecord(value) || typeof value.code !== "string") return null;
+  if (!isRecord(value) || typeof value["code"] !== "string") return null;
   return {
-    code: value.code,
-    message: typeof value.message === "string" ? value.message : "",
-    details: isRecord(value.details) ? value.details : undefined,
-    remote_outcome_unknown: value.remote_outcome_unknown === true,
+    code: value["code"],
+    message: typeof value["message"] === "string" ? value["message"] : "",
+    ...(isRecord(value["details"]) ? { details: value["details"] } : {}),
+    remote_outcome_unknown: value["remote_outcome_unknown"] === true,
   };
 }
 
+function isObjectMap(value: unknown): value is Record<string, Record<string, unknown>> {
+  return isRecord(value) && Object.values(value).every(isRecord);
+}
+
 function asEffectiveContext(value: unknown): EffectiveContext | null {
-  if (!isRecord(value) || !isRecord(value.effective)) return null;
-  return value as unknown as EffectiveContext;
+  if (!isRecord(value)) return null;
+  const { requested, effective, observed, stored_revision, loaded_revision, expanded_parts, config_digest, model_identity, runtime_identity } = value;
+  if (!isRecord(requested) || !isRecord(effective) || !isRecord(observed) || !isRecord(model_identity) || !isRecord(runtime_identity)
+    || !isInt(stored_revision) || !(loaded_revision === null || isInt(loaded_revision)) || typeof config_digest !== "string" || !isObjectMap(expanded_parts)) return null;
+  return { requested, effective, observed, stored_revision, loaded_revision, expanded_parts, config_digest, model_identity, runtime_identity };
 }
 
 export function asTypedValueMap(value: unknown): Record<string, WireTypedValue> {
@@ -154,25 +179,46 @@ export function asRunStepPreview(value: unknown): RunStepPreview | null {
   return { seq, step, total, width, height, media_type, size_bytes, note: typeof note === "string" ? note : null, at, url };
 }
 
+const LOAD_REASONS: readonly RunStepComponentLoad["reason"][] = ["loading", "exclusive_busy", "exclusive_resident", "exclusive_reserved", "device_busy", "stopping"];
+
+/** Run.steps[step_id].component_load（x-phasyn-extension）；格式不符 → null，不猜值。 */
+export function asRunStepComponentLoad(value: unknown): RunStepComponentLoad | null {
+  if (!isRecord(value)) return null;
+  const { phase, reason, message, component_id, holders, since, estimated_load_ms } = value;
+  if (phase !== "loading" && phase !== "waiting") return null;
+  const knownReason = LOAD_REASONS.find((candidate) => candidate === reason);
+  if (knownReason === undefined || typeof message !== "string" || typeof component_id !== "string" || typeof since !== "string") return null;
+  return {
+    phase,
+    reason: knownReason,
+    message,
+    component_id,
+    holders: Array.isArray(holders) ? holders.filter((item): item is string => typeof item === "string") : [],
+    since,
+    estimated_load_ms: typeof estimated_load_ms === "number" ? estimated_load_ms : null,
+  };
+}
+
 /** Run.steps[step_id] 的寬鬆 object → 具名欄位；缺欄位以 null 表示，不猜值。 */
 export function parseRunStep(stepId: string, raw: unknown): RunStepView {
   const record = isRecord(raw) ? raw : {};
-  const state = typeof record.state === "string" && STEP_STATES.has(record.state) ? (record.state as StepState) : "unknown";
+  const state = STEP_STATES.find((candidate) => candidate === record["state"]) ?? "unknown";
   return {
     step_id: stepId,
     state,
-    node_id: strOrNull(record.node_id),
-    component_id: strOrNull(record.component_id),
-    call_id: strOrNull(record.call_id),
-    recording_id: strOrNull(record.recording_id),
-    started_at: strOrNull(record.started_at),
-    finished_at: strOrNull(record.finished_at),
-    outputs: asTypedValueMap(record.outputs),
-    error: asApiErrorBody(record.error),
-    remote_outcome_unknown: record.remote_outcome_unknown === true,
-    settings: asEffectiveContext(record.settings),
-    load_revision: typeof record.load_revision === "number" ? record.load_revision : null,
-    preview: state === "running" ? asRunStepPreview(record.preview) : null,
+    node_id: strOrNull(record["node_id"]),
+    component_id: strOrNull(record["component_id"]),
+    call_id: strOrNull(record["call_id"]),
+    recording_id: strOrNull(record["recording_id"]),
+    started_at: strOrNull(record["started_at"]),
+    finished_at: strOrNull(record["finished_at"]),
+    outputs: asTypedValueMap(record["outputs"]),
+    error: asApiErrorBody(record["error"]),
+    remote_outcome_unknown: record["remote_outcome_unknown"] === true,
+    settings: asEffectiveContext(record["settings"]),
+    load_revision: typeof record["load_revision"] === "number" ? record["load_revision"] : null,
+    preview: state === "running" ? asRunStepPreview(record["preview"]) : null,
+    component_load: state === "running" || state === "waiting" ? asRunStepComponentLoad(record["component_load"]) : null,
   };
 }
 
@@ -185,41 +231,73 @@ export function runSteps(run: WireRun): RunStepView[] {
 
 export function asLatentRef(value: unknown): LatentRef | null {
   if (!isRecord(value)) return null;
-  if (typeof value.latent_id !== "string" || typeof value.blob_sha256 !== "string" || typeof value.manifest_sha256 !== "string") return null;
-  if (!isFileRef(value.manifest_file)) return null;
-  return value as unknown as LatentRef;
+  if (typeof value["latent_id"] !== "string" || typeof value["blob_sha256"] !== "string" || typeof value["manifest_sha256"] !== "string") return null;
+  if (!isFileRef(value["manifest_file"])) return null;
+  return { latent_id: value["latent_id"], blob_sha256: value["blob_sha256"], manifest_sha256: value["manifest_sha256"], manifest_file: value["manifest_file"] };
 }
 
-const ASSET_KINDS = new Set(["preview", "final", "video", "audio"]);
+const ASSET_KINDS: readonly Asset["kind"][] = ["preview", "final", "video", "audio"];
 
 export function asAsset(value: unknown): Asset | null {
   if (!isRecord(value)) return null;
-  if (typeof value.asset_id !== "string" || typeof value.kind !== "string" || !ASSET_KINDS.has(value.kind)) return null;
-  if (!isFileRef(value.file)) return null;
+  const kind = ASSET_KINDS.find((candidate) => candidate === value["kind"]);
+  if (typeof value["asset_id"] !== "string" || kind === undefined) return null;
+  if (!isFileRef(value["file"])) return null;
   return {
-    asset_id: value.asset_id,
-    kind: value.kind as Asset["kind"],
-    file: value.file,
-    source_latent: asLatentRef(value.source_latent),
-    frame_count: typeof value.frame_count === "number" ? value.frame_count : 0,
-    fps: isRecord(value.fps) && typeof value.fps.num === "number" && typeof value.fps.den === "number" ? { num: value.fps.num, den: value.fps.den } : null,
-    width: typeof value.width === "number" ? value.width : 0,
-    height: typeof value.height === "number" ? value.height : 0,
-    complete: value.complete === true,
-    actual_settings: isRecord(value.actual_settings) ? value.actual_settings : {},
+    asset_id: value["asset_id"],
+    kind,
+    file: value["file"],
+    source_latent: asLatentRef(value["source_latent"]),
+    frame_count: typeof value["frame_count"] === "number" ? value["frame_count"] : 0,
+    fps: isRecord(value["fps"]) && typeof value["fps"]["num"] === "number" && typeof value["fps"]["den"] === "number" ? { num: value["fps"]["num"], den: value["fps"]["den"] } : null,
+    width: typeof value["width"] === "number" ? value["width"] : 0,
+    height: typeof value["height"] === "number" ? value["height"] : 0,
+    complete: value["complete"] === true,
+    actual_settings: isRecord(value["actual_settings"]) ? value["actual_settings"] : {},
   };
 }
 
 export function asCaptionPair(value: unknown): CaptionPair | null {
-  if (!isRecord(value) || typeof value.training_caption !== "string" || typeof value.generation_prompt !== "string") return null;
-  return value as unknown as CaptionPair;
+  if (!isRecord(value)) return null;
+  const { training_caption, generation_prompt, source, scene_recording_id, include_uncertain, language } = value;
+  if (typeof training_caption !== "string" || typeof generation_prompt !== "string" || !isFileRef(source)
+    || !(scene_recording_id === null || typeof scene_recording_id === "string") || typeof include_uncertain !== "boolean" || typeof language !== "string") return null;
+  return { training_caption, generation_prompt, source, scene_recording_id, include_uncertain, language };
+}
+
+function listOf(value: unknown, matches: (item: unknown) => boolean): boolean {
+  return Array.isArray(value) && value.every(matches);
+}
+
+const stringItem = (value: unknown): boolean => typeof value === "string";
+
+function sceneEntity(value: unknown): boolean {
+  return isRecord(value) && typeof value["entity_id"] === "string" && typeof value["kind"] === "string" && typeof value["description"] === "string";
+}
+
+function sceneEvent(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const { event_id, start_seconds, end_seconds, description, entity_ids, evidence_frame_ids, certainty } = value;
+  return typeof event_id === "string" && typeof start_seconds === "number" && typeof end_seconds === "number" && typeof description === "string"
+    && listOf(entity_ids, stringItem) && listOf(evidence_frame_ids, stringItem) && (certainty === "observed" || certainty === "uncertain");
+}
+
+function frameEvidence(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const { frame_id, source_pts, time_base, time_seconds, file } = value;
+  return typeof frame_id === "string" && typeof source_pts === "number" && typeof time_seconds === "number"
+    && isRecord(time_base) && isInt(time_base["num"]) && isInt(time_base["den"]) && (file === null || isFileRef(file));
+}
+
+function isSceneDocument(value: unknown): value is SceneDocument {
+  if (!isRecord(value)) return false;
+  const { schema_version, source, duration_seconds, initial_state, final_state, camera, entities, events, evidence, unknowns, generation_edits, caption_model } = value;
+  return schema_version === "4.0" && isFileRef(source) && typeof duration_seconds === "number" && typeof initial_state === "string" && typeof final_state === "string" && typeof camera === "string"
+    && listOf(entities, sceneEntity) && listOf(events, sceneEvent) && listOf(evidence, frameEvidence) && listOf(unknowns, stringItem) && listOf(generation_edits, stringItem) && isRecord(caption_model);
 }
 
 export function asSceneDocument(value: unknown): SceneDocument | null {
-  if (!isRecord(value)) return null;
-  if (typeof value.duration_seconds !== "number" || !Array.isArray(value.events) || !Array.isArray(value.entities)) return null;
-  if (!isFileRef(value.source)) return null;
-  return value as unknown as SceneDocument;
+  return isSceneDocument(value) ? value : null;
 }
 
 /** 元件識別：node_id + component_id 才是 instance identity。 */

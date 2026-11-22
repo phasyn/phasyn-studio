@@ -45,7 +45,7 @@ function CandidateRow({
         ref={buttonRef}
         type="button"
         aria-pressed={current}
-        onClick={() => onChoose(entry)}
+        onClick={() => { onChoose(entry); }}
         title={t("{value}（{component_id}）\n資料夾：{folder}{value2}{value3}", { value: d.label || d.component_id, component_id: d.component_id, folder: folderDisplayPath(folder), value2: usesDefaultFolder(d) ? t("（預設分類）") : "", value3: summary.length > 0 ? `\n${summary.join(" · ")}` : "" })}
         // 目前使用＝品牌底＋左側漸層標記（另有「目前使用」文字）；其他候選滑過時抬升 1 px（彈簧），按下縮小
         className={cn(
@@ -62,7 +62,7 @@ function CandidateRow({
         </span>
         <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 pl-6 text-caption text-fg-tertiary">
           <code className="machine text-fg-secondary">{d.component_id}</code>
-          {deviceTag(d.device) ? <span className="machine rounded-sm border border-line px-1 text-fg-secondary">{deviceTag(d.device)}</span> : null}
+          {((deviceTag(d.device) ?? "") !== "") ? <span className="machine rounded-sm border border-line px-1 text-fg-secondary">{deviceTag(d.device)}</span> : null}
           <span className="inline-flex min-w-0 items-center gap-1">
             <Folder aria-hidden className="size-3 shrink-0" />
             <span className="truncate">{folderDisplayPath(folder)}</span>
@@ -84,7 +84,7 @@ function CandidateRow({
 function InstanceLibrary({ entries, currentKey, onChoose }: { entries: readonly ComponentEntry[]; currentKey: string | null; onChoose: (entry: ComponentEntry) => void }) {
   const searchId = useId();
   const [query, setQuery] = useState("");
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
   const items = libraryTree(entries);
   const filtered = filterTree(items, query);
   const byId = new Map(entries.map((entry) => [libraryInstanceId(entry.key), entry]));
@@ -99,7 +99,7 @@ function InstanceLibrary({ entries, currentKey, onChoose }: { entries: readonly 
           id={searchId}
           type="search"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => { setQuery(event.target.value); }}
           placeholder={t("搜尋名稱、component_id、provider、資料夾…")}
           aria-label={t("搜尋元件庫")}
           autoComplete="off"
@@ -113,7 +113,7 @@ function InstanceLibrary({ entries, currentKey, onChoose }: { entries: readonly 
           <TreeView
             items={filtered.items}
             label={t("元件庫")}
-            selectedId={currentKey ? libraryInstanceId(currentKey) : null}
+            selectedId={(currentKey != null && currentKey !== "") ? libraryInstanceId(currentKey) : null}
             expanded={expanded}
             onToggle={(id, open) => {
               const next = new Set(collapsed);
@@ -160,24 +160,24 @@ export function InstancePicker({
 }) {
   const currentKey = current?.key ?? null;
   const providerId = current?.descriptor.provider_id ?? null;
-  const groups = providerId ? compatibleInstances(entries, providerId) : [];
+  const groups = (providerId != null && providerId !== "") ? compatibleInstances(entries, providerId) : [];
   const library = libraryEntries(entries, providerId);
-  const currentButton = useRef<HTMLButtonElement | null>(null);
-  const focusAfterChoose = useRef(false);
+  const currentButtonRef = useRef<HTMLButtonElement | null>(null);
+  const focusAfterChooseRef = useRef(false);
   // 同一個步驟可能同時出現在「步驟與接線」與右側檢視器：ID 用 useId 避免重複。
-  const uid = useId();
-  const titleId = `${uid}-instance-title`;
+  const uidId = useId();
+  const titleId = `${uidId}-instance-title`;
 
   // 從元件庫選用後，選擇器換成「相容 instance」清單：焦點移到目前使用的那一列（在換版面的 commit 之後）。
   useEffect(() => {
-    if (!focusAfterChoose.current) return;
-    focusAfterChoose.current = false;
-    currentButton.current?.focus();
+    if (!focusAfterChooseRef.current) return;
+    focusAfterChooseRef.current = false;
+    currentButtonRef.current?.focus();
   }, [currentKey]);
 
   const choose = (entry: ComponentEntry) => {
     if (entry.key === currentKey) return;
-    focusAfterChoose.current = true;
+    focusAfterChooseRef.current = true;
     onChoose(entry);
   };
 
@@ -186,10 +186,10 @@ export function InstancePicker({
       <h4 id={titleId} className="text-data font-semibold text-fg">
         {t("元件 instance")}
       </h4>
-      {current && providerId ? (
+      {current && (providerId != null && providerId !== "") ? (
         <>
           <p className="text-caption text-fg-tertiary">
-            <T source={"只列出與目前相同 provider（<0>{providerId}</0>）的 instance，依 Node 分組；換成其中一個會保留接線與參數。"} values={{ providerId }} slots={[<code className="machine" />]} />
+            <T source={"只列出與目前相同 provider（<0>{providerId}</0>）的 instance，依 Node 分組；換成其中一個會保留接線與參數。"} values={{ providerId }} slots={[<code key="slot-0" className="machine" />]} />
           </p>
           {groups.map((group) => (
             <div key={group.node.node_id} role="group" aria-label={t("{label} 的相容 instance", { label: group.node.label })} className="grid min-w-0 gap-1">
@@ -206,13 +206,9 @@ export function InstancePicker({
                     entry={entry}
                     current={entry.key === currentKey}
                     onChoose={choose}
-                    buttonRef={
-                      entry.key === currentKey
-                        ? (element) => {
-                            currentButton.current = element;
-                          }
-                        : undefined
-                    }
+                    {...(entry.key === currentKey ? { buttonRef: (element) => {
+                            currentButtonRef.current = element;
+                          } } : {})}
                   />
                 ))}
               </ul>
@@ -229,7 +225,7 @@ export function InstancePicker({
         <>
           <Callout tone="warning" icon={<Unplug />} title={t("未知元件")}>
             <p>
-              <T source={"目錄中找不到 <0>{currentComponentId}</0>（Node {value}）： 可能已刪除，或 Node 離線。步驟 <1>{stepId}</1> 要改選其他 instance 才能執行。"} values={{ currentComponentId, value: currentNodeLabel ?? <code className="machine">{currentNodeId || t("未指定")}</code>, stepId }} slots={[<code className="machine" />, <code className="machine" />]} />
+              <T source={"目錄中找不到 <0>{currentComponentId}</0>（Node {value}）： 可能已刪除，或 Node 離線。步驟 <1>{stepId}</1> 要改選其他 instance 才能執行。"} values={{ currentComponentId, value: currentNodeLabel ?? <code className="machine">{currentNodeId || t("未指定")}</code>, stepId }} slots={[<code key="slot-0" className="machine" />, <code key="slot-1" className="machine" />]} />
             </p>
           </Callout>
           <InstanceLibrary entries={library} currentKey={null} onChoose={choose} />

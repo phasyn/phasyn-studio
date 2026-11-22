@@ -54,7 +54,7 @@ function SlateRenderAction({ shot }: { shot: StudioShot }) {
             ))}
           </ul>
         </div>
-      ) : reason ? (
+      ) : (reason != null && reason !== "") ? (
         <p className="max-w-sm text-caption text-fg-tertiary [overflow-wrap:anywhere]">{reason}</p>
       ) : (
         <RenderEta shots={[shot]} className="justify-items-center" />
@@ -104,9 +104,9 @@ export function Slate({ shot, take }: { shot: StudioShot; take: StudioTake | nul
         <CancelRunDialog
           run={cancel.run}
           open
-          onOpenChange={(open) => (open ? undefined : setCancel(null))}
+          onOpenChange={(open) => { if (!(open)) { setCancel(null); } }}
           scope={cancel.scope}
-          onCloseAutoFocus={(event) => returnFocusOr(event, cancel.opener, slateFocusTarget())}
+          onCloseAutoFocus={(event) => { returnFocusOr(event, cancel.opener, slateFocusTarget()); }}
         />
       ) : null}
     </div>

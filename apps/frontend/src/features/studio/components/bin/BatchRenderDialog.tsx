@@ -149,7 +149,7 @@ function BatchRow({
           ) : (
             <>
               <ShotStatusMark status={reason.status} />
-              {reason.detail ? (
+              {(reason.detail != null && reason.detail !== "") ? (
                 <span title={reason.title ?? undefined} className="min-w-0 [overflow-wrap:anywhere]">
                   {reason.detail}
                 </span>
@@ -172,9 +172,9 @@ export function BatchRenderDialog(props: BatchRenderDialogProps) {
   const studio = useStudio();
   const { engine, renderShots, busy } = studio;
   const lanes = useProjectLanes(studio.project.project_id);
-  const content = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   /** The row checked or unchecked last: Shift extends from it. */
-  const anchor = useRef<string | null>(null);
+  const anchorRef = useRef<string | null>(null);
   /** The shots the person unchecked; every other renderable candidate is checked (also one that appears meanwhile). */
   const [unchecked, setUnchecked] = useState<ReadonlySet<string>>(() => new Set());
   /** The batch as it was when the dialog closed (shown while it fades out). */
@@ -231,7 +231,7 @@ export function BatchRenderDialog(props: BatchRenderDialogProps) {
   const finish = plan.eta && now !== null && count > 0 ? finishText(now + plan.eta.totalSeconds * 1000, now) : null;
   const lanesNote = lanes.length >= MIN_LANES && count > 0 ? lanesLine(engine.routes, lanes, count) : null;
   // Fades when what it says changes, not on every estimate request
-  const statusRef = useChangeFade<HTMLDivElement>(`${count}\n${plan.eta?.totalSeconds ?? ""}\n${finish ?? ""}\n${reason ?? ""}`);
+  const statusRef = useChangeFade<HTMLDivElement>(`${String(count)}\n${String(plan.eta?.totalSeconds ?? "")}\n${finish ?? ""}\n${reason ?? ""}`);
   const labelRef = useChangeFade<HTMLSpanElement>(count);
   const shortcut = t("{key}+Enter 渲染・Esc 取消", { key: modifierLabel("Mod", detectApplePlatform()) });
 
@@ -240,10 +240,10 @@ export function BatchRenderDialog(props: BatchRenderDialogProps) {
     const to = checkable.findIndex((shot) => shot.shot_id === shotId);
     if (to < 0) return;
     const on = event.target.checked;
-    const from = anchor.current === null ? -1 : checkable.findIndex((shot) => shot.shot_id === anchor.current);
+    const from = anchorRef.current === null ? -1 : checkable.findIndex((shot) => shot.shot_id === anchorRef.current);
     const range = event.nativeEvent instanceof MouseEvent && event.nativeEvent.shiftKey && from >= 0;
     const ids = range ? checkable.slice(Math.min(from, to), Math.max(from, to) + 1).map((shot) => shot.shot_id) : [shotId];
-    anchor.current = shotId;
+    anchorRef.current = shotId;
     setUnchecked((current) => {
       const next = new Set(current);
       for (const id of ids) {
@@ -282,11 +282,11 @@ export function BatchRenderDialog(props: BatchRenderDialogProps) {
       }}
     >
       <DialogContent
-        ref={content}
+        ref={contentRef}
         className="max-w-2xl"
         onOpenAutoFocus={(event) => {
           // The first shot that can be checked, so Space and the arrow keys work through the list right away
-          const first = content.current?.querySelector<HTMLInputElement>(`${CHECKBOX}:not([aria-disabled])`);
+          const first = contentRef.current?.querySelector<HTMLInputElement>(`${CHECKBOX}:not([aria-disabled])`);
           if (!first) return;
           event.preventDefault();
           first.focus();
@@ -320,15 +320,15 @@ export function BatchRenderDialog(props: BatchRenderDialogProps) {
           ) : (
             <>
               <div className="flex flex-wrap items-center gap-2 pb-1 text-caption">
-                <Button size="sm" variant="quiet" className="min-h-7 px-2" onClick={() => setUnchecked(new Set())}>
+                <Button size="sm" variant="quiet" className="min-h-7 px-2" onClick={() => { setUnchecked(new Set()); }}>
                   {t("全選")}
                 </Button>
-                <Button size="sm" variant="quiet" className="min-h-7 px-2" onClick={() => setUnchecked(new Set(checkable.map((shot) => shot.shot_id)))}>
+                <Button size="sm" variant="quiet" className="min-h-7 px-2" onClick={() => { setUnchecked(new Set(checkable.map((shot) => shot.shot_id))); }}>
                   {t("全不選")}
                 </Button>
                 <span className="machine ml-auto text-fg-tertiary">{t("已勾選 {count}／{total}", { count, total: checkable.length })}</span>
               </div>
-              <div role="group" aria-label={t("要渲染的鏡頭")} onKeyDown={moveFocus} className="grid gap-0.5">
+              <div /* eslint-disable-line jsx-a11y-x/no-noninteractive-element-interactions -- Keyboard events from this panel’s focusable controls bubble here so navigation and dismissal share one handler. */  role="group" aria-label={t("要渲染的鏡頭")} onKeyDown={moveFocus} className="grid gap-0.5">
                 {rows.map((row, index) => (
                   <BatchRow
                     key={row.shot.shot_id}
@@ -352,8 +352,8 @@ export function BatchRenderDialog(props: BatchRenderDialogProps) {
             {count > 0 ? (
               <>
                 <EtaLine state={plan} />
-                {finish ? <p className="pl-5 text-caption font-medium text-fg">{finish}</p> : null}
-                {lanesNote ? <p className="pl-5 text-caption text-fg-tertiary [overflow-wrap:anywhere]">{lanesNote}</p> : null}
+                {(finish != null && finish !== "") ? <p className="pl-5 text-caption font-medium text-fg">{finish}</p> : null}
+                {(lanesNote != null && lanesNote !== "") ? <p className="pl-5 text-caption text-fg-tertiary [overflow-wrap:anywhere]">{lanesNote}</p> : null}
               </>
             ) : null}
             {reason !== null && rows.length > 0 ? <p className="text-caption text-fg-tertiary [overflow-wrap:anywhere]">{reason}</p> : null}

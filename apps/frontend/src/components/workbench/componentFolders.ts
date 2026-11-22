@@ -93,9 +93,9 @@ const CUSTOM_RANK = 500;
 
 /** 依 provider 的預設分類。 */
 export function defaultFolderFor(providerId: string | null | undefined): string {
-  if (!providerId) return OTHER;
+  if (!(providerId != null && providerId !== "")) return OTHER;
   const exact = EXACT[providerId];
-  if (exact) return exact;
+  if (exact != null && exact !== "") return exact;
   if (providerId.startsWith("media.")) return MEDIA;
   if (providerId.startsWith("test.")) return TEST;
   return OTHER;
@@ -148,7 +148,7 @@ export interface FolderInput {
 }
 
 function codePoints(text: string): number {
-  return [...text].length;
+  return Array.from(text).length;
 }
 
 /** 使用者輸入的資料夾 → 契約值：去掉每層前後空白；空白＝null；不合法時回傳繁中原因（保留使用者輸入）。 */

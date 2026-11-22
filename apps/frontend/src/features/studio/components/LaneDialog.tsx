@@ -53,7 +53,7 @@ export function LaneDialog() {
           aria-label={t("DiT 分流")}
           aria-pressed={active}
           title={
-            storedProblem
+            (storedProblem != null && storedProblem !== "")
               ? t("DiT 分流有問題：{problem}", { problem: storedProblem })
               : active
                 ? ready === 0
@@ -64,7 +64,7 @@ export function LaneDialog() {
           className={cn("shrink-0", active && TOOL_BUTTON_ON, (storedProblem !== null || (active && ready === 0)) && "ring-1 ring-warning/60 ring-inset")}
         />
       </DialogTrigger>
-      <DialogContent onKeyDown={(event) => event.stopPropagation()}>
+      <DialogContent onKeyDown={(event) => { event.stopPropagation(); }}>
         <DialogHeader>
           <DialogTitle>{t("DiT 分流")}</DialogTitle>
           <DialogDescription>
@@ -81,7 +81,7 @@ export function LaneDialog() {
           ) : (
             <LaneChoices listed={listed} unknown={unknown} selected={selected} onToggle={toggle} describedBy={`${id}-note`} />
           )}
-          {problem ? (
+          {(problem != null && problem !== "") ? (
             <Callout tone="warning">{problem}</Callout>
           ) : selected.length >= MIN_LANES ? (
             // The controller stops a run at its first failed step: with lanes every DiT is needed until the batch ends
@@ -94,7 +94,7 @@ export function LaneDialog() {
           </p>
         </DialogBody>
         <DialogFooter>
-          <Button variant="quiet" onClick={() => setSelected([])} disabled={selected.length === 0} className="mr-auto">
+          <Button variant="quiet" onClick={() => { setSelected([]); }} disabled={selected.length === 0} className="mr-auto">
             {t("不分流")}
           </Button>
           <DialogClose asChild>

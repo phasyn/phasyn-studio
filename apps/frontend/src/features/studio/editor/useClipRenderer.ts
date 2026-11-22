@@ -32,35 +32,35 @@ export function useClipRenderer(
   frame: ClipRenderFrame,
   options: ClipRendererOptions = {},
 ): ClipRendererState {
-  const renderer = useRef<ClipRenderer | null>(null);
-  const latest = useRef(frame);
-  const hooks = useRef(options);
-  const pending = useRef(0);
+  const rendererRef = useRef<ClipRenderer | null>(null);
+  const latestRef = useRef(frame);
+  const hooksRef = useRef(options);
+  const pendingRef = useRef(0);
   const picture = options.picture ?? "media";
   const composite = options.composite?.canvas ?? null;
   const readable = options.readable === true;
   const [failure, setFailure] = useState<string | null>(null);
   // The latest compose and onDraw for every draw, also one started by a media event
   useLayoutEffect(() => {
-    hooks.current = options;
+    hooksRef.current = options;
   });
   const paint = useCallback(() => {
-    cancelAnimationFrame(pending.current);
-    pending.current = 0;
-    const current = renderer.current;
+    cancelAnimationFrame(pendingRef.current);
+    pendingRef.current = 0;
+    const current = rendererRef.current;
     if (!current) return;
-    hooks.current.composite?.compose();
-    current.draw(latest.current);
-    hooks.current.onDraw?.();
+    hooksRef.current.composite?.compose();
+    current.draw(latestRef.current);
+    hooksRef.current.onDraw?.();
   }, []);
   useLayoutEffect(() => {
-    latest.current = frame;
+    latestRef.current = frame;
     paint();
   }, [frame, paint]);
   useEffect(() => {
     const target = canvas.current;
     const media = picture === "text" ? document.createElement("canvas") : picture === "composite" ? composite : (image.current ?? video.current);
-    if (!enabled || !target || !media || (!url && picture === "media")) return;
+    if (!enabled || !target || !media || (!(url != null && url !== "") && picture === "media")) return;
     let active = true;
     const fail = () => {
       if (active) setFailure(t("無法建立影像效果預覽，請重新載入剪輯工作區"));
@@ -79,7 +79,7 @@ export function useClipRenderer(
       }
     };
     try {
-      renderer.current = createClipRenderer(target, media, width, height, { picture, readable });
+      rendererRef.current = createClipRenderer(target, media, width, height, { picture, readable });
       draw();
     } catch {
       queueMicrotask(fail);
@@ -92,19 +92,19 @@ export function useClipRenderer(
     void document.fonts.ready.then(draw);
     return () => {
       active = false;
-      cancelAnimationFrame(pending.current);
-      pending.current = 0;
+      cancelAnimationFrame(pendingRef.current);
+      pendingRef.current = 0;
       target.removeEventListener("webglcontextlost", lost);
       target.removeEventListener("webglcontextrestored", restored);
       media.removeEventListener("loadeddata", draw);
       media.removeEventListener("load", draw);
       media.removeEventListener("seeked", draw);
-      renderer.current?.dispose();
-      renderer.current = null;
+      rendererRef.current?.dispose();
+      rendererRef.current = null;
     };
   }, [canvas, video, image, url, width, height, enabled, picture, composite, readable, paint]);
   const requestDraw = useCallback(() => {
-    if (pending.current === 0) pending.current = requestAnimationFrame(paint);
+    if (pendingRef.current === 0) pendingRef.current = requestAnimationFrame(paint);
   }, [paint]);
   return { failure, requestDraw };
 }

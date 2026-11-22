@@ -25,6 +25,7 @@ import { createTextLayer } from "./textLayer";
 import { primaryVideoTrack } from "./timelineGeometry";
 import { useEditorClipboard } from "./useEditorClipboard";
 import { timelineProblem } from "./validation";
+import { fitCaptions } from "./captionFit";
 
 export type EditorTool = "select" | "razor" | "ripple" | "roll" | "slip" | "slide";
 export type { PlaceMode };
@@ -47,18 +48,18 @@ export interface EditorStateInput {
 
 /** The clip a shot selection lands on: its video clip under the playhead, else its first one. */
 function shotClip(timeline: StudioTimeline, shotId: string | null, frame: number): TimelineClip | null {
-  if (!shotId) return null;
+  if (!(shotId != null && shotId !== "")) return null;
   const video = shotClips(timeline, shotId).filter((clip) => timeline.tracks.find((track) => track.track_id === clip.track_id)?.kind === "video");
   return video.find((clip) => clip.start_frame <= frame && frame < clipEnd(clip)) ?? video[0] ?? null;
 }
 
 /** Project media and the timeline's own sources as one list: a shot's take that the timeline already binds is listed once. */
 function mergedSources(project: StudioContextValue["project"], timeline: StudioTimeline): TimelineSource[] {
-  const bound = new Map(timeline.sources.filter((source) => source.shot_id).map((source) => [`${source.shot_id}/${source.take_id ?? ""}`, source]));
+  const bound = new Map(timeline.sources.filter((source) => Boolean(source.shot_id)).map((source) => [`${String(source.shot_id)}/${source.take_id ?? ""}`, source]));
   const used = new Set<string>();
   const out: TimelineSource[] = [];
   for (const source of projectSources({ ...project, format: { ...project.format, fps: timeline.fps } })) {
-    const existing = timeline.sources.find((item) => item.source_id === source.source_id) ?? (source.shot_id ? bound.get(`${source.shot_id}/${source.take_id ?? ""}`) : undefined);
+    const existing = timeline.sources.find((item) => item.source_id === source.source_id) ?? ((source.shot_id != null && source.shot_id !== "") ? bound.get(`${source.shot_id}/${source.take_id ?? ""}`) : undefined);
     const item = existing ?? source;
     if (used.has(item.source_id)) continue;
     used.add(item.source_id);
@@ -70,63 +71,66 @@ function mergedSources(project: StudioContextValue["project"], timeline: StudioT
 
 export function useEditorState({ studio, timeline, problem, history }: EditorStateInput) {
   const { project, dispatch, notify, playhead, selectedShotId, selectShot, setMonitorMode, runTimelineCommands } = studio;
-  const latest = useRef(timeline);
+  const latestRef = useRef(timeline);
   useLayoutEffect(() => {
-    latest.current = timeline;
+    latestRef.current = timeline;
   }, [timeline]);
   useSyncExternalStore(history.subscribe, history.snapshot);
-  const [selected, setSelectedIds] = useState<string[]>(() => {
+  const [selectedIds, setSelectedIds] = useState<string[]>(() => {
     const clip = shotClip(timeline, selectedShotId, playhead.getFrame());
     return clip ? [clip.clip_id] : [];
   });
   const [selectedTransition, setSelectedTransition] = useState<string | null>(null);
   // A caption on the caption track: shared with the Captions panel (one selection, as in Premiere)
   const [captionId, setCaptionId] = useState<string | null>(null);
-  const [sourceId, setSourceId] = useState<string | null>(() => timeline.clips.find((clip) => clip.clip_id === selected[0])?.source_id ?? null);
+  const [sourceId, setSourceId] = useState<string | null>(() => timeline.clips.find((clip) => clip.clip_id === selectedIds[0])?.source_id ?? null);
   const [videoTarget, setVideoTarget] = useState("");
   const [audioTarget, setAudioTarget] = useState("");
   const [patchVideo, setPatchVideo] = usePersistentFlag("studio.nle.patch.video", true);
   const [patchAudio, setPatchAudio] = usePersistentFlag("studio.nle.patch.audio", true);
   const [untargeted, setUntargeted] = useState<ReadonlySet<string>>(() => new Set());
   // The shorter take the user was asked about (ShorterTakeDialog): applying it cannot be undone
-  const [shorterAsked, requestShorter] = useState<ShorterTake | null>(null);
+  const [shorterAsked, setShorterAsked] = useState<ShorterTake | null>(null);
   const [linked, setLinked] = usePersistentFlag("studio.nle.linked", true);
   const [snapping, setSnapping] = usePersistentFlag("studio.nle.snap", true);
   const [proxy, setProxy] = usePersistentFlag("studio.nle.proxy", false);
   const [tool, setTool] = useState<EditorTool>("select");
   const sources = useMemo(() => mergedSources(project, timeline), [project, timeline]);
   const shorter = useMemo(() => shorterTakes(project, timeline), [project, timeline]);
-  const seenGeneration = useRef(studio.documentGeneration);
+  const seenGenerationRef = useRef(studio.documentGeneration);
   useEffect(() => {
-    const replaced = seenGeneration.current !== studio.documentGeneration;
-    seenGeneration.current = studio.documentGeneration;
+    const replaced = seenGenerationRef.current !== studio.documentGeneration;
+    seenGenerationRef.current = studio.documentGeneration;
     history.reconcile(project.timeline ?? null, replaced);
   }, [project.timeline, studio.documentGeneration, history]);
   // A step recorded while a shot existed would bring back its clips and source: forget the steps when a shot leaves
-  const knownShots = useRef<ReadonlySet<string>>(new Set());
+  const knownShotsRef = useRef<ReadonlySet<string>>(new Set());
   useEffect(() => {
     const present = new Set(project.shots.map((shot) => shot.shot_id));
-    if ([...knownShots.current].some((shotId) => !present.has(shotId))) history.clear();
-    knownShots.current = present;
+    if ([...knownShotsRef.current].some((shotId) => !present.has(shotId))) history.clear();
+    knownShotsRef.current = present;
   }, [project.shots, history]);
 
-  const warn = (error: string) => notify({ tone: "warning", title: t("無法套用剪輯"), detail: error });
+  const warn = (error: string) => { notify({ tone: "warning", title: t("無法套用剪輯"), detail: error }); };
 
   /**
    * Writes an edited document as one history step; `label` names the step (default: what the documents show). With
    * `step` false it is written without one (a track switch): saved like any edit, never undone.
    */
-  const commit = (next: StudioTimeline, label?: string, step = true): boolean => {
-    if (problem) {
+  const commit = (proposed: StudioTimeline, label?: string, step = true): boolean => {
+    // An edit that changes the captions never leaves two at one position overlapping (fitCaptions, the Controller's rule)
+    const fitted = proposed.captions === timeline.captions ? proposed.captions : fitCaptions(proposed.captions);
+    const next = fitted === proposed.captions ? proposed : { ...proposed, captions: [...fitted] };
+    if (problem != null && problem !== "") {
       warn(problem);
       return false;
     }
-    if (latest.current !== timeline) {
+    if (latestRef.current !== timeline) {
       warn(t("剪輯已更新，請重新套用這次操作"));
       return false;
     }
     const invalid = timelineProblem(next);
-    if (invalid) {
+    if (invalid != null && invalid !== "") {
       warn(invalid);
       return false;
     }
@@ -139,7 +143,7 @@ export function useEditorState({ studio, timeline, problem, history }: EditorSta
   };
 
   const command = (edit: EditCommand): boolean => {
-    if (problem) {
+    if (problem != null && problem !== "") {
       warn(problem);
       return false;
     }
@@ -158,7 +162,7 @@ export function useEditorState({ studio, timeline, problem, history }: EditorSta
 
   const travel = (step: "undo" | "redo") => {
     const result = step === "undo" ? history.undo(timeline) : history.redo(timeline);
-    if (result?.ok) dispatch({ type: "setTimeline", timeline: result.value });
+    if (result?.ok === true) dispatch({ type: "setTimeline", timeline: result.value });
     else if (result) warn(result.error);
   };
   /** Undo or redo until `position` steps of the history are applied (the History panel's list). */
@@ -166,7 +170,7 @@ export function useEditorState({ studio, timeline, problem, history }: EditorSta
     const result = history.travel(timeline, position);
     if (!result) return;
     dispatch({ type: "setTimeline", timeline: result.timeline });
-    if (result.error) warn(result.error);
+    if (result.error != null && result.error !== "") warn(result.error);
   };
 
   const trackOf = (clip: TimelineClip | null | undefined): TimelineTrack | null => timeline.tracks.find((track) => track.track_id === clip?.track_id) ?? null;
@@ -176,7 +180,7 @@ export function useEditorState({ studio, timeline, problem, history }: EditorSta
   const follow = (clipId: string | undefined) => {
     const source = sourceOf(timeline.clips.find((item) => item.clip_id === clipId));
     if (source && !isGenerated(source)) setSourceId(source.source_id);
-    if (source?.shot_id && source.shot_id !== selectedShotId) selectShot(source.shot_id, { fromClip: true });
+    if ((source?.shot_id != null && source.shot_id !== "") && source.shot_id !== selectedShotId) selectShot(source.shot_id, { fromClip: true });
   };
   const select = (id: string, extend = false) => {
     setSelectedTransition(null);
@@ -192,14 +196,14 @@ export function useEditorState({ studio, timeline, problem, history }: EditorSta
   };
   const selectTransition = (clipId: string | null) => {
     setSelectedTransition(clipId);
-    if (!clipId) return;
+    if (!(clipId != null && clipId !== "")) return;
     setSelectedIds([]);
     setCaptionId(null);
   };
   /** Selecting a caption (on the caption track or in the Captions panel) takes the place of any other selection. */
   const selectCaption = (id: string | null) => {
     setCaptionId(id);
-    if (!id) return;
+    if (!(id != null && id !== "")) return;
     setSelectedIds([]);
     setSelectedTransition(null);
   };
@@ -207,8 +211,8 @@ export function useEditorState({ studio, timeline, problem, history }: EditorSta
   const selectedCaption = captionId !== null && timeline.captions.some((caption) => caption.caption_id === captionId) ? captionId : null;
   /** A shot was selected in the Shots workspace: its clip under the playhead (else its first) becomes the selection. */
   const selectShotClip = (shotId: string | null) => {
-    const current = timeline.clips.find((clip) => clip.clip_id === selected[0]);
-    if (shotId && sourceOf(current)?.shot_id === shotId) return;
+    const current = timeline.clips.find((clip) => clip.clip_id === selectedIds[0]);
+    if ((shotId != null && shotId !== "") && sourceOf(current)?.shot_id === shotId) return;
     const clip = shotClip(timeline, shotId, playhead.getFrame());
     setSelectedTransition(null);
     setCaptionId(null);
@@ -260,7 +264,7 @@ export function useEditorState({ studio, timeline, problem, history }: EditorSta
    * range, or the one remembered for the source, on the track under the pointer and its pair of the other kind.
    */
   const planDrop = (drag: SourceDrag, trackId: string | null, at: number, mode: PlaceMode): TimelineResult<DropPlan> => {
-    if (problem) return { ok: false, error: problem };
+    if (problem != null && problem !== "") return { ok: false, error: problem };
     const source = sources.find((item) => item.source_id === drag.sourceId && !isGenerated(item));
     if (!source) return { ok: false, error: t("這個素材已經不在專案裡") };
     const marked = drag.inFrame !== null && drag.outFrame !== null && drag.inFrame < drag.outFrame && drag.outFrame <= source.duration_frames;
@@ -323,9 +327,9 @@ export function useEditorState({ studio, timeline, problem, history }: EditorSta
   };
   /** Delete acts on the one selection: the selected caption, transition or clips. */
   const remove = (ripple: boolean) => {
-    if (selectedCaption) return removeCaption(selectedCaption);
-    if (selectedTransition) return command({ type: "transition", clipId: selectedTransition, kind: "cut", frames: 0, linked });
-    return command({ type: "delete", clipIds: selected, ripple, linked });
+    if (selectedCaption != null && selectedCaption !== "") return removeCaption(selectedCaption);
+    if (selectedTransition != null && selectedTransition !== "") return command({ type: "transition", clipId: selectedTransition, kind: "cut", frames: 0, linked });
+    return command({ type: "delete", clipIds: selectedIds, ripple, linked });
   };
 
   const markRange = (edge: "in" | "out") => {
@@ -353,7 +357,7 @@ export function useEditorState({ studio, timeline, problem, history }: EditorSta
   };
 
   const targets = new Set(timeline.tracks.filter((track) => !untargeted.has(track.track_id)).map((track) => track.track_id));
-  const clipboard = useEditorClipboard({ timeline, selected, linked, targets, playhead, commit, warn, notify, setSelected, setMonitorMode, lift: () => remove(false), trackOf });
+  const clipboard = useEditorClipboard({ timeline, selected: selectedIds, linked, targets, playhead, commit, warn, notify, setSelected, setMonitorMode, lift: () => remove(false), trackOf });
   const toggleTarget = (trackId: string) => {
     const next = new Set(untargeted);
     if (next.has(trackId)) next.delete(trackId);
@@ -364,7 +368,7 @@ export function useEditorState({ studio, timeline, problem, history }: EditorSta
   const split = (allTracks = false) => {
     const frame = playhead.getFrame();
     const under = timeline.clips.filter((clip) => frame > clip.start_frame && frame < clipEnd(clip) && (allTracks || targets.has(clip.track_id)) && trackOf(clip)?.locked === false);
-    const ids = selected.length > 0 && !allTracks ? selected : under.map((clip) => clip.clip_id);
+    const ids = selectedIds.length > 0 && !allTracks ? selectedIds : under.map((clip) => clip.clip_id);
     return command({ type: "split", clipIds: ids, frame, linked });
   };
 
@@ -373,8 +377,8 @@ export function useEditorState({ studio, timeline, problem, history }: EditorSta
     const names = new Set(timeline.tracks.map((track) => track.name));
     const prefix = kind === "video" ? "V" : "A";
     let number = 1;
-    while (names.has(`${prefix}${number}`)) number += 1;
-    return command({ type: "addTrack", kind, name: `${prefix}${number}` });
+    while (names.has(`${prefix}${String(number)}`)) number += 1;
+    return command({ type: "addTrack", kind, name: `${prefix}${String(number)}` });
   };
   const canAddTrack = timeline.tracks.length < MAX_TIMELINE_TRACKS;
   /** A generated layer (a text, an adjustment layer) at the playhead: the new clip becomes the selection. */
@@ -390,9 +394,9 @@ export function useEditorState({ studio, timeline, problem, history }: EditorSta
       setMonitorMode("program");
     }
   };
-  const addTextLayer = () => addLayer(createTextLayer);
+  const addTextLayer = () => { addLayer(createTextLayer); };
   /** An adjustment layer at the playhead over everything that plays there (adjustmentLayer.ts). */
-  const addAdjustmentLayer = () => addLayer(createAdjustmentLayer);
+  const addAdjustmentLayer = () => { addLayer(createAdjustmentLayer); };
 
   /** Whether a shot plays in the film: it has a clip on the timeline. */
   const shotInTimeline = (shotId: string) => shotClips(timeline, shotId).length > 0;
@@ -402,7 +406,7 @@ export function useEditorState({ studio, timeline, problem, history }: EditorSta
    * saved. A duplicated shot starts off the timeline instead (its copy is not enabled).
    */
   const placeShot = (shot: StudioShot): boolean => {
-    if (problem) return false;
+    if (problem != null && problem !== "") return false;
     return appendShot(shotSource(project, shot, timeline.fps));
   };
   /**
@@ -412,7 +416,7 @@ export function useEditorState({ studio, timeline, problem, history }: EditorSta
    */
   const setShotInTimeline = (shotId: string, on: boolean): boolean => {
     const shot = project.shots.find((item) => item.shot_id === shotId);
-    if (!shot || problem) return false;
+    if (!shot || (problem != null && problem !== "")) return false;
     if (on === shotInTimeline(shotId)) return true;
     if (!on) {
       const removed = removeShotClips(timeline, shotId);
@@ -433,7 +437,7 @@ export function useEditorState({ studio, timeline, problem, history }: EditorSta
     if (!track) return false;
     const onTrack = (id: string) => shotClips(timeline, id).filter((clip) => clip.track_id === track.track_id);
     const block = onTrack(shotId);
-    const anchors = targetShotId ? onTrack(targetShotId) : [];
+    const anchors = (targetShotId != null && targetShotId !== "") ? onTrack(targetShotId) : [];
     const anchor = side === "before" ? anchors[0] : anchors.at(-1);
     if (block.length === 0 || (targetShotId !== null && !anchor)) return false;
     return command({ type: "rearrange", clipIds: block.map((clip) => clip.clip_id), targetId: anchor?.clip_id ?? null, side, linked: true });
@@ -455,7 +459,7 @@ export function useEditorState({ studio, timeline, problem, history }: EditorSta
 
   /** Switch the selected clips off or on: a switched-off clip keeps its place but neither plays nor exports. */
   const toggleEnabled = (): boolean => {
-    const ids = new Set(selectClips(timeline, selected, linked).map((clip) => clip.clip_id));
+    const ids = new Set(selectClips(timeline, selectedIds, linked).map((clip) => clip.clip_id));
     if (ids.size === 0) {
       warn(t("請先選取片段"));
       return false;
@@ -464,7 +468,7 @@ export function useEditorState({ studio, timeline, problem, history }: EditorSta
     return commit({ ...timeline, clips: timeline.clips.map((clip) => (ids.has(clip.clip_id) ? withEnabled(clip, on) : clip)) });
   };
 
-  const selectedClip = timeline.clips.find((clip) => clip.clip_id === selected[0]) ?? null;
+  const selectedClip = timeline.clips.find((clip) => clip.clip_id === selectedIds[0]) ?? null;
   const media = sources.filter((source) => !isGenerated(source));
   return {
     problem,
@@ -478,7 +482,7 @@ export function useEditorState({ studio, timeline, problem, history }: EditorSta
     setSourceId,
     sourceOf,
     trackOf,
-    selected,
+    selected: selectedIds,
     select,
     setSelected,
     selectedClip,
@@ -509,14 +513,14 @@ export function useEditorState({ studio, timeline, problem, history }: EditorSta
     setTool,
     command,
     commit,
-    undo: () => travel("undo"),
-    redo: () => travel("redo"),
+    undo: () => { travel("undo"); },
+    redo: () => { travel("redo"); },
     canUndo: history.canUndo(),
     canRedo: history.canRedo(),
     historyDepth: history.depth(),
     history: history.steps(),
     travelTo,
-    forgetHistory: () => history.clear(),
+    forgetHistory: () => { history.clear(); },
     place,
     planDrop,
     dropSource,
@@ -540,7 +544,7 @@ export function useEditorState({ studio, timeline, problem, history }: EditorSta
     rearrangeShot,
     shorterTakes: shorter,
     shorterAsked,
-    requestShorter,
+    requestShorter: setShorterAsked,
     applyShorter,
     warn,
   };

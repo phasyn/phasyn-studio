@@ -16,7 +16,7 @@ import { isMenuKey } from "@/lib/keyboard";
 import { useImageStudio } from "../imageStudioContext";
 import { takePreview } from "../model/outcome";
 import { takeLibraryItem } from "../model/sendToVideo";
-import { imageShots, takeNumber } from "../model/shots";
+import { activeImageTake, imageShots, takeNumber } from "../model/shots";
 import type { StudioImageShot, StudioImageTake } from "../types";
 import { gridColumns, gridStep } from "./display";
 import { ImageThumb } from "./ImageThumb";
@@ -47,11 +47,11 @@ function QuickActions({ items }: { items: readonly MenuItem[] }) {
             type="button"
             tabIndex={-1}
             aria-label={item.label}
-            aria-disabled={reason ? true : undefined}
-            title={reason ? t("{label}：{reason}", { label: item.label, reason }) : item.label}
+            aria-disabled={(reason != null && reason !== "") ? true : undefined}
+            title={(reason != null && reason !== "") ? t("{label}：{reason}", { label: item.label, reason }) : item.label}
             onClick={(event) => {
               event.stopPropagation();
-              if (!reason) item.onSelect();
+              if (!(reason != null && reason !== "")) item.onSelect();
             }}
             className={cn(HUD_BUTTON, "size-6 border-transparent bg-transparent")}
           >
@@ -70,9 +70,10 @@ interface MenuState {
   focus: "first" | "last";
 }
 
-function Tile({ shot, take, index, viewing, onKeyDown, onOpenMenu, menuId, menuOpen, onCloseMenu, focusable }: {
+function Tile({ shot, take, active, index, viewing, onKeyDown, onOpenMenu, menuId, menuOpen, onCloseMenu, focusable }: {
   shot: StudioImageShot;
   take: StudioImageTake;
+  active: boolean;
   /** 在格子中的位置（新出現的 take 依序淡入）。 */
   index: number;
   viewing: boolean;
@@ -85,7 +86,6 @@ function Tile({ shot, take, index, viewing, onKeyDown, onOpenMenu, menuId, menuO
 }) {
   const { project, selectTake, compareTakeId, runs } = useImageStudio();
   const { menuItems } = useTakeActions();
-  const active = shot.active_take_id === take.take_id;
   const comparing = compareTakeId === take.take_id;
   const inLibrary = takeLibraryItem(project.library ?? [], shot.image_shot_id, take) !== null;
   const number = takeNumber(shot, take.take_id);
@@ -94,21 +94,21 @@ function Tile({ shot, take, index, viewing, onKeyDown, onOpenMenu, menuId, menuO
   const done = take.state === "succeeded" && take.image !== null;
   return (
     <li
-      onContextMenu={(event) => {
-        event.preventDefault();
-        onOpenMenu({ kind: "point", x: event.clientX, y: event.clientY }, event.currentTarget.querySelector<HTMLElement>("[data-take-tile]"), "first");
-      }}
+
       ref={reveal(index)}
       className={cn("group group/tile relative grid min-w-0 gap-1.5 rounded-xl border p-1.5", LIFT, "has-[[data-take-tile]:active]:scale-[0.97] has-[[data-take-tile]:active]:duration-[90ms]", viewing ? "border-transparent bg-brand-gradient-soft shadow-glow-sm border-brand-gradient" : "border-line-subtle bg-canvas hover:border-line-strong")}
     >
-      <button
+      <button onContextMenu={(event) => {
+        event.preventDefault();
+        onOpenMenu({ kind: "point", x: event.clientX, y: event.clientY }, event.currentTarget, "first");
+      }}
         type="button"
         data-take-tile={take.take_id}
         tabIndex={focusable ? 0 : -1}
         aria-pressed={viewing}
         aria-keyshortcuts="Shift+F10"
         aria-label={t("take {number}・seed {seed}{value}", { number, seed: take.seed, value: active ? t("・使用中") : "" })}
-        onClick={() => selectTake(take.take_id)}
+        onClick={() => { selectTake(take.take_id); }}
         onKeyDown={onKeyDown}
         className="relative z-[1] grid min-w-0 gap-1.5 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-canvas"
       >
@@ -119,7 +119,7 @@ function Tile({ shot, take, index, viewing, onKeyDown, onOpenMenu, menuId, menuO
             <span className="relative grid size-full place-items-center overflow-hidden rounded-[inherit] bg-stage">
               {preview ? <img src={preview.url} alt="" aria-hidden draggable={false} className="absolute inset-0 size-full object-contain opacity-80" /> : null}
               {preview && preview.total > 0 ? (
-                <CircularProgress value={preview.step / preview.total} label={t("take {number} 的 DiT 步數（預覽）", { number })} size={30} strokeWidth={3} className="relative" />
+                <CircularProgress value={preview.step / preview.total} label={t("take {number} 的預覽步數", { number })} size={30} strokeWidth={3} className="relative" />
               ) : (
                 <LoaderCircle aria-hidden className="relative size-6 text-brand-cyan animate-spin" />
               )}
@@ -132,7 +132,7 @@ function Tile({ shot, take, index, viewing, onKeyDown, onOpenMenu, menuId, menuO
           </span>
         )}
         <span className="flex min-w-0 items-center gap-1 px-0.5 text-caption">
-          <span className="machine shrink-0 text-fg-tertiary">{`#${number}`}</span>
+          <span className="machine shrink-0 text-fg-tertiary">{`#${String(number)}`}</span>
           <span className="machine truncate text-fg-secondary">{take.seed}</span>
         </span>
       </button>
@@ -158,7 +158,7 @@ function Tile({ shot, take, index, viewing, onKeyDown, onOpenMenu, menuId, menuO
         menuId={menuId}
         open={menuOpen}
         label={t("take {number} 的動作", { number })}
-        onOpen={(element, focus) => onOpenMenu({ kind: "element", element }, element, focus)}
+        onOpen={(element, focus) => { onOpenMenu({ kind: "element", element }, element, focus); }}
         onClose={onCloseMenu}
         className="material-hud absolute top-2 right-2 z-[3] size-6 rounded-full border border-white/10 opacity-80 group-hover:opacity-100 [&_svg]:size-3.5"
       >
@@ -176,6 +176,7 @@ export function TakesGallery({ collapsed, onToggleCollapsed }: { collapsed: bool
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [showArchived, setShowArchived] = useState(false);
   const shot = imageShots(project).find((item) => item.image_shot_id === selectedShotId) ?? null;
+  const selectedTake = shot ? activeImageTake(shot) : null;
   const all = shot ? [...shot.takes].reverse() : [];
   const archivedCount = all.filter((take) => archivedRunIds.has(take.run_id)).length;
   const takes = showArchived ? all : all.filter((take) => !archivedRunIds.has(take.run_id) || take.take_id === selectedTakeId);
@@ -220,7 +221,7 @@ export function TakesGallery({ collapsed, onToggleCollapsed }: { collapsed: bool
         <span className="machine rounded-full bg-overlay px-1.5 text-caption text-fg-tertiary">{all.length}</span>
         {archivedCount > 0 ? (
           <label className="pressable ml-auto flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-0.5 text-caption text-fg-secondary hover:bg-raised has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-focus">
-            <input type="checkbox" className="size-3.5 accent-action" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />
+            <input type="checkbox" className="size-3.5 accent-action" checked={showArchived} onChange={(event) => { setShowArchived(event.target.checked); }} />
             <Archive aria-hidden className="size-3.5 text-fg-tertiary" />
             {t("顯示已封存（{archivedCount}）", { archivedCount })}
           </label>
@@ -240,14 +241,15 @@ export function TakesGallery({ collapsed, onToggleCollapsed }: { collapsed: bool
                   key={take.take_id}
                   shot={shot}
                   take={take}
+                  active={selectedTake?.take_id === take.take_id}
                   index={index}
                   viewing={take.take_id === selectedTakeId}
                   focusable={index === focusIndex}
                   onKeyDown={onKeyDown(index, take)}
-                  onOpenMenu={(anchor, returnFocus, focus) => setMenu({ takeId: take.take_id, anchor, returnFocus, focus })}
+                  onOpenMenu={(anchor, returnFocus, focus) => { setMenu({ takeId: take.take_id, anchor, returnFocus, focus }); }}
                   menuId={menuId}
                   menuOpen={menu?.takeId === take.take_id}
-                  onCloseMenu={() => setMenu(null)}
+                  onCloseMenu={() => { setMenu(null); }}
                 />
               ))}
             </ul>
@@ -255,7 +257,7 @@ export function TakesGallery({ collapsed, onToggleCollapsed }: { collapsed: bool
         </div>
       )}
       {menu && shot && menuTake ? (
-        <ActionMenu id={menuId} label={t("take {takeNumber} 的動作", { takeNumber: takeNumber(shot, menuTake.take_id) })} items={menuItems(shot, menuTake)} anchor={menu.anchor} returnFocus={menu.returnFocus} initialFocus={menu.focus} onClose={() => setMenu(null)} />
+        <ActionMenu id={menuId} label={t("take {takeNumber} 的動作", { takeNumber: takeNumber(shot, menuTake.take_id) })} items={menuItems(shot, menuTake)} anchor={menu.anchor} returnFocus={menu.returnFocus} initialFocus={menu.focus} onClose={() => { setMenu(null); }} />
       ) : null}
     </section>
   );

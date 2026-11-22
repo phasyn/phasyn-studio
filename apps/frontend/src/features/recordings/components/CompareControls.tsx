@@ -20,7 +20,7 @@ export function CompareToggle({ recordingId }: { recordingId: string }) {
         size="sm"
         aria-pressed={included}
         icon={included ? <ListX aria-hidden /> : <ListPlus aria-hidden />}
-        onClick={() => compare.toggle(recordingId)}
+        onClick={() => { compare.toggle(recordingId); }}
         disabled={blocked}
         aria-describedby={blocked ? reasonId : undefined}
         className="aria-pressed:border-brand-blue/60 aria-pressed:bg-brand-gradient-soft pointer-coarse:min-h-11"
@@ -44,7 +44,7 @@ export function CompareTray({ className }: { className?: string }) {
     <div className={cn("flex flex-wrap items-center gap-2 text-data", className)}>
       <span className="inline-flex items-center gap-2 text-fg-secondary">
         <span>
-          <T source={"比較清單 <0>{count}</0>/{maxCompare}"} values={{ count, maxCompare: MAX_COMPARE }} slots={[<span className="machine" />]} />
+          <T source={"比較清單 <0>{count}</0>/{maxCompare}"} values={{ count, maxCompare: MAX_COMPARE }} slots={[<span key="slot-0" className="machine" />]} />
         </span>
         {/* 已選筆數的格位（純裝飾；數字已在旁邊） */}
         <span aria-hidden className="flex items-center gap-0.5">

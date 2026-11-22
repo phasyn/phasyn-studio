@@ -34,7 +34,7 @@ export interface StaleRenderDialogProps {
 
 export function StaleRenderDialog({ open, shotIds, batchOf, reasonOf, onRender, onClose }: StaleRenderDialogProps) {
   const { project } = useStudio();
-  const content = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const [chosen, setChosen] = useState<ReadonlySet<string>>(() => new Set(shotIds));
   const rows = useMemo(
     () =>
@@ -57,13 +57,12 @@ export function StaleRenderDialog({ open, shotIds, batchOf, reasonOf, onRender, 
   const statusRef = useChangeFade<HTMLParagraphElement>(status);
   const shortcut = t("{key}+Enter 渲染・Esc 取消", { key: modifierLabel("Mod", detectApplePlatform()) });
 
-  const toggle = (shotId: string, on: boolean) =>
-    setChosen((current) => {
+  const toggle = (shotId: string, on: boolean) => { setChosen((current) => {
       const next = new Set(current);
       if (on) next.add(shotId);
       else next.delete(shotId);
       return next;
-    });
+    }); };
   const render = () => {
     if (reason !== null) return;
     onRender(batch);
@@ -78,10 +77,10 @@ export function StaleRenderDialog({ open, shotIds, batchOf, reasonOf, onRender, 
       }}
     >
       <DialogContent
-        ref={content}
+        ref={contentRef}
         onOpenAutoFocus={(event) => {
           // The first segment's checkbox, so Space and Tab work through the list right away
-          const first = content.current?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+          const first = contentRef.current?.querySelector<HTMLInputElement>('input[type="checkbox"]');
           if (!first) return;
           event.preventDefault();
           first.focus();
@@ -104,10 +103,10 @@ export function StaleRenderDialog({ open, shotIds, batchOf, reasonOf, onRender, 
         </DialogHeader>
         <DialogBody className="grid content-start gap-0.5">
           <div className="flex items-center gap-2 pb-1 text-caption">
-            <Button size="sm" variant="quiet" className="min-h-7 px-2" onClick={() => setChosen(new Set(shotIds))}>
+            <Button size="sm" variant="quiet" className="min-h-7 px-2" onClick={() => { setChosen(new Set(shotIds)); }}>
               {t("全選")}
             </Button>
-            <Button size="sm" variant="quiet" className="min-h-7 px-2" onClick={() => setChosen(new Set())}>
+            <Button size="sm" variant="quiet" className="min-h-7 px-2" onClick={() => { setChosen(new Set()); }}>
               {t("全不選")}
             </Button>
           </div>
@@ -115,7 +114,7 @@ export function StaleRenderDialog({ open, shotIds, batchOf, reasonOf, onRender, 
             <div key={row.shot.shot_id} ref={reveal(index)} className={cn("rounded-md px-2", chosen.has(row.shot.shot_id) ? "bg-brand-soft/40" : "")}>
               <Checkbox
                 checked={chosen.has(row.shot.shot_id)}
-                onChange={(event) => toggle(row.shot.shot_id, event.target.checked)}
+                onChange={(event) => { toggle(row.shot.shot_id, event.target.checked); }}
                 label={row.shot.title}
                 description={[
                   row.changes.length > 0 ? t("已變更：{changes}", { changes: formatList(row.changes) }) : null,

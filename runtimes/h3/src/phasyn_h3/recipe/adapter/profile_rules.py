@@ -35,11 +35,14 @@ from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from . import acceleration_rules, ref_kv_rules
-from . import constants as C
+from . import acceleration_rules, constants, ref_kv_rules
 from ._diag import INVALID, UNSUPPORTED, err, warn
 from .geometry import RUNTIME_BOUNDS
 from .loras import DEFAULT_DYNAMIC_CHUNK_TOKENS, MAX_DYNAMIC_CHUNK_TOKENS
+
+
+_MIN_SM_DIGITS = 2
+
 
 COMPONENT_PLACEMENT = {
     "text_encoder": "conditioning",
@@ -48,15 +51,22 @@ COMPONENT_PLACEMENT = {
     "audio_vae": "audio_vae",
 }
 # block counts with layer-index semantics; VAEs have none
-COMPONENT_LAYERS = {"text_encoder": C.TEXT_SELECTED_LAYER, "transformer": C.DIT_NUM_LAYERS}
+COMPONENT_LAYERS = {
+    "text_encoder": constants.TEXT_SELECTED_LAYER,
+    "transformer": constants.DIT_NUM_LAYERS,
+}
 
 
 @dataclass(frozen=True)
 class AttentionDenyRule:
+    """Identify a hardware and attention configuration that cannot run."""
+
     rule_id: str
     provider: str
     kernel_variant_contains: str | None
-    allowed_sm_major: tuple[int, ...]  # compute-capability major numbers that may use it
+    allowed_sm_major: tuple[
+        int, ...
+    ]  # compute-capability major numbers that may use it
     bound_to: str
     reason_zh: str
 
@@ -83,12 +93,15 @@ ATTENTION_DENY_RULES: tuple[AttentionDenyRule, ...] = (
 
 def _sm_major(sm: Any) -> int | None:
     text = str(sm or "").strip().lower().removeprefix("sm").removeprefix("_")
-    if not text.isdigit() or len(text) < 2:
+    if not text.isdigit() or len(text) < _MIN_SM_DIGITS:
         return None
     return int(text[:-1])
 
 
-def attention_diagnostics(profile: Mapping[str, Any], device_sms: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+def attention_diagnostics(
+    profile: Mapping[str, Any], device_sms: Mapping[str, Any] | None
+) -> list[dict[str, Any]]:
+    """Report unsupported attention combinations."""
     attention = profile.get("attention") or {}
     provider = str(attention.get("provider", "auto_exact"))
     variant = str(attention.get("kernel_variant") or "").lower()
@@ -97,7 +110,7 @@ def attention_diagnostics(profile: Mapping[str, Any], device_sms: Mapping[str, A
         out.append(
             err(
                 UNSUPPORTED,
-                "SageAttention 是近似 attention，不能用於 mode=exact（REQ-021/026）",
+                "SageAttention 是近似 attention，不能用於 mode=exact（/026）",
                 "mode",
                 "attention.provider",
             )
@@ -133,7 +146,9 @@ def attention_diagnostics(profile: Mapping[str, Any], device_sms: Mapping[str, A
     return out
 
 
-def _residency_diagnostics(name: str, comp: Mapping[str, Any], sglang: bool) -> list[dict[str, Any]]:
+def _residency_diagnostics(
+    name: str, comp: Mapping[str, Any], *, sglang: bool
+) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     base = f"components.{name}"
     layers = COMPONENT_LAYERS.get(name)
@@ -161,11 +176,21 @@ def _residency_diagnostics(name: str, comp: Mapping[str, Any], sglang: bool) -> 
     if policy == "explicit":
         if layers is None:
             out.append(
-                err(UNSUPPORTED, f"{name} 沒有 block 索引語意，不能用 explicit residency", f"{base}.residency_policy")
+                err(
+                    UNSUPPORTED,
+                    f"{name} 沒有 block 索引語意，不能用 explicit residency",
+                    f"{base}.residency_policy",
+                )
             )
         else:
             if len(set(indices)) != len(indices):
-                out.append(err(INVALID, "resident_layer_indices 不可重複", f"{base}.resident_layer_indices"))
+                out.append(
+                    err(
+                        INVALID,
+                        "resident_layer_indices 不可重複",
+                        f"{base}.resident_layer_indices",
+                    )
+                )
             if len(indices) != resident:
                 out.append(
                     err(
@@ -187,8 +212,10 @@ def _residency_diagnostics(name: str, comp: Mapping[str, Any], sglang: bool) -> 
                         actual=bad,
                     )
                 )
-    if sglang and comp.get("offload") in C.STREAMED_OFFLOADS and resident > 0:
-        leading = policy == "prefix" or (policy == "explicit" and sorted(indices) == list(range(resident)))
+    if sglang and comp.get("offload") in constants.STREAMED_OFFLOADS and resident > 0:
+        leading = policy == "prefix" or (
+            policy == "explicit" and sorted(indices) == list(range(resident))
+        )
         if not leading:
             out.append(
                 err(
@@ -218,245 +245,32 @@ def validate_profile(
     """
     out: list[dict[str, Any]] = []
     runtime = str(profile.get("runtime_provider"))
-    sglang = runtime == C.RUNTIME_SGLANG
+    sglang = runtime == constants.RUNTIME_SGLANG
     exact = profile.get("mode") == "exact"
-    if runtime not in RUNTIME_BOUNDS:
-        out.append(
-            err(
-                UNSUPPORTED,
-                f"H3 adapter 未登記 runtime「{runtime}」；可用：" + "、".join(sorted(RUNTIME_BOUNDS)),
-                "runtime_provider",
-            )
-        )
-    elif sglang and profile.get("runtime_source_revision") != C.SGLANG_REVISION:
-        out.append(
-            err(
-                UNSUPPORTED,
-                f"H3 adapter 的規則綁定釘版 SGLang {C.SGLANG_REVISION[:12]}；其他 revision 需重新審核後才可用",
-                "runtime_source_revision",
-                expected=C.SGLANG_REVISION,
-                actual=profile.get("runtime_source_revision"),
-            )
-        )
-    elif runtime == C.RUNTIME_DIFFUSERS:
-        out.append(
-            warn(
-                "RUNTIME_UNPINNED",
-                "Diffusers H3 路徑尚未釘定可安裝 commit；能力需 operator probe 後才可用（REQ-027）",
-                "runtime_provider",
-            )
-        )
+    _check_runtime_revision(profile, runtime, sglang=sglang, out=out)
 
-    components = profile.get("components") or {}
-    placements = profile.get("placements") or {}
-    for name in ("text_encoder", "transformer", "video_vae", "audio_vae"):
-        comp = components.get(name)
-        if not isinstance(comp, Mapping):
-            continue
-        base = f"components.{name}"
-        scheme = (comp.get("quantization") or {}).get("scheme", "none")
-        if exact and scheme != "none":
-            out.append(
-                err(
-                    UNSUPPORTED,
-                    f"{name} 量化（{scheme}）屬 approximate run，不能標為 mode=exact（REQ-021）",
-                    "mode",
-                    f"{base}.quantization.scheme",
-                )
-            )
-        native_dtypes = ("native", "fp32") if name in ("video_vae", "audio_vae") else ("native",)
-        if exact and comp.get("compute_dtype", "native") not in native_dtypes:
-            out.append(
-                err(
-                    UNSUPPORTED,
-                    f"{name} 全域改 compute_dtype 不是原生數值（H3 有 FP32 island），不能標為 mode=exact",
-                    "mode",
-                    f"{base}.compute_dtype",
-                )
-            )
-        role = (placements.get(COMPONENT_PLACEMENT[name]) or {}).get("role")
-        offload = comp.get("offload")
-        if sglang and offload in C.STREAMED_OFFLOADS and role != "cpu" and int(comp.get("prefetch_depth", 1)) < 1:
-            out.append(
-                err(
-                    UNSUPPORTED,
-                    f"釘版 SGLang CUDA layerwise offload 會把 prefetch 0 改成 1；"
-                    f"{name} 的 {offload} offload 必須 prefetch_depth ≥ 1，不默默 clamp（RULE-007）",
-                    f"{base}.prefetch_depth",
-                    f"{base}.offload",
-                    expected=">= 1",
-                    actual=comp.get("prefetch_depth"),
-                )
-            )
-        quant = comp.get("quantization") or {}
-        if (
-            sglang
-            and name == "transformer"
-            and (quant.get("scheme"), quant.get("provider")) == ("nf4", "bitsandbytes")
-            and offload not in (None, "none")
-        ):
-            out.append(
-                err(
-                    UNSUPPORTED,
-                    "bitsandbytes NF4 DiT 在釘版 SGLang 由 _BitsAndBytes4BitAdapter 強制常駐，"
-                    "quant state 不在 layerwise offload 的位元組帳內；未經目標 tuple probe 前只接受 offload=none"
-                    "（transformer_load_utils.py:446-511）",
-                    f"{base}.offload",
-                    expected="none",
-                    actual=offload,
-                )
-            )
-        out.extend(_residency_diagnostics(name, comp, sglang))
+    _check_components(profile, exact=exact, sglang=sglang, out=out)
     out.extend(residency_extension_diagnostics(profile))
 
-    adaln = profile.get("adaln") or {}
-    adaln_mode = adaln.get("mode", "off")
-    transformer_scheme = ((components.get("transformer") or {}).get("quantization") or {}).get("scheme", "none")
-    lora = list(profile.get("lora") or [])
-    # online int8_convrot/fp8_e4m3 of a native BF16 DiT keeps adaln_proj
-    # BF16 and is admitted by the shim's runtime patch (acceleration_rules)
-    if adaln_mode != "off" and transformer_scheme != "none" and not acceleration_rules.adaln_quant_relaxable(profile):
-        out.append(
-            err(
-                UNSUPPORTED,
-                "釘版 SGLang 的 AdaLN cache／online 只接受未量化的 transformer（quant_config 必須為 None）；請擇一"
-                "（例外：原生 BF16 checkpoint 的線上 int8_convrot／fp8_e4m3，provider=sglang_native）",
-                "adaln.mode",
-                "components.transformer.quantization.scheme",
-                expected="adaln.mode=off 或 quantization.scheme=none",
-                actual=f"{adaln_mode} + {transformer_scheme}",
-            )
-        )
-    if adaln_mode == "fixed" and not adaln.get("cache_ref"):
-        out.append(
-            err(
-                INVALID,
-                "AdaLN fixed 模式必須指定 cache_ref（cache 未涵蓋的 schedule 會 ADALN_CACHE_MISS）",
-                "adaln.cache_ref",
-            )
-        )
-    # AdaLN × LoRA needs the registry facts (touches_adaln), so lora_rules decides it
-    # at plan time; a profile alone cannot tell a Turbo LoRA (shares the base cache) from PDD.
-    if exact and lora:
-        out.append(err(UNSUPPORTED, "LoRA 改變數值，屬 approximate run（REQ-021）", "mode", "lora"))
+    _check_execution_mode(profile, capabilities, exact=exact, out=out)
 
-    graphs = profile.get("cuda_graphs") or {}
-    if graphs.get("mode") == "static_bucket" and "cuda_graphs.dynamic_offload" not in capabilities:
-        offloaded = [
-            name
-            for name in ("text_encoder", "transformer", "video_vae", "audio_vae")
-            if (components.get(name) or {}).get("offload", "none") != "none"
-        ]
-        if offloaded:
-            out.append(
-                err(
-                    UNSUPPORTED,
-                    "CUDA graph static_bucket 需要固定位址，與動態 offload 衝突；需另有已驗證的相容能力（RULE-008）",
-                    "cuda_graphs.mode",
-                    *[f"components.{name}.offload" for name in offloaded],
-                )
-            )
-
-    vae = profile.get("vae") or {}
-    tile = int(vae.get("spatial_tile", C.VAE_DEFAULT_TILE))
-    overlap = int(vae.get("spatial_overlap", C.VAE_DEFAULT_TILE_OVERLAP))
-    if overlap >= tile:
-        out.append(
-            err(
-                INVALID,
-                "VAE spatial_overlap 必須小於 spatial_tile（RULE-018）",
-                "vae.spatial_overlap",
-                "vae.spatial_tile",
-                expected=f"< {tile}",
-                actual=overlap,
-            )
-        )
-    if tile % C.VAE_SPATIAL_FACTOR:
-        out.append(
-            err(
-                INVALID,
-                f"spatial_tile 必須是 VAE 空間倍率 {C.VAE_SPATIAL_FACTOR} 的倍數",
-                "vae.spatial_tile",
-                actual=tile,
-            )
-        )
-    if overlap % C.VAE_SPATIAL_FACTOR:
-        out.append(
-            err(
-                INVALID,
-                f"spatial_overlap 必須是 {C.VAE_SPATIAL_FACTOR} 的倍數（釘版以整除換算 latent overlap）",
-                "vae.spatial_overlap",
-                actual=overlap,
-            )
-        )
-    temporal = vae.get("temporal_policy", "native")
-    chunk = vae.get("temporal_chunk_frames")
-    t_overlap = int(vae.get("temporal_overlap_frames", 0) or 0)
-    if temporal == "native":
-        if chunk is not None:
-            out.append(
-                err(
-                    INVALID,
-                    "temporal_policy=native 不可設定 temporal_chunk_frames（RULE-036）",
-                    "vae.temporal_chunk_frames",
-                )
-            )
-        if t_overlap:
-            out.append(
-                err(
-                    INVALID,
-                    "temporal_policy=native 不可設定 temporal_overlap_frames（RULE-036）",
-                    "vae.temporal_overlap_frames",
-                )
-            )
-    else:
-        if chunk is None:
-            out.append(err(INVALID, "validated_chunk 需要 temporal_chunk_frames", "vae.temporal_chunk_frames"))
-        elif t_overlap >= int(chunk):
-            out.append(
-                err(INVALID, "temporal_overlap_frames 必須小於 temporal_chunk_frames", "vae.temporal_overlap_frames")
-            )
-        if "vae.validated_chunk" not in capabilities:
-            out.append(
-                err(
-                    UNSUPPORTED,
-                    "釘版 provider 沒有受驗證的 VAE temporal chunk 能力；草稿保留，但 resolve 拒絕（RULE-036）",
-                    "vae.temporal_policy",
-                )
-            )
-    if exact and vae.get("transfer_dtype") == "bf16":
-        out.append(
-            err(
-                UNSUPPORTED,
-                "BF16 latent 傳輸屬 approximate；原生基準是 FP32（ADR-012）",
-                "mode",
-                "vae.transfer_dtype",
-            )
-        )
+    _check_vae_policy(profile, capabilities, exact=exact, out=out)
     approximation = profile.get("approximation") or {}
     if exact and approximation.get("algorithm", "none") != "none":
-        out.append(err(UNSUPPORTED, "denoise cache 近似加速不能用於 mode=exact", "mode", "approximation.algorithm"))
+        out.append(
+            err(
+                UNSUPPORTED,
+                "denoise cache 近似加速不能用於 mode=exact",
+                "mode",
+                "approximation.algorithm",
+            )
+        )
 
     out.extend(attention_diagnostics(profile, device_sms))
     out.extend(acceleration_rules.diagnostics(profile, device_sms))
     out.extend(ref_kv_rules.diagnostics(profile, model=model))
 
-    parallel = profile.get("parallelism") or {}
-    par_mode = parallel.get("mode", "stage_only")
-    degrees = [int(parallel.get(k, 1)) for k in ("tensor_degree", "ulysses_degree", "ring_degree")]
-    if par_mode == "stage_only":
-        if any(d != 1 for d in degrees):
-            out.append(err(INVALID, "stage_only 時各 parallel degree 必須為 1", "parallelism.mode"))
-    elif f"parallelism.{par_mode}" not in capabilities:
-        out.append(
-            err(
-                UNSUPPORTED,
-                f"多卡模式 {par_mode} 沒有同質 group 的 capability evidence；首期只支援 stage_only",
-                "parallelism.mode",
-            )
-        )
-    if parallel.get("fsdp_inference") and "parallelism.fsdp" not in capabilities:
-        out.append(err(UNSUPPORTED, "FSDP 推論未經驗證", "parallelism.fsdp_inference"))
+    _check_parallelism(profile, capabilities, out)
 
     if model_facts:
         out.extend(validate_model_facts(profile, model_facts, model=model))
@@ -477,7 +291,8 @@ def facts_by_kind(
     """Map ``component_id -> facts`` onto component kinds via the manifest (fallback: facts.kind / id suffix)."""
     kinds = _component_kinds(model)
     out: dict[str, dict[str, Any]] = {}
-    for cid, facts in sorted((model_facts or {}).items()):
+    raw_facts: Mapping[str, object] = model_facts or {}
+    for cid, facts in sorted(raw_facts.items()):
         if not isinstance(facts, Mapping):
             continue
         kind = kinds.get(str(cid)) or facts.get("kind")
@@ -485,7 +300,14 @@ def facts_by_kind(
             kind = next(
                 (
                     k
-                    for k in ("text_encoder", "transformer", "video_vae", "audio_vae", "processor", "tokenizer")
+                    for k in (
+                        "text_encoder",
+                        "transformer",
+                        "video_vae",
+                        "audio_vae",
+                        "processor",
+                        "tokenizer",
+                    )
                     if str(cid).endswith(k)
                 ),
                 None,
@@ -541,7 +363,7 @@ SGLANG_LORA_EXTENSION_SCHEMA: dict[str, Any] = {
             "minimum": 0,
             "maximum": MAX_DYNAMIC_CHUNK_TOKENS,
             "description": "dynamic LoRA 每塊 token 數（暫存 [塊, r]，不另配置 [N, out] 輸出）；"
-            f"0＝整段一次（仍原地累加）；未設定＝{DEFAULT_DYNAMIC_CHUNK_TOKENS}",
+            f"0\N{FULLWIDTH EQUALS SIGN}整段一次（仍原地累加）；未設定\N{FULLWIDTH EQUALS SIGN}{DEFAULT_DYNAMIC_CHUNK_TOKENS}",
         },
     },
     "minProperties": 1,
@@ -567,7 +389,14 @@ def _residency_component_schema(name: str) -> dict[str, Any]:
                 "host 放不下時改為釋放；drop=完全釋放，下次從 checkpoint 重讀",
             },
             "idle_unload_seconds": {
-                "anyOf": [{"type": "integer", "minimum": 0, "maximum": MAX_IDLE_UNLOAD_SECONDS}, {"type": "null"}],
+                "anyOf": [
+                    {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": MAX_IDLE_UNLOAD_SECONDS,
+                    },
+                    {"type": "null"},
+                ],
                 "description": "持有此元件的程序閒置多久後卸載（phasyn_h3 不使用）；null=持有期間不卸載；未設定=預設",
             },
         },
@@ -585,7 +414,8 @@ SGLANG_RESIDENCY_EXTENSION_SCHEMA: dict[str, Any] = {
     "none→device、component→host、block→device）",
     "type": "object",
     "properties": {
-        name: _residency_component_schema(name) for name in ("text_encoder", "transformer", "video_vae", "audio_vae")
+        name: _residency_component_schema(name)
+        for name in ("text_encoder", "transformer", "video_vae", "audio_vae")
     },
     "minProperties": 1,
     "additionalProperties": False,
@@ -610,7 +440,10 @@ def lora_extension(profile: Mapping[str, Any]) -> Mapping[str, Any]:
 def residency_declaration(profile: Mapping[str, Any]) -> Mapping[str, Any] | None:
     """Values of the profile's ``phasyn.sglang_h3.residency`` extension, if declared."""
     for ext in profile.get("extensions") or ():
-        if isinstance(ext, Mapping) and ext.get("namespace") == SGLANG_RESIDENCY_EXTENSION:
+        if (
+            isinstance(ext, Mapping)
+            and ext.get("namespace") == SGLANG_RESIDENCY_EXTENSION
+        ):
             values = ext.get("values")
             return values if isinstance(values, Mapping) else {}
     return None
@@ -619,13 +452,20 @@ def residency_declaration(profile: Mapping[str, Any]) -> Mapping[str, Any] | Non
 def after_use(profile: Mapping[str, Any], kind: str) -> str:
     """Effective between-use placement of one component (declared or offload default)."""
     declared = (residency_declaration(profile) or {}).get(kind)
-    if isinstance(declared, Mapping) and declared.get("after_use") in RESIDENCY_AFTER_USE:
+    if (
+        isinstance(declared, Mapping)
+        and declared.get("after_use") in RESIDENCY_AFTER_USE
+    ):
         return str(declared["after_use"])
-    offload = str(((profile.get("components") or {}).get(kind) or {}).get("offload", "none"))
+    offload = str(
+        ((profile.get("components") or {}).get(kind) or {}).get("offload", "none")
+    )
     return RESIDENCY_DEFAULT_AFTER_USE.get(offload, "device")
 
 
-HOST_RESIDENT_QUANT = frozenset({("int8_convrot", "sglang_native"), ("fp8_e4m3", "sglang_native")})
+HOST_RESIDENT_QUANT = frozenset(
+    {("int8_convrot", "sglang_native"), ("fp8_e4m3", "sglang_native")}
+)
 
 
 def host_residency_refusal(kind: str, scheme: str, provider: str) -> str | None:
@@ -667,7 +507,11 @@ def residency_extension_diagnostics(profile: Mapping[str, Any]) -> list[dict[str
         chosen = settings.get("after_use")
         quant = comp.get("quantization") or {}
         refusal = (
-            host_residency_refusal(kind, str(quant.get("scheme", "none")), str(quant.get("provider", "native")))
+            host_residency_refusal(
+                kind,
+                str(quant.get("scheme", "none")),
+                str(quant.get("provider", "native")),
+            )
             if chosen == "host"
             else None
         )
@@ -703,17 +547,22 @@ def residency_extension_diagnostics(profile: Mapping[str, Any]) -> list[dict[str
 def checkpoint_declaration(profile: Mapping[str, Any]) -> Mapping[str, Any] | None:
     """Values of the profile's ``phasyn.sglang_h3.checkpoint`` extension, if declared."""
     for ext in profile.get("extensions") or ():
-        if isinstance(ext, Mapping) and ext.get("namespace") == SGLANG_CHECKPOINT_EXTENSION:
+        if (
+            isinstance(ext, Mapping)
+            and ext.get("namespace") == SGLANG_CHECKPOINT_EXTENSION
+        ):
             values = ext.get("values")
             return values if isinstance(values, Mapping) else {}
     return None
 
 
 def detected_scheme(facts: Mapping[str, Any]) -> str:
+    """Return the quantization scheme detected for the selected profile."""
     return str(((facts.get("quantization") or {}).get("scheme")) or "none")
 
 
 def is_pruned(facts: Mapping[str, Any]) -> bool:
+    """Check whether the configured transformer uses a pruned schedule."""
     return (facts.get("architecture") or {}).get("adaln") == "pruned_curve"
 
 
@@ -752,38 +601,25 @@ def validate_model_facts(
                 err(
                     UNSUPPORTED,
                     f"{kind} 權重為{what}格式（{scheme if scheme != 'none' else 'pruned_curve'}），"
-                    "只能以 approximate／experimental 執行，不得稱數學等價（REQ-021）",
+                    "只能以 approximate／experimental 執行，不得稱數學等價",
                     "mode",
                     expected="approximate|experimental",
                     actual="exact",
                 )
             )
-        if kind == "transformer" and scheme != "none" and profile.get("runtime_provider") == "sglang_h3":
-            layout = (checkpoint_declaration(profile) or {}).get("transformer_qkv_layout")
-            if layout is None:
-                out.append(
-                    err(
-                        UNSUPPORTED,
-                        f"預量化 DiT（{scheme}）的 qkv_proj 列順序無法由 header 判定，4-bit 打包權重也不能在載入時重排；"
-                        f"需在 profile extension {SGLANG_CHECKPOINT_EXTENSION} 宣告 transformer_qkv_layout"
-                        "（minimax_h3.py:991-1005）",
-                        "extensions",
-                        f"{base}.quantization.scheme",
-                    )
-                )
-            elif layout != "concat":
-                out.append(
-                    err(
-                        UNSUPPORTED,
-                        f"transformer_qkv_layout={layout}：預量化 4-bit 權重不能逐列重排成 concat，釘版 SGLang 無法載入",
-                        "extensions",
-                        expected="concat",
-                        actual=layout,
-                    )
-                )
+        if (
+            kind == "transformer"
+            and scheme != "none"
+            and profile.get("runtime_provider") == "sglang_h3"
+        ):
+            _check_prequantized_layout(profile, scheme, base, out)
         requested = comp.get("quantization") or {}
-        online = scheme == "none" and not pruned and acceleration_rules.is_online_quant(comp)
-        if requested.get("scheme", "none") != scheme and not online:  # online quant of native BF16 is allowed
+        online = (
+            scheme == "none" and not pruned and acceleration_rules.is_online_quant(comp)
+        )
+        if (
+            requested.get("scheme", "none") != scheme and not online
+        ):  # online quant of native BF16 is allowed
             out.append(
                 err(
                     UNSUPPORTED,
@@ -806,7 +642,11 @@ def validate_model_facts(
             )
         fmt = facts.get("format")
         weight_format = comp.get("weight_format", "native")
-        if fmt and weight_format != fmt and (weight_format != "native" or scheme != "none" or pruned):
+        if (
+            fmt
+            and weight_format != fmt
+            and (weight_format != "native" or scheme != "none" or pruned)
+        ):
             out.append(
                 err(
                     UNSUPPORTED,
@@ -828,3 +668,336 @@ def _dedupe(diags: list[dict[str, Any]]) -> list[dict[str, Any]]:
             seen.add(key)
             out.append(d)
     return out
+
+
+def _check_runtime_revision(
+    profile: Mapping[str, Any], runtime: str, *, sglang: bool, out: list[dict[str, Any]]
+) -> None:
+    if runtime not in RUNTIME_BOUNDS:
+        out.append(
+            err(
+                UNSUPPORTED,
+                f"H3 adapter 未登記 runtime「{runtime}」；可用："
+                + "、".join(sorted(RUNTIME_BOUNDS)),
+                "runtime_provider",
+            )
+        )
+    elif sglang and profile.get("runtime_source_revision") != constants.SGLANG_REVISION:
+        out.append(
+            err(
+                UNSUPPORTED,
+                f"H3 adapter 的規則綁定釘版 SGLang {constants.SGLANG_REVISION[:12]}；其他 revision 需重新審核後才可用",
+                "runtime_source_revision",
+                expected=constants.SGLANG_REVISION,
+                actual=profile.get("runtime_source_revision"),
+            )
+        )
+    elif runtime == constants.RUNTIME_DIFFUSERS:
+        out.append(
+            warn(
+                "RUNTIME_UNPINNED",
+                "Diffusers H3 路徑尚未釘定可安裝 commit；能力需 operator probe 後才可用",
+                "runtime_provider",
+            )
+        )
+
+
+def _check_components(
+    profile: Mapping[str, Any], *, exact: bool, sglang: bool, out: list[dict[str, Any]]
+) -> None:
+    components = profile.get("components") or {}
+    placements = profile.get("placements") or {}
+    for name in ("text_encoder", "transformer", "video_vae", "audio_vae"):
+        comp = components.get(name)
+        if not isinstance(comp, Mapping):
+            continue
+        base = f"components.{name}"
+        scheme = (comp.get("quantization") or {}).get("scheme", "none")
+        if exact and scheme != "none":
+            out.append(
+                err(
+                    UNSUPPORTED,
+                    f"{name} 量化（{scheme}）屬 approximate run，不能標為 mode=exact",
+                    "mode",
+                    f"{base}.quantization.scheme",
+                )
+            )
+        native_dtypes = (
+            ("native", "fp32") if name in ("video_vae", "audio_vae") else ("native",)
+        )
+        if exact and comp.get("compute_dtype", "native") not in native_dtypes:
+            out.append(
+                err(
+                    UNSUPPORTED,
+                    f"{name} 全域改 compute_dtype 不是原生數值（H3 有 FP32 island），不能標為 mode=exact",
+                    "mode",
+                    f"{base}.compute_dtype",
+                )
+            )
+        role = (placements.get(COMPONENT_PLACEMENT[name]) or {}).get("role")
+        offload = comp.get("offload")
+        if (
+            sglang
+            and offload in constants.STREAMED_OFFLOADS
+            and role != "cpu"
+            and int(comp.get("prefetch_depth", 1)) < 1
+        ):
+            out.append(
+                err(
+                    UNSUPPORTED,
+                    f"釘版 SGLang CUDA layerwise offload 會把 prefetch 0 改成 1；"
+                    f"{name} 的 {offload} offload 必須 prefetch_depth ≥ 1，不默默 clamp",
+                    f"{base}.prefetch_depth",
+                    f"{base}.offload",
+                    expected=">= 1",
+                    actual=comp.get("prefetch_depth"),
+                )
+            )
+        quant = comp.get("quantization") or {}
+        if (
+            sglang
+            and name == "transformer"
+            and (quant.get("scheme"), quant.get("provider")) == ("nf4", "bitsandbytes")
+            and offload not in (None, "none")
+        ):
+            out.append(
+                err(
+                    UNSUPPORTED,
+                    "bitsandbytes NF4 DiT 在釘版 SGLang 由 _BitsAndBytes4BitAdapter 強制常駐，"
+                    "quant state 不在 layerwise offload 的位元組帳內；未經目標 tuple probe 前只接受 offload=none"
+                    "（transformer_load_utils.py:446-511）",
+                    f"{base}.offload",
+                    expected="none",
+                    actual=offload,
+                )
+            )
+        out.extend(_residency_diagnostics(name, comp, sglang=sglang))
+
+
+def _check_execution_mode(
+    profile: Mapping[str, Any],
+    capabilities: Collection[str],
+    *,
+    exact: bool,
+    out: list[dict[str, Any]],
+) -> None:
+    components = profile.get("components") or {}
+    adaln = profile.get("adaln") or {}
+    adaln_mode = adaln.get("mode", "off")
+    transformer_scheme = (
+        (components.get("transformer") or {}).get("quantization") or {}
+    ).get("scheme", "none")
+    lora = list(profile.get("lora") or [])
+    # : online int8_convrot/fp8_e4m3 of a native BF16 DiT keeps adaln_proj
+    # BF16 and is admitted by the shim's runtime patch (acceleration_rules)
+    if (
+        adaln_mode != "off"
+        and transformer_scheme != "none"
+        and not acceleration_rules.adaln_quant_relaxable(profile)
+    ):
+        out.append(
+            err(
+                UNSUPPORTED,
+                "釘版 SGLang 的 AdaLN cache／online 只接受未量化的 transformer（quant_config 必須為 None）；請擇一"
+                "（例外：原生 BF16 checkpoint 的線上 int8_convrot／fp8_e4m3，provider=sglang_native）",
+                "adaln.mode",
+                "components.transformer.quantization.scheme",
+                expected="adaln.mode=off 或 quantization.scheme=none",
+                actual=f"{adaln_mode} + {transformer_scheme}",
+            )
+        )
+    if adaln_mode == "fixed" and not adaln.get("cache_ref"):
+        out.append(
+            err(
+                INVALID,
+                "AdaLN fixed 模式必須指定 cache_ref（cache 未涵蓋的 schedule 會 ADALN_CACHE_MISS）",
+                "adaln.cache_ref",
+            )
+        )
+    # AdaLN × LoRA needs the registry facts (touches_adaln), so lora_rules decides it
+    # at plan time; a profile alone cannot tell a Turbo LoRA (shares the base cache) from PDD.
+    if exact and lora:
+        out.append(
+            err(
+                UNSUPPORTED,
+                "LoRA 改變數值，屬 approximate run",
+                "mode",
+                "lora",
+            )
+        )
+
+    graphs = profile.get("cuda_graphs") or {}
+    if (
+        graphs.get("mode") == "static_bucket"
+        and "cuda_graphs.dynamic_offload" not in capabilities
+    ):
+        offloaded = [
+            name
+            for name in ("text_encoder", "transformer", "video_vae", "audio_vae")
+            if (components.get(name) or {}).get("offload", "none") != "none"
+        ]
+        if offloaded:
+            out.append(
+                err(
+                    UNSUPPORTED,
+                    "CUDA graph static_bucket 需要固定位址，與動態 offload 衝突；需另有已驗證的相容能力",
+                    "cuda_graphs.mode",
+                    *[f"components.{name}.offload" for name in offloaded],
+                )
+            )
+
+
+def _check_vae_policy(
+    profile: Mapping[str, Any],
+    capabilities: Collection[str],
+    *,
+    exact: bool,
+    out: list[dict[str, Any]],
+) -> None:
+    vae = profile.get("vae") or {}
+    _check_spatial_tile(vae, out)
+    temporal = vae.get("temporal_policy", "native")
+    chunk = vae.get("temporal_chunk_frames")
+    t_overlap = int(vae.get("temporal_overlap_frames", 0) or 0)
+    if temporal == "native":
+        if chunk is not None:
+            out.append(
+                err(
+                    INVALID,
+                    "temporal_policy=native 不可設定 temporal_chunk_frames",
+                    "vae.temporal_chunk_frames",
+                )
+            )
+        if t_overlap:
+            out.append(
+                err(
+                    INVALID,
+                    "temporal_policy=native 不可設定 temporal_overlap_frames",
+                    "vae.temporal_overlap_frames",
+                )
+            )
+    else:
+        if chunk is None:
+            out.append(
+                err(
+                    INVALID,
+                    "validated_chunk 需要 temporal_chunk_frames",
+                    "vae.temporal_chunk_frames",
+                )
+            )
+        elif t_overlap >= int(chunk):
+            out.append(
+                err(
+                    INVALID,
+                    "temporal_overlap_frames 必須小於 temporal_chunk_frames",
+                    "vae.temporal_overlap_frames",
+                )
+            )
+        if "vae.validated_chunk" not in capabilities:
+            out.append(
+                err(
+                    UNSUPPORTED,
+                    "釘版 provider 沒有受驗證的 VAE temporal chunk 能力；草稿保留，但 resolve 拒絕",
+                    "vae.temporal_policy",
+                )
+            )
+    if exact and vae.get("transfer_dtype") == "bf16":
+        out.append(
+            err(
+                UNSUPPORTED,
+                "BF16 latent 傳輸屬 approximate；原生基準是 FP32",
+                "mode",
+                "vae.transfer_dtype",
+            )
+        )
+
+
+def _check_parallelism(
+    profile: Mapping[str, Any], capabilities: Collection[str], out: list[dict[str, Any]]
+) -> None:
+    parallel = profile.get("parallelism") or {}
+    par_mode = parallel.get("mode", "stage_only")
+    degrees = [
+        int(parallel.get(k, 1))
+        for k in ("tensor_degree", "ulysses_degree", "ring_degree")
+    ]
+    if par_mode == "stage_only":
+        if any(d != 1 for d in degrees):
+            out.append(
+                err(
+                    INVALID,
+                    "stage_only 時各 parallel degree 必須為 1",
+                    "parallelism.mode",
+                )
+            )
+    elif f"parallelism.{par_mode}" not in capabilities:
+        out.append(
+            err(
+                UNSUPPORTED,
+                f"多卡模式 {par_mode} 沒有同質 group 的 capability evidence；首期只支援 stage_only",
+                "parallelism.mode",
+            )
+        )
+    if parallel.get("fsdp_inference") and "parallelism.fsdp" not in capabilities:
+        out.append(err(UNSUPPORTED, "FSDP 推論未經驗證", "parallelism.fsdp_inference"))
+
+
+def _check_prequantized_layout(
+    profile: Mapping[str, Any], scheme: str, base: str, out: list[dict[str, Any]]
+) -> None:
+    layout = (checkpoint_declaration(profile) or {}).get("transformer_qkv_layout")
+    if layout is None:
+        out.append(
+            err(
+                UNSUPPORTED,
+                f"預量化 DiT（{scheme}）的 qkv_proj 列順序無法由 header 判定，4-bit 打包權重也不能在載入時重排；"
+                f"需在 profile extension {SGLANG_CHECKPOINT_EXTENSION} 宣告 transformer_qkv_layout"
+                "（minimax_h3.py:991-1005）",
+                "extensions",
+                f"{base}.quantization.scheme",
+            )
+        )
+    elif layout != "concat":
+        out.append(
+            err(
+                UNSUPPORTED,
+                f"transformer_qkv_layout={layout}：預量化 4-bit 權重不能逐列重排成 concat，釘版 SGLang 無法載入",
+                "extensions",
+                expected="concat",
+                actual=layout,
+            )
+        )
+
+
+def _check_spatial_tile(vae: Mapping[str, Any], out: list[dict[str, Any]]) -> None:
+    tile = int(vae.get("spatial_tile", constants.VAE_DEFAULT_TILE))
+    overlap = int(vae.get("spatial_overlap", constants.VAE_DEFAULT_TILE_OVERLAP))
+    if overlap >= tile:
+        out.append(
+            err(
+                INVALID,
+                "VAE spatial_overlap 必須小於 spatial_tile",
+                "vae.spatial_overlap",
+                "vae.spatial_tile",
+                expected=f"< {tile}",
+                actual=overlap,
+            )
+        )
+    if tile % constants.VAE_SPATIAL_FACTOR:
+        out.append(
+            err(
+                INVALID,
+                f"spatial_tile 必須是 VAE 空間倍率 {constants.VAE_SPATIAL_FACTOR} 的倍數",
+                "vae.spatial_tile",
+                actual=tile,
+            )
+        )
+    if overlap % constants.VAE_SPATIAL_FACTOR:
+        out.append(
+            err(
+                INVALID,
+                f"spatial_overlap 必須是 {constants.VAE_SPATIAL_FACTOR} 的倍數（釘版以整除換算 latent overlap）",
+                "vae.spatial_overlap",
+                actual=overlap,
+            )
+        )

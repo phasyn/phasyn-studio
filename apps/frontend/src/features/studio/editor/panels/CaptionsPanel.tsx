@@ -4,6 +4,7 @@
 // editor's one selection, shared with the caption track of the timeline: choosing a segment there selects its row
 // here and brings it into view. A row's menu (right click, Shift+F10) and the keys Enter and Delete carry the rest;
 // Delete anywhere in the panel removes the selected caption. Every change is one commit of the timeline document.
+// Under the toolbar, the dialogue row (dialogue/DialogueBar) turns clips' speech into captions and captions into speech.
 import { Captions, Download, MapPin, Plus, Trash2, Upload } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent } from "react";
 import type { TimelineCaption } from "@/api/generated/contracts";
@@ -19,6 +20,7 @@ import { localId } from "../../model/ids";
 import { errorText } from "../../swap/errors";
 import { downloadSrt, parseSrt } from "../captions";
 import { useEditor } from "../editorContext";
+import { DialogueBar } from "../../dialogue/DialogueBar";
 import { CaptionDetail } from "./captions/CaptionDetail";
 import { captionLimit, captionLine, newCaption, sortedCaptions, withCaption } from "./captions/captionEdits";
 import { CaptionRow } from "./captions/CaptionRow";
@@ -60,10 +62,10 @@ export function CaptionsPanel() {
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const [importing, setImporting] = useState(false);
   // An import finishes after the file was read: it continues from the editor as it is then
-  const live = useRef(editor);
+  const liveRef = useRef(editor);
   const panelId = useId();
   useLayoutEffect(() => {
-    live.current = editor;
+    liveRef.current = editor;
   });
   const captions = useMemo(() => sortedCaptions(timeline.captions), [timeline.captions]);
   const currentId = useCurrentCaption(playhead, captions);
@@ -112,17 +114,17 @@ export function CaptionsPanel() {
     void file
       .text()
       .then((text) => {
-        const now = live.current;
+        const now = liveRef.current;
         const added = parseSrt(text, now.fps);
         if (!now.commit({ ...now.timeline, captions: [...now.timeline.captions, ...added] })) return;
         now.notify({ tone: "success", title: t("已匯入 {count} 段字幕", { count: added.length }) });
       })
-      .catch((error: unknown) => live.current.warn(errorText(error)))
-      .finally(() => setImporting(false));
+      .catch((error: unknown) => { liveRef.current.warn(errorText(error)); })
+      .finally(() => { setImporting(false); });
   };
   const keys = (event: KeyboardEvent<HTMLDivElement>) => {
     const row = event.target instanceof HTMLElement ? event.target : null;
-    const at = captions.findIndex((caption) => caption.caption_id === row?.dataset.captionRow);
+    const at = captions.findIndex((caption) => caption.caption_id === row?.dataset["captionRow"]);
     const caption = captions[at];
     if (!row || !caption || event.altKey || event.ctrlKey || event.metaKey) return;
     const moves: Record<string, number> = { ArrowUp: at - 1, ArrowDown: at + 1, Home: 0, End: captions.length - 1 };
@@ -147,11 +149,11 @@ export function CaptionsPanel() {
     }
   };
   const rowItems = (caption: TimelineCaption): MenuItem[] => [
-    { id: "seek", label: t("把播放頭移到這段字幕"), icon: MapPin, shortcut: "Enter", onSelect: () => transport.seek(caption.start_frame) },
+    { id: "seek", label: t("把播放頭移到這段字幕"), icon: MapPin, shortcut: "Enter", onSelect: () => { transport.seek(caption.start_frame); } },
     { id: "in", label: t("把入點設為播放頭"), separatorBefore: true, onSelect: () => void change(caption.caption_id, { start_frame: playhead.getFrame() }) },
     // Like Mark Out: the caption still shows on the playhead's frame
     { id: "out", label: t("把出點設為播放頭"), onSelect: () => void change(caption.caption_id, { end_frame: playhead.getFrame() + 1 }) },
-    { id: "remove", label: t("刪除字幕"), icon: Trash2, shortcut: "Delete", tone: "danger", separatorBefore: true, onSelect: () => remove(caption) },
+    { id: "remove", label: t("刪除字幕"), icon: Trash2, shortcut: "Delete", tone: "danger", separatorBefore: true, onSelect: () => { remove(caption); } },
   ];
 
   // Delete elsewhere in the panel (its toolbar, the panel itself) removes the selected caption: the rows take theirs first
@@ -164,7 +166,7 @@ export function CaptionsPanel() {
 
   return (
     // The panel takes the focus when the row that had it removes itself and no row is left: Delete stays here instead of reaching the selected clip
-    <div id={panelId} tabIndex={-1} data-delete-keys="" onKeyDown={panelKeys} className="flex min-h-0 flex-1 flex-col outline-none">
+    <div /* eslint-disable-line jsx-a11y-x/no-static-element-interactions -- Keyboard events from this panel’s focusable controls bubble here so navigation and dismissal share one handler. */  id={panelId} tabIndex={-1} data-delete-keys="" onKeyDown={panelKeys} className="flex min-h-0 flex-1 flex-col outline-none">
       <div data-keep-focus="" className="@container flex h-10 shrink-0 items-center gap-1.5 border-b border-line-subtle px-2">
         <ActionButton size="sm" icon={<Plus aria-hidden />} disabledReason={limit} title={t("在播放頭新增字幕；字幕會燒錄到匯出的影片")} onClick={add}>
           {t("新增字幕")}
@@ -186,7 +188,7 @@ export function CaptionsPanel() {
             disabledReason={captions.length === 0 ? t("還沒有字幕可以匯出") : null}
             aria-label={t("匯出 SRT")}
             title={t("把字幕另存成 SRT 字幕檔")}
-            onClick={() => downloadSrt(timeline.captions, fps)}
+            onClick={() => { downloadSrt(timeline.captions, fps); }}
           >
             <span className="hidden @[24rem]:inline">{t("匯出 SRT")}</span>
           </ActionButton>
@@ -203,12 +205,13 @@ export function CaptionsPanel() {
           }}
         />
       </div>
+      <DialogueBar />
       {captions.length === 0 ? (
         <div className="grid min-h-0 flex-1 place-items-center overflow-y-auto">
-          <EmptyState size="compact" icon={<Captions />} title={t("還沒有字幕")} description={t("在播放頭新增字幕，或匯入 SRT 字幕檔。")} />
+          <EmptyState size="compact" icon={<Captions />} title={t("還沒有字幕")} description={t("從片段辨識台詞、在播放頭新增字幕，或匯入 SRT 字幕檔。")} />
         </div>
       ) : (
-        <div id={listId} role="grid" aria-label={t("序列字幕")} data-delete-keys="" onKeyDown={keys} className="min-h-13 flex-1 overflow-y-auto py-1">
+        <div tabIndex={-1} id={listId} role="grid" aria-label={t("序列字幕")} data-delete-keys="" onKeyDown={keys} className="min-h-13 flex-1 overflow-y-auto py-1">
           {captions.map((caption, index) => (
             <CaptionRow
               key={caption.caption_id}
@@ -218,9 +221,9 @@ export function CaptionsPanel() {
               selected={caption.caption_id === selected?.caption_id}
               tabbable={selected ? caption.caption_id === selected.caption_id : index === 0}
               current={caption.caption_id === currentId}
-              onSelect={() => select(caption)}
-              onRemove={() => remove(caption)}
-              onMenu={(anchor, row) => setMenu({ captionId: caption.caption_id, anchor, returnFocus: row })}
+              onSelect={() => { select(caption); }}
+              onRemove={() => { remove(caption); }}
+              onMenu={(anchor, row) => { setMenu({ captionId: caption.caption_id, anchor, returnFocus: row }); }}
             />
           ))}
         </div>
@@ -235,7 +238,7 @@ export function CaptionsPanel() {
           items={rowItems(menuCaption)}
           anchor={menu.anchor}
           returnFocus={menu.returnFocus}
-          onClose={() => setMenu(null)}
+          onClose={() => { setMenu(null); }}
         />
       ) : null}
     </div>

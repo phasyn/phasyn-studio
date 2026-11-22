@@ -1,0 +1,34 @@
+{
+  "pipeline_id": "frame-clock",
+  "label": "影片影格時鐘",
+  "inputs": [
+    {
+      "name": "source",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": "原始影片"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "probe",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "frame-clock",
+      "inputs": {
+        "media": {
+          "from_input": "source"
+        }
+      },
+      "parameters": {
+        "frame_clock": true
+      }
+    }
+  ],
+  "outputs": {
+    "info": {
+      "from_step": "probe",
+      "output": "info"
+    }
+  }
+}

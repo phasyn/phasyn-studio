@@ -1,0 +1,8 @@
+{
+  "runtime_id": "transcription",
+  "python": "../runtimes/transcription/.venv/bin/python",
+  "module": "phasyn_components.runtime_host",
+  "env": {
+    "HF_HUB_OFFLINE": "1"
+  }
+}

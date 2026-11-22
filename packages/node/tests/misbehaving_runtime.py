@@ -17,8 +17,13 @@ from __future__ import annotations
 import os
 import sys
 import time
+from pathlib import Path
+from unittest.mock import patch
 
 from phasyn_components import runtime_host
+from phasyn_components.errors import ComponentError
+from phasyn_components.testing.echo import EchoProvider
+
 
 MODE_ENV = "PHASYN_TEST_MISBEHAVE"
 DESCRIBE_LOG_ENV = "PHASYN_TEST_DESCRIBE_LOG"
@@ -31,21 +36,25 @@ def main() -> int:
     describing = "--describe" in sys.argv
     log = os.environ.get(DESCRIBE_LOG_ENV)
     if describing and log:
-        with open(log, "a", encoding="utf-8") as fh:
+        with Path(log).open("a", encoding="utf-8") as fh:
             fh.write(f"{os.getpid()}\n")
-    if (mode == "hang_describe" and describing) or (mode == "silent" and not describing):
+    if (mode == "hang_describe" and describing) or (
+        mode == "silent" and not describing
+    ):
         time.sleep(HANG_S)
         return 1
     if mode == "old_protocol":
-        runtime_host.PROTOCOL_VERSION = "0.1.0"  # the hello message reads this module global
+        with patch.object(runtime_host, "PROTOCOL_VERSION", "0.1.0"):
+            return runtime_host.main()
     if mode == "mute_load":
-        runtime_host.RuntimeHost.handle_load = lambda self, msg: None  # type: ignore[method-assign]
+        with patch.object(runtime_host.RuntimeHost, "handle_load", return_value=None):
+            return runtime_host.main()
     if mode == "fail_load":
-        from phasyn_components.errors import ComponentError
-        from phasyn_components.testing.echo import EchoProvider
 
-        def fail(self: EchoProvider, ctx: object) -> None:
-            raise ComponentError("MODEL_INCOMPATIBLE", "synthetic load failure (test fixture)")
+        def fail(_self: EchoProvider, _ctx: object) -> None:
+            raise ComponentError(
+                "MODEL_INCOMPATIBLE", "synthetic load failure (test fixture)"
+            )
 
         EchoProvider.load = fail  # type: ignore[assignment,method-assign]
     return runtime_host.main()

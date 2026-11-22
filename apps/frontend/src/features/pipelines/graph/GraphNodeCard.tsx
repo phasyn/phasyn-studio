@@ -34,9 +34,9 @@ function portTitle(port: GraphPort): string {
   if (port.required) parts.push(t("必填"));
   if (port.literal) parts.push(t("常值（{value}，{typeId}）", { value: port.literal.file ? t("檔案") : "inline", typeId: port.literal.typeId }));
   if (port.missing) parts.push(t("元件描述沒有這個接點"));
-  if (port.danglingSource) parts.push(port.danglingSource);
+  if (port.danglingSource != null && port.danglingSource !== "") parts.push(port.danglingSource);
   if (port.exports.length > 0) parts.push(t("流程輸出：{map}", { map: formatList(port.exports.map((item) => item.name)) }));
-  if (port.description) parts.push(tServer(port.description));
+  if (port.description != null && port.description !== "") parts.push(tServer(port.description));
   parts.push(...port.issues.messages);
   return parts.join("\n");
 }
@@ -61,7 +61,7 @@ function PortCell({ port }: { port: GraphPort }) {
         </span>
       ) : null}
       {port.literal ? <span className={cn("shrink-0 rounded-full border px-1.5 text-[11px] leading-4", CHIP_TONE.neutral)}>{t("常數")}</span> : null}
-      {port.issues.errors > 0 || port.danglingSource ? (
+      {port.issues.errors > 0 || (port.danglingSource != null && port.danglingSource !== "") ? (
         <CircleAlert aria-hidden className="size-3 shrink-0 text-danger" />
       ) : port.issues.warnings > 0 ? (
         <TriangleAlert aria-hidden className="size-3 shrink-0 text-warning" />
@@ -72,7 +72,7 @@ function PortCell({ port }: { port: GraphPort }) {
 
 function NodeIcon({ node }: { node: GraphNode }) {
   const kind = node.kind === "step" ? providerKind(node.providerId) : null;
-  if (kind?.art) return <img src={kind.art} alt="" className="size-7 object-contain" draggable={false} />;
+  if (kind?.art != null && kind.art !== "") return <img src={kind.art} alt="" className="size-7 object-contain" draggable={false} />;
   const Icon = node.kind === "input" ? ArrowRightFromLine : (kind?.icon ?? providerKind(null).icon);
   return <Icon />;
 }
@@ -95,15 +95,15 @@ export const GraphNodeCard = memo(function GraphNodeCard({ node, box, selected, 
   const rows = Array.from({ length: box.portRows }, (_, index) => index);
   return (
     <button
-      ref={(element) => registerRef(node.key, element)}
+      ref={(element) => { registerRef(node.key, element); }}
       type="button"
       data-graph-node={node.key}
       tabIndex={tabbable ? 0 : -1}
       aria-pressed={selected}
       aria-label={describeNode(node, stateLabel(node), durationText(node))}
-      onClick={() => onActivate(node)}
-      onKeyDown={(event) => onNodeKeyDown(event, node)}
-      onFocus={() => onNodeFocus(node)}
+      onClick={() => { onActivate(node); }}
+      onKeyDown={(event) => { onNodeKeyDown(event, node); }}
+      onFocus={() => { onNodeFocus(node); }}
       // 選取＝1 px 品牌漸層邊＋淡光暈（取代藍色外框；邊框寬度不變，接點位置不受影響）；失敗的步驟選取時保留 danger 邊框、
       // 只加光暈。執行中＝慢速光暈呼吸（生成中狀態）。顏色與陰影 120 ms 過場；位置與尺寸不做動畫（連線端點是固定座標）。
       className={cn(
@@ -123,11 +123,11 @@ export const GraphNodeCard = memo(function GraphNodeCard({ node, box, selected, 
           <span className="machine truncate text-data font-semibold text-fg" title={node.title}>
             {node.title}
           </span>
-          <span className="truncate text-caption text-fg-tertiary" title={node.componentLabel ? `${node.subtitle ?? ""}\n${node.componentLabel}` : (node.subtitle ?? undefined)}>
-            {node.kind === "step" && node.componentId ? (
+          <span className="truncate text-caption text-fg-tertiary" title={(node.componentLabel != null && node.componentLabel !== "") ? `${node.subtitle ?? ""}\n${node.componentLabel}` : (node.subtitle ?? undefined)}>
+            {node.kind === "step" && (node.componentId != null && node.componentId !== "") ? (
               <>
                 <span className="machine">{node.componentId}</span>
-                {node.nodeLabel ? ` · ${node.nodeLabel}` : null}
+                {(node.nodeLabel != null && node.nodeLabel !== "") ? ` · ${node.nodeLabel}` : null}
               </>
             ) : (
               node.subtitle
@@ -147,7 +147,7 @@ export const GraphNodeCard = memo(function GraphNodeCard({ node, box, selected, 
           <Timer aria-hidden className="size-3.5 shrink-0 text-fg-tertiary" />
           {node.run?.durationMs !== null && node.run?.durationMs !== undefined ? (
             <span className="truncate">
-              <T source={"耗時 <0>{durationMs}</0>"} values={{ durationMs: formatMs(node.run.durationMs) }} slots={[<span className="machine text-fg" />]} />
+              <T source={"耗時 <0>{durationMs}</0>"} values={{ durationMs: formatMs(node.run.durationMs) }} slots={[<span key="slot-0" className="machine text-fg" />]} />
             </span>
           ) : (
             <span className="truncate text-fg-tertiary">{t("耗時 未量測（{value}）", { value: node.run?.durationReason ?? t("原因未知") })}</span>

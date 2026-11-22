@@ -42,5 +42,5 @@ export function useReportBlock(reports: BlockReports, shotId: string, reason: st
   useLayoutEffect(() => {
     reports.report(shotId, reason);
   }, [reports, shotId, reason]);
-  useLayoutEffect(() => () => reports.report(shotId, null), [reports, shotId]);
+  useLayoutEffect(() => () => { reports.report(shotId, null); }, [reports, shotId]);
 }

@@ -1,3 +1,5 @@
+import { isRecord } from "@/lib/json";
+import { hasSlotContent } from "@/lib/dom";
 // 設定：這次 recording 保存的歷史設定快照（不是 UI 目前值）。requested／effective／observed 並排、
 // stored 與 loaded revision、展開後的 parts、模型與 runtime 身分、輸入摘要、環境與 recorder 設定。
 import { Boxes, ChevronRight, Cog, FileInput, Fingerprint, ListTree, Server, SlidersHorizontal, TriangleAlert } from "lucide-react";
@@ -32,7 +34,7 @@ function Section({ id, icon, title, children, note }: { id: string; icon: ReactN
         {icon}
         {title}
       </h3>
-      {note ? <div className="text-caption text-fg-tertiary">{note}</div> : null}
+      {hasSlotContent(note) ? <div className="text-caption text-fg-tertiary">{note}</div> : null}
       {children}
     </section>
   );
@@ -72,7 +74,7 @@ function FlatTable({ label, value, empty }: { label: string; value: unknown; emp
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+  return isRecord(value) ? value : null;
 }
 
 const DIGEST_REASON: Readonly<Record<DigestReason, () => string>> = {
@@ -87,7 +89,7 @@ function PromptText({ port, text }: { port: string; text: string }) {
     <details className="group rounded-md border border-line-subtle bg-sunken/40">
       <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-md px-3 text-data text-fg transition-colors duration-(--duration-fast) hover:bg-raised/60 [&::-webkit-details-marker]:hidden">
         <ChevronRight aria-hidden className="size-4 shrink-0 text-fg-tertiary transition-transform duration-(--duration-spring-snappy) ease-spring-snappy group-open:rotate-90" />
-        <T source={"顯示 {port}（此 recording 有擷取）<0>{promptCount} 字元</0>"} values={{ port, promptCount: text.length.toLocaleString("en-US") }} slots={[<span className="ml-auto text-caption text-fg-tertiary" />]} />
+        <T source={"顯示 {port}（此 recording 有擷取）<0>{promptCount} 字元</0>"} values={{ port, promptCount: text.length.toLocaleString("en-US") }} slots={[<span key="slot-0" className="ml-auto text-caption text-fg-tertiary" />]} />
       </summary>
       <div className="flex items-start gap-2 border-t border-line-subtle px-3 py-2 animate-reveal">
         <p className="min-w-0 flex-1 text-reading whitespace-pre-wrap break-words text-fg">{text}</p>
@@ -103,7 +105,7 @@ function DigestText({ digest, reason }: { digest: string; reason: DigestReason }
     <span className="grid min-w-0 gap-0.5">
       <span className="text-fg-secondary">{t("未擷取：{reason}", { reason: DIGEST_REASON[reason]() })}</span>
       <span className="flex min-w-0 items-center gap-1 text-caption text-fg-tertiary">
-        <T source={"SHA-256 摘要 <0>{digest}</0>"} values={{ digest }} slots={[<code className="machine min-w-0 break-all text-fg-secondary" />]} />
+        <T source={"SHA-256 摘要 <0>{digest}</0>"} values={{ digest }} slots={[<code key="slot-0" className="machine min-w-0 break-all text-fg-secondary" />]} />
         <CopyButton text={digest} label={t("複製摘要")} />
       </span>
     </span>
@@ -192,7 +194,7 @@ export function SettingsTab({ recording }: { recording: Recording }) {
   const ports = useMemo(() => inputPorts(context.input_summary, context.operation), [context.input_summary, context.operation]);
   const conditions = pickConditionFacts(asRecord(context.environment), asRecord(context.input_summary), settings ? asRecord(settings.effective) : null);
   const modelIdentity = settings?.model_identity ?? {};
-  const identityStrength = typeof modelIdentity.identity_strength === "string" ? modelIdentity.identity_strength : null;
+  const identityStrength = typeof modelIdentity["identity_strength"] === "string" ? modelIdentity["identity_strength"] : null;
 
   return (
     <div className="grid gap-8">
@@ -210,7 +212,7 @@ export function SettingsTab({ recording }: { recording: Recording }) {
       >
         {!settings ? (
           <p className="text-data text-fg-secondary">
-            <T source={"此 recording 沒有設定快照（operation=<0>{operation}</0>）。"} values={{ operation: context.operation }} slots={[<code className="machine" />]} />
+            <T source={"此 recording 沒有設定快照（operation=<0>{operation}</0>）。"} values={{ operation: context.operation }} slots={[<code key="slot-0" className="machine" />]} />
           </p>
         ) : (
           <>
@@ -254,7 +256,7 @@ export function SettingsTab({ recording }: { recording: Recording }) {
                 label={t("只顯示有差異的列")}
                 description={t("requested≠effective 共 {changedCount} 列；observed 不同者也會列出", { changedCount })}
                 checked={diffOnly}
-                onChange={(event) => setDiffOnly(event.target.checked)}
+                onChange={(event) => { setDiffOnly(event.target.checked); }}
               />
             </div>
             {visibleRows.length === 0 ? (
@@ -282,9 +284,7 @@ export function SettingsTab({ recording }: { recording: Recording }) {
                                 <Badge title={t("invoke.* 是元件保存的呼叫預設，不是這次呼叫指定的值")}>{t("元件預設")}</Badge>
                                 <span className="text-fg-tertiary">
                                   {row.componentDefault.parameter.present ? (
-                                    <>
-                                      <T source={"這次呼叫用 <0>{parameterPath}</0>＝<1>{formatSettingValue}</1>"} values={{ parameterPath: row.componentDefault.parameterPath, formatSettingValue: formatSettingValue(row.componentDefault.parameter.value) }} slots={[<code className="machine" />, <code className="machine text-fg" />]} />
-                                    </>
+                                    <T source={"這次呼叫用 <0>{parameterPath}</0>＝<1>{formatSettingValue}</1>"} values={{ parameterPath: row.componentDefault.parameterPath, formatSettingValue: formatSettingValue(row.componentDefault.parameter.value) }} slots={[<code key="slot-0" className="machine" />, <code key="slot-1" className="machine text-fg" />]} />
                                   ) : (
                                     t("這次呼叫的 parameters 沒有覆寫：採用元件預設")
                                   )}
@@ -302,15 +302,15 @@ export function SettingsTab({ recording }: { recording: Recording }) {
                             <ValueText cell={row.requested} />
                           </Td>
                           <Td>
-                            <ValueText cell={row.effective} className={changed ? "text-warning" : undefined} />
+                            <ValueText cell={row.effective} {...(changed ? { className: "text-warning" } : {})} />
                           </Td>
                           <Td>
                             {row.observed.present ? (
                               <span className="grid gap-0.5">
-                                <ValueText cell={row.observed} className={row.observedDiffers ? "text-info" : undefined} />
+                                <ValueText cell={row.observed} {...(row.observedDiffers ? { className: "text-info" } : {})} />
                                 {row.observed.matchedBy === "name" ? (
                                   <span className="text-caption text-fg-tertiary">
-                                    <T source={"依欄位名稱對應（<0>{observedPath}</0>）"} values={{ observedPath: row.observed.observedPath }} slots={[<code className="machine" />]} />
+                                    <T source={"依欄位名稱對應（<0>{observedPath}</0>）"} values={{ observedPath: row.observed.observedPath }} slots={[<code key="slot-0" className="machine" />]} />
                                   </span>
                                 ) : null}
                                 {row.observedDiffers ? <span className="text-caption text-info">{t("與 effective 不同")}</span> : null}
@@ -372,7 +372,7 @@ export function SettingsTab({ recording }: { recording: Recording }) {
         note={
           identityStrength === "path_stat" ? (
             <span className="text-warning">{t("identity_strength=path_stat：以路徑＋大小＋mtime 辨識權重，不是內容雜湊；不能宣稱與另一筆完全相同權重。")}</span>
-          ) : identityStrength ? (
+          ) : (identityStrength != null && identityStrength !== "") ? (
             <span>
               identity_strength=<code className="machine">{identityStrength}</code>
             </span>

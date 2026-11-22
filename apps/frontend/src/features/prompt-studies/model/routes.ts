@@ -73,13 +73,13 @@ export function deriveImageRoute(pipeline: WirePipeline, catalog: Catalog | unde
   const steps: ImageRouteStep[] = pipeline.steps.map((step) => {
     const component = index.component(step.node_id, step.component_id);
     const providerId = component?.provider_id ?? null;
-    const name = (providerId ? SHORT_NAMES[providerId] : undefined) ?? step.step_id;
+    const name = ((providerId != null && providerId !== "") ? SHORT_NAMES[providerId] : undefined) ?? step.step_id;
     return { step, providerId, name, slot: componentSlot(index, step.node_id, step.component_id, name) };
   });
   const dit = steps.find((item) => item.providerId === PROVIDERS.dit);
   // 元件不在目錄時看不出 provider：只有 step_id 叫 dit 的才當成可能的圖片元件組合，顯示為找不到元件
   if (!dit && !steps.some((item) => item.providerId === null && /dit/i.test(item.step.step_id))) return null;
-  if (steps.some((item) => item.providerId !== null && item.providerId.startsWith("h3."))) return null;
+  if (steps.some((item) => item.providerId?.startsWith("h3.") === true)) return null;
 
   const problems: string[] = [];
   if (steps.some((item) => item.providerId === PROVIDERS.prepare || item.providerId === PROVIDERS.venc)) problems.push(t("這是圖生圖元件組合（有前處理／VAE 編碼）：反推的生成只用文字"));
@@ -102,16 +102,16 @@ export function deriveImageRoute(pipeline: WirePipeline, catalog: Catalog | unde
     pipeline.inputs.find((port) => port.name !== promptInput && /negative/i.test(port.name) && te !== undefined && bindsInput(te.step, port.name))?.name ??
     pipeline.inputs.find((port) => port.name !== promptInput && /negative/i.test(port.name))?.name ??
     null;
-  if (!promptInput) problems.push(t("元件組合沒有 prompt 輸入（text.prompt.v1）"));
+  if (!(promptInput != null && promptInput !== "")) problems.push(t("元件組合沒有 prompt 輸入（text.prompt.v1）"));
   for (const port of pipeline.inputs) {
     if (port.required && port.name !== promptInput && port.name !== negativeInput) problems.push(t("必填輸入「{name}」（{type_id}）本頁無法提供", { name: port.name, type_id: port.type_id }));
   }
   const outputs = Object.entries(pipeline.outputs);
   const whiteOutput = outputs.find(([name]) => name === "image_white")?.[0] ?? outputs.find(([, ref]) => ref.output === "image_white")?.[0] ?? null;
   const rgbaOutput = outputs.find(([name]) => name === "image")?.[0] ?? outputs.find(([, ref]) => ref.output === "image")?.[0] ?? null;
-  if (!whiteOutput && !rgbaOutput) problems.push(t("元件組合沒有 image／image_white 輸出"));
+  if (!(whiteOutput != null && whiteOutput !== "") && !(rgbaOutput != null && rgbaOutput !== "")) problems.push(t("元件組合沒有 image／image_white 輸出"));
   if (!dit) problems.push(t("找不到 qimg.dit 步驟的元件"));
-  for (const item of steps) if (!item.slot.usable && item.slot.reason) problems.push(item.slot.reason);
+  for (const item of steps) if (!item.slot.usable && (item.slot.reason != null && item.slot.reason !== "")) problems.push(item.slot.reason);
   return {
     id: pipeline.pipeline_id,
     label: pipeline.label || pipeline.pipeline_id,
@@ -159,7 +159,7 @@ export function fitAspect(sourceWidth: number, sourceHeight: number, area = 1024
 
 /** 來源與輸出的長寬比差距超過 1%：構圖與裁切的比較會受限（只提醒，不擋）。 */
 export function aspectMismatch(sourceWidth: number | null, sourceHeight: number | null, settings: Pick<GenerationSettings, "width" | "height">): boolean {
-  if (!sourceWidth || !sourceHeight) return false;
+  if (!(sourceWidth != null && Boolean(sourceWidth)) || !(sourceHeight != null && Boolean(sourceHeight))) return false;
   return Math.abs(sourceWidth / sourceHeight - settings.width / settings.height) > 0.01;
 }
 
@@ -168,18 +168,18 @@ export function aspectMismatch(sourceWidth: number | null, sourceHeight: number 
 function overrideParameters(providerId: string | null, base: Record<string, unknown>, settings: GenerationSettings, seed: number): Record<string, unknown> {
   const parameters = cloneJson(base);
   if (providerId === PROVIDERS.te) {
-    parameters.cfg = settings.guidance > 1;
+    parameters["cfg"] = settings.guidance > 1;
   } else if (providerId === PROVIDERS.dit) {
-    parameters.width = settings.width;
-    parameters.height = settings.height;
-    parameters.steps = settings.steps;
-    parameters.guidance = settings.guidance;
-    parameters.sigma_schedule = settings.sigma_schedule;
-    parameters.flow_shift_mu = settings.flow_shift_mu;
-    parameters.seed = seed;
-    parameters.preview = settings.preview.mode === "off" ? { mode: "off" } : { mode: settings.preview.mode, every: settings.preview.every };
+    parameters["width"] = settings.width;
+    parameters["height"] = settings.height;
+    parameters["steps"] = settings.steps;
+    parameters["guidance"] = settings.guidance;
+    parameters["sigma_schedule"] = settings.sigma_schedule;
+    parameters["flow_shift_mu"] = settings.flow_shift_mu;
+    parameters["seed"] = seed;
+    parameters["preview"] = settings.preview.mode === "off" ? { mode: "off" } : { mode: settings.preview.mode, every: settings.preview.every };
   } else if (providerId === PROVIDERS.vae) {
-    parameters.mode = settings.decode;
+    parameters["mode"] = settings.decode;
   }
   return parameters;
 }
@@ -193,9 +193,9 @@ export function planRenderRun(route: ImageRoute, input: { prompt: string; settin
   const settingsIssues = settingsProblems(input.settings);
   if (settingsIssues.length > 0) return { ok: false, problem: { kind: "settings_invalid", problems: settingsIssues } };
   if (!input.prompt.trim()) return { ok: false, problem: { kind: "prompt_empty" } };
-  if (!route.promptInput) return { ok: false, problem: { kind: "no_prompt_input" } };
+  if (!(route.promptInput != null && route.promptInput !== "")) return { ok: false, problem: { kind: "no_prompt_input" } };
   const negative = input.settings.guidance > 1 ? input.settings.negative_prompt.trim() : "";
-  if (negative && !route.negativeInput) return { ok: false, problem: { kind: "no_negative_input", label: route.label } };
+  if (negative && !(route.negativeInput != null && route.negativeInput !== "")) return { ok: false, problem: { kind: "no_negative_input", label: route.label } };
 
   const index = indexCatalog(catalog);
   const steps: WireStep[] = [];

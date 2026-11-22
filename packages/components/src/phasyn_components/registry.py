@@ -12,26 +12,33 @@ from __future__ import annotations
 
 import importlib
 from functools import lru_cache
+from importlib.metadata import entry_points
 from typing import Any
 
 from . import testing
 from .errors import ComponentError, exception_message
+
 
 ENTRY_POINT_GROUP = "phasyn.providers"
 
 BUILTIN: dict[str, str] = {
     "caption.compile": "phasyn_components.providers.caption:CaptionCompileProvider",
     "dataset.export": "phasyn_components.providers.dataset:DatasetExportProvider",
+    "lora.register": "phasyn_components.providers.lora_register:LoraRegisterProvider",
+    "media.lora_clips": "phasyn_media.providers.lora_clips:LoraClipsProvider",
     "media.mux": "phasyn_media.providers.mux:MuxProvider",
+    "media.previs_animatic": "phasyn_media.providers.animatic:PrevisAnimaticProvider",
     "media.probe": "phasyn_media.providers.mux:ProbeProvider",
     "media.concat": "phasyn_media.providers.concat:ConcatProvider",
+    "media.take_analysis": "phasyn_media.providers.take_analysis:TakeAnalysisProvider",
+    "media.edge_control": "phasyn_media.providers.edge_control:EdgeControlProvider",
+    "storyboard.from_script": "phasyn_components.providers.storyboard:StoryboardFromScriptProvider",
     "media.frame": "phasyn_media.providers.frame:FrameProvider",
 }
 
 
 @lru_cache(maxsize=1)
 def _entry_points() -> dict[str, str]:
-    from importlib.metadata import entry_points
 
     return {ep.name: ep.value for ep in entry_points(group=ENTRY_POINT_GROUP)}
 
@@ -45,6 +52,7 @@ def _table() -> dict[str, str]:
 
 
 def provider_target(provider_id: str) -> str:
+    """Resolve the registered target of a provider."""
     target = _table().get(provider_id)
     if target is not None:
         return target
@@ -64,6 +72,7 @@ def provider_target(provider_id: str) -> str:
 
 
 def load_provider_class(provider_id: str) -> Any:
+    """Load a registered provider implementation."""
     target = provider_target(provider_id)
     module_name, _, attr = target.partition(":")
     try:
@@ -82,6 +91,7 @@ def load_provider_class(provider_id: str) -> Any:
 
 
 def known_providers() -> list[str]:
+    """List the known provider identifiers."""
     return sorted(_table())
 
 

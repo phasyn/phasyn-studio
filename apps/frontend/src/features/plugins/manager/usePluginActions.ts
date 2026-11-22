@@ -28,8 +28,7 @@ export function usePluginActions(): PluginActions {
       const name = pluginName(plugin);
       notify("success", disabled ? t("已停用「{name}」", { name }) : t("已啟用「{name}」", { name }));
     },
-    onError: (error, { plugin }) =>
-      notify("danger", hasErrorCode(error, "REVISION_CONFLICT") ? t("「{name}」剛在別處被修改，已重新讀取；請再試一次", { name: pluginName(plugin) }) : errorText(error)),
+    onError: (error, { plugin }) => { notify("danger", hasErrorCode(error, "REVISION_CONFLICT") ? t("「{name}」剛在別處被修改，已重新讀取；請再試一次", { name: pluginName(plugin) }) : errorText(error)); },
     onSettled: () => void invalidate(),
   });
   const exporter = useMutation({
@@ -38,7 +37,7 @@ export function usePluginActions(): PluginActions {
       downloadBlob(fileName, blob);
       notify("success", t("已匯出 {fileName}", { fileName }));
     },
-    onError: (error) => notify("danger", errorText(error)),
+    onError: (error) => { notify("danger", errorText(error)); },
   });
   const reloader = useMutation({
     mutationFn: (plugin: StudioPlugin) => reloadPlugin(plugin.plugin_id),
@@ -47,7 +46,7 @@ export function usePluginActions(): PluginActions {
       if (detail.plugin.status === "invalid") notify("warning", t("已重新載入「{name}」，但內容不合規；原因在概覽", { name }));
       else notify("success", t("已重新載入「{name}」", { name }));
     },
-    onError: (error) => notify("danger", errorText(error)),
+    onError: (error) => { notify("danger", errorText(error)); },
     onSettled: () => void invalidate(),
   });
 

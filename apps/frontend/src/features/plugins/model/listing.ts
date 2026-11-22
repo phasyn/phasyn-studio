@@ -77,6 +77,7 @@ export function statusWord(plugin: StudioPlugin): StatusWord | null {
       return { word: t("不相容"), tone: "warning" };
     case "invalid":
       return { word: t("無效"), tone: "danger" };
+    case "ok":
     default:
       return null;
   }
@@ -125,6 +126,7 @@ function compareBy(key: PluginSortKey, a: StudioPlugin, b: StudioPlugin): number
       return (a.author?.name ?? "").localeCompare(b.author?.name ?? "");
     case "status":
       return STATUS_RANK[a.status] - STATUS_RANK[b.status];
+    case "name":
     default:
       return 0;
   }

@@ -1,3 +1,4 @@
+import { AssetAudio, AssetVideo } from "@/components/common/AssetMedia";
 import { AudioLines, FileQuestion, ImageOff } from "lucide-react";
 import { useState } from "react";
 import type { FileRef } from "@/api/generated/contracts";
@@ -32,12 +33,12 @@ export function MediaPreview({ file, title, size = "player", className }: { file
       </div>
     );
   }
-  if (major === "image") return <img src={url} alt={title} loading="lazy" onError={() => setFailed(true)} className={frame} />;
+  if (major === "image") return <img src={url} alt={title} loading="lazy" onError={() => { setFailed(true); }} className={frame} />;
   if (major === "video") {
     return thumb ? (
-      <video src={`${url}#t=0.1`} preload="metadata" muted playsInline aria-label={title} onError={() => setFailed(true)} className={frame} />
+      <AssetVideo src={`${url}#t=0.1`} preload="metadata" muted playsInline aria-label={title} onError={() => { setFailed(true); }} className={frame} />
     ) : (
-      <video src={url} controls preload="metadata" aria-label={title} onError={() => setFailed(true)} className={frame} />
+      <AssetVideo src={url} controls preload="metadata" aria-label={title} onError={() => { setFailed(true); }} className={frame} />
     );
   }
   if (major === "audio") {
@@ -46,7 +47,7 @@ export function MediaPreview({ file, title, size = "player", className }: { file
         <AudioLines aria-hidden className="size-5" />
       </div>
     ) : (
-      <audio src={url} controls preload="metadata" aria-label={title} onError={() => setFailed(true)} className={cn("w-full", className)} />
+      <AssetAudio src={url} controls preload="metadata" aria-label={title} onError={() => { setFailed(true); }} className={cn("w-full", className)} />
     );
   }
   return (

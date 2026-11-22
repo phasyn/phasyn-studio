@@ -28,31 +28,47 @@ from .common import StageRun, task_of
 from .presentation import TOKEN_TENSORS, load_presentation
 from .tensor_io import load_tensors, tensor_bytes, verified_payload
 
+
 _DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _frozen_digest(section: dict[str, Any], key: str) -> str:
     value = section.get(key)
     if not isinstance(value, str) or not _DIGEST_RE.match(value):
-        raise InvalidStageInput("PRESENTATION_IDENTITY", f"prepared presentation 缺少有效的 {key}")
+        raise InvalidStageInput(
+            "PRESENTATION_IDENTITY", f"prepared presentation 缺少有效的 {key}"
+        )
     return value
 
 
 def run(run: StageRun) -> StageResult:
+    """Encode the text prompts for the job."""
     import torch
-    from sglang.multimodal_gen.runtime.managers.forward_context import set_forward_context
+    from sglang.multimodal_gen.runtime.managers.forward_context import (  # type: ignore[import-untyped]
+        set_forward_context,
+    )
 
     prepared = run.read_json_input("prepared")
-    assert prepared is not None
+    if prepared is None:
+        raise RuntimeError("prepared is unavailable in this stage")
     task = task_of(run.plan)
     section = prepared.get("presentation") or {}
     if prepared.get("task") not in (None, task):
-        raise InvalidStageInput("PREPARED_TASK", f"prepared task {prepared.get('task')} ≠ plan {task}")
+        raise InvalidStageInput(
+            "PREPARED_TASK", f"prepared task {prepared.get('task')} ≠ plan {task}"
+        )
     if not prepared.get("payload"):
-        raise InvalidStageInput("PRESENTATION_MISSING", "prepared 沒有 payload（presentation tensors 在其中）")
+        raise InvalidStageInput(
+            "PRESENTATION_MISSING",
+            "prepared 沒有 payload（presentation tensors 在其中）",
+        )
     names = [*TOKEN_TENSORS, *sorted((section.get("vision") or {}).values())]
     # only the presentation tensors: the frozen media (RGB / PCM) belong to encode_references
-    tensors = load_tensors(verified_payload(prepared, run.ctx.attachments), names) if section else {}
+    tensors = (
+        load_tensors(verified_payload(prepared, run.ctx.attachments), names)
+        if section
+        else {}
+    )
     ids, tags, mask, vision = load_presentation(prepared, tensors)
     seq = int(ids.shape[0])
     max_tokens = int(run.policy.limits.get("encoder_max_tokens", 32768))
@@ -76,12 +92,16 @@ def run(run: StageRun) -> StageResult:
     ):
         provider.backend.synchronize()
         started = time.perf_counter()
-        hidden = encoder.encode_ids(ids, **vision)  # bf16 [S,5120], minimax_h3_qwen3vl.py:328-392
+        hidden = encoder.encode_ids(
+            ids, **vision
+        )  # bf16 [S,5120], minimax_h3_qwen3vl.py:328-392
         provider.backend.synchronize()
         compute_seconds = time.perf_counter() - started
     run.cost_seconds("encode", compute_seconds)
     if hidden.dtype != torch.bfloat16 or list(hidden.shape) != [seq, 5120]:
-        raise InvalidStageInput("ENCODER_OUTPUT_SHAPE", f"encoder 輸出 {hidden.dtype} {list(hidden.shape)}")
+        raise InvalidStageInput(
+            "ENCODER_OUTPUT_SHAPE", f"encoder 輸出 {hidden.dtype} {list(hidden.shape)}"
+        )
     if not bool(torch.isfinite(hidden.float()).all()):
         raise InvalidStageInput("ENCODER_OUTPUT_NONFINITE", "hidden_states 含 NaN/Inf")
     decls = [
@@ -100,17 +120,24 @@ def run(run: StageRun) -> StageResult:
         metadata={"tap": "hidden_states[50]", "sglang": SGLANG_SOURCE_REVISION},
     )
     model = run.plan.get("model") or {}
-    text_profile = (run.policy.effective_profile.get("components") or {}).get("text_encoder") or {}
+    text_profile = (run.policy.effective_profile.get("components") or {}).get(
+        "text_encoder"
+    ) or {}
     identity = {
         "encoder_revision": str(model.get("source_revision")),
         # hashed where the tokenizer/processor ran (prepare_media); verified there against the files
         "tokenizer_digest": _frozen_digest(section, "tokenizer_digest"),
         "processor_digest": _frozen_digest(section, "processor_digest"),
         "prepared_inputs_digest": canonical_digest({"prepared": prepared}),
-        "presentation_digest": _frozen_digest(section, "digest"),  # re-derived from the tensors above
+        "presentation_digest": _frozen_digest(
+            section, "digest"
+        ),  # re-derived from the tensors above
         "geometry_digest": canonical_digest(dict(run.geometry)),
         "quant_profile_digest": canonical_digest(
-            {"compute_dtype": text_profile.get("compute_dtype"), "quantization": text_profile.get("quantization")}
+            {
+                "compute_dtype": text_profile.get("compute_dtype"),
+                "quantization": text_profile.get("quantization"),
+            }
         ),
         "runtime_fingerprint": canonical_digest(provider.environment()),
     }
@@ -125,7 +152,11 @@ def run(run: StageRun) -> StageResult:
     )
     run.outputs.extend(outputs)
     facts = section.get("facts") or {}
-    run.measure(compute_seconds=compute_seconds, flop=text_encoder_flop(seq), vision_inputs=sorted(vision))
+    run.measure(
+        compute_seconds=compute_seconds,
+        flop=text_encoder_flop(seq),
+        vision_inputs=sorted(vision),
+    )
     run.fact(
         "CONDITIONING",
         {

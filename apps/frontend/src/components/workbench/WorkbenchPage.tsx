@@ -1,3 +1,4 @@
+import { hasSlotContent } from "@/lib/dom";
 import { PanelBottomClose, PanelBottomOpen, PanelRight, PanelRightClose, PanelRightOpen } from "lucide-react";
 import { useImperativeHandle, type ReactNode, type Ref } from "react";
 import { notePanelToggle, usePanelEnter } from "@/components/ui/motion";
@@ -30,9 +31,9 @@ export function WorkbenchPage({
   center,
   centerLabel,
   inspector,
-  inspectorLabel = t("屬性檢視器"),
+  inspectorLabel: inspectorLabelProp,
   dockTabs,
-  dockLabel = t("輸出面板"),
+  dockLabel: dockLabelProp,
   ref,
 }: {
   storageKey: string;
@@ -44,6 +45,8 @@ export function WorkbenchPage({
   dockLabel?: string;
   ref?: Ref<WorkbenchPageHandle>;
 }) {
+  const inspectorLabel = inspectorLabelProp ?? t("屬性檢視器");
+  const dockLabel = dockLabelProp ?? t("輸出面板");
   const [inspectorWidth, setInspectorWidth] = usePersistentSize(`${storageKey}.inspector`, 384, 280, 600);
   const [dockHeight, setDockHeight] = usePersistentSize(`${storageKey}.dock`, 240, 120, 600);
   const [dockOpen, setDockOpen] = usePersistentFlag(`${storageKey}.dockOpen`, true);
@@ -107,7 +110,7 @@ export function WorkbenchPage({
                   <ToolButton
                     label={dockOpen ? t("收合輸出面板") : t("展開輸出面板")}
                     icon={dockOpen ? <PanelBottomClose aria-hidden /> : <PanelBottomOpen aria-hidden />}
-                    onClick={() => (dockOpen ? setDockOpen(false) : openDock())}
+                    onClick={() => { if (dockOpen) { setDockOpen(false); } else { openDock(); } }}
                   />
                 </div>
               </div>
@@ -126,7 +129,7 @@ export function WorkbenchPage({
           </>
         ) : null}
       </div>
-      {inspector && inspectorOpen ? (
+      {hasSlotContent(inspector) && inspectorOpen ? (
         <>
           <Splitter
             orientation="vertical"
@@ -151,18 +154,18 @@ export function WorkbenchPage({
             <div className="flex h-8 shrink-0 items-center gap-2 border-b border-line-subtle bg-canvas/60 pr-1 pl-3">
               <PanelRight aria-hidden className="size-3.5 shrink-0 text-fg-tertiary" />
               <p className="min-w-0 flex-1 truncate text-caption font-semibold text-fg-secondary">{inspectorLabel}</p>
-              <ToolButton label={t("收合{inspectorLabel}", { inspectorLabel })} icon={<PanelRightClose aria-hidden />} data-panel-toggle="" onClick={() => toggleInspector(false)} />
+              <ToolButton label={t("收合{inspectorLabel}", { inspectorLabel })} icon={<PanelRightClose aria-hidden />} data-panel-toggle="" onClick={() => { toggleInspector(false); }} />
             </div>
             {inspector}
           </DockPanel>
         </>
-      ) : inspector ? (
+      ) : hasSlotContent(inspector) ? (
         <>
           <div aria-hidden className="w-1.5 shrink-0 max-md:hidden" />
           <DockPanel key="inspector-rail" ref={railEnter} as="aside" aria-label={inspectorLabel} className="w-10 shrink-0 max-md:w-auto">
             <button
               type="button"
-              onClick={() => toggleInspector(true)}
+              onClick={() => { toggleInspector(true); }}
               title={t("展開{inspectorLabel}", { inspectorLabel })}
               data-panel-toggle=""
               className="flex min-h-0 flex-1 flex-col items-center gap-2 py-2 text-fg-tertiary transition-colors duration-(--duration-fast) outline-none hover:bg-brand-gradient-soft hover:text-fg active:bg-sunken active:duration-0 focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-inset max-md:flex-row max-md:px-3"

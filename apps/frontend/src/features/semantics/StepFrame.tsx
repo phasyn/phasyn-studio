@@ -29,7 +29,7 @@ export function StepInspector({ header, children, actions, note }: { header: Rea
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {header}
       <DockBody>
-        <SchemaDensityContext.Provider value="compact">{children}</SchemaDensityContext.Provider>
+        <SchemaDensityContext value="compact">{children}</SchemaDensityContext>
       </DockBody>
       <InspectorFooter note={note}>
         <div className="grid w-full gap-2">{actions}</div>
@@ -70,7 +70,7 @@ export function RunSection({
 }) {
   return (
     <PropertySection title={title} icon={<ListVideo aria-hidden />}>
-      {!runId ? (
+      {!(runId != null && runId !== "") ? (
         <p className="text-data text-fg-tertiary">{emptyText}</p>
       ) : run.data ? (
         <div className="grid gap-2">
@@ -79,7 +79,7 @@ export function RunSection({
             <PropertyRow label={t("建立")}>
               <TimeText iso={run.data.created_at} />
             </PropertyRow>
-            <PropertyRow label={t("結束")}>{run.data.finished_at ? <TimeText iso={run.data.finished_at} /> : <span className="text-fg-tertiary">{t("尚未結束")}</span>}</PropertyRow>
+            <PropertyRow label={t("結束")}>{(run.data.finished_at != null && run.data.finished_at !== "") ? <TimeText iso={run.data.finished_at} /> : <span className="text-fg-tertiary">{t("尚未結束")}</span>}</PropertyRow>
           </PropertyGrid>
         </div>
       ) : run.isError ? (

@@ -40,7 +40,7 @@ function SortHeader({
     <Th scope="col" aria-sort={active ? (direction === "asc" ? "ascending" : "descending") : "none"}>
       <button
         type="button"
-        onClick={() => onSort(sortKey)}
+        onClick={() => { onSort(sortKey); }}
         className={cn(
           "inline-flex min-h-8 items-center gap-1 rounded-sm text-left transition-colors duration-(--duration-fast) pointer-coarse:min-h-11",
           active ? "text-fg" : "text-fg-tertiary hover:text-fg",
@@ -90,7 +90,7 @@ export function PartsTab({
         title={t("此 recording 沒有部件彙整")}
         description={
           <p>
-            <T source={"recorder 模式為 <0>{mode}</0>；summary／off 模式不保存每 part 細節，或此元件沒有回報 parts。這不代表各部件耗時為 0。"} values={{ mode: recording.context.recording.mode }} slots={[<code className="machine" />]} />
+            <T source={"recorder 模式為 <0>{mode}</0>；summary／off 模式不保存每 part 細節，或此元件沒有回報 parts。這不代表各部件耗時為 0。"} values={{ mode: recording.context.recording.mode }} slots={[<code key="slot-0" className="machine" />]} />
           </p>
         }
         className="rounded-lg border border-line-subtle bg-sunken"
@@ -107,7 +107,7 @@ export function PartsTab({
           </label>
           <div className="relative">
             <Search aria-hidden className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-fg-tertiary" />
-            <Input id={searchId} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("例如 blocks.12")} className="pl-9 machine" />
+            <Input id={searchId} value={query} onChange={(event) => { setQuery(event.target.value); }} placeholder={t("例如 blocks.12")} className="pl-9 machine" />
           </div>
         </div>
         <p className="text-caption text-fg-tertiary" aria-live="polite">
@@ -149,9 +149,9 @@ export function PartsTab({
                     <button
                       type="button"
                       aria-pressed={selected}
-                      onClick={() => onSelectPart(row.part)}
+                      onClick={() => { onSelectPart(row.part); }}
                       className="machine min-h-8 rounded-sm text-left text-action-fg hover:underline pointer-coarse:min-h-11"
-                      style={{ paddingInlineStart: `${Math.min(row.depth, 8) * 0.75}rem` }}
+                      style={{ paddingInlineStart: `${String(Math.min(row.depth, 8) * 0.75)}rem` }}
                     >
                       {row.part}
                     </button>
@@ -165,12 +165,12 @@ export function PartsTab({
                   ) : null}
                   <Td className="whitespace-nowrap">
                     <span className="machine">{row.gpuEventMs === null ? <span className="text-warning">{t("未量測")}</span> : formatMs(row.gpuEventMs)}</span>
-                    {row.gpuEventCoverage ? (
+                    {(row.gpuEventCoverage != null && row.gpuEventCoverage !== "") ? (
                       <Badge tone={row.gpuEventCoverage === "full" ? "neutral" : "warning"} className="ml-2">
                         {row.gpuEventCoverage}
                       </Badge>
                     ) : null}
-                    {row.coverageReason ? <span className="block max-w-[18rem] text-caption whitespace-normal text-warning">{tServer(row.coverageReason)}</span> : null}
+                    {(row.coverageReason != null && row.coverageReason !== "") ? <span className="block max-w-[18rem] text-caption whitespace-normal text-warning">{tServer(row.coverageReason)}</span> : null}
                   </Td>
                   <Td className="text-caption">
                     {row.transfers.length === 0 ? (

@@ -1,0 +1,56 @@
+{
+  "pipeline_id": "wan-edit-generate",
+  "label": "Wan VACE · 文字或首幀生成",
+  "inputs": [
+    {
+      "name": "prompt",
+      "type_id": "text.prompt.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "Describe the resulting shot"
+    },
+    {
+      "name": "first_frame",
+      "type_id": "media.image.v1",
+      "required": false,
+      "transport": "file",
+      "description": "First-frame anchor"
+    },
+    {
+      "name": "reference",
+      "type_id": "media.image.v1",
+      "required": false,
+      "transport": "file",
+      "description": "Optional visual reference"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "generate",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "wan-generate",
+      "inputs": {
+        "prompt": {
+          "from_input": "prompt"
+        },
+        "first_frame": {
+          "from_input": "first_frame"
+        },
+        "reference": {
+          "from_input": "reference"
+        }
+      },
+      "parameters": {}
+    }
+  ],
+  "outputs": {
+    "final": {
+      "from_step": "generate",
+      "output": "asset"
+    },
+    "video_file": {
+      "from_step": "generate",
+      "output": "video_file"
+    }
+  }
+}

@@ -1,8 +1,8 @@
 // 模型權重（x-phasyn-extension）：元件的權重計畫與每個檔案的狀態、使用者同意授權後的
 // 下載與取消。下載是 Node 的背景工作：開始後以 GET weights 輪詢（下載中每秒一次）；寫入一律不自動重送。
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { WeightsDownloadJob, WeightsDownloadRequest, WeightsView } from "./generated/contracts";
-import { apiJson } from "./http";
+import type { WeightsDownloadRequest, WeightsView } from "./generated/contracts";
+import { contractJson } from "./http";
 import { POLL, qk } from "./keys";
 
 function weightsPath(nodeId: string, componentId: string): string {
@@ -10,7 +10,7 @@ function weightsPath(nodeId: string, componentId: string): string {
 }
 
 export function fetchWeights(nodeId: string, componentId: string, signal?: AbortSignal): Promise<WeightsView> {
-  return apiJson<WeightsView>(weightsPath(nodeId, componentId), { signal });
+  return contractJson("WeightsView", weightsPath(nodeId, componentId), { signal });
 }
 
 /** 權重計畫與狀態（第一次讀取時 Node 會在 runtime 裡列出計畫）；下載進行中每秒重新讀一次。 */
@@ -29,7 +29,7 @@ export function useComponentWeights(nodeId: string, componentId: string, enabled
 export function useStartWeightsDownload(nodeId: string, componentId: string) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: WeightsDownloadRequest) => apiJson<WeightsDownloadJob>(`${weightsPath(nodeId, componentId)}/download`, { method: "POST", json: body }),
+    mutationFn: (body: WeightsDownloadRequest) => contractJson("WeightsDownloadJob", `${weightsPath(nodeId, componentId)}/download`, { method: "POST", json: body }),
     onSettled: () => {
       void client.invalidateQueries({ queryKey: qk.weights(nodeId, componentId) });
     },
@@ -40,7 +40,7 @@ export function useStartWeightsDownload(nodeId: string, componentId: string) {
 export function useCancelWeightsDownload(nodeId: string, componentId: string) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: () => apiJson<WeightsDownloadJob>(`${weightsPath(nodeId, componentId)}/cancel`, { method: "POST" }),
+    mutationFn: () => contractJson("WeightsDownloadJob", `${weightsPath(nodeId, componentId)}/cancel`, { method: "POST" }),
     onSettled: () => {
       void client.invalidateQueries({ queryKey: qk.weights(nodeId, componentId) });
     },

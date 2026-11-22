@@ -37,12 +37,12 @@ export function Splitter({
   className?: string;
 }) {
   const vertical = orientation === "vertical";
-  const active = useRef<{ pointerId: number; stop: () => void } | null>(null);
+  const activeRef = useRef<{ pointerId: number; stop: () => void } | null>(null);
   /** Time and place of the last press: a second press within 400 ms and 4 px is a double click (no reliance on dblclick, which browsers may skip when pointerdown's default is prevented). */
-  const lastPress = useRef({ time: -Infinity, x: 0, y: 0 });
+  const lastPressRef = useRef({ time: -Infinity, x: 0, y: 0 });
   useEffect(
     () => () => {
-      active.current?.stop();
+      activeRef.current?.stop();
     },
     [],
   );
@@ -53,14 +53,14 @@ export function Splitter({
   const onPointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (event.button !== 0) return;
     event.preventDefault();
-    active.current?.stop();
-    const previous = lastPress.current;
+    activeRef.current?.stop();
+    const previous = lastPressRef.current;
     if (defaultValue !== undefined && event.timeStamp - previous.time < 400 && Math.abs(event.clientX - previous.x) < 4 && Math.abs(event.clientY - previous.y) < 4) {
-      lastPress.current = { time: -Infinity, x: 0, y: 0 };
+      lastPressRef.current = { time: -Infinity, x: 0, y: 0 };
       reset();
       return;
     }
-    lastPress.current = { time: event.timeStamp, x: event.clientX, y: event.clientY };
+    lastPressRef.current = { time: event.timeStamp, x: event.clientX, y: event.clientY };
     const element = event.currentTarget;
     const pointerId = event.pointerId;
     const origin = vertical ? event.clientX : event.clientY;
@@ -76,13 +76,13 @@ export function Splitter({
       if (upEvent.pointerId === pointerId) stop();
     };
     const stop = () => {
-      if (active.current?.pointerId === pointerId) active.current = null;
+      if (activeRef.current?.pointerId === pointerId) activeRef.current = null;
       window.removeEventListener("pointermove", move, true);
       window.removeEventListener("pointerup", up, true);
       window.removeEventListener("pointercancel", up, true);
       window.removeEventListener("blur", stop);
       style.remove();
-      delete element.dataset.dragging;
+      delete element.dataset["dragging"];
       try {
         if (element.hasPointerCapture(pointerId)) element.releasePointerCapture(pointerId);
       } catch {
@@ -95,12 +95,12 @@ export function Splitter({
       // The pointer is already up: the window listeners still finish the drag
     }
     document.head.append(style);
-    element.dataset.dragging = "";
+    element.dataset["dragging"] = "";
     window.addEventListener("pointermove", move, true);
     window.addEventListener("pointerup", up, true);
     window.addEventListener("pointercancel", up, true);
     window.addEventListener("blur", stop);
-    active.current = { pointerId, stop };
+    activeRef.current = { pointerId, stop };
   };
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const grow = vertical ? (invert ? "ArrowLeft" : "ArrowRight") : invert ? "ArrowUp" : "ArrowDown";
@@ -114,14 +114,14 @@ export function Splitter({
     event.preventDefault();
   };
   return (
-    <div
+    <div /* eslint-disable-line jsx-a11y-x/no-noninteractive-element-interactions -- This adjustable ARIA separator is operable with arrows and exposes the current value. */
       role="separator"
       aria-orientation={vertical ? "vertical" : "horizontal"}
       aria-label={label}
       aria-valuenow={value}
       aria-valuemin={min}
       aria-valuemax={max}
-      tabIndex={0}
+       /* eslint-disable-line jsx-a11y-x/no-noninteractive-tabindex -- This adjustable ARIA separator is operable with arrows and exposes the current value. */ tabIndex={0}
       title={defaultValue === undefined ? t("拖曳調整大小（焦點在這裡時方向鍵微調）") : t("拖曳調整大小；雙擊或 Enter 還原預設（焦點在這裡時方向鍵微調）")}
       onPointerDown={onPointerDown}
       onDoubleClick={reset}

@@ -41,7 +41,7 @@ export function chooseComponent(choices: readonly ComponentChoice[], selected: s
 }
 
 export function findDescriptor(catalog: Catalog | undefined, key: string | null): ComponentDescriptor | null {
-  if (!key) return null;
+  if (!(key != null && key !== "")) return null;
   return componentEntries(catalog).find((entry) => entry.key === key)?.descriptor ?? null;
 }
 

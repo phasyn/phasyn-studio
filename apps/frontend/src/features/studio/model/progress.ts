@@ -7,17 +7,21 @@
 // 沒有逐步訊號就不顯示進度；DiT 這個階段的剩餘（stageRemainingMs）只用已量測（或推導）的步驟耗時、至少 1 步才算。
 // 它只涵蓋 DiT 去噪，不是整個 run 的剩餘（那個由成本紀錄收斂，見 eta/runRemaining.ts）。
 import { indexCatalog } from "@/api/catalog";
-import type { Catalog, Recording, RecordingSummary } from "@/api/generated/contracts";
+import type { Catalog, Recording, RecordingSummary, RunStepComponentLoad } from "@/api/generated/contracts";
 import { parseRunStep, runSteps, type RunStepView, type WireRun } from "@/api/types";
 import { isRecord } from "@/lib/json";
 import { runBranchSuffixes, runStepIds, splitRunStepId } from "./pipelines";
-import { t } from "@/i18n";
+import { declaresGenerator } from "./providerTraits";
+import { t, tServer } from "@/i18n";
 
 const DECIMAL = /^\d{1,30}$/;
 
 // ---------------------------------------------------------------- 步驟角色（依元件的 provider）
 
-/** run 步驟在 Studio 畫面上的角色。步驟 id 來自使用者的元件組合，所以角色依 provider 判斷，不依 id。 */
+/**
+ * run 步驟在 Studio 畫面上的角色。步驟 id 來自使用者的元件組合，所以角色依 provider 判斷，不依 id：H3 的 provider 有固定角色；
+ * 其他模型家族的生成元件（facts 宣告 studio_generation／studio_creative／studio_edit，例如 Wan）是它的去噪步驟（dit）。
+ */
 export type StepRole = "te" | "dit" | "video" | "audio" | "mux" | "ref" | "refVideo" | "refAudio" | "frame" | "concat";
 
 export const STEP_ROLE_BY_PROVIDER: Readonly<Record<string, StepRole>> = {
@@ -46,16 +50,23 @@ export const STEP_ROLE_LABELS: Record<StepRole, string> = {
   concat: t("序列接合"),
 };
 
-const ROLE_NAMES = new Set<string>(Object.keys(STEP_ROLE_LABELS));
+function isRole(value: string): value is StepRole {
+  return Object.hasOwn(STEP_ROLE_LABELS, value);
+}
 /** Step ids the reference templates use, for a run whose component is no longer in the catalog. */
 const ROLE_BY_STEP_ID: Readonly<Record<string, StepRole>> = { conditioning: "te", denoise: "dit", ref_visual: "refVideo", ref_audio: "refAudio" };
 
-/** 步驟元件（node_id＋component_id）→ provider_id；查不到（元件已刪除、目錄未載入）回 null。 */
-export type ProviderLookup = (nodeId: string, componentId: string) => string | null;
+/**
+ * 步驟元件（node_id＋component_id）→ provider_id；查不到（元件已刪除、目錄未載入）回 null。目錄來的查詢另外附 generator：
+ * 元件是否宣告自己是 Studio 的生成元件（providerTraits.declaresGenerator）。
+ */
+export type ProviderLookup = ((nodeId: string, componentId: string) => string | null) & { generator?: (nodeId: string, componentId: string) => boolean };
 
 export function catalogLookup(catalog: Catalog | undefined): ProviderLookup {
   const index = indexCatalog(catalog);
-  return (nodeId, componentId) => index.component(nodeId, componentId)?.provider_id ?? null;
+  const lookup: ProviderLookup = (nodeId, componentId) => index.component(nodeId, componentId)?.provider_id ?? null;
+  lookup.generator = (nodeId, componentId) => declaresGenerator(index.component(nodeId, componentId)?.facts);
+  return lookup;
 }
 
 /**
@@ -67,10 +78,10 @@ export function stepRole(run: WireRun, stepId: string, lookup?: ProviderLookup, 
   const view = parseRunStep(stepId, run.steps[stepId]);
   const nodeId = view.node_id ?? def?.node_id ?? null;
   const componentId = view.component_id ?? def?.component_id ?? null;
-  const provider = lookup && nodeId && componentId ? lookup(nodeId, componentId) : null;
-  if (provider) return STEP_ROLE_BY_PROVIDER[provider] ?? null;
+  const provider = lookup && (nodeId != null && nodeId !== "") && (componentId != null && componentId !== "") ? lookup(nodeId, componentId) : null;
+  if (provider != null && provider !== "") return STEP_ROLE_BY_PROVIDER[provider] ?? (lookup?.generator?.(nodeId ?? "", componentId ?? "") === true ? "dit" : null);
   const { base } = splitRunStepId(run, stepId, suffixes);
-  return ROLE_NAMES.has(base) ? (base as StepRole) : (ROLE_BY_STEP_ID[base] ?? null);
+  return isRole(base) ? base : (ROLE_BY_STEP_ID[base] ?? null);
 }
 
 /** 畫面上的步驟名稱：認得的角色用中文，其餘用元件組合裡的步驟 id。 */
@@ -113,7 +124,7 @@ function finite(value: unknown): number | null {
 }
 
 function stepIndexOf(data: Record<string, unknown>): number | null {
-  const index = data.step_index;
+  const index = data["step_index"];
   return typeof index === "number" && Number.isInteger(index) && index >= 0 ? index : null;
 }
 
@@ -129,26 +140,26 @@ export function foldEvents(log: StepLog, events: readonly unknown[], options: { 
   let mixedClock = log.mixedClock;
   for (const event of events) {
     if (!isRecord(event)) continue;
-    if (typeof event.seq === "number" && Number.isInteger(event.seq) && event.seq > lastSeq) lastSeq = event.seq;
-    if (!isRecord(event.data)) continue;
-    const index = stepIndexOf(event.data);
+    if (typeof event["seq"] === "number" && Number.isInteger(event["seq"]) && event["seq"] > lastSeq) lastSeq = event["seq"];
+    if (!isRecord(event["data"])) continue;
+    const index = stepIndexOf(event["data"]);
     if (index === null) continue;
-    if (event.kind === "step") {
-      const hostMs = finite(event.data.host_ms);
+    if (event["kind"] === "step") {
+      const hostMs = finite(event["data"]["host_ms"]);
       if (hostMs === null || hostMs < 0) continue;
-      const sample: StepSample = { hostMs, gpuMs: finite(event.data.gpu_event_ms) };
+      const sample: StepSample = { hostMs, gpuMs: finite(event["data"]["gpu_event_ms"]) };
       const previous = (steps ?? log.steps).get(index);
-      if (previous && previous.hostMs === sample.hostMs && previous.gpuMs === sample.gpuMs) continue;
+      if (previous?.hostMs === sample.hostMs && previous.gpuMs === sample.gpuMs) continue;
       steps ??= new Map(log.steps);
       steps.set(index, sample);
-    } else if (event.kind === "transfer") {
-      if (typeof event.monotonic_ns !== "string" || !DECIMAL.test(event.monotonic_ns)) continue;
-      const domain = typeof event.data.clock_domain === "string" ? event.data.clock_domain : null;
+    } else if (event["kind"] === "transfer") {
+      if (typeof event["monotonic_ns"] !== "string" || !DECIMAL.test(event["monotonic_ns"])) continue;
+      const domain = typeof event["data"]["clock_domain"] === "string" ? event["data"]["clock_domain"] : null;
       if (domain !== null) {
         if (clockDomain === null) clockDomain = domain;
         else if (domain !== clockDomain) mixedClock = true;
       }
-      const ns = BigInt(event.monotonic_ns);
+      const ns = BigInt(event["monotonic_ns"]);
       const previous = (starts ?? log.transferStarts).get(index);
       if (previous !== undefined && previous <= ns) continue;
       starts ??= new Map(log.transferStarts);
@@ -175,8 +186,8 @@ function positiveInt(value: unknown): number | null {
 }
 
 function effectiveSteps(settings: unknown): number | null {
-  if (!isRecord(settings) || !isRecord(settings.effective) || !isRecord(settings.effective.parameters)) return null;
-  return positiveInt(settings.effective.parameters.steps);
+  if (!isRecord(settings) || !isRecord(settings["effective"]) || !isRecord(settings["effective"]["parameters"])) return null;
+  return positiveInt(settings["effective"]["parameters"]["steps"]);
 }
 
 /**
@@ -187,9 +198,9 @@ export function resolveTotalSteps(rawStep: unknown, context?: { settings?: unkno
   const fromContext = effectiveSteps(context?.settings);
   if (fromContext !== null) return { value: fromContext, source: "effective" };
   const record = isRecord(rawStep) ? rawStep : {};
-  const fromStep = effectiveSteps(record.settings);
+  const fromStep = effectiveSteps(record["settings"]);
   if (fromStep !== null) return { value: fromStep, source: "effective" };
-  const requested = isRecord(record.invoke_snapshot) ? positiveInt(record.invoke_snapshot.steps) : null;
+  const requested = isRecord(record["invoke_snapshot"]) ? positiveInt(record["invoke_snapshot"]["steps"]) : null;
   if (requested !== null) return { value: requested, source: "requested" };
   return { value: null, source: null };
 }
@@ -219,11 +230,11 @@ export function ditBranches(run: WireRun | undefined, lookup?: ProviderLookup): 
 
 /** 步驟的 recording：結束後 run 會帶 recording_id；執行中只能以 call_id 對到 recording context（context 沒有 step_id）。 */
 export function findBranchRecording(step: Pick<RunStepView, "call_id" | "recording_id">, recordings: readonly Recording[]): Recording | null {
-  if (step.recording_id) {
+  if (step.recording_id != null && step.recording_id !== "") {
     const byId = recordings.find((item) => item.context.recording_id === step.recording_id);
     if (byId) return byId;
   }
-  if (!step.call_id) return null;
+  if (!(step.call_id != null && step.call_id !== "")) return null;
   return recordings.find((item) => item.context.call_id === step.call_id && item.context.operation === "invoke") ?? null;
 }
 
@@ -342,7 +353,7 @@ export interface BranchView {
 }
 
 function phaseOf(state: StepStateView, recordingId: string | null): BranchPhase {
-  if (state === "running") return recordingId ? "live" : "awaiting_record";
+  if (state === "running") return (recordingId != null && recordingId !== "") ? "live" : "awaiting_record";
   if (state === "pending" || state === "waiting" || state === "unknown") return "queued";
   return "finished";
 }
@@ -352,7 +363,7 @@ export function buildBranchViews(run: WireRun | undefined, recordings: readonly 
     const recording = findBranchRecording(branch.step, recordings);
     const recordingId = branch.step.recording_id ?? recording?.context.recording_id ?? null;
     const total = resolveTotalSteps(branch.raw, recording?.context ?? null);
-    const log = recordingId ? (logs.get(recordingId) ?? null) : null;
+    const log = (recordingId != null && recordingId !== "") ? (logs.get(recordingId) ?? null) : null;
     return {
       stepId: branch.stepId,
       suffix: branch.suffix,
@@ -448,6 +459,29 @@ export function pipelineSegments(run: WireRun, lookup?: ProviderLookup): StepSeg
   return [...groups.entries()].sort((a, b) => a[0] - b[0]).map(([, list]) => list);
 }
 
+/**
+ * 步驟要用的元件正在「使用時載入」時說的話：「載入模型中（約 40 秒）」，或暫時不能載入時「等待模型：<主控說明>」。
+ * 秒數是主控依載入紀錄的估計，沒有紀錄就不寫。
+ */
+export function componentLoadText(load: RunStepComponentLoad): string {
+  if (load.phase === "waiting") return t("等待模型：{reason}", { reason: tServer(load.message) });
+  const ms = load.estimated_load_ms;
+  return ms !== null && ms > 0 ? t("載入模型中（約 {seconds} 秒）", { seconds: Math.max(1, Math.round(ms / 1000)) }) : t("載入模型中");
+}
+
+/**
+ * 步驟都還在等：有步驟 waiting（同一張 GPU 正被別的步驟用，例如另一個渲染或修正），而且沒有步驟在執行。
+ * 這時說「等待資源」，不說「執行中」。
+ */
+export function waitingForResource(steps: readonly Pick<RunStepView, "state">[]): boolean {
+  return steps.some((step) => step.state === "waiting") && !steps.some((step) => step.state === "running");
+}
+
+/** 這些步驟裡第一個正在使用時載入的元件；沒有＝null。 */
+export function stepsComponentLoad(steps: readonly RunStepView[]): RunStepComponentLoad | null {
+  return steps.find((step) => step.component_load != null)?.component_load ?? null;
+}
+
 export interface RunActivity {
   done: number;
   total: number;
@@ -463,6 +497,11 @@ export function runActivity(run: WireRun, views: readonly BranchView[], noun = t
   const prefix = (index: number) => (branches > 1 ? t("{noun} {index}／{branches}・", { noun, index: index + 1, branches }) : "");
   const dit = views.find((view) => view.state === "running");
   if (dit) return { done, total: steps.length, text: `${prefix(dit.index)}DiT ${progressHeadline(dit)}` };
+  const load = steps.find((step) => step.component_load != null);
+  if (load?.component_load) {
+    const { suffix } = splitRunStepId(run, load.step_id, suffixes);
+    return { done, total: steps.length, text: `${prefix(branchIndex(suffix))}${componentLoadText(load.component_load)}` };
+  }
   const runningStep = steps.find((step) => step.state === "running");
   if (runningStep) {
     const { suffix } = splitRunStepId(run, runningStep.step_id, suffixes);
@@ -494,7 +533,7 @@ export function isSummaryPending(summary: Pick<RecordingSummary, "state" | "note
  */
 export function callRecordingsIncomplete(run: WireRun, items: readonly Recording[]): boolean {
   return runSteps(run).some((step) => {
-    if (!step.call_id) return false;
+    if (!(step.call_id != null && step.call_id !== "")) return false;
     const recording = items.find((item) => item.context.recording_id === step.recording_id || item.context.call_id === step.call_id);
     return !recording || isSummaryPending(recording.summary);
   });

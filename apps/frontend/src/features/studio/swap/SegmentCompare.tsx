@@ -89,7 +89,7 @@ function Reading({ check }: { check: Extract<CompareStatus, { status: "running" 
         {check.clip === "take" ? t("讀取生成影片的影格 {done}／{total}…", { done: check.done, total: check.total }) : t("讀取原片的影格 {done}／{total}…", { done: check.done, total: check.total })}
       </p>
       <span aria-hidden className="block h-1 overflow-hidden rounded-full bg-raised">
-        <span className="block h-full origin-left rounded-full bg-brand-gradient transition-transform duration-(--duration-base) ease-standard" style={{ transform: `scaleX(${share})` }} />
+        <span className="block h-full origin-left rounded-full bg-brand-gradient transition-transform duration-(--duration-base) ease-standard" style={{ transform: `scaleX(${String(share)})` }} />
       </span>
     </div>
   );
@@ -108,7 +108,7 @@ function Result({ result }: { result: ComparisonResult }) {
         <Icon aria-hidden className="mt-0.5 size-4 shrink-0" />
         <span>{view.line}</span>
       </p>
-      {note ? <NoteList tone="warning" icon={<Scissors aria-hidden />} items={[note]} /> : null}
+      {(note != null && note !== "") ? <NoteList tone="warning" icon={<Scissors aria-hidden />} items={[note]} /> : null}
       <Facts className="text-caption">
         <Fact label={t("構圖相符度")}>{layoutText(metrics.layout)}</Fact>
         <Fact label={t("動作速度（生成÷原版）")}>{motionText(metrics.motionRatio)}</Fact>
@@ -133,13 +133,13 @@ function PerSecond({ values }: { values: readonly number[] }) {
         {title}
       </span>
       <ol className="flex flex-wrap items-end gap-1.5" aria-label={title}>
-        {values.map((value, second) => {
+        {Array.from(values.entries(), ([second, value]) => {
           const reading = layoutReading(value);
           const height = Number.isFinite(value) ? Math.min(1, Math.max(0.04, value)) : 0;
           return (
             <li key={second} ref={reveal(second)} className="grid w-10 justify-items-center gap-0.5" title={t("第 {second} 秒：{value}（{reading}）", { second: second + 1, value: ratioText(value), reading: reading.text })}>
               <span aria-hidden className="flex h-10 w-3 items-end overflow-hidden rounded-sm bg-raised">
-                <span className={cn("block w-full rounded-sm", TONE_BAR[reading.tone])} style={{ height: `${Math.round(height * 100)}%` }} />
+                <span className={cn("block w-full rounded-sm", TONE_BAR[reading.tone])} style={{ height: `${String(Math.round(height * 100))}%` }} />
               </span>
               <span className={cn("machine text-caption", TONE_TEXT[reading.tone])}>
                 <span className="sr-only">{t("第 {second} 秒", { second: second + 1 })}</span>
@@ -154,7 +154,7 @@ function PerSecond({ values }: { values: readonly number[] }) {
 }
 
 function Picture({ src, alt }: { src: string | null; alt: string }) {
-  if (src) return <img src={src} alt={alt} className="h-18 w-32 rounded-sm border border-line-subtle bg-stage object-contain" />;
+  if (src != null && src !== "") return <img src={src} alt={alt} className="h-18 w-32 rounded-sm border border-line-subtle bg-stage object-contain" />;
   return (
     <span className="grid h-18 w-32 place-items-center rounded-sm border border-line-subtle bg-stage text-fg-tertiary">
       <ImageOff aria-hidden className="size-4" />

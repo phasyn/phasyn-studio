@@ -1,11 +1,13 @@
 import { t } from "@/i18n";
+import { H3_RULES } from "../../model/providerTraits";
 // H3 的時間規則（與 SGLang minimax_h3/time_request.py、phasyn_h3/recipe/adapter/geometry.py 相同）：
 // 固定 24 fps；要求的影格數往上對齊到 17n+5（F + (5 − F) mod 17）；Studio 的輸出採 preserve_generated，
 // 所以實際片長＝對齊後影格數 ÷ 24。分鏡時間戳必須落在這個片長內。
-export const H3_FPS = 24;
+// 數值的來源是 model/providerTraits.ts 的 H3_RULES（同一份 H3 規則，DiT 的 facts.cost_model 可以覆寫 fps）。
+export const H3_FPS = H3_RULES.fps;
 /** 要求時長界線（SGLang constants.py MINIMAX_H3_MIN/MAX_DURATION_SECONDS；phasyn_h3.recipe.adapter build_geometry）。 */
-export const H3_MIN_SECONDS = 4;
-export const H3_MAX_SECONDS = 15;
+export const H3_MIN_SECONDS = H3_RULES.minSeconds;
+export const H3_MAX_SECONDS = H3_RULES.maxSeconds;
 
 /** 往上對齊到 17n+5；≤ 0 → 1（照抄 SGLang 的邊界行為）。 */
 export function alignFrames(frames: number): number {

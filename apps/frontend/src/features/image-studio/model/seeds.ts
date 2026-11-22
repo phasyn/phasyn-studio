@@ -33,7 +33,7 @@ export function effectiveSeedMode(seed: number, mode: SeedMode): SeedMode {
  */
 export function resolveSeeds(seed: number, mode: SeedMode, count: number, draw: () => number = randomSeed): number[] {
   const problem = seedProblem(seed) ?? batchProblem(count);
-  if (problem) throw new Error(problem);
+  if (problem != null && problem !== "") throw new Error(problem);
   const effective = effectiveSeedMode(seed, mode);
   if (effective === "random") {
     const out: number[] = [];
@@ -54,8 +54,8 @@ export function resolveSeeds(seed: number, mode: SeedMode, count: number, draw: 
 export function describeSeeds(seed: number, mode: SeedMode, count: number): string {
   const effective = effectiveSeedMode(seed, mode);
   if (effective === "random") return count > 1 ? t("每張隨機（{count} 張；實際 seed 記在各 take）", { count }) : t("隨機（實際 seed 記在 take）");
-  if (count === 1) return `seed ${seed}`;
+  if (count === 1) return `seed ${String(seed)}`;
   const seeds = resolveSeeds(seed, effective, count, () => 0);
-  const shown = seeds.length > 4 ? `${formatList(seeds.slice(0, 3))}…${seeds.at(-1) ?? ""}` : formatList(seeds);
+  const shown = seeds.length > 4 ? `${formatList(seeds.slice(0, 3))}…${String(seeds.at(-1) ?? "")}` : formatList(seeds);
   return t("seed {shown}（{effective}）", { shown, effective: SEED_MODE_LABELS[effective] });
 }

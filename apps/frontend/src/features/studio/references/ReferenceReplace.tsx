@@ -21,7 +21,7 @@ export interface ReplaceChoices {
 
 export function ReferenceReplace({ reference, choices, disabled, onDone }: { reference: StudioReference; choices: ReplaceChoices; disabled: boolean; onDone: () => void }) {
   const id = useId();
-  const fileInput = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const kind = KIND_LABEL[reference.kind];
   return (
     <div className="grid gap-1.5 rounded-md border border-line-subtle bg-sunken/60 p-2 text-caption animate-reveal">
@@ -50,11 +50,11 @@ export function ReferenceReplace({ reference, choices, disabled, onDone }: { ref
         </Select>
         {choices.onUpload ? (
           <>
-            <Button size="sm" variant="secondary" icon={<Upload aria-hidden />} disabled={disabled} onClick={() => fileInput.current?.click()}>
+            <Button size="sm" variant="secondary" icon={<Upload aria-hidden />} disabled={disabled} onClick={() => fileInputRef.current?.click()}>
               {t("上傳新檔案")}
             </Button>
             <input
-              ref={fileInput}
+              ref={fileInputRef}
               type="file"
               accept={`${reference.kind}/*`}
               hidden

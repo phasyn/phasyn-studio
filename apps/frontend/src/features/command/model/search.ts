@@ -3,7 +3,7 @@
 import { GROUP_LABELS, GROUP_ORDER, keywordVariants, type CommandGroup, type CommandItem } from "./items";
 import { recentItems, type RecentEntry } from "./recents";
 
-const GROUP_RANK = Object.fromEntries(GROUP_ORDER.map((group, index) => [group, index])) as Record<CommandGroup, number>;
+const GROUP_RANK = new Map<CommandGroup, number>(GROUP_ORDER.map((group, index) => [group, index]));
 
 // ── 文字正規化與比對 ──────────────────────────────────────────────────────
 
@@ -106,7 +106,7 @@ function positionsToRanges(positions: readonly number[]): MatchRange[] {
   const ranges: MatchRange[] = [];
   for (const position of positions) {
     const last = ranges[ranges.length - 1];
-    if (last && last[1] === position) ranges[ranges.length - 1] = [last[0], position + 1];
+    if (last?.[1] === position) ranges[ranges.length - 1] = [last[0], position + 1];
     else ranges.push([position, position + 1]);
   }
   return ranges;
@@ -120,7 +120,7 @@ function matchField(target: Field, needle: string, primary: boolean): FieldMatch
   if (haystack.startsWith(needle)) return { score: primary ? SCORES.prefix : SCORES.secondaryPrefix, ranges: whole };
   let first = -1;
   for (let at = haystack.indexOf(needle, 1); at !== -1; at = haystack.indexOf(needle, at + 1)) {
-    if (target.starts[at]) return { score: primary ? SCORES.wordStart : SCORES.secondaryWordStart, ranges: [[at, at + needle.length]] };
+    if (target.starts[at] === true) return { score: primary ? SCORES.wordStart : SCORES.secondaryWordStart, ranges: [[at, at + needle.length]] };
     if (first < 0) first = at;
   }
   if (first >= 0) return { score: primary ? SCORES.substring : SCORES.secondarySubstring, ranges: [[first, first + needle.length]] };
@@ -151,7 +151,7 @@ export function indexItems(items: readonly CommandItem[], firstUid = 0): Indexed
     order,
     title: field(item.title),
     ident: field(item.ident),
-    subtitle: item.subtitle ? field(item.subtitle) : null,
+    subtitle: (item.subtitle != null && item.subtitle !== "") ? field(item.subtitle) : null,
     keywords: keywordVariants(item.keywords).map(field),
   }));
 }
@@ -241,7 +241,7 @@ const COLLATOR = new Intl.Collator("zh-Hant-TW", { numeric: true, sensitivity: "
 export function compareRanked(a: RankedOption, b: RankedOption): number {
   return (
     b.score - a.score ||
-    GROUP_RANK[a.item.group] - GROUP_RANK[b.item.group] ||
+    (GROUP_RANK.get(a.item.group) ?? GROUP_ORDER.length) - (GROUP_RANK.get(b.item.group) ?? GROUP_ORDER.length) ||
     COLLATOR.compare(a.item.title, b.item.title) ||
     a.order - b.order
   );
@@ -254,7 +254,7 @@ function plainOption(entry: IndexedItem): RankedOption {
     order: entry.order,
     score: 0,
     title: segmentText(entry.item.title, []),
-    subtitle: entry.item.subtitle ? segmentText(entry.item.subtitle, []) : null,
+    subtitle: (entry.item.subtitle != null && entry.item.subtitle !== "") ? segmentText(entry.item.subtitle, []) : null,
   };
 }
 
@@ -273,7 +273,7 @@ export function rankItems(entries: readonly IndexedItem[], query: string): Ranke
       order: entry.order,
       score: match.score,
       title: segmentText(entry.item.title, match.title),
-      subtitle: entry.item.subtitle ? segmentText(entry.item.subtitle, match.subtitle) : null,
+      subtitle: (entry.item.subtitle != null && entry.item.subtitle !== "") ? segmentText(entry.item.subtitle, match.subtitle) : null,
     });
   }
   return ranked.sort(compareRanked);

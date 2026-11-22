@@ -1,0 +1,82 @@
+{
+  "pipeline_id": "wan-edit-masked-retake",
+  "label": "Wan VACE · 區域遮罩重繪",
+  "inputs": [
+    {
+      "name": "prompt",
+      "type_id": "text.prompt.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "Describe what should appear inside the white region during the selected source interval"
+    },
+    {
+      "name": "source",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": "Original source clip"
+    },
+    {
+      "name": "reference",
+      "type_id": "media.image.v1",
+      "required": false,
+      "transport": "file",
+      "description": "Optional visual reference"
+    },
+    {
+      "name": "mask_video",
+      "type_id": "media.video.v1",
+      "required": false,
+      "transport": "file",
+      "description": "Full-source monochrome edit mask with matching frames and timestamps. White regenerates, black preserves."
+    },
+    {
+      "name": "mask_image",
+      "type_id": "media.image.v1",
+      "required": false,
+      "transport": "file",
+      "description": "One stationary monochrome edit mask, reused at every selected source frame. Use instead of mask_video."
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "edit",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "wan-edit",
+      "inputs": {
+        "prompt": {
+          "from_input": "prompt"
+        },
+        "source": {
+          "from_input": "source"
+        },
+        "reference": {
+          "from_input": "reference"
+        },
+        "mask_video": {
+          "from_input": "mask_video"
+        },
+        "mask_image": {
+          "from_input": "mask_image"
+        }
+      },
+      "parameters": {
+        "operation": "retake",
+        "start_frame": 8,
+        "end_frame": 24,
+        "mask_required": true,
+        "composite_unmasked": true
+      }
+    }
+  ],
+  "outputs": {
+    "final": {
+      "from_step": "edit",
+      "output": "asset"
+    },
+    "video_file": {
+      "from_step": "edit",
+      "output": "video_file"
+    }
+  }
+}

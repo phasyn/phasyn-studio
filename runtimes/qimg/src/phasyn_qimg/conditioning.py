@@ -28,8 +28,11 @@ from __future__ import annotations
 
 import contextlib
 import importlib.util
+import json
 from collections.abc import Mapping
-from typing import Any, ClassVar, cast
+from importlib import import_module
+from pathlib import Path
+from typing import Any, ClassVar, cast, override
 
 from phasyn_components import upstream
 from phasyn_components.canonical import sha256_hex
@@ -47,7 +50,16 @@ from phasyn_components.provider import (
 )
 from phasyn_components.weights import WeightPlan
 
-from . import KIND_CONDITIONING, KIND_PREPARED, TYPE_CONDITIONING, TYPE_PREPARED, TYPE_PROMPT, VAE_SCALE_FACTOR
+from . import (
+    KIND_CONDITIONING,
+    KIND_PREPARED,
+    TYPE_CONDITIONING,
+    TYPE_PREPARED,
+    TYPE_PROMPT,
+    VAE_SCALE_FACTOR,
+    encoding_cache,
+)
+from .bundle import input_identity, read_bundle, write_bundle
 from .config import (
     QIMG_LIBRARIES,
     RESEARCH_USE_NOTE,
@@ -74,11 +86,14 @@ from .instrument import (
     release_cuda_cache,
     timed_stage,
 )
+from .weights import image_plan
+
+
+_RGB_CHANNELS = 3
+_HWC_DIMENSIONS = 3
 
 SYSTEM_PROMPT = "Comprehend and analyze the provided prompt."
-TEMPLATE_T2I = (
-    f"<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n<|im_start|>user\n{{}}<|im_end|>\n<|im_start|>assistant\n"
-)
+TEMPLATE_T2I = f"<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n<|im_start|>user\n{{}}<|im_end|>\n<|im_start|>assistant\n"
 IMAGE_SLOT_1 = "<image1><|vision_start|><|image_pad|><|vision_end|>"
 TEMPLATE_TI2I = (
     f"<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n"
@@ -89,8 +104,8 @@ TE_PART = "text_encoder.language_model"
 
 
 def prompt_text(prompt: str, n_images: int) -> str:
-    """pipeline:241-259：空 prompt → 單一空白；有參考圖時依張數展開影像佔位。"""
-    text = prompt if prompt else " "
+    """pipeline:241-259：空 prompt → 單一空白；有參考圖時依張數展開影像佔位."""
+    text = prompt or " "
     if n_images == 0:
         return TEMPLATE_T2I.format(text)
     replace = IMAGE_SLOT_1
@@ -100,18 +115,23 @@ def prompt_text(prompt: str, n_images: int) -> str:
 
 
 def drop_index(processor: Any) -> int:
-    """pipeline:223-225：系統訊息 token 數（由 processor 的 chat template 算，不寫死）。"""
-    sys_message = [{"role": "system", "content": [{"type": "text", "text": SYSTEM_PROMPT}]}]
-    sys_tokens = processor.apply_chat_template(sys_message, tokenize=True, return_dict=False)
+    """pipeline:223-225：系統訊息 token 數（由 processor 的 chat template 算，不寫死）."""
+    sys_message = [
+        {"role": "system", "content": [{"type": "text", "text": SYSTEM_PROMPT}]}
+    ]
+    sys_tokens = processor.apply_chat_template(
+        sys_message, tokenize=True, return_dict=False
+    )
     return len(sys_tokens[0])
 
 
 def image_token_id(processor: Any) -> int:
+    """Return the configured image token identifier."""
     return int(processor.tokenizer.encode("<|image_pad|>")[0])
 
 
 def tokenize(processor: Any, prompt: str, images: list[Any] | None) -> Any:
-    """pipeline:274-285：左側 padding、return_tensors=pt；影像（白底 RGB PIL）依佔位順序傳入。"""
+    """pipeline:274-285：左側 padding、return_tensors=pt；影像（白底 RGB PIL）依佔位順序傳入."""
     kwargs: dict[str, Any] = {
         "text": [prompt_text(prompt, len(images or []))],
         "padding": True,
@@ -123,7 +143,7 @@ def tokenize(processor: Any, prompt: str, images: list[Any] | None) -> Any:
     return processor(**kwargs)
 
 
-def encode_tokens(
+def encode_tokens(  # noqa: PLR0913 - Keep the published runtime API.
     text_encoder: Any,
     model_inputs: Any,
     *,
@@ -132,7 +152,7 @@ def encode_tokens(
     img_token_id: int,
     with_images: bool,
 ) -> tuple[Any, Any, Any]:
-    """pipeline:285-331＋encode_prompt（num_images_per_prompt=1）→ (prompt_embeds, prompt_mask|None, image_pad_mask)。"""
+    """pipeline:285-331+encode_prompt（num_images_per_prompt=1）→ (prompt_embeds, prompt_mask|None, image_pad_mask)."""
     import torch
 
     model_inputs = model_inputs.to(device)
@@ -142,12 +162,17 @@ def encode_tokens(
         "output_hidden_states": True,
     }
     if with_images and hasattr(model_inputs, "pixel_values"):
-        forward_kwargs.update(pixel_values=model_inputs.pixel_values, image_grid_thw=model_inputs.image_grid_thw)
+        forward_kwargs.update(
+            pixel_values=model_inputs.pixel_values,
+            image_grid_thw=model_inputs.image_grid_thw,
+        )
     if hasattr(model_inputs, "mm_token_type_ids"):
         forward_kwargs["mm_token_type_ids"] = model_inputs.mm_token_type_ids
     # hidden_states[-1] 必須是最後一層 decoder 的輸出（final RMSNorm 之前）：hook 回傳 norm 的輸入
     text_model = getattr(text_encoder.model, "language_model", text_encoder.model)
-    handle = text_model.norm.register_forward_hook(lambda module, args, output: args[0])
+    handle = text_model.norm.register_forward_hook(
+        lambda _module, args, _output: args[0]
+    )
     try:
         outputs = text_encoder(**forward_kwargs)
     finally:
@@ -157,18 +182,35 @@ def encode_tokens(
     bool_mask = model_inputs.attention_mask.bool()
     valid_lengths = bool_mask.sum(dim=1)
     selected = hidden_states[bool_mask]
-    split_hidden_states = [e[drop_idx:] for e in torch.split(selected, valid_lengths.tolist(), dim=0)]
+    split_hidden_states = [
+        e[drop_idx:] for e in torch.split(selected, valid_lengths.tolist(), dim=0)
+    ]
     image_pad_mask_list = [
         (sample_ids[sample_mask.bool()] == img_token_id)[drop_idx:]
-        for sample_ids, sample_mask in zip(model_inputs.input_ids, model_inputs.attention_mask, strict=True)
+        for sample_ids, sample_mask in zip(
+            model_inputs.input_ids, model_inputs.attention_mask, strict=True
+        )
     ]
-    attn_mask_list = [torch.ones(e.size(0), dtype=torch.long, device=e.device) for e in split_hidden_states]
+    attn_mask_list = [
+        torch.ones(e.size(0), dtype=torch.long, device=e.device)
+        for e in split_hidden_states
+    ]
     max_seq_len = max(e.size(0) for e in split_hidden_states)
     prompt_embeds = torch.stack(
-        [torch.cat([u, u.new_zeros(max_seq_len - u.size(0), u.size(1))]) for u in split_hidden_states]
+        [
+            torch.cat([u, u.new_zeros(max_seq_len - u.size(0), u.size(1))])
+            for u in split_hidden_states
+        ]
     )
-    encoder_attention_mask = torch.stack([torch.cat([u, u.new_zeros(max_seq_len - u.size(0))]) for u in attn_mask_list])
-    image_pad_mask = torch.stack([torch.cat([u, u.new_zeros(max_seq_len - u.size(0))]) for u in image_pad_mask_list])
+    encoder_attention_mask = torch.stack(
+        [torch.cat([u, u.new_zeros(max_seq_len - u.size(0))]) for u in attn_mask_list]
+    )
+    image_pad_mask = torch.stack(
+        [
+            torch.cat([u, u.new_zeros(max_seq_len - u.size(0))])
+            for u in image_pad_mask_list
+        ]
+    )
     # encode_prompt：沒有 padding 時 mask 不帶資訊 → None（pipeline:384-385）
     mask: Any = encoder_attention_mask
     if mask.all():
@@ -176,15 +218,19 @@ def encode_tokens(
     return prompt_embeds, mask, image_pad_mask
 
 
-def check_reference_grid(model_inputs: Any, prepared_sizes: list[tuple[int, int]], processor: Any) -> list[int]:
-    """processor 實際的影像網格必須等於 prepared 尺寸（VAE latent 網格）；回傳每張的 image pad 數。"""
+def check_reference_grid(
+    model_inputs: Any, prepared_sizes: list[tuple[int, int]], processor: Any
+) -> list[int]:
+    """Processor 實際的影像網格必須等於 prepared 尺寸（VAE latent 網格）；回傳每張的 image pad 數."""
     grid = model_inputs.get("image_grid_thw")
     if grid is None:
         raise ComponentError("RUNTIME_ERROR", "processor 沒有回傳 image_grid_thw")
     rows = [tuple(int(x) for x in row) for row in grid.tolist()]
     merge = int(getattr(processor.image_processor, "merge_size", 2))
     counts = []
-    for index, ((t, gh, gw), (width, height)) in enumerate(zip(rows, prepared_sizes, strict=True)):
+    for index, ((t, gh, gw), (width, height)) in enumerate(
+        zip(rows, prepared_sizes, strict=True)
+    ):
         expected = (1, height // VAE_SCALE_FACTOR, width // VAE_SCALE_FACTOR)
         if (t, gh, gw) != expected:
             raise ComponentError(
@@ -214,6 +260,9 @@ def _prompt_value(value: Any, port: str) -> str:
 
 
 class ConditioningProvider(BaseProvider):
+    """Encode Qwen image and text conditioning for the denoiser."""
+
+    _cache: encoding_cache.EncoderCache | None = None
     provider_id = "qimg.conditioning"
     role: ClassVar[str] = "conditioning"
     # allocator reading at the start of the current call's GPU work (None: no GPU work yet in this call)
@@ -222,12 +271,11 @@ class ConditioningProvider(BaseProvider):
     @classmethod
     def weights(cls, settings: Mapping[str, Any] | None) -> WeightPlan:
         """The pinned Qwen-Image 2.1 directory this provider reads."""
-        from .weights import image_plan
-
         return image_plan(cls.role, settings)
 
     @classmethod
     def describe(cls, settings: Mapping[str, Any] | None) -> Description:
+        """Describe the ports, settings and current runtime availability."""
         reason = runtime_problem(cls.role)
         code = "PROVIDER_NOT_INSTALLED" if reason else None
         if reason is None and settings is not None:
@@ -239,29 +287,35 @@ class ConditioningProvider(BaseProvider):
             kind="image.conditioning",
             label="Qwen-Image 2.1 文字／參考圖條件（Qwen3-VL hidden states；pipeline 原始模板與 final-norm hook）",
             inputs=[
-                Port("prompt", TYPE_PROMPT, True, "inline", "生成 prompt（verbatim；不截斷）"),
+                Port(
+                    "prompt",
+                    TYPE_PROMPT,
+                    required=True,
+                    transport="inline",
+                    description="生成 prompt（verbatim；不截斷）",
+                ),
                 Port(
                     "negative_prompt",
                     TYPE_PROMPT,
-                    False,
-                    "inline",
-                    "negative prompt：只有 cfg=true 時編碼（空白＝單一空白字元）；cfg=false 時不使用並記錄",
+                    required=False,
+                    transport="inline",
+                    description="negative prompt：只有 cfg=true 時編碼（空白\N{FULLWIDTH EQUALS SIGN}單一空白字元）；cfg=false 時不使用並記錄",
                 ),
                 Port(
                     "prepared",
                     TYPE_PREPARED,
-                    False,
-                    "file",
-                    "qimg.prepare 的輸出（圖生圖：白底參考圖進 Qwen3-VL 的影像佔位）；文生圖不接",
+                    required=False,
+                    transport="file",
+                    description="qimg.prepare 的輸出（圖生圖：白底參考圖進 Qwen3-VL 的影像佔位）；文生圖不接",
                 ),
             ],
             outputs=[
                 Port(
                     "conditioning",
                     TYPE_CONDITIONING,
-                    True,
-                    "file",
-                    "qimg bundle：prompt_embeds BF16 (1,L,hidden)、image_pad_mask、cfg 時另有 neg_*",
+                    required=True,
+                    transport="file",
+                    description="qimg bundle：prompt_embeds BF16 (1,L,hidden)、image_pad_mask、cfg 時另有 neg_*",
                 )
             ],
             parts=[
@@ -278,14 +332,23 @@ class ConditioningProvider(BaseProvider):
             settings_schema=build_settings_schema(cls.role),
             parameters_schema=parameters_schema(cls.role),
             default_settings=default_settings(cls.role),
-            available=reason is None or (settings is None and code != "PROVIDER_NOT_INSTALLED"),
+            available=reason is None
+            or (settings is None and code != "PROVIDER_NOT_INSTALLED"),
             unavailable_code=code,
             unavailable_reason=reason,
             notes=[RESEARCH_USE_NOTE],
         )
 
     # ------------------------------------------------------------------ lifecycle
+    @override
     def load(self, ctx: LoadContext) -> LoadResult:
+        """Load the encoder and verify the optional cache namespace."""
+        self._cache, result = encoding_cache.configure(
+            self.host, self.role, ctx, self._load
+        )
+        return result
+
+    def _load(self, ctx: LoadContext) -> LoadResult:
         import torch
         from phasyn_components.recorder.gpu import runtime_identity, torch_backend_flags
         from transformers import Qwen3VLForConditionalGeneration, Qwen3VLProcessor
@@ -295,18 +358,18 @@ class ConditioningProvider(BaseProvider):
         problem = model_problem(self.role, ctx.settings)
         if problem:
             raise ComponentError("COMPONENT_NOT_CONFIGURED", problem)
-        if offload.get("mode") == "sequential" and importlib.util.find_spec("accelerate") is None:
+        if (
+            offload.get("mode") == "sequential"
+            and importlib.util.find_spec("accelerate") is None
+        ):
             raise ComponentError(
-                "PROVIDER_NOT_INSTALLED", "offload.mode=sequential 需要 accelerate（此 runtime 沒有安裝）", status=422
+                "PROVIDER_NOT_INSTALLED",
+                "offload.mode=sequential 需要 accelerate（此 runtime 沒有安裝）",
+                status=422,
             )
         base = model_dir(load)
-        import json
 
-        archs = (
-            json.loads((base / "text_encoder" / "config.json").read_text(encoding="utf-8")).get("architectures") or []
-        )
-        if not any(a in SUPPORTED_ARCHS for a in archs):
-            raise ComponentError("MODEL_INCOMPATIBLE", f"text_encoder 架構 {archs} 不是 {', '.join(SUPPORTED_ARCHS)}")
+        _check_encoder_config(base)
         device_cfg = load.get("device") or {}
         self.cuda = device_cfg.get("kind") == "cuda"
         self.device = torch.device("cuda", 0) if self.cuda else torch.device("cpu")
@@ -329,34 +392,45 @@ class ConditioningProvider(BaseProvider):
             self.text_encoder.eval()
             self.weight_bytes = module_bytes(self.text_encoder)
             self.residency: HostResidency | None = None
-            placement: dict[str, Any] = {"mode": offload.get("mode"), "after_use": offload.get("after_use")}
+            placement: dict[str, Any] = {
+                "mode": offload.get("mode"),
+                "after_use": offload.get("after_use"),
+            }
             if self.cuda and offload.get("mode") == "sequential":
-                from accelerate import cpu_offload
+                cpu_offload = import_module("accelerate").cpu_offload
 
                 module = self.text_encoder
-                cpu_offload(module, self.device, offload_buffers=len(module._parameters) > 0)
-                placement["placement"] = "accelerate.cpu_offload（權重留在 host，逐子模組上 GPU）"
+                cpu_offload(
+                    module, self.device, offload_buffers=len(module._parameters) > 0
+                )
+                placement["placement"] = (
+                    "accelerate.cpu_offload（權重留在 host，逐子模組上 GPU）"
+                )
             elif self.cuda and offload.get("after_use") == "keep":
                 placement.update(
                     check_vram(
-                        self.device, self.weight_bytes, what="TE 常駐", hint="請改用 offload.mode=sequential 或其他裝置"
+                        self.device,
+                        self.weight_bytes,
+                        what="TE 常駐",
+                        hint="請改用 offload.mode=sequential 或其他裝置",
                     )
                 )
                 self.text_encoder.to(self.device)
                 placement["placement"] = "resident"
             elif self.cuda:
-                self.residency = HostResidency(self.text_encoder, device=self.device, pinned=bool(offload["pinned"]))
+                self.residency = HostResidency(
+                    self.text_encoder,
+                    device=self.device,
+                    pinned=bool(offload["pinned"]),
+                )
                 placement["placement"] = "host（每次呼叫整個搬上 GPU）"
             else:
                 placement["placement"] = "cpu"
         finish_allocator(ctx.recorder, window, scope="load", cuda=self.cuda)
-        self.drop_idx = drop_index(self.processor)
-        self.img_token_id = image_token_id(self.processor)
-        text_config = getattr(self.text_encoder.config, "text_config", self.text_encoder.config)
-        self.token_limit = int(text_config.max_position_embeddings)
-        self.hidden_size = int(text_config.hidden_size)
+        text_config = self._record_encoder_dimensions()
         self.identity = model_identity(
-            model_root(load), {"text_encoder": base / "text_encoder", "processor": base / "processor"}
+            model_root(load),
+            {"text_encoder": base / "text_encoder", "processor": base / "processor"},
         )
         self.libraries = upstream.library_versions(QIMG_LIBRARIES, vcs=())
         self.calls = 0
@@ -382,10 +456,24 @@ class ConditioningProvider(BaseProvider):
             expanded_parts=ctx.expanded_parts,
             model_identity=self.identity,
             # CPU 元件不初始化 CUDA（runtime_identity 會讀裝置屬性 → 建立 CUDA context）
-            runtime_identity=runtime_identity() if self.cuda else {"torch": torch.__version__, "device": "cpu"},
+            runtime_identity=runtime_identity()
+            if self.cuda
+            else {"torch": torch.__version__, "device": "cpu"},
         )
 
+    def _record_encoder_dimensions(self) -> Any:
+        self.drop_idx = drop_index(self.processor)
+        self.img_token_id = image_token_id(self.processor)
+        text_config = getattr(
+            self.text_encoder.config, "text_config", self.text_encoder.config
+        )
+        self.token_limit = int(text_config.max_position_embeddings)
+        self.hidden_size = int(text_config.hidden_size)
+        return text_config
+
+    @override
     def unload(self, ctx: UnloadContext) -> None:
+        """Release the loaded component state."""
         with contextlib.suppress(Exception):
             import torch
 
@@ -395,8 +483,7 @@ class ConditioningProvider(BaseProvider):
                 torch.cuda.empty_cache()
 
     def after_failure(self, code: str) -> dict[str, Any] | None:
-        """Runs after the host has cleared the failed call's frames: drop what the TE itself still holds, move the
-        weights back to the host and report whether the process is back at its allocation before the call."""
+        """Runs after the host has cleared the failed call's frames: drop what the TE itself still holds, move the weights back to the host and report whether the process is back at its allocation before the call."""
         self._discard_call_state()
         residency = getattr(self, "residency", None)
         if residency is not None and residency.on_device:
@@ -432,84 +519,61 @@ class ConditioningProvider(BaseProvider):
 
     # ------------------------------------------------------------------ invoke
     def invoke(self, ctx: RunContext) -> None:
-        import torch
-        from PIL import Image
-
-        from .bundle import input_identity, read_bundle, write_bundle
-
+        """Run this provider with the validated call context."""
         self._call_memory = None
+        encoding_cache.invoke(self._cache, ctx, self._encode)
+
+    def _encode(self, ctx: RunContext) -> None:
         rec = ctx.recorder
         params = resolve_params(self.role, ctx.parameters)
         cfg = bool(params["cfg"])
         prompt = _prompt_value(ctx.input("prompt").value, "prompt")
         neg_item = ctx.optional_input("negative_prompt")
-        negative = _prompt_value(neg_item.value, "negative_prompt") if neg_item is not None else None
-        rec.set_metric("qimg.warm_call", 1 if self.calls else 0, unit="bool", scope="process", method="runtime_hook")
+        negative = (
+            _prompt_value(neg_item.value, "negative_prompt")
+            if neg_item is not None
+            else None
+        )
+        rec.set_metric(
+            "qimg.warm_call",
+            1 if self.calls else 0,
+            unit="bool",
+            scope="process",
+            method="runtime_hook",
+        )
         self.calls += 1
-        prepared_meta: dict[str, Any] | None = None
-        images: list[Any] = []
-        sizes: list[tuple[int, int]] = []
-        if ctx.optional_input("prepared") is not None and ctx.input("prepared").file is not None:
-            with rec.span("qimg.te.read_prepared", part="tokenizer"):
-                prepared_meta, tensors = read_bundle(ctx, "prepared", kind=KIND_PREPARED)
-                for ref in prepared_meta.get("refs") or []:
-                    array = tensors[f"ref_rgb_{int(ref['index'])}"].numpy()
-                    if array.ndim != 3 or array.shape[2] != 3:
-                        raise ComponentError("LATENT_MISMATCH", f"prepared 的 ref_rgb_{ref['index']} 不是 HWC RGB")
-                    images.append(Image.fromarray(array))
-                    sizes.append((int(ref["prepared_size"][0]), int(ref["prepared_size"][1])))
+        prepared_meta, images, sizes = _conditioning_images(ctx)
         if not cfg and negative:
-            rec.note("cfg=false：negative_prompt 沒有編碼（guidance ≤ 1 不使用 negative；與 pipeline 相同）")
+            rec.note(
+                "cfg=false：negative_prompt 沒有編碼（guidance ≤ 1 不使用 negative；與 pipeline 相同）"
+            )
         with rec.span("qimg.te.tokenize", part="tokenizer"):
             pos_inputs = tokenize(self.processor, prompt, images or None)
-            neg_inputs = tokenize(self.processor, negative or "", images or None) if cfg else None
-        image_counts = check_reference_grid(pos_inputs, sizes, self.processor) if images else []
-        lengths = {"prompt": int(pos_inputs["input_ids"].shape[-1])}
-        if neg_inputs is not None:
-            lengths["negative_prompt"] = int(neg_inputs["input_ids"].shape[-1])
-        for which, tokens in lengths.items():
-            if tokens > self.token_limit:
-                raise ComponentError(
-                    "PROMPT_TOO_LONG",
-                    f"{which} 加上模板與影像 token 共 {tokens} tokens，超過 text encoder 上限 {self.token_limit}（不截斷）",
-                    details={"which": which, "tokens": tokens, "limit": self.token_limit},
-                    status=422,
-                )
-        rec.set_metric("input_tokens", lengths["prompt"], unit="count", scope="component_call", method="runtime_hook")
+            neg_inputs = (
+                tokenize(self.processor, negative or "", images or None)
+                if cfg
+                else None
+            )
+        image_counts = (
+            check_reference_grid(pos_inputs, sizes, self.processor) if images else []
+        )
+        lengths = self._check_token_lengths(pos_inputs, neg_inputs)
+        rec.set_metric(
+            "input_tokens",
+            lengths["prompt"],
+            unit="count",
+            scope="component_call",
+            method="runtime_hook",
+        )
         ctx.check_cancelled()
         window = allocator_window(self.cuda)
         self._call_memory = CallMemory.start(self.device, window)
         try:
             if self.residency is not None:
                 self.residency.to_device(rec, part=TE_PART, what="TE 搬上 GPU")
-            with torch.inference_mode():
-                with timed_stage(rec, "qimg.te.forward", part=TE_PART, cuda=self.cuda):
-                    embeds, mask, pad_mask = encode_tokens(
-                        self.text_encoder,
-                        pos_inputs,
-                        device=self.device,
-                        drop_idx=self.drop_idx,
-                        img_token_id=self.img_token_id,
-                        with_images=bool(images),
-                    )
-                    out: dict[str, Any] = {"prompt_embeds": embeds.to("cpu"), "image_pad_mask": pad_mask.to("cpu")}
-                    if mask is not None:
-                        out["prompt_mask"] = mask.to("cpu").bool()
-                ctx.check_cancelled()
-                if neg_inputs is not None:
-                    with timed_stage(rec, "qimg.te.forward_negative", part=TE_PART, cuda=self.cuda):
-                        n_embeds, n_mask, n_pad = encode_tokens(
-                            self.text_encoder,
-                            neg_inputs,
-                            device=self.device,
-                            drop_idx=self.drop_idx,
-                            img_token_id=self.img_token_id,
-                            with_images=bool(images),
-                        )
-                        out["neg_prompt_embeds"] = n_embeds.to("cpu")
-                        out["neg_image_pad_mask"] = n_pad.to("cpu")
-                        if n_mask is not None:
-                            out["neg_prompt_mask"] = n_mask.to("cpu").bool()
+            out = self._encode_prompt_branches(
+                ctx, pos_inputs, neg_inputs, with_images=bool(images)
+            )
         except BaseException as exc:
             # the failed forward's frames hold hidden states and sequential offload may have left weights on the
             # GPU: drop both so the release below is effective
@@ -526,22 +590,15 @@ class ConditioningProvider(BaseProvider):
                 # still have device copies: drop the references first, then return idle blocks to the driver
                 # (otherwise the TE process keeps GiBs reserved after each call)
                 pos_inputs = neg_inputs = None
-                embeds = mask = pad_mask = None
-                n_embeds = n_mask = n_pad = None
                 release_cuda_cache(self.device)
                 record_after_release(rec, self.device)
         ctx.check_cancelled()
-        pad_total = int(out["image_pad_mask"].sum().item())
-        if pad_total != sum(image_counts):
-            raise ComponentError(
-                "RUNTIME_ERROR",
-                f"image_pad_mask 有 {pad_total} 個影像 token，processor 網格合計 {sum(image_counts)}",
-            )
-        text_len = int(out["prompt_embeds"].shape[1])
-        rec.set_metric("qimg.text_len", text_len, unit="count", scope="component_call", method="runtime_hook")
+        text_len = _record_encoded_length(out, image_counts, rec)
         meta: dict[str, Any] = {
             "prompt_sha256": sha256_hex(prompt.encode("utf-8")),
-            "negative_sha256": sha256_hex((negative or "").encode("utf-8")) if cfg else None,
+            "negative_sha256": sha256_hex((negative or "").encode("utf-8"))
+            if cfg
+            else None,
             "negative_ignored": bool(negative) and not cfg,
             "cfg": cfg,
             "text_len": text_len,
@@ -549,16 +606,21 @@ class ConditioningProvider(BaseProvider):
             "input_tokens": lengths,
             "token_limit": self.token_limit,
             "image_token_counts": image_counts,
-            "img_shapes": [[1, h // VAE_SCALE_FACTOR, w // VAE_SCALE_FACTOR] for (w, h) in sizes],
+            "img_shapes": [
+                [1, h // VAE_SCALE_FACTOR, w // VAE_SCALE_FACTOR] for (w, h) in sizes
+            ],
             "hidden_size": self.hidden_size,
             "dtype": "BF16",
             "template": "ti2i" if images else "t2i",
             "drop_idx": self.drop_idx,
             "image_token_id": self.img_token_id,
-            "final_norm": "bypassed（hidden_states[-1]＝最後一層 decoder 輸出，pipeline:297-309）",
+            "final_norm": "bypassed（hidden_states[-1]\N{FULLWIDTH EQUALS SIGN}最後一層 decoder 輸出，pipeline:297-309）",
             "prepared": input_identity(ctx, "prepared"),
             "target": (
-                {"width": int(prepared_meta["width"]), "height": int(prepared_meta["height"])}
+                {
+                    "width": int(prepared_meta["width"]),
+                    "height": int(prepared_meta["height"]),
+                }
                 if prepared_meta
                 else None
             ),
@@ -566,7 +628,9 @@ class ConditioningProvider(BaseProvider):
             "lib_versions": self.libraries,
         }
         with rec.span("qimg.te.write", part="tokenizer"):
-            write_bundle(ctx, "conditioning", kind=KIND_CONDITIONING, meta=meta, tensors=out)
+            write_bundle(
+                ctx, "conditioning", kind=KIND_CONDITIONING, meta=meta, tensors=out
+            )
         rec.log(
             "info",
             "Qwen3-VL 條件編碼完成",
@@ -575,6 +639,128 @@ class ConditioningProvider(BaseProvider):
             images=len(images),
             image_token_counts=image_counts,
             input_tokens=lengths,
+        )
+
+    def _encode_prompt_branches(
+        self, ctx: RunContext, pos_inputs: Any, neg_inputs: Any, *, with_images: bool
+    ) -> dict[str, Any]:
+        import torch
+
+        rec = ctx.recorder
+        with torch.inference_mode():
+            with timed_stage(rec, "qimg.te.forward", part=TE_PART, cuda=self.cuda):
+                embeds, mask, pad_mask = encode_tokens(
+                    self.text_encoder,
+                    pos_inputs,
+                    device=self.device,
+                    drop_idx=self.drop_idx,
+                    img_token_id=self.img_token_id,
+                    with_images=with_images,
+                )
+                out: dict[str, Any] = {
+                    "prompt_embeds": embeds.to("cpu"),
+                    "image_pad_mask": pad_mask.to("cpu"),
+                }
+                if mask is not None:
+                    out["prompt_mask"] = mask.to("cpu").bool()
+            ctx.check_cancelled()
+            if neg_inputs is not None:
+                with timed_stage(
+                    rec, "qimg.te.forward_negative", part=TE_PART, cuda=self.cuda
+                ):
+                    n_embeds, n_mask, n_pad = encode_tokens(
+                        self.text_encoder,
+                        neg_inputs,
+                        device=self.device,
+                        drop_idx=self.drop_idx,
+                        img_token_id=self.img_token_id,
+                        with_images=with_images,
+                    )
+                    out["neg_prompt_embeds"] = n_embeds.to("cpu")
+                    out["neg_image_pad_mask"] = n_pad.to("cpu")
+                    if n_mask is not None:
+                        out["neg_prompt_mask"] = n_mask.to("cpu").bool()
+        return out
+
+    def _check_token_lengths(self, pos_inputs: Any, neg_inputs: Any) -> dict[str, int]:
+        lengths = {"prompt": int(pos_inputs["input_ids"].shape[-1])}
+        if neg_inputs is not None:
+            lengths["negative_prompt"] = int(neg_inputs["input_ids"].shape[-1])
+        for which, tokens in lengths.items():
+            if tokens > self.token_limit:
+                raise ComponentError(
+                    "PROMPT_TOO_LONG",
+                    f"{which} 加上模板與影像 token 共 {tokens} tokens，超過 text encoder 上限 {self.token_limit}（不截斷）",
+                    details={
+                        "which": which,
+                        "tokens": tokens,
+                        "limit": self.token_limit,
+                    },
+                    status=422,
+                )
+        return lengths
+
+
+def _record_encoded_length(
+    out: Mapping[str, Any], image_counts: list[int], rec: Any
+) -> int:
+    pad_total = int(out["image_pad_mask"].sum().item())
+    if pad_total != sum(image_counts):
+        raise ComponentError(
+            "RUNTIME_ERROR",
+            f"image_pad_mask 有 {pad_total} 個影像 token，processor 網格合計 {sum(image_counts)}",
+        )
+    text_len = int(out["prompt_embeds"].shape[1])
+    rec.set_metric(
+        "qimg.text_len",
+        text_len,
+        unit="count",
+        scope="component_call",
+        method="runtime_hook",
+    )
+    return text_len
+
+
+def _conditioning_images(
+    ctx: RunContext,
+) -> tuple[dict[str, Any] | None, list[Any], list[tuple[int, int]]]:
+    from PIL import Image
+
+    rec = ctx.recorder
+    prepared_meta: dict[str, Any] | None = None
+    images: list[Any] = []
+    sizes: list[tuple[int, int]] = []
+    if (
+        ctx.optional_input("prepared") is not None
+        and ctx.input("prepared").file is not None
+    ):
+        with rec.span("qimg.te.read_prepared", part="tokenizer"):
+            prepared_meta, tensors = read_bundle(ctx, "prepared", kind=KIND_PREPARED)
+            for ref in prepared_meta.get("refs") or []:
+                array = tensors[f"ref_rgb_{int(ref['index'])}"].numpy()
+                if array.ndim != _HWC_DIMENSIONS or array.shape[2] != _RGB_CHANNELS:
+                    raise ComponentError(
+                        "LATENT_MISMATCH",
+                        f"prepared 的 ref_rgb_{ref['index']} 不是 HWC RGB",
+                    )
+                images.append(Image.fromarray(array))
+                sizes.append(
+                    (int(ref["prepared_size"][0]), int(ref["prepared_size"][1]))
+                )
+    return prepared_meta, images, sizes
+
+
+def _check_encoder_config(base: Path) -> None:
+    archs = (
+        json.loads(
+            (base / "text_encoder" / "config.json").read_text(encoding="utf-8")
+        ).get("architectures")
+        or []
+    )
+    if not any(a in SUPPORTED_ARCHS for a in archs):
+        raise ComponentError(
+            "MODEL_INCOMPATIBLE",
+            f"text_encoder 架構 {archs} 不是 {', '.join(SUPPORTED_ARCHS)}",
         )
 
 

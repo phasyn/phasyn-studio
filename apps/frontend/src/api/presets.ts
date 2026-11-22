@@ -1,13 +1,13 @@
 // Preset：普通 JSON 設定範本；套用只是複製到草稿並顯示差異，不是資格證書。
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import type { Preset, PresetList } from "./generated/contracts";
-import { apiJson, isApiError } from "./http";
+import type { Preset } from "./generated/contracts";
+import { contractJson, isApiError } from "./http";
 import { qk } from "./keys";
 
 export function usePresets(enabled = true) {
   return useQuery({
     queryKey: qk.presets(),
-    queryFn: ({ signal }) => apiJson<PresetList>("/api/presets", { signal }),
+    queryFn: ({ signal }) => contractJson("PresetList", "/api/presets", { signal }),
     enabled,
     staleTime: 5000,
   });
@@ -16,7 +16,7 @@ export function usePresets(enabled = true) {
 export function useSavePreset() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (preset: Preset) => apiJson<Preset>(`/api/presets/${encodeURIComponent(preset.preset_id)}`, { method: "PUT", json: preset }),
+    mutationFn: (preset: Preset) => contractJson("Preset", `/api/presets/${encodeURIComponent(preset.preset_id)}`, { method: "PUT", json: preset }),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: qk.presets() });
     },
@@ -38,7 +38,7 @@ export function useDeletePreset() {
   return useMutation({
     mutationFn: async (presetId: string): Promise<DeletedPreset> => {
       try {
-        return await apiJson<DeletedPreset>(`/api/presets/${encodeURIComponent(presetId)}`, { method: "DELETE" });
+        return await contractJson("DeletedPreset", `/api/presets/${encodeURIComponent(presetId)}`, { method: "DELETE" });
       } catch (error) {
         if (isApiError(error) && error.status === 404 && error.code === "NOT_FOUND") return { preset_id: presetId, deleted: true };
         throw error;

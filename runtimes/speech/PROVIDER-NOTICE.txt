@@ -1,0 +1,3 @@
+Phasyn Studio CustomVoice adapter
+
+The qwen-tts software and the Qwen3-TTS-12Hz-1.7B-CustomVoice checkpoint are separately provided by Qwen under Apache-2.0. This adapter includes the identifiers of the official checkpoints.

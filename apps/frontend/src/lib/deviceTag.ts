@@ -8,10 +8,10 @@ type Device = Pick<ComponentDescriptor["device"], "kind" | "resource_group">;
 
 /** resource group → tag: gpu-0 → GPU 0, gpu-uma → GPU UMA, cpu / cpu-* → CPU; any other name is shown as is. */
 export function groupTag(resourceGroup: string | null | undefined): string | null {
-  if (!resourceGroup) return null;
+  if (!(resourceGroup != null && resourceGroup !== "")) return null;
   if (/^cpu(-|$)/i.test(resourceGroup)) return "CPU";
   const gpu = /^gpu-(.+)$/i.exec(resourceGroup);
-  return gpu?.[1] ? `GPU ${gpu[1].toUpperCase()}` : resourceGroup;
+  return (gpu?.[1] != null && gpu[1] !== "") ? `GPU ${gpu[1].toUpperCase()}` : resourceGroup;
 }
 
 /** The component's device tag; CPU components are always CPU. */
@@ -24,5 +24,5 @@ export function deviceTag(device: Device | null | undefined): string | null {
 /** Place text "[GPU 0] Node A（…）"; without a device only the Node label. */
 export function placeLabel(device: Device | null | undefined, nodeLabel: string): string {
   const tag = deviceTag(device);
-  return tag ? `[${tag}] ${nodeLabel}` : nodeLabel;
+  return (tag != null && tag !== "") ? `[${tag}] ${nodeLabel}` : nodeLabel;
 }

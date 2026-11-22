@@ -1,3 +1,4 @@
+import { hasSlotContent } from "@/lib/dom";
 // 目前專案的設定（專案對話框內）：名稱、畫面格式、新鏡頭預設時長與路由（元件組合）、專案資訊與刪除。
 // 原本在屬性面板的「專案」分頁；改在這裡編輯，屬性面板專心處理鏡頭。
 import { useQueryClient } from "@tanstack/react-query";
@@ -10,15 +11,18 @@ import { Input, Select } from "@/components/ui/controls";
 import { Dialog, DialogBody, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { formatTimestamp } from "@/lib/format";
 import { deleteProject, studioKeys } from "@/api/studioProjects";
-import { formatDuration, formatTimecode, frameOptions, H3_FPS } from "../model/frames";
-import { shotStatus } from "../model/project";
+import { formatDuration, formatTimecode, frameOptions } from "../model/frames";
+import { FrameCountInput } from "./generation/FrameCountInput";
+import { clockProblem, frameLimits, validClock } from "../model/studioGenerationBinding";
+import { canChangeProjectRate, shotStatus } from "../model/project";
 import { findRoute, ROUTE_MISSING } from "../model/routes";
 import { useEditor } from "../editor/editorContext";
 import { filmOrder } from "../editor/sources";
 import { useStudio } from "../studioContext";
 import { FormatPicker } from "./FormatPicker";
 import { RoutesUnavailable } from "./routeParts";
-import { t, tServer } from "@/i18n";
+import { t } from "@/i18n";
+import { failureText } from "@/lib/errors";
 
 function Field({ label, htmlFor, hint, children }: { label: string; htmlFor: string; hint?: ReactNode; children: ReactNode }) {
   return (
@@ -27,7 +31,7 @@ function Field({ label, htmlFor, hint, children }: { label: string; htmlFor: str
         {label}
       </label>
       {children}
-      {hint ? <p className="text-caption text-pretty text-fg-tertiary">{hint}</p> : null}
+      {hasSlotContent(hint) ? <p className="text-caption text-pretty text-fg-tertiary">{hint}</p> : null}
     </div>
   );
 }
@@ -40,8 +44,8 @@ export function FormatSelect({ id, className }: { id: string; className?: string
       id={id}
       width={project.format.width}
       height={project.format.height}
-      onChange={(width, height) => dispatch({ type: "setFormat", width, height })}
-      className={className}
+      onChange={(width, height) => { dispatch({ type: "setFormat", width, height }); }}
+      {...(className === undefined ? {} : { className })}
     />
   );
 }
@@ -59,7 +63,7 @@ function DeleteProject() {
       await client.invalidateQueries({ queryKey: studioKeys.projects() });
       void navigate("/studio/edit", { replace: true });
     } catch (error) {
-      notify({ tone: "danger", title: t("無法刪除專案"), detail: isApiError(error) ? t("{code}：{message}", { code: error.code, message: tServer(error.message) }) : String(error) });
+      notify({ tone: "danger", title: t("無法刪除專案"), detail: isApiError(error) ? failureText(error.code, error.message) : String(error) });
       setDeleting(false);
     }
   };
@@ -71,7 +75,7 @@ function DeleteProject() {
           {t("刪除專案…")}
         </Button>
       </DialogTrigger>
-      <DialogContent onKeyDown={(event) => event.stopPropagation()}>
+      <DialogContent onKeyDown={(event) => { event.stopPropagation(); }}>
         <DialogHeader>
           <DialogTitle>{t("刪除專案「{title}」？", { title: project.title })}</DialogTitle>
           <DialogDescription>{t("只刪除專案文件（鏡頭、prompt、素材庫與 take 參照）。已產生的影片檔、上傳的參考檔、run 與效能紀錄仍保留在主控與 Node。")}</DialogDescription>
@@ -94,6 +98,29 @@ function DeleteProject() {
   );
 }
 
+function ProjectRateField({ id }: { id: string }) {
+  const { project, dispatch, engine } = useStudio();
+  const [draft, setDraft] = useState<string | null>(null);
+  const rate = project.format.fps;
+  const text = draft ?? `${String(rate.num)}/${String(rate.den)}`;
+  const match = /^(\d+)(?:\/(\d+))?$/u.exec(text);
+  const candidate = { num: Number(match?.[1]), den: Number(match?.[2] ?? 1) };
+  const route = findRoute(engine.routes, project.defaults.route);
+  const editable = canChangeProjectRate(project);
+  const problem = !validClock(candidate.num, candidate.den) ? t("影格率須介於 1 與 240 fps 之間")
+    : route && (route.generationBinding || frameLimits([route]).h3) ? clockProblem(route.generationBinding, candidate) : null;
+  return (
+    <Field label={t("影格率")} htmlFor={id} hint={editable ? problem ?? t("可輸入整數或分數，例如 24 或 24000/1001") : t("建立鏡頭或時間軸內容後會鎖定專案影格率")}>
+      <div className="flex gap-1.5">
+        <Input compact id={id} value={text} disabled={!editable} onChange={(event) => { setDraft(event.target.value); }} />
+        {editable ? <Button type="button" size="sm" disabled={draft === null || problem !== null} onClick={() => {
+          dispatch({ type: "setFrameRate", rate: candidate }); setDraft(null);
+        }}>{t("套用")}</Button> : null}
+      </div>
+    </Field>
+  );
+}
+
 export function ProjectSettings({ onNavigate }: { onNavigate?: () => void }) {
   const { project, dispatch, engine, timeline, totalFrames, fps } = useEditor();
   const id = useId();
@@ -101,6 +128,7 @@ export function ProjectSettings({ onNavigate }: { onNavigate?: () => void }) {
   const placed = filmOrder(project, timeline).placed.length;
   const rendered = project.shots.filter((shot) => shotStatus(shot, project) === "ready").length;
   const defaultRoute = findRoute(engine.routes, project.defaults.route);
+  const limits = frameLimits([defaultRoute]);
   return (
     <section aria-labelledby={`${id}-heading`} className="grid gap-3 rounded-lg border border-line-subtle bg-canvas/60 p-3">
       <h3 id={`${id}-heading`} className="flex items-center gap-2 text-data font-semibold text-fg">
@@ -118,7 +146,7 @@ export function ProjectSettings({ onNavigate }: { onNavigate?: () => void }) {
             setTitle(event.target.value);
             dispatch({ type: "rename", title: event.target.value });
           }}
-          onBlur={() => setTitle(null)}
+          onBlur={() => { setTitle(null); }}
         />
       </Field>
       <Field label={t("畫面格式")} htmlFor={`${id}-format`} hint={t("套用到專案中所有鏡頭；改格式後，已渲染的鏡頭會標示「設定已變更」，需要重新渲染。")}>
@@ -126,13 +154,14 @@ export function ProjectSettings({ onNavigate }: { onNavigate?: () => void }) {
       </Field>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label={t("新鏡頭預設時長")} htmlFor={`${id}-frames`}>
-          <Select id={`${id}-frames`} compact value={project.defaults.frames} onChange={(event) => dispatch({ type: "setDefaults", patch: { frames: Number(event.target.value) } })}>
+          {limits.h3 ? <Select id={`${id}-frames`} compact value={project.defaults.frames} onChange={(event) => { dispatch({ type: "setDefaults", patch: { frames: Number(event.target.value) } }); }}>
             {frameOptions().map((frames) => (
               <option key={frames} value={frames}>
-                {formatDuration(frames)}
+                {formatDuration(frames, fps)}
               </option>
             ))}
-          </Select>
+          </Select> : <FrameCountInput key={`${project.defaults.route}-${String(project.defaults.frames)}`} id={`${id}-frames`} initial={project.defaults.frames} limits={limits}
+            onApply={(frames) => { dispatch({ type: "setDefaults", patch: { frames } }); }} />}
         </Field>
         <Field label={t("新鏡頭預設路由")} htmlFor={`${id}-route`} hint={engine.status === "ready" && !defaultRoute ? undefined : t("新增鏡頭時使用的元件組合")}>
           <Select
@@ -140,7 +169,7 @@ export function ProjectSettings({ onNavigate }: { onNavigate?: () => void }) {
             compact
             value={project.defaults.route}
             disabled={engine.status !== "ready" || engine.routes.length === 0}
-            onChange={(event) => dispatch({ type: "setDefaults", patch: { route: event.target.value } })}
+            onChange={(event) => { dispatch({ type: "setDefaults", patch: { route: event.target.value } }); }}
           >
             {defaultRoute ? null : <option value={project.defaults.route}>{engine.status === "ready" ? t("路由不存在（{route}）", { route: project.defaults.route }) : t("讀取元件組合…")}</option>}
             {engine.routes.map((route) => (
@@ -157,10 +186,9 @@ export function ProjectSettings({ onNavigate }: { onNavigate?: () => void }) {
           {t("{routeMissing}：新鏡頭會改用第一個就緒的元件組合，直到這裡選定一個。", { routeMissing: ROUTE_MISSING })}
         </p>
       ) : null}
-      <RoutesUnavailable engine={engine} onNavigate={onNavigate} />
+      <ProjectRateField key={project.project_id} id={`${id}-fps`} />
+      <RoutesUnavailable engine={engine} {...(onNavigate === undefined ? {} : { onNavigate })} />
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 rounded-lg border border-line-subtle bg-surface px-2.5 py-2 text-caption">
-        <dt className="text-fg-tertiary">{t("影格率")}</dt>
-        <dd className="machine text-fg">{t("{h3Fps} fps（H3 固定）", { h3Fps: H3_FPS })}</dd>
         <dt className="text-fg-tertiary">{t("鏡頭")}</dt>
         <dd className="text-fg">
           {t("{shotsCount} 個（時間軸上 {placed}、已渲染 {rendered}）", { shotsCount: project.shots.length, placed, rendered })}

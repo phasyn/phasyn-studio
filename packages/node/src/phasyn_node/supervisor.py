@@ -15,7 +15,8 @@ place that writes the state, and every change is reported to the catalog.
 - restart only when idle (ready/error/stopped): stop, then start with the *stored* settings; a failure stays in
   error (no rollback to the old settings).
 - An unexpected exit → error (RUNTIME_EXITED), nothing loaded; a running call ends with RUNTIME_ERROR.
-- label/folder/autostart/limits change in any state: only the definition is saved (no reload, no revision).
+- label/folder/autostart/load_policy/idle_unload_seconds/limits change in any state: only the definition is saved
+  (no reload, no revision). The Controller acts on ``load_policy`` (load on use, idle unload); the Node only reports it.
 - A definition is deleted only when stopped/error with no process, call or pending restart; afterwards every
   start/stop/save through an old reference is NOT_FOUND.
 """
@@ -29,26 +30,45 @@ import copy
 import json
 import logging
 from collections.abc import AsyncIterator, Mapping
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, cast
 
 from phasyn_components import PROTOCOL_VERSION, contracts
 from phasyn_components.errors import ComponentError, exception_summary
 from phasyn_components.fs import atomic_write_json
 from phasyn_components.ids import new_id
+from phasyn_components.load_policy import load_policy
 from phasyn_components.recorder import Recorder
 from phasyn_components.settings import SettingsState
 from phasyn_components.timeutil import utc_now
 from phasyn_components.typed import check_typed_value
 
 from . import exclusive
-from .call import ActiveCall, check_inputs
+from .call import ActiveCall, CallResources, check_inputs
 from .describe import DescribeResult
-from .descriptor import ComponentState, RecorderState, facts, normalize_error, parts, ports, recorder_state_of
+from .descriptor import (
+    ComponentState,
+    RecorderState,
+    facts,
+    normalize_error,
+    parts,
+    ports,
+    recorder_state_of,
+)
 from .previews import NodePreview
-from .runtime import Aborted, RuntimeGone, RuntimeProcess, describe_returncode
+from .recordings import RecordingOperation
+from .runtime import (
+    AbortedError,
+    RuntimeChannels,
+    RuntimeGoneError,
+    RuntimeProcess,
+    StderrLine,
+    describe_returncode,
+)
 from .settings_check import check_settings
 from .sysinfo import runtime_env
+
 
 if TYPE_CHECKING:
     from .config import RuntimeEntry
@@ -71,8 +91,43 @@ class _Unchanged:
 UNCHANGED: Final = _Unchanged()
 
 
+@dataclass(frozen=True, kw_only=True)
+class _LoadAttempt:
+    """Snapshot of the settings, lock and cancellation signal for one component start."""
+
+    settings: dict[str, Any]
+    revision: int
+    group: str
+    holder_name: str
+    abort: asyncio.Event
+
+
+def _check_protocol(hello: Mapping[str, Any]) -> None:
+    protocol = str(hello.get("protocol") or "")
+    if protocol.split(".", maxsplit=1)[0] != PROTOCOL_VERSION.split(".", maxsplit=1)[0]:
+        raise ComponentError(
+            "PROTOCOL_MISMATCH",
+            f"元件程序協定版本 {protocol} 與 Node 的 {PROTOCOL_VERSION} 不相容；請使用相容版本的 runtime",
+            details={
+                "runtime_protocol": protocol,
+                "node_protocol": PROTOCOL_VERSION,
+            },
+        )
+
+
+def _resolve_file_ref(message: Mapping[str, Any]) -> Mapping[str, Any]:
+    ref = message.get("file")
+    if not isinstance(ref, Mapping):
+        raise ComponentError("INVALID_ARGUMENT", "resolve 需要 FileRef")
+
+    return ref
+
+
 class ComponentInstance:
+    """Own a component's persisted definition, runtime and active call."""
+
     def __init__(self, service: NodeService, settings: SettingsState) -> None:
+        """Bind a persisted component definition to its node supervisor."""
         self.service = service
         self.settings = settings
         self.state: ComponentState = "stopped"  # written only by _set_state()
@@ -81,7 +136,9 @@ class ComponentInstance:
         self.active_call: ActiveCall | None = None
         self.loaded_description: dict[str, Any] | None = None
         # ((stored_revision, describe time), problem): the provider's verdict on the stored settings
-        self._settings_checked: tuple[tuple[int, float], dict[str, Any] | None] | None = None
+        self._settings_checked: (
+            tuple[tuple[int, float], dict[str, Any] | None] | None
+        ) = None
         self.loaded_parts: list[dict[str, Any]] | None = None
         self.load_context: dict[str, Any] | None = None
         self.recorder_state: RecorderState = "unknown"
@@ -95,23 +152,29 @@ class ComponentInstance:
         self._load_abort: asyncio.Event | None = None
         self._restart_pending = False
         self._active: tuple[Recorder, RuntimeProcess | None] | None = None
-        self._recent_calls: collections.OrderedDict[str, str] = collections.OrderedDict()
+        self._recent_calls: collections.OrderedDict[str, str] = (
+            collections.OrderedDict()
+        )
 
     # ------------------------------------------------------------------ identity
     @property
     def component_id(self) -> str:
+        """Return the configured component ID."""
         return str(self.settings.definition["component_id"])
 
     @property
     def provider_id(self) -> str:
+        """Return the configured provider ID."""
         return str(self.settings.definition["provider_id"])
 
     @property
     def runtime_id(self) -> str:
+        """Return the configured runtime ID."""
         return str(self.settings.definition["runtime_id"])
 
     @property
     def label(self) -> str:
+        """Return the display label."""
         return str(self.settings.definition.get("label") or self.component_id)
 
     @property
@@ -122,6 +185,7 @@ class ComponentInstance:
 
     @property
     def autostart(self) -> bool:
+        """Return whether this component starts with the node."""
         return bool(self.settings.definition.get("autostart", False))
 
     @property
@@ -132,10 +196,12 @@ class ComponentInstance:
 
     @property
     def restart_pending(self) -> bool:
+        """Return whether a settings change requires a restart."""
         return self._restart_pending
 
     @property
     def config_path(self) -> Path:
+        """Return the persisted component definition path."""
         return self.service.components_dir / f"{self.component_id}.json"
 
     def _ensure_not_deleted(self) -> None:
@@ -147,16 +213,23 @@ class ComponentInstance:
             )
 
     def stored_device(self) -> dict[str, Any]:
+        """Return the device selected by the stored settings."""
         return dict(self.settings.stored["load"]["device"])
 
     def loaded_device(self) -> dict[str, Any]:
+        """Return the device used by the loaded runtime."""
         loaded = self.settings.loaded
         if loaded and isinstance(loaded.get("device"), Mapping):
             return dict(loaded["device"])
         return self.stored_device()
 
     # ------------------------------------------------------------------ state
-    def _set_state(self, state: ComponentState, *, error: dict[str, Any] | _Unchanged | None = UNCHANGED) -> None:
+    def _set_state(
+        self,
+        state: ComponentState,
+        *,
+        error: dict[str, Any] | _Unchanged | None = UNCHANGED,
+    ) -> None:
         """The only writer of ``state`` (and, when given, ``last_error``); every change is reported."""
         self.state = state
         if not isinstance(error, _Unchanged):
@@ -167,10 +240,10 @@ class ComponentInstance:
             self._settled.set()
         self.service.notify_change()
 
-    async def wait_settled(self, timeout: float) -> bool:
-        """Wait until the instance is neither loading nor stopping; False on timeout."""
+    async def wait_settled(self, limit_s: float) -> bool:
+        """Wait until the instance is neither loading nor stopping; False on limit_s."""
         try:
-            await asyncio.wait_for(self._settled.wait(), timeout=timeout)
+            await asyncio.wait_for(self._settled.wait(), timeout=limit_s)
         except TimeoutError:
             return False
         return True
@@ -182,39 +255,46 @@ class ComponentInstance:
         self.load_context = None
 
     def _drop_process(self, proc: RuntimeProcess | None, *, exited: bool) -> None:
-        """After an unload, kill, exit or failed load: the model is no longer loaded. The process (and the
-        description of what it loaded) is forgotten only once its exit is confirmed: an unconfirmed process may
-        still hold the device, so it stays visible (state error) instead of silently disappearing."""
+        """After an unload, kill, exit or failed load: the model is no longer loaded. The process (and the description of what it loaded) is forgotten only once its exit is confirmed: an unconfirmed process may still hold the device, so it stays visible (state error) instead of silently disappearing."""
         self._reset_loaded()
         if exited and self.process is proc:
             self.process = None
             self.loaded_description = None
 
     def remember_call(self, call_id: str, state: str) -> None:
+        """Retain the terminal state of a recent call."""
         self._recent_calls[call_id] = state
         self._recent_calls.move_to_end(call_id)
         while len(self._recent_calls) > RECENT_CALLS:
             self._recent_calls.popitem(last=False)
 
     def recent_call_state(self, call_id: str) -> str | None:
+        """Look up the retained state for a previous call ID."""
         return self._recent_calls.get(call_id)
 
-    def set_active_recorder(self, recorder: Recorder | None, proc: RuntimeProcess | None = None) -> None:
+    def set_active_recorder(
+        self, recorder: Recorder | None, proc: RuntimeProcess | None = None
+    ) -> None:
         """The Node-side recording of the current load/invoke/unload; that process's stderr becomes its log."""
         self._active = (recorder, proc) if recorder is not None else None
 
     def clear_active_recorder(self, recorder: Recorder) -> None:
+        """Remove the active recorder when its ownership matches."""
         active = self._active
         if active is not None and active[0] is recorder:
             self._active = None
 
     @property
     def active_recorder(self) -> Recorder | None:
+        """Return the recorder of the current operation."""
         active = self._active
         return active[0] if active is not None else None
 
     # ------------------------------------------------------------------ describe / descriptor
-    async def describe_stored(self, *, refresh_failures: bool = False) -> DescribeResult:
+    async def describe_stored(
+        self, *, refresh_failures: bool = False
+    ) -> DescribeResult:
+        """Describe the provider using the stored settings."""
         runtime = self.service.config.runtimes.get(self.runtime_id)
         if runtime is None:
             err = self._runtime_missing()
@@ -232,8 +312,7 @@ class ComponentInstance:
         return runtime
 
     def forget_configuration_error(self) -> None:
-        """After weights were downloaded: a stopped instance no longer shows the COMPONENT_NOT_CONFIGURED of an
-        earlier refused start (the next describe says whether anything is still missing)."""
+        """After weights were downloaded: a stopped instance no longer shows the COMPONENT_NOT_CONFIGURED of an earlier refused start (the next describe says whether anything is still missing)."""
         error = self.last_error or {}
         if self.state == "stopped" and error.get("code") == "COMPONENT_NOT_CONFIGURED":
             self._set_state("stopped", error=None)
@@ -242,7 +321,10 @@ class ComponentInstance:
         return ComponentError(
             "RUNTIME_NOT_CONFIGURED",
             f"Node 設定沒有 runtime_id「{self.runtime_id}」；請在 node 設定檔的 runtimes 加上它或修改元件定義",
-            details={"runtime_id": self.runtime_id, "known": sorted(self.service.config.runtimes)},
+            details={
+                "runtime_id": self.runtime_id,
+                "known": sorted(self.service.config.runtimes),
+            },
         )
 
     async def _view_description(
@@ -252,7 +334,9 @@ class ComponentInstance:
             return self.loaded_description, None
         if cached_only:
             settings, _ = self.settings.snapshot()
-            cached = self.service.commands.cached(self.runtime_id, self.provider_id, settings)
+            cached = self.service.commands.cached(
+                self.runtime_id, self.provider_id, settings
+            )
             return (cached.description if cached else None), cached
         result = await self.describe_stored()
         return result.description, result
@@ -262,12 +346,23 @@ class ComponentInstance:
         description, result = await self._view_description(cached_only=cached_only)
         return self.build_descriptor(description, result)
 
-    def build_descriptor(self, description: Mapping[str, Any] | None, result: DescribeResult | None) -> dict[str, Any]:
+    def build_descriptor(
+        self, description: Mapping[str, Any] | None, result: DescribeResult | None
+    ) -> dict[str, Any]:
+        """Build the component descriptor advertised to clients."""
         d = description or {}
         last_error = self.last_error
         if last_error is None and self.state == "stopped" and result is not None:
-            last_error = self._settings_problem(result) if result.available else result.unavailable_error().to_dict()
-        loaded = self.loaded_parts if self.loaded_parts is not None and self.state in ("ready", "busy") else None
+            last_error = (
+                self._settings_problem(result)
+                if result.available
+                else result.unavailable_error().to_dict()
+            )
+        loaded = (
+            self.loaded_parts
+            if self.loaded_parts is not None and self.state in ("ready", "busy")
+            else None
+        )
         call = self.active_call
         return {
             "component_id": self.component_id,
@@ -282,15 +377,23 @@ class ComponentInstance:
             "outputs": ports(d.get("outputs")),
             "parts": parts(loaded if loaded is not None else d.get("parts")),
             "settings": self.settings.view(
-                dict(d.get("settings_schema") or {}), dict(d.get("parameters_schema") or {})
+                dict(d.get("settings_schema") or {}),
+                dict(d.get("parameters_schema") or {}),
             ),
             "active_call_id": call.call_id if call is not None else None,
             "last_error": last_error,
             "recorder_state": self.recorder_state,
             "folder": self.folder,
             "autostart": self.autostart,
+            "load_policy": load_policy(self.settings.definition),
+            "idle_unload_seconds": self.settings.definition.get("idle_unload_seconds"),
             "exclusive_group": self.exclusive_group,
             "limits": copy.deepcopy(self.settings.definition.get("limits")),
+            **(
+                {"retry_after_verified_stop": True}
+                if self.settings.definition.get("retry_after_verified_stop") is True
+                else {}
+            ),
             "facts": facts(d.get("facts")),
         }
 
@@ -315,18 +418,23 @@ class ComponentInstance:
         return self._settings_checked[1]
 
     async def settings_view(self) -> dict[str, Any]:
+        """Return stored and loaded settings with their revisions."""
         description, _ = await self._view_description()
         d = description or {}
-        return self.settings.view(dict(d.get("settings_schema") or {}), dict(d.get("parameters_schema") or {}))
+        return self.settings.view(
+            dict(d.get("settings_schema") or {}), dict(d.get("parameters_schema") or {})
+        )
 
     # ------------------------------------------------------------------ definition / settings
     async def persist(self) -> None:
+        """Write the component definition and stored revision."""
         async with self._settings_lock:
             self._ensure_not_deleted()
             record = self.settings.to_record()
             await asyncio.to_thread(atomic_write_json, self.config_path, record)
 
     async def replace_definition(self, definition: Mapping[str, Any]) -> None:
+        """Apply a replacement definition to the stopped component."""
         async with self._control_lock:
             self._ensure_not_deleted()
             if self.state != "stopped":
@@ -375,7 +483,11 @@ class ComponentInstance:
     def _check_deletable(self) -> None:
         state = self.state
         if state not in ("stopped", "error"):
-            raise ComponentError("STATE_CONFLICT", f"元件目前是 {state}：先停止才能刪除", details={"state": state})
+            raise ComponentError(
+                "STATE_CONFLICT",
+                f"元件目前是 {state}：先停止才能刪除",
+                details={"state": state},
+            )
         call = self.active_call  # e.g. a cancel timeout killed the process (stopped) but the call still finishes
         if call is not None:
             raise ComponentError(
@@ -388,7 +500,11 @@ class ComponentInstance:
             raise ComponentError(
                 "STATE_CONFLICT",
                 f"元件目前是 {state}，但自有元件程序（PID {proc.pid}）尚未確認退出（GPU 是否釋放未知）：先停止並確認程序結束才能刪除",
-                details={"state": state, "pid": proc.pid, "process_instance_id": proc.process_instance_id},
+                details={
+                    "state": state,
+                    "pid": proc.pid,
+                    "process_instance_id": proc.process_instance_id,
+                },
             )
         if self._restart_pending:
             raise ComponentError(
@@ -438,7 +554,9 @@ class ComponentInstance:
             yield
             return
         lock = self.service.exclusive_lock(group)
-        members = exclusive.holders(self.service.instances.values(), group, exclude=self)
+        members = exclusive.holders(
+            self.service.instances.values(), group, exclude=self
+        )
         busy = any(map(exclusive.is_busy, members))
         if busy or lock.locked():
             err = exclusive.busy_error(group, members, switching=not busy)
@@ -447,10 +565,14 @@ class ComponentInstance:
             yield
 
     async def start(self, *, replace_exclusive: bool = False) -> dict[str, Any]:
+        """Load this component into its configured runtime."""
         async with self._group_scope(), self._control_lock:
-            return await self._start_locked(failure_state="stopped", replace_exclusive=replace_exclusive)
+            return await self._start_locked(
+                failure_state="stopped", replace_exclusive=replace_exclusive
+            )
 
     async def stop(self) -> dict[str, Any]:
+        """Unload this component and release its runtime resources."""
         async with self._control_lock:
             self._ensure_not_deleted()
             if self.state == "busy":
@@ -461,7 +583,9 @@ class ComponentInstance:
                     details={"active_call_id": call.call_id if call else None},
                 )
             if self.state in ("stopped", "stopping"):
-                self._restart_pending = False  # stop during a restart's stop phase: do not start again
+                self._restart_pending = (
+                    False  # stop during a restart's stop phase: do not start again
+                )
                 return await self.descriptor()
             if self.state == "loading":
                 if self._load_abort is not None:
@@ -471,31 +595,44 @@ class ComponentInstance:
             self._begin_stop(restart=False)
             return await self.descriptor()
 
-    def _begin_stop(self, *, restart: bool, note: str | None = None, restart_notes: tuple[str, ...] = ()) -> None:
+    def _begin_stop(
+        self,
+        *,
+        restart: bool,
+        note: str | None = None,
+        restart_notes: tuple[str, ...] = (),
+    ) -> None:
         """(control lock held) → stopping; the unload runs in its own task."""
         self._restart_pending = restart
         self._set_state("stopping")
         name = f"{'restart' if restart else 'stop'}-{self.component_id}"
         self._task = self.service.spawn_task(
-            self._stop_flow(restart=restart, note=note, restart_notes=restart_notes), name=name
+            self._stop_flow(restart=restart, note=note, restart_notes=restart_notes),
+            name=name,
         )
 
     async def restart(self, *, replace_exclusive: bool = False) -> dict[str, Any]:
+        """Stop the current instance and start it with the stored settings."""
         async with self._group_scope(), self._control_lock:
             self._ensure_not_deleted()
             self.service.ensure_accepting("restart")
             if self.state == "busy":
-                raise ComponentError("COMPONENT_BUSY", "元件正在執行呼叫；restart 只允許在 idle 時進行")
+                raise ComponentError(
+                    "COMPONENT_BUSY", "元件正在執行呼叫；restart 只允許在 idle 時進行"
+                )
             if self.state in TRANSITIONAL_STATES:
                 raise ComponentError(
-                    "STATE_CONFLICT", f"元件目前是 {self.state}；restart 只允許在 ready／error／stopped 時進行"
+                    "STATE_CONFLICT",
+                    f"元件目前是 {self.state}；restart 只允許在 ready/error/stopped 時進行",
                 )
             if self.process is not None:
                 # Make room (or refuse) before unloading ourselves: the start phase runs in the background.
                 notes = await self._claim_exclusive(replace=replace_exclusive)
                 self._begin_stop(restart=True, restart_notes=notes)
                 return await self.descriptor()
-            return await self._start_locked(failure_state="error", replace_exclusive=replace_exclusive)
+            return await self._start_locked(
+                failure_state="error", replace_exclusive=replace_exclusive
+            )
 
     async def _claim_exclusive(self, *, replace: bool) -> tuple[str, ...]:
         """(group and control locks held) No other member may hold a model; ``replace`` stops the idle ones.
@@ -505,7 +642,9 @@ class ComponentInstance:
         group = self.exclusive_group
         if group is None:
             return ()
-        members = exclusive.holders(self.service.instances.values(), group, exclude=self)
+        members = exclusive.holders(
+            self.service.instances.values(), group, exclude=self
+        )
         if not members:
             return ()
         if any(map(exclusive.is_busy, members)):
@@ -515,7 +654,12 @@ class ComponentInstance:
         for member in members:
             await member.stop_for_exclusive(group=group, successor=self.component_id)
         stopped = "、".join(member.component_id for member in members)
-        log.info("互斥群組 %s：為了載入 %s 已停止 %s（replace_exclusive）", group, self.component_id, stopped)
+        log.info(
+            "互斥群組 %s：為了載入 %s 已停止 %s（replace_exclusive）",
+            group,
+            self.component_id,
+            stopped,
+        )
         return (f"replace_exclusive：載入前已依序停止互斥群組 {group} 的 {stopped}",)
 
     async def stop_for_exclusive(self, *, group: str, successor: str) -> None:
@@ -526,7 +670,8 @@ class ComponentInstance:
             if not exclusive.is_holder(self):
                 return  # already gone (e.g. stopped by the user meanwhile)
             self._begin_stop(
-                restart=False, note=f"replace_exclusive：互斥群組 {group} 改由 {successor} 載入，先停止此元件"
+                restart=False,
+                note=f"replace_exclusive：互斥群組 {group} 改由 {successor} 載入，先停止此元件",
             )
             task = self._task
         if task is not None:
@@ -543,11 +688,27 @@ class ComponentInstance:
                 },
             )
 
-    def _fail_start(self, err: ComponentError, failure_state: ComponentState) -> ComponentError:
+    def _fail_start(
+        self, err: ComponentError, failure_state: ComponentState
+    ) -> ComponentError:
         """Record a refused start; ``failure_state=error`` (restart) moves the instance to error."""
-        state: ComponentState = "error" if failure_state == "error" or self.state == "error" else self.state
+        state: ComponentState = (
+            "error" if failure_state == "error" or self.state == "error" else self.state
+        )
         self._set_state(state, error=err.to_dict())
         return err
+
+    def _ensure_can_spawn(self) -> None:
+        if self.state == "stopping":
+            raise ComponentError(
+                "STATE_CONFLICT", "元件正在停止；請等到 stopped 後再 start"
+            )
+        if self.process is not None:
+            raise ComponentError(
+                "STATE_CONFLICT",
+                "前一個元件程序尚未確認退出（GPU 是否釋放未知）；請先 stop，必要時人工確認程序",
+                details={"pid": self.process.pid},
+            )
 
     async def _start_locked(
         self,
@@ -563,24 +724,21 @@ class ComponentInstance:
         svc.ensure_accepting("start")
         if self.state in ("loading", "ready", "busy"):
             return await self.descriptor()
-        if self.state == "stopping":
-            raise ComponentError("STATE_CONFLICT", "元件正在停止；請等到 stopped 後再 start")
-        if self.process is not None:
-            raise ComponentError(
-                "STATE_CONFLICT",
-                "前一個元件程序尚未確認退出（GPU 是否釋放未知）；請先 stop，必要時人工確認程序",
-                details={"pid": self.process.pid},
-            )
+        self._ensure_can_spawn()
         runtime = svc.config.runtimes.get(self.runtime_id)
         if runtime is None:
             raise self._fail_start(self._runtime_missing(), failure_state)
         settings, revision = self.settings.snapshot()
-        result = await svc.commands.describe(runtime, self.provider_id, settings, refresh_failures=True)
+        result = await svc.commands.describe(
+            runtime, self.provider_id, settings, refresh_failures=True
+        )
         if self.state in ("loading", "ready", "busy"):
             return await self.descriptor()
         if not result.available:
             raise self._fail_start(result.unavailable_error(), failure_state)
-        problem = self._settings_problem(result)  # a seed or an older definition the provider does not accept
+        problem = self._settings_problem(
+            result
+        )  # a seed or an older definition the provider does not accept
         if problem is not None:
             err = ComponentError.from_dict(problem, status=422)
             raise self._fail_start(err, failure_state) if background else err
@@ -615,7 +773,18 @@ class ComponentInstance:
         self._load_abort = abort
         self._set_state("loading", error=None)
         begin = svc.spawn_task(
-            self._begin_load(runtime, settings, revision, result, group, holder_name, abort, notes),
+            self._begin_load(
+                runtime,
+                result,
+                _LoadAttempt(
+                    settings=settings,
+                    revision=revision,
+                    group=group,
+                    holder_name=holder_name,
+                    abort=abort,
+                ),
+                notes,
+            ),
             name=f"spawn-{self.component_id}",
         )
         await asyncio.shield(begin)
@@ -624,12 +793,8 @@ class ComponentInstance:
     async def _begin_load(
         self,
         runtime: RuntimeEntry,
-        settings: dict[str, Any],
-        revision: int,
         result: DescribeResult,
-        group: str,
-        holder_name: str,
-        abort: asyncio.Event,
+        attempt: _LoadAttempt,
         notes: tuple[str, ...] = (),
     ) -> None:
         svc = self.service
@@ -638,23 +803,27 @@ class ComponentInstance:
         try:
             recorder = await svc.new_recorder(
                 self,
-                operation="load",
-                recording_id=new_id(),
-                config=settings.get("recording"),
-                synthetic=bool((result.description or {}).get("synthetic")),
+                config=attempt.settings.get("recording"),
+                activity=RecordingOperation(
+                    operation="load",
+                    recording_id=new_id(),
+                    synthetic=bool((result.description or {}).get("synthetic")),
+                ),
             )
             for note in notes:
                 recorder.note(note)
             await asyncio.to_thread(
                 recorder.write_context,
-                settings=svc.requested_context(settings, revision),
-                environment=svc.environment(self, None, runtime_process_instance_id=process_instance_id),
+                settings=svc.requested_context(attempt.settings, attempt.revision),
+                environment=svc.environment(
+                    self, None, runtime_process_instance_id=process_instance_id
+                ),
             )
-            proc = await self._spawn(runtime, settings, process_instance_id)
+            proc = await self._spawn(runtime, attempt.settings, process_instance_id)
         except Exception as exc:
-            svc.locks.release(group, holder_name)
+            svc.locks.release(attempt.group, attempt.holder_name)
             self._load_abort = None
-            log.error("元件 %s 的元件程序無法啟動", self.component_id, exc_info=exc)
+            log.exception("元件 %s 的元件程序無法啟動", self.component_id)
             err = ComponentError(
                 "RUNTIME_START_FAILED",
                 f"無法啟動元件程序：{type(exc).__name__}",
@@ -662,24 +831,35 @@ class ComponentInstance:
             )
             self._set_state("error", error=err.to_dict())
             if recorder is not None:
-                summary = await asyncio.to_thread(recorder.finalize, "failed", error=err.to_dict(), write=False)
+                summary = await asyncio.to_thread(
+                    recorder.finalize, "failed", error=err.to_dict(), write=False
+                )
                 await svc.publish_final_summary(recorder.recording_id, summary)
             raise err from exc
         self.process = proc
         self.spawn_count += 1
         self._task = svc.spawn_task(
-            self._load_flow(proc, settings, revision, recorder, group, holder_name, abort),
+            self._load_flow(proc, recorder, attempt),
             name=f"load-{self.component_id}",
         )
 
     async def _spawn(
-        self, runtime: RuntimeEntry, settings: Mapping[str, Any], process_instance_id: str
+        self,
+        runtime: RuntimeEntry,
+        settings: Mapping[str, Any],
+        process_instance_id: str,
     ) -> RuntimeProcess:
         svc = self.service
         device = dict(settings["load"]["device"])
         work_dir = svc.data_dir / "work" / self.component_id / process_instance_id
         await asyncio.to_thread(work_dir.mkdir, parents=True, exist_ok=True)
-        stderr_path = svc.data_dir / "logs" / "components" / self.component_id / f"{process_instance_id}.stderr.log"
+        stderr_path = (
+            svc.data_dir
+            / "logs"
+            / "components"
+            / self.component_id
+            / f"{process_instance_id}.stderr.log"
+        )
         argv = [
             runtime.python,
             "-m",
@@ -702,15 +882,17 @@ class ComponentInstance:
             argv=argv,
             env=env,
             cwd=work_dir,
-            component_id=self.component_id,
-            process_instance_id=process_instance_id,
-            stderr_path=stderr_path,
-            stderr_sink=self._on_stderr,
-            telemetry_sink=svc.on_telemetry,
-            on_message=self._on_runtime_message,
-            on_exit=self._on_runtime_exit,
-            preview_sink=self._on_preview,
-            stderr_ref=str(stderr_path.relative_to(svc.data_dir)),
+            channels=RuntimeChannels(
+                component_id=self.component_id,
+                process_instance_id=process_instance_id,
+                stderr_path=stderr_path,
+                stderr_sink=self._on_stderr,
+                telemetry_sink=svc.on_telemetry,
+                on_message=self._on_runtime_message,
+                on_exit=self._on_runtime_exit,
+                preview_sink=self._on_preview,
+                stderr_ref=str(stderr_path.relative_to(svc.data_dir)),
+            ),
         )
 
     def _start_error(self, proc: RuntimeProcess, *, stage: str) -> dict[str, Any]:
@@ -727,26 +909,26 @@ class ComponentInstance:
     async def _load_flow(
         self,
         proc: RuntimeProcess,
-        settings: dict[str, Any],
-        revision: int,
         recorder: Recorder,
-        group: str,
-        holder_name: str,
-        abort: asyncio.Event,
+        attempt: _LoadAttempt,
     ) -> None:
         try:
-            await self._load_flow_inner(proc, settings, revision, recorder, group, holder_name, abort)
+            await self._load_flow_inner(proc, recorder, attempt)
         except Exception as exc:
-            self.service.locks.release(group, holder_name)
+            self.service.locks.release(attempt.group, attempt.holder_name)
+            log.exception("元件 %s 的載入流程發生未預期錯誤", self.component_id)
             await self._flow_crashed(proc, exc, "載入")
 
-    async def _flow_crashed(self, proc: RuntimeProcess | None, exc: BaseException, operation: str) -> None:
+    async def _flow_crashed(
+        self, proc: RuntimeProcess | None, exc: BaseException, operation: str
+    ) -> None:
         """An unexpected error in a background flow: terminate the own process and end in error (never stuck)."""
-        log.error("元件 %s 的%s流程發生未預期錯誤", self.component_id, operation, exc_info=exc)
         exited = True
         if proc is not None:
             proc.expected_exit = True
-            exited = await proc.terminate(float(self.service.config.cancel_grace_seconds))
+            exited = await proc.terminate(
+                float(self.service.config.cancel_grace_seconds)
+            )
         self._drop_process(proc, exited=exited)
         self._load_abort = None
         self._active = None
@@ -759,21 +941,36 @@ class ComponentInstance:
             ).to_dict(),
         )
 
+    def _load_timeout_error(self, proc: RuntimeProcess, stage: str) -> dict[str, Any]:
+        if stage == "hello":
+            return ComponentError(
+                "RUNTIME_START_FAILED",
+                f"元件程序 {HELLO_TIMEOUT_S:.0f} 秒內未回報 hello；已終止自有 process group",
+                details=proc.exit_details(),
+            ).to_dict()
+        timeout = self.service.config.load_timeout_seconds
+        return ComponentError(
+            "LOAD_TIMEOUT",
+            f"載入超過 load_timeout_seconds（{timeout} 秒）；已終止自有 process group",
+            details={"load_timeout_seconds": timeout},
+        ).to_dict()
+
     async def _await_load(
-        self, proc: RuntimeProcess, settings: dict[str, Any], revision: int, recorder: Recorder, abort: asyncio.Event
+        self,
+        proc: RuntimeProcess,
+        settings: dict[str, Any],
+        revision: int,
+        recorder: Recorder,
+        abort: asyncio.Event,
     ) -> tuple[dict[str, Any] | None, dict[str, Any] | None, bool]:
-        """hello → protocol check → load → load_done; returns (load_done message, error, aborted)."""
+        """Hello → protocol check → load → load_done; returns (load_done message, error, aborted)."""
         stage = "hello"
         try:
             with recorder.span("spawn_to_hello", critical=True):
-                hello = await proc.wait(proc.hello, timeout=HELLO_TIMEOUT_S, abort=abort)
-            protocol = str(hello.get("protocol") or "")
-            if protocol.split(".", maxsplit=1)[0] != PROTOCOL_VERSION.split(".", maxsplit=1)[0]:
-                raise ComponentError(
-                    "PROTOCOL_MISMATCH",
-                    f"元件程序協定版本 {protocol} 與 Node 的 {PROTOCOL_VERSION} 不相容；請使用相容版本的 runtime",
-                    details={"runtime_protocol": protocol, "node_protocol": PROTOCOL_VERSION},
+                hello = await proc.wait(
+                    proc.hello, limit_s=HELLO_TIMEOUT_S, abort=abort
                 )
+            _check_protocol(hello)
             stage = "load"
             fut = proc.expect("load_done")
             await proc.send(
@@ -785,70 +982,60 @@ class ComponentInstance:
                 }
             )
             with recorder.span("await_load_done", critical=True):
-                done = await proc.wait(fut, timeout=float(self.service.config.load_timeout_seconds), abort=abort)
-        except Aborted:
+                done = await proc.wait(
+                    fut,
+                    limit_s=float(self.service.config.load_timeout_seconds),
+                    abort=abort,
+                )
+        except AbortedError:
             return None, None, True
-        except RuntimeGone:
+        except RuntimeGoneError:
             return None, self._start_error(proc, stage=stage), False
         except TimeoutError:
-            if stage == "hello":
-                return (
-                    None,
-                    ComponentError(
-                        "RUNTIME_START_FAILED",
-                        f"元件程序 {HELLO_TIMEOUT_S:.0f} 秒內未回報 hello；已終止自有 process group",
-                        details=proc.exit_details(),
-                    ).to_dict(),
-                    False,
-                )
-            timeout = self.service.config.load_timeout_seconds
-            return (
-                None,
-                ComponentError(
-                    "LOAD_TIMEOUT",
-                    f"載入超過 load_timeout_seconds（{timeout} 秒）；已終止自有 process group",
-                    details={"load_timeout_seconds": timeout},
-                ).to_dict(),
-                False,
-            )
+            return None, self._load_timeout_error(proc, stage), False
         except ComponentError as exc:
             return None, exc.to_dict(), False
-        if done.get("ok"):
-            return done, None, False
-        return (
-            done,
-            normalize_error(done.get("error"), default_code="RUNTIME_ERROR", default_message="元件載入失敗"),
-            False,
+        error = (
+            None
+            if done.get("ok")
+            else normalize_error(
+                done.get("error"),
+                default_code="RUNTIME_ERROR",
+                default_message="元件載入失敗",
+            )
         )
+        return done, error, False
 
     async def _load_flow_inner(
         self,
         proc: RuntimeProcess,
-        settings: dict[str, Any],
-        revision: int,
         recorder: Recorder,
-        group: str,
-        holder_name: str,
-        abort: asyncio.Event,
+        attempt: _LoadAttempt,
     ) -> None:
         svc = self.service
         self.set_active_recorder(recorder, proc)
-        token = svc.sampler.subscribe(settings["load"]["device"], recorder, proc.pid)
+        token = svc.sampler.subscribe(
+            attempt.settings["load"]["device"], recorder, proc.pid
+        )
         try:
-            done, error, aborted = await self._await_load(proc, settings, revision, recorder, abort)
+            done, error, aborted = await self._await_load(
+                proc, attempt.settings, attempt.revision, recorder, attempt.abort
+            )
         finally:
             svc.sampler.unsubscribe(token)
-            svc.locks.release(group, holder_name)
+            svc.locks.release(attempt.group, attempt.holder_name)
         ok = done is not None and error is None
-        aborted = aborted or (ok and abort.is_set())
+        aborted = aborted or (ok and attempt.abort.is_set())
         exited = True
         if done is not None and error is None and not aborted and proc.alive:
-            self.settings.mark_loaded(settings["load"], revision)
+            self.settings.mark_loaded(attempt.settings["load"], attempt.revision)
             raw_parts = done.get("parts")
             self.loaded_parts = list(raw_parts) if isinstance(raw_parts, list) else None
             ctx = done.get("settings_context")
             self.load_context = dict(ctx) if isinstance(ctx, Mapping) else None
-            self.recorder_state = recorder.recorder_state()  # live Node-side state; refined after the merge below
+            self.recorder_state = cast(
+                "RecorderState", recorder.recorder_state()
+            )  # live Node-side state; refined after the merge below
             self._set_state("ready", error=None)
             outcome = "succeeded"
         else:
@@ -860,29 +1047,54 @@ class ComponentInstance:
             else:
                 exited = await proc.wait_exit(EXIT_AFTER_LOAD_FAILURE_S)
                 if not exited:
-                    exited = await proc.terminate(float(svc.config.cancel_grace_seconds))
+                    exited = await proc.terminate(
+                        float(svc.config.cancel_grace_seconds)
+                    )
             self._drop_process(proc, exited=exited)
             if aborted:
                 self._set_state(
-                    "stopped" if exited else "error", error=None if exited else self._unconfirmed_error(proc)
+                    "stopped" if exited else "error",
+                    error=None if exited else self._unconfirmed_error(proc),
                 )
                 outcome = "cancelled"
             else:
-                self._set_state("error", error=error if exited else self._unconfirmed_error(proc, cause=error))
+                self._set_state(
+                    "error",
+                    error=error
+                    if exited
+                    else self._unconfirmed_error(proc, cause=error),
+                )
                 outcome = "failed"
         self._load_abort = None
         runtime_summary = done.get("summary") if isinstance(done, Mapping) else None
         await self._finish_recording(
-            recorder, outcome, error if outcome == "failed" else None, runtime_summary, proc=proc
+            recorder,
+            outcome,
+            error if outcome == "failed" else None,
+            runtime_summary,
+            proc=proc,
         )
         if not exited:
-            log.error("元件 %s（PID %s）未確認退出；不標 ready，需人工確認", self.component_id, proc.pid)
+            log.error(
+                "元件 %s（PID %s）未確認退出；不標 ready，需人工確認",
+                self.component_id,
+                proc.pid,
+            )
         elif outcome == "failed":
-            log.warning("元件 %s 載入失敗（不自動重啟）：%s", self.component_id, (error or {}).get("message"))
+            log.warning(
+                "元件 %s 載入失敗（不自動重啟）：%s",
+                self.component_id,
+                (error or {}).get("message"),
+            )
         svc.notify_change()
 
-    def _unconfirmed_error(self, proc: RuntimeProcess, *, cause: Mapping[str, Any] | None = None) -> dict[str, Any]:
-        details: dict[str, Any] = {"pid": proc.pid, "process_instance_id": proc.process_instance_id}
+    def _unconfirmed_error(
+        self, proc: RuntimeProcess, *, cause: Mapping[str, Any] | None = None
+    ) -> dict[str, Any]:
+        details: dict[str, Any] = {
+            "pid": proc.pid,
+            "process_instance_id": proc.process_instance_id,
+        }
         if cause:
             details["cause"] = dict(cause)
         return ComponentError(
@@ -908,7 +1120,9 @@ class ComponentInstance:
             recorder.finalize, state, error=dict(error) if error else None, write=False
         )
         merged = svc.merge_summaries(
-            node_summary, runtime_summary if isinstance(runtime_summary, Mapping) else None, state
+            node_summary,
+            runtime_summary if isinstance(runtime_summary, Mapping) else None,
+            state,
         )
         await svc.publish_final_summary(recorder.recording_id, merged)
         self.recorder_state = recorder_state_of(recorder.mode, merged)
@@ -930,6 +1144,7 @@ class ComponentInstance:
                 await self._restart_start(restart_notes)
         except Exception as exc:
             self._restart_pending = False
+            log.exception("元件 %s 的停止流程發生未預期錯誤", self.component_id)
             await self._flow_crashed(proc, exc, "停止")
 
     async def _restart_start(self, notes: tuple[str, ...]) -> None:
@@ -937,7 +1152,9 @@ class ComponentInstance:
         self._restart_pending = False
         try:
             async with self._group_scope(background=True), self._control_lock:
-                await self._start_locked(failure_state="error", background=True, notes=notes)
+                await self._start_locked(
+                    failure_state="error", background=True, notes=notes
+                )
         except ComponentError as exc:
             log.warning(
                 "元件 %s restart 的啟動階段失敗（停在 %s，不回退舊設定）：%s",
@@ -946,16 +1163,27 @@ class ComponentInstance:
                 exc.message,
             )
 
-    async def _stop_flow_inner(self, *, unload_timeout: float, note: str | None) -> None:
+    async def _stop_flow_inner(
+        self, *, unload_timeout: float, note: str | None
+    ) -> None:
         svc = self.service
         proc = self.process
         recorder = await svc.new_recorder(
-            self, operation="unload", recording_id=new_id(), config=self.settings.stored.get("recording")
+            self,
+            config=self.settings.stored.get("recording"),
+            activity=RecordingOperation(
+                operation="unload",
+                recording_id=new_id(),
+            ),
         )
         if note:
             recorder.note(note)
         self.set_active_recorder(recorder, proc)
-        await asyncio.to_thread(recorder.write_context, settings=None, environment=svc.environment(self, proc))
+        await asyncio.to_thread(
+            recorder.write_context,
+            settings=None,
+            environment=svc.environment(self, proc),
+        )
         runtime_summary: Any = None
         unload_error: dict[str, Any] | None = None
         exited = True
@@ -966,18 +1194,24 @@ class ComponentInstance:
             if proc.alive:
                 fut = proc.expect("bye")
                 try:
-                    await proc.send({"type": "unload", "recording_id": recorder.recording_id})
+                    await proc.send(
+                        {"type": "unload", "recording_id": recorder.recording_id}
+                    )
                     with recorder.span("await_bye", critical=True):
-                        bye = await proc.wait(fut, timeout=unload_timeout)
+                        bye = await proc.wait(fut, limit_s=unload_timeout)
                     runtime_summary = bye.get("summary")
                     if bye.get("error"):
                         unload_error = normalize_error(
-                            bye.get("error"), default_code="RUNTIME_ERROR", default_message="卸載失敗"
+                            bye.get("error"),
+                            default_code="RUNTIME_ERROR",
+                            default_message="卸載失敗",
                         )
-                except RuntimeGone:
+                except RuntimeGoneError:
                     recorder.note("元件程序在回覆 bye 前已結束")
                 except TimeoutError:
-                    recorder.note(f"元件程序 {unload_timeout:.0f} 秒內沒有回覆 bye；改以訊號終止自有 process group")
+                    recorder.note(
+                        f"元件程序 {unload_timeout:.0f} 秒內沒有回覆 bye；改以訊號終止自有 process group"
+                    )
                     proc.discard("bye", fut)
             exited = await proc.wait_exit(max(0.0, deadline - loop.time()))
             if not exited:
@@ -998,21 +1232,27 @@ class ComponentInstance:
         )
         svc.notify_change()
 
-    async def shutdown(self, *, timeout: float) -> None:
+    async def shutdown(self, *, grace_s: float) -> None:
         """Node shutdown: abort a load, unload an idle process, finally signal only the own process group."""
         if self._load_abort is not None:
             self._load_abort.set()
         task = self._task
         if task is not None and not task.done():
-            await asyncio.wait({task}, timeout=timeout + 15)
+            await asyncio.wait({task}, timeout=grace_s + 15)
         proc = self.process
-        if proc is not None and proc.alive and self.state in ("ready", "error", "stopping"):
+        if (
+            proc is not None
+            and proc.alive
+            and self.state in ("ready", "error", "stopping")
+        ):
             self._set_state("stopping")
-            with contextlib.suppress(Exception):  # best effort: the process is terminated below anyway
-                await self._stop_flow(restart=False, unload_timeout=timeout)
+            with contextlib.suppress(
+                Exception
+            ):  # best effort: the process is terminated below anyway
+                await self._stop_flow(restart=False, unload_timeout=grace_s)
         proc = self.process
         if proc is not None and proc.alive:
-            await proc.terminate(min(timeout, 5.0))
+            await proc.terminate(min(grace_s, 5.0))
 
     # ------------------------------------------------------------------ calls
     def accept_call(self, body: Mapping[str, Any]) -> ActiveCall:
@@ -1049,7 +1289,10 @@ class ComponentInstance:
             raise ComponentError(
                 "SETTINGS_NOT_LOADED",
                 f"呼叫要求 loaded_revision {required}，但目前載入的是 {loaded_revision}；請明確 restart 載入新設定（不暗中換模型）",
-                details={"required_loaded_revision": required, "loaded_revision": loaded_revision},
+                details={
+                    "required_loaded_revision": required,
+                    "loaded_revision": loaded_revision,
+                },
             )
         description = self.loaded_description or {}
         check_inputs(description, body.get("inputs") or {})
@@ -1079,13 +1322,15 @@ class ComponentInstance:
         call = ActiveCall(
             body=body,
             recording_id=svc.new_recording_id(),
-            stored_revision=stored_revision,
-            invoke_defaults=dict(stored.get("invoke") or {}),
-            output_types=output_types,
-            group=group,
-            holder=holder_name,
-            proc=proc,
-            synthetic=bool(description.get("synthetic")),
+            resources=CallResources(
+                stored_revision=stored_revision,
+                invoke_defaults=dict(stored.get("invoke") or {}),
+                output_types=output_types,
+                group=group,
+                holder=holder_name,
+                proc=proc,
+                synthetic=bool(description.get("synthetic")),
+            ),
         )
         self.active_call = call
         svc.active_calls[call_id] = self
@@ -1143,7 +1388,11 @@ class ComponentInstance:
                     error=ComponentError(
                         code,
                         "cooperative 取消逾時，已終止自有元件程序（模型已卸載，需要時請手動 start）；HTTP 回覆不代表 GPU 已釋放，請以裝置樣本確認",
-                        details={"call_id": call.call_id, "process_killed": True, "reason": reason},
+                        details={
+                            "call_id": call.call_id,
+                            "process_killed": True,
+                            "reason": reason,
+                        },
                     ).to_dict(),
                 )
             else:
@@ -1151,44 +1400,66 @@ class ComponentInstance:
             return True if exited else None
 
     # ------------------------------------------------------------------ runtime callbacks
-    def _on_runtime_message(self, proc: RuntimeProcess, message: dict[str, Any]) -> None:
+    def _on_runtime_message(
+        self, proc: RuntimeProcess, message: dict[str, Any]
+    ) -> None:
         kind = message.get("type")
         if kind == "run_done":
             call = self.active_call
-            if call is not None and call.proc is proc and call.call_id == message.get("call_id"):
+            if (
+                call is not None
+                and call.proc is proc
+                and call.call_id == message.get("call_id")
+            ):
                 call.on_runtime_done(message)
         elif kind == "resolve":
-            self.service.spawn_task(self._handle_resolve(proc, message), name=f"resolve-{self.component_id}")
+            _ = self.service.spawn_task(
+                self._handle_resolve(proc, message), name=f"resolve-{self.component_id}"
+            )
         elif kind == "error":
-            log.warning("元件 %s 回報錯誤：%s %s", self.component_id, message.get("code"), message.get("message"))
+            log.warning(
+                "元件 %s 回報錯誤：%s %s",
+                self.component_id,
+                message.get("code"),
+                message.get("message"),
+            )
 
-    async def _handle_resolve(self, proc: RuntimeProcess, message: Mapping[str, Any]) -> None:
+    async def _handle_resolve(
+        self, proc: RuntimeProcess, message: Mapping[str, Any]
+    ) -> None:
         request_id = message.get("request_id")
         call = self.active_call
         recorder = call.recorder if call is not None else self.active_recorder
         reply: dict[str, Any] = {"type": "resolved", "request_id": request_id}
         try:
-            ref = message.get("file")
-            if not isinstance(ref, Mapping):
-                raise ComponentError("INVALID_ARGUMENT", "resolve 需要 FileRef")
-            materialized = await self.service.resolver.materialize(ref, recorder=recorder)
+            ref = _resolve_file_ref(message)
+            materialized = await self.service.resolver.materialize(
+                ref, recorder=recorder
+            )
             if call is not None:
                 call.note_materialized(materialized)
             reply["path"] = str(materialized.path)
         except ComponentError as exc:
             reply["error"] = exc.to_dict()
         except Exception as exc:
-            log.error("元件 %s 的檔案物化發生未預期錯誤", self.component_id, exc_info=exc)
+            log.exception("元件 %s 的檔案物化發生未預期錯誤", self.component_id)
             reply["error"] = ComponentError(
-                "RUNTIME_ERROR", f"Node 物化檔案失敗：{type(exc).__name__}", details=exception_summary(exc)
+                "RUNTIME_ERROR",
+                f"Node 物化檔案失敗：{type(exc).__name__}",
+                details=exception_summary(exc),
             ).to_dict()
-        with contextlib.suppress(RuntimeGone):
+        with contextlib.suppress(RuntimeGoneError):
             await proc.send(reply)
 
     def _on_preview(self, proc: RuntimeProcess, preview: NodePreview) -> None:
         """(event loop) Keep only the newest preview of the active call; drop it once the call has a result."""
         call = self.active_call
-        if call is None or call.proc is not proc or call.call_id != preview.call_id or call.final_state is not None:
+        if (
+            call is None
+            or call.proc is not proc
+            or call.call_id != preview.call_id
+            or call.final_state is not None
+        ):
             return
         if call.preview is not None and preview.seq <= call.preview.seq:
             return
@@ -1196,33 +1467,41 @@ class ComponentInstance:
         self.service.preview_notifier.published(self.component_id, call)
 
     def _on_runtime_exit(self, proc: RuntimeProcess) -> None:
-        if proc is not self.process or proc.expected_exit or self.state in TRANSITIONAL_STATES:
+        if (
+            proc is not self.process
+            or proc.expected_exit
+            or self.state in TRANSITIONAL_STATES
+        ):
             return
         err = ComponentError(
             "RUNTIME_EXITED",
             f"元件程序意外結束（{describe_returncode(proc.returncode)}）；不自動重啟，請查看 stderr 後手動 start",
             details=proc.exit_details(),
         )
-        log.error("元件 %s 的程序意外結束（%s）", self.component_id, describe_returncode(proc.returncode))
+        log.error(
+            "元件 %s 的程序意外結束（%s）",
+            self.component_id,
+            describe_returncode(proc.returncode),
+        )
         self._drop_process(proc, exited=True)
         self._set_state("error", error=err.to_dict())
 
-    def _on_stderr(self, proc: RuntimeProcess, text: str, offset: int, truncated: bool) -> None:
+    def _on_stderr(self, proc: RuntimeProcess, line: StderrLine) -> None:
         active = self._active
         if active is not None and active[1] is proc:
             recorder = active[0]
-            lowered = text.lower()
+            lowered = line.text.lower()
             level = "warning" if any(h in lowered for h in _ERROR_HINTS) else "info"
             recorder.log(
                 level,
-                text,
+                line.text,
                 source="stderr",
                 stderr_log=proc.stderr_ref,
-                offset=offset,
-                line_truncated=truncated,
+                offset=line.offset,
+                line_truncated=line.truncated,
                 runtime_process_instance_id=proc.process_instance_id,
             )
-        log.debug("[%s stderr] %s", self.component_id, text[:2000])
+        log.debug("[%s stderr] %s", self.component_id, line.text[:2000])
 
 
 __all__ = ["UNCHANGED", "ComponentInstance"]

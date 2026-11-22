@@ -46,8 +46,8 @@ function linesMissingFrom(text: readonly string[], other: readonly string[]): st
   return text.filter((line) => !present.has(line));
 }
 
-function promptDifference(take: string, reference: string): TakeDifference | null {
-  if (take === reference) return null;
+function promptDifference(take: string | null, reference: string | null): TakeDifference | null {
+  if (take === null || reference === null || take === reference) return null;
   const mine = promptLines(take);
   const theirs = promptLines(reference);
   const added = linesMissingFrom(mine, theirs);
@@ -127,6 +127,24 @@ function firstFrameDifference(take: StudioTake, reference: StudioTake): TakeDiff
 const stepsText = (steps: number | null) => (steps === null ? t("元件預設") : String(steps));
 
 /**
+ * A take's length in seconds: its frames at the rate of its own video when it has one (a 補幀 2× take has twice the
+ * frames at twice the rate, the same length), else at the project's rate.
+ */
+function takeSeconds(take: StudioTake, fps: number): number {
+  const rate = take.asset?.fps;
+  const own = rate && rate.num > 0 && rate.den > 0 ? rate.num / rate.den : null;
+  return take.frames / (own ?? fps);
+}
+
+function lengthDifference(take: StudioTake, reference: StudioTake, fps: number): TakeDifference | null {
+  const mine = takeSeconds(take, fps);
+  const theirs = takeSeconds(reference, fps);
+  // Lengths within half a project frame are the same length
+  if (Math.abs(mine - theirs) < 0.5 / fps) return null;
+  return scalar({ key: "frames", label: t("時長"), name: t("時長") }, mine, theirs, (seconds) => formatDuration(seconds * fps, fps));
+}
+
+/**
  * How `take` differs from `reference` (normally the shot's active take), most telling first. Empty when every stored
  * setting is the same (two takes of the same settings differ only in what the model made of them).
  */
@@ -136,12 +154,12 @@ export function takeDifferences(take: StudioTake, reference: StudioTake, options
   const fps = options.fps ?? H3_FPS;
   const differences = [
     promptDifference(take.prompt, reference.prompt),
-    scalar({ key: "seed", label: "seed", name: "seed" }, take.seed, reference.seed),
+    take.seed === null || reference.seed === null ? null : scalar({ key: "seed", label: "seed", name: "seed" }, take.seed, reference.seed),
     referenceDifference(take.references ?? [], reference.references ?? []),
     scalar({ key: "route", label: t("路線"), name: t("運算路由") }, take.route, reference.route, route),
     scalar({ key: "steps", label: t("步數"), name: t("步數") }, take.steps, reference.steps, stepsText),
-    scalar({ key: "frames", label: t("時長"), name: t("時長") }, take.frames, reference.frames, (frames) => formatDuration(frames, fps)),
-    scalar({ key: "size", label: t("解析度"), name: t("解析度") }, `${take.width}×${take.height}`, `${reference.width}×${reference.height}`),
+    lengthDifference(take, reference, fps),
+    scalar({ key: "size", label: t("解析度"), name: t("解析度") }, `${String(take.width)}×${String(take.height)}`, `${String(reference.width)}×${String(reference.height)}`),
     pluginDifference(take, reference),
     firstFrameDifference(take, reference),
   ];

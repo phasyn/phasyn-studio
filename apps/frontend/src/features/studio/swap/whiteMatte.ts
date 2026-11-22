@@ -48,7 +48,7 @@ export async function checkImage(blob: Blob): Promise<ImageCheck> {
     context.globalCompositeOperation = "destination-over";
     context.fillStyle = "#ffffff";
     context.fillRect(0, 0, width, height);
-    const matte = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+    const matte = await new Promise<Blob | null>((resolve) => { canvas.toBlob(resolve, "image/png"); });
     if (!matte) throw new Error(t("瀏覽器無法輸出白底 PNG"));
     return { width, height, transparent: true, matte };
   } finally {

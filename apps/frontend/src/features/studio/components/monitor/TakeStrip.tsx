@@ -8,6 +8,8 @@
 // Esc unpins B and Space plays or pauses. Its keys never reach the timeline (data-arrow-keys, data-delete-keys).
 // The project's take reviews (scorer results, read every minute) put a chip on each finished take's frame; the chip or
 // R on the focused card opens the review detail, and closing it with Esc gives focus back to the card.
+// 修正 (next to 檢查影片) opens the Fix menu for the take in A; the fix runs of the shot follow the takes as small
+// progress cards until their result comes back as a new take (fix/).
 import { ChevronLeft, CircleCheck, ClipboardCheck } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import type { StudioShot, StudioTake } from "@/api/generated/contracts";
@@ -23,7 +25,9 @@ import { findRoute } from "../../model/routes";
 import { takeNumber } from "../../model/takeDownload";
 import { summarizeReviews, UNREVIEWED } from "../../model/takeReviews";
 import { hasVariantTakes } from "../../model/variants";
+import { FixButton, FixRunCards, FixRunWatcher } from "../../fix";
 import { TakeCard } from "./TakeCard";
+import { TakeSignalReview } from "./TakeSignalReview";
 import { ReviewPopover } from "./TakeReview";
 import { activateBlockedReason, applyBlockedReason, isEnded, isPlayable, TAKE_END_LABELS, takeGroups } from "./monitorTakes";
 
@@ -37,17 +41,17 @@ function revealCard(list: HTMLElement, card: HTMLElement): void {
 }
 
 function cardOf(list: HTMLElement | null, takeId: string | null | undefined): HTMLElement | null {
-  return list && takeId ? list.querySelector<HTMLElement>(`[data-take-card="${CSS.escape(takeId)}"]`) : null;
+  return list && (takeId != null && takeId !== "") ? list.querySelector<HTMLElement>(`[data-take-card="${CSS.escape(takeId)}"]`) : null;
 }
 
 /** 「失敗 1・已取消 2・已封存 1」: why the takes behind 「其他」 wait there. */
 function othersSummary(takes: readonly StudioTake[]): string {
   const ended = Object.keys(TAKE_END_LABELS).flatMap((state) => {
     const count = takes.filter((take) => take.state === state).length;
-    return count > 0 ? [`${TAKE_END_LABELS[state] ?? state} ${count}`] : [];
+    return count > 0 ? [`${TAKE_END_LABELS[state] ?? state} ${String(count)}`] : [];
   });
   const archived = takes.filter((take) => !isEnded(take)).length;
-  return joinInline(archived > 0 ? [...ended, `${t("已封存")} ${archived}`] : ended);
+  return joinInline(archived > 0 ? [...ended, `${t("已封存")} ${String(archived)}`] : ended);
 }
 
 export interface TakeStripProps {
@@ -92,10 +96,10 @@ export function TakeStrip({ shot, viewed, pinnedId, comparing }: TakeStripProps)
     if (list && card) revealCard(list, card);
   }, [viewedId]);
   // A take that just started rendering is brought into view (the strip may be scrolled to older takes)
-  const newest = useRef(newestId);
+  const newestRef = useRef(newestId);
   useEffect(() => {
-    if (newest.current === newestId) return;
-    newest.current = newestId;
+    if (newestRef.current === newestId) return;
+    newestRef.current = newestId;
     const list = listRef.current;
     const card = cardOf(list, newestId);
     if (list && card) revealCard(list, card);
@@ -114,11 +118,11 @@ export function TakeStrip({ shot, viewed, pinnedId, comparing }: TakeStripProps)
   };
   const use = (take: StudioTake | null) => {
     const reason = activateBlockedReason(shot, take);
-    if (reason || !take) {
+    if ((reason ?? "") || !take) {
       setMessage(reason ?? "");
       return;
     }
-    actions.useTake(shot.shot_id, take.take_id);
+    actions.selectTake(shot.shot_id, take.take_id);
     setMessage(t("take {number} 已設為使用中", { number: takeNumber(shot, take) }));
   };
   // 套用這個 take 的設定: offered once the shot has variant takes, for the take in A (routes count as known until the engine is read)
@@ -126,7 +130,7 @@ export function TakeStrip({ shot, viewed, pinnedId, comparing }: TakeStripProps)
   const routeKnown = (routeId: string) => engine.status !== "ready" || findRoute(engine.routes, routeId) !== null;
   const applyReason = variants ? applyBlockedReason(shot, viewed, project.library ?? [], routeKnown) : null;
   const apply = (take: StudioTake | null) => {
-    if (applyReason || !take) {
+    if ((applyReason ?? "") || !take) {
       setMessage(applyReason ?? "");
       return;
     }
@@ -218,11 +222,11 @@ export function TakeStrip({ shot, viewed, pinnedId, comparing }: TakeStripProps)
       comparing={comparing}
       focusable={take.take_id === tabStop}
       now={now}
-      onClick={(event) => (event.altKey ? pin(take) : view(take))}
+      onClick={(event) => { if (event.altKey) { pin(take); } else { view(take); } }}
       onKeyDown={onCardKey(take)}
-      onCompare={() => pin(take)}
+      onCompare={() => { pin(take); }}
       review={reviews ? (reviews.get(take.take_id) ?? UNREVIEWED) : null}
-      onOpenReview={(anchor) => openReview(take, anchor)}
+      onOpenReview={(anchor) => { openReview(take, anchor); }}
     />
   );
 
@@ -246,6 +250,8 @@ export function TakeStrip({ shot, viewed, pinnedId, comparing }: TakeStripProps)
         ) : null}
         {showOthers && !collapsible ? others.map(card) : null}
       </div>
+      <FixRunCards shot={shot} now={now} startIndex={visible.length} />
+      <FixRunWatcher />
       {collapsible ? (
         <button
           type="button"
@@ -262,6 +268,8 @@ export function TakeStrip({ shot, viewed, pinnedId, comparing }: TakeStripProps)
           {t("其他 {count}", { count: others.length })}
         </button>
       ) : null}
+      {viewed ? <TakeSignalReview key={JSON.stringify([project.project_id, shot.shot_id, viewed.take_id, viewed.asset?.file.sha256])} shot={shot} take={viewed} /> : null}
+      <FixButton shot={shot} take={viewed} />
       {variants ? (
         <ActionButton
           size="sm"
@@ -269,7 +277,7 @@ export function TakeStrip({ shot, viewed, pinnedId, comparing }: TakeStripProps)
           icon={<ClipboardCheck aria-hidden />}
           disabledReason={applyReason}
           title={t("把這個 take 的 seed、參考與路線複製到鏡頭，並設為使用中：鏡頭的設定就和它一致")}
-          onClick={() => apply(viewed)}
+          onClick={() => { apply(viewed); }}
           className="animate-fade-in"
         >
           {t("套用這個 take 的設定")}
@@ -281,7 +289,7 @@ export function TakeStrip({ shot, viewed, pinnedId, comparing }: TakeStripProps)
         icon={<CircleCheck aria-hidden />}
         disabledReason={activateBlockedReason(shot, viewed)}
         title={t("時間軸與匯出改用這個 take")}
-        onClick={() => use(viewed)}
+        onClick={() => { use(viewed); }}
       >
         {t("設為使用中")}
       </ActionButton>

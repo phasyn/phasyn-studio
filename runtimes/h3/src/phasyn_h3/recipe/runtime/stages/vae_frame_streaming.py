@@ -58,18 +58,38 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from importlib import import_module
+from typing import Any, NamedTuple, Self
 
 from .. import pins
 from ..errors import UnsupportedCombination
 
+
+_TRIPLET_LENGTH = 3
+_STRIDE_TWO = 2
+_FRAME_RANK = 4
+_RGB_CHANNELS = 3
+_UNBATCHED_LATENT_RANK = 4
+_BATCHED_LATENT_RANK = 5
+
+
 STAGE_KEY = "frame_streaming"  # the encode_references stage-dict option (``H3Host.stage(options=...)``)
 PRECISIONS = ("fp32", "fp16")
-MIN_FRAMES_PER_PASS, MAX_FRAMES_PER_PASS = 1, 17  # 17 = the checkpoint's clip length: a pass never spans clips
+MIN_FRAMES_PER_PASS, MAX_FRAMES_PER_PASS = (
+    1,
+    17,
+)  # 17 = the checkpoint's clip length: a pass never spans clips
 DEFAULT_FRAMES_PER_PASS = 2
 CONFIG_KEYS = frozenset({"frames_per_pass", "precision"})
 # the AutoencoderKL methods this module re-states: the loaded VAE must use the pinned class methods unchanged
-RESTATED_METHODS = ("encode_videos", "encode_base", "encode_temporal", "tiled_encode", "_adaptive_encode", "encode")
+RESTATED_METHODS = (
+    "encode_videos",
+    "encode_base",
+    "encode_temporal",
+    "tiled_encode",
+    "_adaptive_encode",
+    "encode",
+)
 
 
 def check_sources() -> None:
@@ -79,7 +99,10 @@ def check_sources() -> None:
 
 def _invalid(message: str, **kwargs: Any) -> UnsupportedCombination:
     return UnsupportedCombination(
-        "FRAME_STREAMING_INVALID", message, field_path="provider_options.frame_streaming", **kwargs
+        "FRAME_STREAMING_INVALID",
+        message,
+        field_path="provider_options.frame_streaming",
+        **kwargs,
     )
 
 
@@ -97,6 +120,7 @@ class FrameStreamingConfig:
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> FrameStreamingConfig:
+        """Validate the settings supplied for this streaming policy."""
         if not isinstance(raw, Mapping):
             raise _invalid("frame_streaming 必須是 object")
         unknown = sorted(set(raw) - CONFIG_KEYS)
@@ -104,16 +128,23 @@ class FrameStreamingConfig:
             raise _invalid(f"frame_streaming 不認得的欄位 {unknown}")
         frames = raw.get("frames_per_pass", DEFAULT_FRAMES_PER_PASS)
         precision = raw.get("precision", "fp32")
-        if type(frames) is not int or not MIN_FRAMES_PER_PASS <= frames <= MAX_FRAMES_PER_PASS:
+        if (
+            type(frames) is not int
+            or not MIN_FRAMES_PER_PASS <= frames <= MAX_FRAMES_PER_PASS
+        ):
             raise _invalid(
                 f"frame_streaming.frames_per_pass 必須是 {MIN_FRAMES_PER_PASS}..{MAX_FRAMES_PER_PASS} 的整數",
                 actual=frames,
             )
         if precision not in PRECISIONS:
-            raise _invalid(f"frame_streaming.precision 必須是 {'／'.join(PRECISIONS)}", actual=precision)
+            raise _invalid(
+                f"frame_streaming.precision 必須是 {'／'.join(PRECISIONS)}",
+                actual=precision,
+            )
         return cls(frames_per_pass=int(frames), precision=str(precision))
 
     def as_dict(self) -> dict[str, Any]:
+        """Serialize the resolved values used by the runtime."""
         return {"frames_per_pass": self.frames_per_pass, "precision": self.precision}
 
 
@@ -167,7 +198,9 @@ def _is_causal_temporal(module: Any) -> bool:
 
 def tail_start(encoder: Any) -> int:
     """The first level of the one-shot tail: the level after the last time-strided downsample (0: none)."""
-    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.vae_cnn import Downsample3D
+    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.vae_cnn import (  # type: ignore[import-untyped]
+        Downsample3D,
+    )
 
     start = 0
     for i_level in range(encoder.num_levels):
@@ -180,13 +213,18 @@ def tail_start(encoder: Any) -> int:
 def check_encoder(vae: Any) -> dict[str, Any]:
     """Refuse (``FRAME_STREAMING_UNSUPPORTED_VAE``) unless the loaded VAE is the encoder this module reproduces.
 
-    Returns the structure facts (convolution counts, the tail's first level) for the stage record."""
-    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.conv import BaseConv3d
-    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.klvae import (
+    Returns the structure facts (convolution counts, the tail's first level) for the stage record.
+    """
+    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.conv import (  # type: ignore[import-untyped]
+        BaseConv3d,
+    )
+    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.klvae import (  # type: ignore[import-untyped]
         AutoencoderKLLegacy,
         get_tile_parallel_state,
     )
-    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.norm import TemporalIsolatedGroupNorm
+    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.norm import (  # type: ignore[import-untyped]
+        TemporalIsolatedGroupNorm,
+    )
     from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.vae_cnn import (
         Downsample3D,
         EncoderFCN3D,
@@ -194,51 +232,36 @@ def check_encoder(vae: Any) -> dict[str, Any]:
     )
     from torch import nn
 
-    if not isinstance(vae, AutoencoderKLLegacy):
-        raise _unsupported(f"video VAE 是 {type(vae).__name__}，不是釘版的 AutoencoderKLLegacy")
-    for name in RESTATED_METHODS:
-        if name in vars(vae) or getattr(type(vae), name) is not getattr(AutoencoderKLLegacy, name):
-            raise _unsupported(f"video VAE 的 {name} 被覆寫；串流編碼只重述釘版的 {name}")
-    if vae.training or not vae.use_3d_conv:
-        raise _unsupported("串流編碼需要 eval 模式、use_3d_conv 的 video VAE")
-    if vae.isolated_first_frame or vae.isolated_key_frame or vae.isolated_last_frame:
-        raise _unsupported("串流編碼不支援 isolated first／key／last frame 的 encode_temporal")
-    if vae.stack_tiling or tuple(get_tile_parallel_state()) != (0, 1):
-        raise _unsupported("串流編碼只重述逐 tile、單一 rank 的 tiled_encode（stack_tiling／parallel tile 不支援）")
-    if int(vae.clip_length) == 3:
-        raise _unsupported("clip_length=3 時 transform_tensor 會轉置 [T,C,H,W]；不支援")
+    _check_encoder_architecture(vae, AutoencoderKLLegacy, get_tile_parallel_state)
     encoder = vae.encoder
-    if not isinstance(encoder, EncoderFCN3D) or encoder.use_fused_norm or hasattr(encoder, "loss_info"):
+    if (
+        not isinstance(encoder, EncoderFCN3D)
+        or encoder.use_fused_norm
+        or hasattr(encoder, "loss_info")
+    ):
         raise _unsupported("串流編碼只支援非 fused norm 的 EncoderFCN3D")
     quant = vae.quant_conv
-    if type(quant) is not nn.Conv3d or not _is_pointwise(quant) or quant.padding_mode != "zeros":
+    if (
+        type(quant) is not nn.Conv3d
+        or not _is_pointwise(quant)
+        or quant.padding_mode != "zeros"
+    ):
         raise _unsupported("quant_conv 必須是 1x1x1 的 nn.Conv3d")
-    allowed = (EncoderFCN3D, ResnetBlock3D, Downsample3D, BaseConv3d, TemporalIsolatedGroupNorm)
-    pointwise = temporal = 0
-    for module in encoder.modules():
-        if type(module) is nn.Module or isinstance(module, nn.ModuleList):
-            continue  # the per-level ``down`` containers and their block lists
-        if not isinstance(module, allowed):
-            raise _unsupported(f"encoder 含有串流編碼不重述的模組 {type(module).__name__}")
-        if isinstance(module, ResnetBlock3D):
-            if module.use_fused_norm:
-                raise _unsupported("ResnetBlock3D 用了 fused norm；串流編碼只重述 norm_silu 路徑")
-            for norm in (module.norm1, module.norm2):
-                if type(norm) is not TemporalIsolatedGroupNorm:
-                    raise _unsupported("ResnetBlock3D 的 norm 不是逐格的 TemporalIsolatedGroupNorm")
-        if isinstance(module, BaseConv3d):
-            if _is_pointwise(module):
-                pointwise += 1
-            elif _is_causal_temporal(module):
-                temporal += 1
-            else:
-                raise _unsupported(
-                    "encoder 的 BaseConv3d 不是 1x1x1，也不是因果時間卷積（kernel_t=2·padding_t+1、constant）",
-                    actual=f"kernel={tuple(module.kernel_size)} padding={tuple(module.padding)}",
-                )
-    if type(encoder.norm_out) is not TemporalIsolatedGroupNorm:
-        raise _unsupported("norm_out 不是逐格的 TemporalIsolatedGroupNorm")
-    return {"temporal_convs": temporal, "pointwise_convs": pointwise, "tail_start_level": tail_start(encoder)}
+    allowed = (
+        EncoderFCN3D,
+        ResnetBlock3D,
+        Downsample3D,
+        BaseConv3d,
+        TemporalIsolatedGroupNorm,
+    )
+    pointwise, temporal = _check_encoder_modules(
+        _CheckEncoderModulesInputs(encoder, allowed)
+    )
+    return {
+        "temporal_convs": temporal,
+        "pointwise_convs": pointwise,
+        "tail_start_level": tail_start(encoder),
+    }
 
 
 # ---------------------------------------------------------------------------- weight residency
@@ -247,7 +270,8 @@ class _ParkedParams:
 
     The first :meth:`park` copies each parameter to the host and keeps that copy for the call; later parks only
     drop the device copy, :meth:`restore` copies the host copy back (exact copies both ways).  The tensors are
-    made outside inference mode, so the parameters stay ordinary tensors, as loaded."""
+    made outside inference mode, so the parameters stay ordinary tensors, as loaded.
+    """
 
     def __init__(self, modules: Iterable[Any], device: Any) -> None:
         seen: set[int] = set()
@@ -269,7 +293,7 @@ class _ParkedParams:
         import torch
 
         started = time.perf_counter()
-        with torch.inference_mode(False), torch.no_grad():
+        with torch.inference_mode(mode=False), torch.no_grad():
             for param in self.params if params is None else params:
                 key = id(param)
                 if key in self._parked:
@@ -287,7 +311,7 @@ class _ParkedParams:
         if not self._parked:
             return
         started = time.perf_counter()
-        with torch.inference_mode(False), torch.no_grad():
+        with torch.inference_mode(mode=False), torch.no_grad():
             for param in self.params:
                 key = id(param)
                 if key in self._parked:
@@ -319,11 +343,17 @@ class CausalStreamEncoder:
     Use as a context manager around one video: on exit every FP32 weight is back on the device.  Inputs of the
     streamed head travel in one-element lists that the callee empties, so a pass tensor is freed as soon as its
     last consumer is done (a plain argument stays referenced by the caller's frame for the whole call); that only
-    changes when memory is released, never a value."""
+    changes when memory is released, never a value.
+    """
 
     def __init__(self, vae: Any, *, dtype: Any, device: Any) -> None:
-        from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.conv import BaseConv3d
-        from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.vae_cnn import Downsample3D
+        """Prepare the VAE encoder for bounded frame streaming."""
+        from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.conv import (
+            BaseConv3d,
+        )
+        from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.vae_cnn import (
+            Downsample3D,
+        )
 
         encoder = vae.encoder
         self.encoder = encoder
@@ -337,9 +367,11 @@ class CausalStreamEncoder:
             vae.quant_conv,
         ]
         self._downsample_cls = Downsample3D
-        self._pointwise_ids = {id(m) for m in encoder.modules() if isinstance(m, BaseConv3d) and _is_pointwise(m)} | {
-            id(vae.quant_conv)
-        }
+        self._pointwise_ids = {
+            id(m)
+            for m in encoder.modules()
+            if isinstance(m, BaseConv3d) and _is_pointwise(m)
+        } | {id(vae.quant_conv)}
         self._state: dict[int, tuple[Any, int]] = {}
         self.passes = 0
         self.dtype = dtype
@@ -350,13 +382,18 @@ class CausalStreamEncoder:
         self._half: dict[int, Any] | None = None
         self.weight_copy_bytes = 0
 
-    def __enter__(self) -> CausalStreamEncoder:
+    def __enter__(self) -> Self:
+        """Enter the scope that owns the runtime resources."""
         if not self.native:
             self._half = {}
             try:
-                for param in self.parking.params:  # one parameter at a time: the copy, then the weight to the host
+                for param in (
+                    self.parking.params
+                ):  # one parameter at a time: the copy, then the weight to the host
                     self._half[id(param)] = param.detach().to(self.dtype)
-                    self.weight_copy_bytes += int(param.numel()) * int(self._half[id(param)].element_size())
+                    self.weight_copy_bytes += int(param.numel()) * int(
+                        self._half[id(param)].element_size()
+                    )
                     self.parking.park([param])
             except BaseException:  # __exit__ does not run for a failed __enter__: put every weight back here
                 self._half = None
@@ -365,6 +402,7 @@ class CausalStreamEncoder:
         return self
 
     def __exit__(self, *exc: object) -> None:
+        """Release the resources owned by this scope."""
         self._half = None
         self._state = {}
         self.parking.release()
@@ -383,7 +421,9 @@ class CausalStreamEncoder:
     def _weights(self, module: Any) -> tuple[Any, Any]:
         if self._half is None:
             return module.weight, module.bias
-        return self._half[id(module.weight)], None if module.bias is None else self._half[id(module.bias)]
+        return self._half[
+            id(module.weight)
+        ], None if module.bias is None else self._half[id(module.bias)]
 
     def _call(self, module: Any, x: Any) -> Any:
         """The upstream module's own forward, with the call's weights (fp16: the FP16 copies)."""
@@ -402,30 +442,40 @@ class CausalStreamEncoder:
     def _conv(self, module: Any, holder: list[Any]) -> Any:
         """``BaseConv3d.forward`` on the frames of this pass; None when a time-strided convolution emits nothing."""
         import torch
-        import torch.nn.functional as F
+        from torch.nn import functional
 
         x = holder.pop()
         if id(module) in self._pointwise_ids:
             return self._pointwise(module, x)
         pt, ph, pw = (int(p) for p in module.padding)
         n_in = int(x.shape[2])
-        xs = F.pad(x, (pw, pw, ph, ph, 0, 0), mode=module.pad_mode)  # _apply_padding: space first
+        xs = functional.pad(
+            x, (pw, pw, ph, ph, 0, 0), mode=module.pad_mode
+        )  # _apply_padding: space first
         del x
-        pad_t = 2 * pt  # _apply_temporal_padding (causal): 2·padding_t = kernel_t - 1 zero frames in front
+        pad_t = (
+            2 * pt
+        )  # _apply_temporal_padding (causal): 2·padding_t = kernel_t - 1 zero frames in front
         state = self._state.pop(id(module), None)
         if state is None:
-            cache = xs.new_zeros((xs.shape[0], xs.shape[1], pad_t, xs.shape[3], xs.shape[4]))
+            cache = xs.new_zeros(
+                (xs.shape[0], xs.shape[1], pad_t, xs.shape[3], xs.shape[4])
+            )
             seen = 0
         else:
             cache, seen = state
         del state
-        seq = torch.cat([cache, xs], dim=2)  # input frames seen - pad_t .. seen + n_in - 1
+        seq = torch.cat(
+            [cache, xs], dim=2
+        )  # input frames seen - pad_t .. seen + n_in - 1
         del cache, xs
         end = seen + n_in
         stride_t = int(module.stride[0])
         kernel_t = int(module.kernel_size[0])
         self._state[id(module)] = (seq[:, :, -pad_t:].clone(), end)
-        first = -(-seen // stride_t)  # outputs whose last input frame (o * stride_t) arrived in this pass
+        first = -(
+            -seen // stride_t
+        )  # outputs whose last input frame (o * stride_t) arrived in this pass
         last = (end - 1) // stride_t
         if last < first:
             return None
@@ -433,15 +483,24 @@ class CausalStreamEncoder:
         window = seq[:, :, start : start + (last - first) * stride_t + kernel_t]
         del seq
         weight, bias = self._weights(module)
-        return F.conv3d(window, weight, bias, stride=module.stride, padding=0, dilation=module.dilation)
+        return functional.conv3d(
+            window,
+            weight,
+            bias,
+            stride=module.stride,
+            padding=0,
+            dilation=module.dilation,
+        )
 
     def _block(self, block: Any, holder: list[Any]) -> Any:
         """``ResnetBlock3D.forward`` (``zq`` None, unfused norms): norm_silu, conv1, norm_silu, conv2, shortcut."""
-        import torch.nn.functional as F
+        from torch.nn import functional
 
         x = holder.pop()
-        h = self._conv(block.conv1, [F.silu(self._call(block.norm1, x), inplace=True)])
-        hold = [F.silu(self._call(block.norm2, h), inplace=True)]
+        h = self._conv(
+            block.conv1, [functional.silu(self._call(block.norm1, x), inplace=True)]
+        )
+        hold = [functional.silu(self._call(block.norm2, h), inplace=True)]
         del h
         h = self._conv(block.conv2, hold)
         if block.in_channels != block.out_channels:
@@ -450,7 +509,7 @@ class CausalStreamEncoder:
 
     def _head_pass(self, x: Any) -> Any:
         """``EncoderFCN3D.forward`` up to the tail on the frames of one pass (None: no output frame yet)."""
-        import torch.nn.functional as F
+        from torch.nn import functional
 
         self.passes += 1
         encoder = self.encoder
@@ -467,8 +526,14 @@ class CausalStreamEncoder:
                 if h is None:
                     return None
                 ds = down.downsample
-                if isinstance(ds, self._downsample_cls):  # Downsample3D.forward: (0,1,0,1) pad for space stride 2
-                    hold = [F.pad(h, (0, 1, 0, 1, 0, 0), mode=ds.pad_mode) if ds.space_stride == 2 else h]
+                if isinstance(
+                    ds, self._downsample_cls
+                ):  # Downsample3D.forward: (0,1,0,1) pad for space stride 2
+                    hold = [
+                        functional.pad(h, (0, 1, 0, 1, 0, 0), mode=ds.pad_mode)
+                        if ds.space_stride == _STRIDE_TWO
+                        else h
+                    ]
                     del h
                     h = self._conv(ds.conv, hold)
                 else:
@@ -494,7 +559,7 @@ class CausalStreamEncoder:
 
     def tail(self, h: Any) -> Any:
         """The rest of ``EncoderFCN3D.forward`` and ``quant_conv`` in one go, with the upstream modules."""
-        import torch.nn.functional as F
+        from torch.nn import functional
 
         encoder = self.encoder
         for i_level in range(self.split, encoder.num_levels):
@@ -503,26 +568,37 @@ class CausalStreamEncoder:
                 h = self._call(down.block[i_block], h)
             if hasattr(down, "downsample"):
                 h = self._call(down.downsample, h)
-        h = F.silu(self._call(encoder.norm_out, h), inplace=True)  # norm_silu(h, norm_out)
+        h = functional.silu(
+            self._call(encoder.norm_out, h), inplace=True
+        )  # norm_silu(h, norm_out)
         h = self._call(encoder.conv_out, h)
         return self._call(self.quant_conv, h)
 
 
 # ---------------------------------------------------------------------------- the reference-video recipe
-def _crop_origin(processor: Any, height: int, width: int, new_h: int, new_w: int) -> tuple[int, int]:
+def _crop_origin(
+    processor: Any, height: int, width: int, new_h: int, new_w: int
+) -> tuple[int, int]:
     """``VAEProcessor._crop_to_align``'s top-left corner (``crop_mode`` center or top_left)."""
     if processor.crop_mode == "center":
         return (height - new_h) // 2, (width - new_w) // 2
     return 0, 0
 
 
-def _tile_grid(vae: Any, height: int, width: int) -> tuple[list[Any], list[Any], list[int], list[int]]:
+def _tile_grid(
+    vae: Any, height: int, width: int
+) -> tuple[list[Any], list[Any], list[int], list[int]]:
     """``tiled_encode``'s rows, columns and pixel overlaps (one tile when encoder tiling is off)."""
     if not vae.encoder_tiling:
         return [(0, height)], [(0, width)], [], []
-    y_idx, y_len, y_overlap = vae.split_tiles(height, False)
-    x_idx, x_len, x_overlap = vae.split_tiles(width, False)
-    return list(zip(y_idx, y_len, strict=True)), list(zip(x_idx, x_len, strict=True)), list(y_overlap), list(x_overlap)
+    y_idx, y_len, y_overlap = vae.split_tiles(height, is_decoder=False)
+    x_idx, x_len, x_overlap = vae.split_tiles(width, is_decoder=False)
+    return (
+        list(zip(y_idx, y_len, strict=True)),
+        list(zip(x_idx, x_len, strict=True)),
+        list(y_overlap),
+        list(x_overlap),
+    )
 
 
 def stream_moments(
@@ -536,12 +612,15 @@ def stream_moments(
     """``encode_videos`` -> ``encode_base`` -> ``encode_temporal`` moments of ``[T,H,W,3]`` uint8 host frames.
 
     Returns the FP32 moments ``[1, 2·latent_channels, T', H/16, W/16]`` on ``device`` (before the posterior sample)
-    and the facts of the run."""
-    import numpy as np
+    and the facts of the run.
+    """
+    np = import_module("numpy")
     import torch
 
     processor = vae.processor
-    used = processor.get_suitable_video_length(int(frames.shape[0]))  # raises for a too-short video, like upstream
+    used = processor.get_suitable_video_length(
+        int(frames.shape[0])
+    )  # raises for a too-short video, like upstream
     height, width = int(frames.shape[1]), int(frames.shape[2])
     new_h, new_w = processor._align_to_total_patch_size(height, width)
     top, left = _crop_origin(processor, height, width, new_h, new_w)
@@ -550,9 +629,15 @@ def stream_moments(
     latent_y_overlap = [o // vae.vae_ratio for o in y_overlap]
     latent_x_overlap = [o // vae.vae_ratio for o in x_overlap]
     # the encoder's compute dtype: its weights' own (FP32 as loaded) unless the call asks for fp16
-    dtype = torch.float16 if config.precision == "fp16" else next(vae.encoder.parameters()).dtype
+    dtype = (
+        torch.float16
+        if config.precision == "fp16"
+        else next(vae.encoder.parameters()).dtype
+    )
     clip_length = int(vae.clip_length)
-    pad_size = (-used) % clip_length  # encode_temporal: offset_frame 0 (no isolated first frame)
+    pad_size = (
+        -used
+    ) % clip_length  # encode_temporal: offset_frame 0 (no isolated first frame)
     num_clips = (used + pad_size) // clip_length
     clip_seconds: list[float] = []
     clips = []
@@ -560,40 +645,41 @@ def stream_moments(
     with streamer:
         for i in range(num_clips):
             started = time.perf_counter()
-            start, end = i * clip_length, (i + 1) * clip_length
-            clip_u8 = frames[start : min(end, used)]
-            if end > used:  # the last clip repeats the last frame (encode_temporal's expand + cat)
-                clip_u8 = np.concatenate([clip_u8, np.repeat(frames[used - 1 : used], end - used, axis=0)], axis=0)
-            streamer.head_phase()
-            heads = []
-            for i_pos, i_len in rows_at:
-                row = []
-                for j_pos, j_len in cols_at:
-                    if check_cancel is not None:
-                        check_cancel()
-                    tile_u8 = np.ascontiguousarray(clip_u8[:, i_pos : i_pos + i_len, j_pos : j_pos + j_len])
-                    x = processor.convert_numpy_to_tensor(tile_u8, device)  # uint8 to the device, then FP32 / 255
-                    x = processor.transform_tensor(x, runtime_owned=True)  # the imagenet Normalize
-                    x = x.transpose(0, 1).unsqueeze(0)  # encode_videos' [1, 3, t, h, w]
-                    if x.dtype != dtype:  # fp16 (production converts to the FP32 the weights have)
-                        x = x.to(dtype)
-                    row.append(streamer.head(x, config.frames_per_pass))
-                    del x
-                heads.append(row)
+            clip_u8 = _clip_frames(i, clip_length, frames, used, np)
+            heads = _encode_tile_heads(
+                _EncodeTileHeadsInputs(
+                    streamer,
+                    rows_at,
+                    cols_at,
+                    check_cancel,
+                    np,
+                    clip_u8,
+                    processor,
+                    device,
+                    dtype,
+                    config,
+                )
+            )
             streamer.tail_phase()
             grid = []
             for row in heads:
                 out_row = []
                 while row:
                     moments = streamer.tail(row.pop(0))
-                    out_row.append(moments.float() if moments.dtype == torch.float16 else moments)  # blend >= FP32
+                    out_row.append(
+                        moments.float() if moments.dtype == torch.float16 else moments
+                    )  # blend >= FP32
                     del moments
                 grid.append(out_row)
             del heads
             if not vae.encoder_tiling:
-                clips.append(grid[0][0])  # _adaptive_encode without tiling: encode(x) itself
+                clips.append(
+                    grid[0][0]
+                )  # _adaptive_encode without tiling: encode(x) itself
             else:
-                clips.append(vae._assemble_tiles(grid, latent_y_overlap, latent_x_overlap))
+                clips.append(
+                    vae._assemble_tiles(grid, latent_y_overlap, latent_x_overlap)
+                )
             del grid
             if device.type == "cuda":
                 torch.cuda.synchronize(device)
@@ -633,18 +719,21 @@ def stream_reference_video_rows(
 ) -> tuple[Any, int, int, int, dict[str, Any]]:
     """``minimax_h3_encode_reference_video_rows`` with the streamed moments (module docstring).
 
-    Returns (rows ``[n, 96]`` FP32 CPU, latent_t, latent_h, latent_w, facts)."""
-    import numpy as np
+    Returns (rows ``[n, 96]`` FP32 CPU, latent_t, latent_h, latent_w, facts).
+    """
+    np = import_module("numpy")
     import torch
-    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.klvae import DiagonalGaussianDistribution
-    from sglang.multimodal_gen.runtime.pipelines_core.stages.model_specific_stages.minimax_h3.keyframe_encoding import (
+    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.klvae import (
+        DiagonalGaussianDistribution,
+    )
+    from sglang.multimodal_gen.runtime.pipelines_core.stages.model_specific_stages.minimax_h3.keyframe_encoding import (  # type: ignore[import-untyped]
         _cached_latent_mean_std,
         minimax_h3_scoped_encode_rng,
     )
-    from sglang.multimodal_gen.runtime.pipelines_core.stages.model_specific_stages.minimax_h3.packed_tokens import (
+    from sglang.multimodal_gen.runtime.pipelines_core.stages.model_specific_stages.minimax_h3.packed_tokens import (  # type: ignore[import-untyped]
         minimax_h3_patchify_video_latent,
     )
-    from sglang.multimodal_gen.runtime.pipelines_core.stages.model_specific_stages.minimax_h3.reference_encoding import (
+    from sglang.multimodal_gen.runtime.pipelines_core.stages.model_specific_stages.minimax_h3.reference_encoding import (  # type: ignore[import-untyped]
         MINIMAX_H3_REFERENCE_VIDEO_ENCODE_SEED,
         MINIMAX_H3_REFERENCE_VIDEO_PATCH_SIZE,
     )
@@ -652,34 +741,59 @@ def stream_reference_video_rows(
     check_sources()
     structure = check_encoder(video_vae)
     frames = np.asarray(frames)
-    if frames.ndim != 4 or int(frames.shape[-1]) != 3 or frames.dtype != np.uint8 or int(frames.shape[0]) <= 0:
+    if (
+        frames.ndim != _FRAME_RANK
+        or int(frames.shape[-1]) != _RGB_CHANNELS
+        or frames.dtype != np.uint8
+        or int(frames.shape[0]) <= 0
+    ):
         raise ValueError(
             "reference-video frames must be non-empty [T,H,W,3] uint8, got "
             f"shape={list(frames.shape)}, dtype={frames.dtype}"
         )
     parameter = next(video_vae.parameters())
-    if parameter.dtype != torch.float32:  # the stage runs inside minimax_h3_scoped_encode_fp32
-        raise _unsupported(f"video VAE 權重是 {parameter.dtype}；串流編碼需要 FP32 常駐權重")
+    if (
+        parameter.dtype != torch.float32
+    ):  # the stage runs inside minimax_h3_scoped_encode_fp32
+        raise _unsupported(
+            f"video VAE 權重是 {parameter.dtype}；串流編碼需要 FP32 常駐權重"
+        )
     device = parameter.device
     if config.precision == "fp16" and device.type != "cuda":
-        raise _invalid("frame_streaming fp16 只在 CUDA 上（CPU 不跑 FP16 卷積）", actual=device.type)
-    with torch.inference_mode(), minimax_h3_scoped_encode_rng(MINIMAX_H3_REFERENCE_VIDEO_ENCODE_SEED, device):
-        moments, facts = stream_moments(video_vae, frames, config, device=device, check_cancel=check_cancel)
-        z = DiagonalGaussianDistribution(moments).sample()  # the posterior sample, same seed-42 CPU draw
+        raise _invalid(
+            "frame_streaming fp16 只在 CUDA 上（CPU 不跑 FP16 卷積）",
+            actual=device.type,
+        )
+    with (
+        torch.inference_mode(),
+        minimax_h3_scoped_encode_rng(MINIMAX_H3_REFERENCE_VIDEO_ENCODE_SEED, device),
+    ):
+        moments, facts = stream_moments(
+            video_vae, frames, config, device=device, check_cancel=check_cancel
+        )
+        z = DiagonalGaussianDistribution(
+            moments
+        ).sample()  # the posterior sample, same seed-42 CPU draw
         del moments
-        z = z.squeeze(0).contiguous().to(torch.float16)  # encode_videos: one video, use_fp16_latent
+        z = (
+            z.squeeze(0).contiguous().to(torch.float16)
+        )  # encode_videos: one video, use_fp16_latent
     z = z.cpu().float()
-    if z.dim() == 4:
+    if z.dim() == _UNBATCHED_LATENT_RANK:
         z = z[None]
     latent_channels = arch_config.latent_channels
-    if z.dim() != 5 or int(z.shape[1]) != latent_channels:
+    if z.dim() != _BATCHED_LATENT_RANK or int(z.shape[1]) != latent_channels:
         raise ValueError(f"unexpected reference video latent shape {list(z.shape)}")
     latent_t, latent_h, latent_w = int(z.shape[2]), int(z.shape[3]), int(z.shape[4])
     mean, std = _cached_latent_mean_std(
-        tuple(arch_config.latents_mean), tuple(arch_config.latents_std), (1, latent_channels, 1, 1, 1)
+        tuple(arch_config.latents_mean),
+        tuple(arch_config.latents_std),
+        (1, latent_channels, 1, 1, 1),
     )
     z.sub_(mean).div_(std)
-    rows = minimax_h3_patchify_video_latent(z, patch_size=list(MINIMAX_H3_REFERENCE_VIDEO_PATCH_SIZE))
+    rows = minimax_h3_patchify_video_latent(
+        z, patch_size=list(MINIMAX_H3_REFERENCE_VIDEO_PATCH_SIZE)
+    )
     facts.update(structure)
     facts["cudnn_allow_tf32"] = bool(torch.backends.cudnn.allow_tf32)
     return rows.to(torch.float32), latent_t, latent_h, latent_w, facts
@@ -701,3 +815,154 @@ __all__ = [
     "stream_reference_video_rows",
     "tail_start",
 ]
+
+
+def _check_encoder_architecture(
+    vae: Any, autoencoder_cls: Any, get_tile_parallel_state: Any
+) -> None:
+    if not isinstance(vae, autoencoder_cls):
+        raise _unsupported(
+            f"video VAE 是 {type(vae).__name__}，不是釘版的 AutoencoderKLLegacy"
+        )
+    for name in RESTATED_METHODS:
+        if name in vars(vae) or getattr(type(vae), name) is not getattr(
+            autoencoder_cls, name
+        ):
+            raise _unsupported(
+                f"video VAE 的 {name} 被覆寫；串流編碼只重述釘版的 {name}"
+            )
+    if vae.training or not vae.use_3d_conv:
+        raise _unsupported("串流編碼需要 eval 模式、use_3d_conv 的 video VAE")
+    if vae.isolated_first_frame or vae.isolated_key_frame or vae.isolated_last_frame:
+        raise _unsupported(
+            "串流編碼不支援 isolated first／key／last frame 的 encode_temporal"
+        )
+    if vae.stack_tiling or tuple(get_tile_parallel_state()) != (0, 1):
+        raise _unsupported(
+            "串流編碼只重述逐 tile、單一 rank 的 tiled_encode（stack_tiling／parallel tile 不支援）"
+        )
+    if int(vae.clip_length) == _TRIPLET_LENGTH:
+        raise _unsupported("clip_length=3 時 transform_tensor 會轉置 [T,C,H,W]；不支援")
+
+
+class _CheckEncoderModulesInputs(NamedTuple):
+    encoder: Any
+    allowed: Any
+
+
+def _check_encoder_modules(inputs: _CheckEncoderModulesInputs) -> tuple[Any, Any]:
+    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.conv import (
+        BaseConv3d,
+    )
+    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.norm import (
+        TemporalIsolatedGroupNorm,
+    )
+    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.vae_cnn import (
+        ResnetBlock3D,
+    )
+    from torch import nn
+
+    encoder, allowed = inputs
+    pointwise = temporal = 0
+    for module in encoder.modules():
+        if type(module) is nn.Module or isinstance(module, nn.ModuleList):
+            continue  # the per-level ``down`` containers and their block lists
+        if not isinstance(module, allowed):
+            raise _unsupported(
+                f"encoder 含有串流編碼不重述的模組 {type(module).__name__}"
+            )
+        _check_residual_norm(module, ResnetBlock3D, TemporalIsolatedGroupNorm)
+        if isinstance(module, BaseConv3d):
+            if _is_pointwise(module):
+                pointwise += 1
+            elif _is_causal_temporal(module):
+                temporal += 1
+            else:
+                raise _unsupported(
+                    "encoder 的 BaseConv3d 不是 1x1x1，也不是因果時間卷積（kernel_t=2·padding_t+1、constant）",
+                    actual=f"kernel={tuple(module.kernel_size)} padding={tuple(module.padding)}",
+                )
+    if type(encoder.norm_out) is not TemporalIsolatedGroupNorm:
+        raise _unsupported("norm_out 不是逐格的 TemporalIsolatedGroupNorm")
+    return pointwise, temporal
+
+
+def _clip_frames(i: Any, clip_length: Any, frames: Any, used: Any, np: Any) -> Any:
+    start, end = i * clip_length, (i + 1) * clip_length
+    clip_u8 = frames[start : min(end, used)]
+    if (
+        end > used
+    ):  # the last clip repeats the last frame (encode_temporal's expand + cat)
+        clip_u8 = np.concatenate(
+            [clip_u8, np.repeat(frames[used - 1 : used], end - used, axis=0)],
+            axis=0,
+        )
+    return clip_u8
+
+
+class _EncodeTileHeadsInputs(NamedTuple):
+    streamer: Any
+    rows_at: Any
+    cols_at: Any
+    check_cancel: Callable[[], None] | None
+    np: Any
+    clip_u8: Any
+    processor: Any
+    device: Any
+    dtype: Any
+    config: FrameStreamingConfig
+
+
+def _encode_tile_heads(inputs: _EncodeTileHeadsInputs) -> Any:
+    (
+        streamer,
+        rows_at,
+        cols_at,
+        check_cancel,
+        np,
+        clip_u8,
+        processor,
+        device,
+        dtype,
+        config,
+    ) = inputs
+    streamer.head_phase()
+    heads = []
+    for i_pos, i_len in rows_at:
+        row = []
+        for j_pos, j_len in cols_at:
+            if check_cancel is not None:
+                check_cancel()
+            tile_u8 = np.ascontiguousarray(
+                clip_u8[:, i_pos : i_pos + i_len, j_pos : j_pos + j_len]
+            )
+            x = processor.convert_numpy_to_tensor(
+                tile_u8, device
+            )  # uint8 to the device, then FP32 / 255
+            x = processor.transform_tensor(
+                x, runtime_owned=True
+            )  # the imagenet Normalize
+            x = x.transpose(0, 1).unsqueeze(0)  # encode_videos' [1, 3, t, h, w]
+            if (
+                x.dtype != dtype
+            ):  # fp16 (production converts to the FP32 the weights have)
+                x = x.to(dtype)
+            row.append(streamer.head(x, config.frames_per_pass))
+            del x
+        heads.append(row)
+    return heads
+
+
+def _check_residual_norm(
+    module: Any, residual_block_cls: Any, temporal_group_norm_cls: Any
+) -> None:
+    if isinstance(module, residual_block_cls):
+        if module.use_fused_norm:
+            raise _unsupported(
+                "ResnetBlock3D 用了 fused norm；串流編碼只重述 norm_silu 路徑"
+            )
+        for norm in (module.norm1, module.norm2):
+            if type(norm) is not temporal_group_norm_cls:
+                raise _unsupported(
+                    "ResnetBlock3D 的 norm 不是逐格的 TemporalIsolatedGroupNorm"
+                )

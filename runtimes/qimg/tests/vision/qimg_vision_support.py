@@ -15,22 +15,33 @@ import time
 import uuid
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, override
 
 from phasyn_components.files import FileStore
 from phasyn_components.provider import InputValue, LoadContext, ProviderHost, RunContext
 from phasyn_components.recorder import Recorder
 from phasyn_components.settings import normalize_recording
 from phasyn_components.testing.ids import NODE_A_ID
+
 from phasyn_qimg import memory
 from phasyn_qimg.vision.describe import OPTIONS
 from phasyn_qimg.vision.engine import Generation, Prepared
 from phasyn_qimg.vision.images import ViewImage, crop_box
 from phasyn_qimg.vision.provider import QwenVisionProvider
 
+
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 NODE = NODE_A_ID
-SECTION_KEYS = ("subject", "action", "composition", "environment", "lighting", "appearance", "style", "visible_text")
+SECTION_KEYS = (
+    "subject",
+    "action",
+    "composition",
+    "environment",
+    "lighting",
+    "appearance",
+    "style",
+    "visible_text",
+)
 QWEN_4B_TEXT = {
     "num_hidden_layers": 36,
     "num_key_value_heads": 8,
@@ -45,12 +56,19 @@ OUTPUTS = {
     "comparison": "prompt.comparison.v1",
     "pairwise": "prompt.pairwise.v1",
 }
-SIZES = {"image": (640, 480), "generated": (512, 512), "candidate_a": (512, 512), "candidate_b": (512, 512)}
+SIZES = {
+    "image": (640, 480),
+    "generated": (512, 512),
+    "candidate_a": (512, 512),
+    "candidate_b": (512, 512),
+}
 GIB = 1024**3
 KIB = 1024
 
 
-def meminfo_text(*, available: int, free: int, total: int = 125 * GIB, swap_free: int = 0) -> str:
+def meminfo_text(
+    *, available: int, free: int, total: int = 125 * GIB, swap_free: int = 0
+) -> str:
     """/proc/meminfo 格式的文字（kB）。"""
     return (
         f"MemTotal:       {total // KIB} kB\nMemFree:        {free // KIB} kB\n"
@@ -97,17 +115,33 @@ class FakeEngine:
         self.prepared: list[list[dict[str, Any]]] = []
         self.generated = 0
         self.max_new_tokens: list[int] = []
-        self.tokens = tokens or (lambda messages: 120)
+        self.tokens = tokens or (lambda _messages: 120)
         self.stop_after_first_token = stop_after_first_token
         self.on_generate = on_generate
         self.closed = False
 
-    def prepare(self, messages: list[dict[str, Any]], images: Sequence[Any]) -> Prepared:
+    def prepare(
+        self, messages: list[dict[str, Any]], images: Sequence[Any]
+    ) -> Prepared:
         self.prepared.append(messages)
-        dims = [(image.width - image.width % 32, image.height - image.height % 32) for image in images]
-        return Prepared(inputs={"messages": messages}, input_tokens=int(self.tokens(messages)), effective_pixels=dims)
+        dims = [
+            (image.width - image.width % 32, image.height - image.height % 32)
+            for image in images
+        ]
+        return Prepared(
+            inputs={"messages": messages},
+            input_tokens=int(self.tokens(messages)),
+            effective_pixels=dims,
+        )
 
-    def generate(self, prepared: Prepared, *, max_new_tokens: int, should_stop: Callable[[], bool]) -> Generation:
+    def generate(
+        self,
+        prepared: Prepared,
+        *,
+        max_new_tokens: int,
+        should_stop: Callable[[], bool],
+    ) -> Generation:
+        del prepared
         self.generated += 1
         self.max_new_tokens.append(max_new_tokens)
         if self.on_generate is not None:
@@ -134,7 +168,7 @@ class NullAllocator:
         return None
 
     def finish(self, rec: Any, *, scope: str) -> None:
-        return None
+        del rec, scope
 
 
 class FakeVisionProvider(QwenVisionProvider):
@@ -143,27 +177,38 @@ class FakeVisionProvider(QwenVisionProvider):
     engine_factory: Callable[[], FakeEngine] = staticmethod(lambda: FakeEngine([]))
     device_free: int | None = 11 * GIB
     device_total: int | None = 12 * GIB
-    integrated: bool | None = False  # torch.cuda.get_device_properties(0).is_integrated；None＝讀不到
-    meminfo: str | None = MEMINFO_64G  # None＝/proc/meminfo 讀不到
+    integrated: bool | None = (
+        False  # torch.cuda.get_device_properties(0).is_integrated；None=讀不到
+    )
+    meminfo: str | None = MEMINFO_64G  # None=/proc/meminfo 讀不到
 
+    @override
     def _create_engine(self, model_path: str, options: Any) -> Any:
         return self.engine_factory()
 
+    @override
     def _require_cuda(self) -> None:
         return None
 
+    @override
     def _device_memory(self, options: Any) -> memory.DeviceMemory:
         cuda = memory.CudaMemory(
             free_bytes=self.device_free,
             total_bytes=self.device_total if self.device_free is not None else None,
-            reason=None if self.device_free is not None else "RuntimeError: 假裝置量測失敗",
+            reason=None
+            if self.device_free is not None
+            else "RuntimeError: 假裝置量測失敗",
             is_integrated=self.integrated,
-            integrated_reason=None if self.integrated is not None else "RuntimeError: 假裝置讀不到 properties",
+            integrated_reason=None
+            if self.integrated is not None
+            else "RuntimeError: 假裝置讀不到 properties",
         )
         host = (
             memory.parse_meminfo(self.meminfo)
             if self.meminfo is not None
-            else memory.HostMemory(reason="無法讀取 /proc/meminfo：PermissionError: 假的")
+            else memory.HostMemory(
+                reason="無法讀取 /proc/meminfo：PermissionError: 假的"
+            )
         )
         return memory.resolve(
             cuda,
@@ -172,28 +217,52 @@ class FakeVisionProvider(QwenVisionProvider):
             unified_reserve_bytes=int(options["unified_reserve_bytes"]),
         )
 
+    @override
     def _allocator(self) -> Any:
         return NullAllocator()
 
+    @override
     def _runtime_identity(self) -> dict[str, Any]:
         return {"kind": "fake"}
 
+    @override
     def _backend_flags(self) -> dict[str, Any]:
         return {}
 
+    @override
     def _load_image(self, path: Path, port: str) -> ViewImage:
         width, height = SIZES[port]
-        return ViewImage(FakeImage(width, height), width, height, "PNG", False, False)
+        return ViewImage(
+            FakeImage(width, height),
+            width,
+            height,
+            "PNG",
+            had_alpha=False,
+            had_icc_profile=False,
+        )
 
+    @override
     def _crop_image(self, view: ViewImage, crop: Any) -> ViewImage:
         x0, y0, x1, y1 = crop_box(crop, view.width, view.height)
-        return ViewImage(FakeImage(x1 - x0, y1 - y0), x1 - x0, y1 - y0, "PNG", False, False)
+        return ViewImage(
+            FakeImage(x1 - x0, y1 - y0),
+            x1 - x0,
+            y1 - y0,
+            "PNG",
+            had_alpha=False,
+            had_icc_profile=False,
+        )
 
 
 def model_dir(root: Path, *, weights: int = 4096) -> Path:
     root.mkdir(parents=True, exist_ok=True)
     (root / "config.json").write_text(
-        json.dumps({"architectures": ["Qwen3VLForConditionalGeneration"], "text_config": QWEN_4B_TEXT}),
+        json.dumps(
+            {
+                "architectures": ["Qwen3VLForConditionalGeneration"],
+                "text_config": QWEN_4B_TEXT,
+            }
+        ),
         encoding="utf-8",
     )
     (root / "preprocessor_config.json").write_text("{}", encoding="utf-8")
@@ -232,8 +301,15 @@ class Harness:
         return {
             "load": {
                 "model_path": str(self.model),
-                "device": {"kind": "cuda", "id": "GPU-TEST", "resource_group": "gpu-test"},
-                "precision": {"compute_dtype": "bf16", "quantization": {"scheme": "none"}},
+                "device": {
+                    "kind": "cuda",
+                    "id": "GPU-TEST",
+                    "resource_group": "gpu-test",
+                },
+                "precision": {
+                    "compute_dtype": "bf16",
+                    "quantization": {"scheme": "none"},
+                },
                 "offload": {"mode": "none"},
                 "part_overrides": [],
                 "provider_options": options,
@@ -251,7 +327,9 @@ class Harness:
         meminfo: str | None = MEMINFO_64G,
         **options: Any,
     ) -> FakeVisionProvider:
-        provider = self.unloaded(engine, free=free, integrated=integrated, meminfo=meminfo)
+        provider = self.unloaded(
+            engine, free=free, integrated=integrated, meminfo=meminfo
+        )
         provider.load(self.load_context(**options))
         return provider
 
@@ -286,10 +364,18 @@ class Harness:
         writer = self.store.new_writer("image/png", {})
         writer.write(f"fake {port}".encode())
         ref = writer.commit()
-        return InputValue(type_id="media.image.v1", file=ref, path=self.store.payload_path(ref["file_id"]))
+        return InputValue(
+            type_id="media.image.v1",
+            file=ref,
+            path=self.store.payload_path(ref["file_id"]),
+        )
 
     def context(
-        self, inputs: dict[str, InputValue], parameters: dict[str, Any], *, cancel: threading.Event | None = None
+        self,
+        inputs: dict[str, InputValue],
+        parameters: dict[str, Any],
+        *,
+        cancel: threading.Event | None = None,
     ) -> RunContext:
         return RunContext(
             call_id=str(uuid.uuid4()),
@@ -312,23 +398,43 @@ def inline(type_id: str, value: Any) -> InputValue:
     return InputValue(type_id=type_id, value=value)
 
 
-def compact_scene_output(language: str = "zh-TW", *, subject: dict[str, str] | None = None) -> dict[str, Any]:
-    """模型 compact 輸出（inline-scene/1）：subject＋composition 有 observed 證據，style 只有 uncertain。"""
+def compact_scene_output(
+    language: str = "zh-TW", *, subject: dict[str, str] | None = None
+) -> dict[str, Any]:
+    """模型 compact 輸出（inline-scene/1）：subject+composition 有 observed 證據，style 只有 uncertain."""
     sections: dict[str, dict[str, Any]] = {
-        key: {"text_en": "", "text_zh_tw": "", "explanation_zh_tw": "", "observations": []} for key in SECTION_KEYS
+        key: {
+            "text_en": "",
+            "text_zh_tw": "",
+            "explanation_zh_tw": "",
+            "observations": [],
+        }
+        for key in SECTION_KEYS
     }
     sections["subject"] = {
         "text_en": "A red teapot.",
         "text_zh_tw": "一個紅色茶壺。" if language == "zh-TW" else "",
         "explanation_zh_tw": "可見茶壺",
-        "observations": [{"view_id": "v-full", "claim_en": "A red teapot is visible.", "certainty": "observed"}],
+        "observations": [
+            {
+                "view_id": "v-full",
+                "claim_en": "A red teapot is visible.",
+                "certainty": "observed",
+            }
+        ],
         **(subject or {}),
     }
     sections["composition"] = {
         "text_en": "The teapot is centered.",
         "text_zh_tw": "茶壺置中。" if language == "zh-TW" else "",
         "explanation_zh_tw": "位置",
-        "observations": [{"view_id": "v-full", "claim_en": "The teapot is in the middle.", "certainty": "observed"}],
+        "observations": [
+            {
+                "view_id": "v-full",
+                "claim_en": "The teapot is in the middle.",
+                "certainty": "observed",
+            }
+        ],
     }
     return {"sections": sections, "uncertainty_notes": []}
 
@@ -336,11 +442,21 @@ def compact_scene_output(language: str = "zh-TW", *, subject: dict[str, str] | N
 def flat_comparison(label: str = "minor") -> dict[str, Any]:
     return {
         "metrics": [
-            {"section": key, "label": label if key == "subject" else "match", "evidence_zh_tw": f"{key} 說明"}
+            {
+                "section": key,
+                "label": label if key == "subject" else "match",
+                "evidence_zh_tw": f"{key} 說明",
+            }
             for key in SECTION_KEYS
         ],
         "unexpected_elements": [],
-        "differences": [{"section": "subject", "description_zh_tw": "顏色不同", "suggested_change_en": "Make it red."}],
+        "differences": [
+            {
+                "section": "subject",
+                "description_zh_tw": "顏色不同",
+                "suggested_change_en": "Make it red.",
+            }
+        ],
         "text_transcription": "",
         "unjudgeable_reason": None,
     }

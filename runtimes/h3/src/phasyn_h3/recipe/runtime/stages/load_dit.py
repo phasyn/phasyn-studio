@@ -15,20 +15,22 @@ from phasyn_h3.recipe.abi.stage import StageResult
 from phasyn_h3.recipe.abi.timeutil import now_rfc3339
 
 from .. import PROVIDER_ID, PROVIDER_VERSION
+from ..accel_load import check_resident_dit, summary
 from ..bundles import write_metadata_output
 from .common import StageRun
 
 
 def run(run: StageRun) -> StageResult:
+    """Load the transformer required by the job."""
     prepared = run.read_json_input("prepared", required=False)
     run.progress("load_dit", "items", 0, 1)
     with run.provider.use_component(run, "transformer", keep_on_device=True) as module:
-        from ..accel_load import check_resident_dit, summary
-
         lease = run.provider.last_lease("transformer")
         handle = lease.handle if lease is not None else None
         facts = dict(getattr(handle, "facts", {}) or {})
-        check_resident_dit(facts, run.policy)  # the variant key carries quant/AdaLN; this re-checks the built DiT
+        check_resident_dit(
+            facts, run.policy
+        )  # the variant key carries quant/AdaLN; this re-checks the built DiT
         arch = getattr(module, "arch", None)
         document = {
             "schema_version": "1.0",
@@ -54,18 +56,29 @@ def run(run: StageRun) -> StageResult:
                 "num_layers": getattr(arch, "num_layers", None),
             },
             "load_facts": facts,
-            "acceleration": summary(run.policy),  # effective approximate knobs (provenance)
+            "acceleration": summary(
+                run.policy
+            ),  # effective approximate knobs (provenance)
             "prepared_present": prepared is not None,
             "observed_at": now_rfc3339(),
         }
     if lease is not None:
         current = run.provider.registry.get(lease.component_key)
-        document["state_after_stage"] = current.state if current is not None else "absent"
-        transfer = run.provider.registry.entry_facts(lease.component_key).get("last_transfer") or {}
+        document["state_after_stage"] = (
+            current.state if current is not None else "absent"
+        )
+        transfer = (
+            run.provider.registry.entry_facts(lease.component_key).get("last_transfer")
+            or {}
+        )
         document["acquired_by"] = transfer.get("kind", "reuse")
         device, _host = run.provider.registry.residency_report()
-        document["resident_components"] = [c for c in device if c["component_key"] == lease.component_key]
-        document["residency_policy"] = run.policy.components["transformer"].residency.as_dict()
+        document["resident_components"] = [
+            c for c in device if c["component_key"] == lease.component_key
+        ]
+        document["residency_policy"] = run.policy.components[
+            "transformer"
+        ].residency.as_dict()
     run.outputs.append(write_metadata_output(run.output_dir, "residency", document))
     run.progress("load_dit", "items", 1, 1)
     return run.result()

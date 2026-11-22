@@ -1,44 +1,137 @@
 // Run：POST 建立（202）、列表（cursor）、明細、取消。沒有恢復（resume）；重新執行就是新的 run。
 // Every run read and write in the app goes through these functions (one queryFn per key, writes never retried).
 import { queryOptions, useInfiniteQuery, useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { useMemo } from "react";
-import type { CancelResult } from "./generated/contracts";
-import { apiJson } from "./http";
+import { useEffect, useMemo } from "react";
+import { t } from "@/i18n";
+import type { CancelResult, RunRequest, StudioProject, StudioRenderSubmissionRequest, StudioWorkOrigin } from "./generated/contracts";
+import { ApiError, apiJson, contractJson } from "./http";
+import { isRecord } from "@/lib/json";
 import { POLL, qk } from "./keys";
-import { studioKeys } from "./studioProjects";
+import { fetchProject, studioKeys } from "./studioProjects";
 import type { RunPage, RunRequestBody, WireRun } from "./types";
+
+const NO_RUNS: readonly WireRun[] = [];
 
 /** 列表要不要包含已封存的 run（預設不含）。 */
 export type ArchivedFilter = "exclude" | "include" | "only";
 
-export function fetchRunPage(limit: number, cursor: string | null, signal?: AbortSignal, archived: ArchivedFilter = "exclude"): Promise<RunPage> {
-  return apiJson<RunPage>("/api/runs", { query: { limit, cursor, archived }, signal });
+/**
+ * Which runs a list holds: exact project work (StudioWorkOrigin fields), or every run related to one project
+ * (its work, its takes and exports, and tool runs whose origin names the project).
+ */
+export type RunListFilter = Partial<StudioWorkOrigin> | { related_project_id: string };
+
+/**
+ * full = complete runs; summary = steps without their settings and outputs (run outputs and request stay).
+ * Lists that only show runs or read run outputs use summary; the step detail is read with useRun.
+ */
+export type RunListView = "full" | "summary";
+
+export function fetchRunPage(limit: number, cursor: string | null, signal?: AbortSignal, archived: ArchivedFilter = "exclude", work?: RunListFilter, view: RunListView = "full"): Promise<RunPage> {
+  return contractJson("RunPage", "/api/runs", { query: { limit, cursor, archived, ...work, ...(view === "full" ? {} : { view }) }, signal });
 }
 
 /** 分頁列表；有 running 的 run 時才輪詢。 */
-export function useRunList(limit = 50, archived: ArchivedFilter = "exclude") {
+export function useRunList(limit = 50, archived: ArchivedFilter = "exclude", work?: RunListFilter, view: RunListView = "full") {
+  const base = view === "full" ? qk.runList(limit, archived) : [...qk.runList(limit, archived), view] as const;
   return useInfiniteQuery({
-    queryKey: qk.runList(limit, archived),
-    queryFn: ({ pageParam, signal }) => fetchRunPage(limit, pageParam, signal, archived),
+    queryKey: work ? [...base, work] : base,
+    queryFn: ({ pageParam, signal }) => fetchRunPage(limit, pageParam, signal, archived, work, view),
     initialPageParam: null as string | null,
     getNextPageParam: (last) => last.next_cursor,
     refetchInterval: (query) =>
-      query.state.data?.pages.some((page) => page.items.some((run) => run.state === "running")) ? POLL.runList : false,
+      (query.state.data?.pages.some((page) => page.items.some((run) => run.state === "running")) === true) ? POLL.runList : false,
     staleTime: 1000,
   });
 }
 
-export function fetchRun(runId: string, signal?: AbortSignal): Promise<WireRun> {
-  return apiJson<WireRun>(`/api/runs/${encodeURIComponent(runId)}`, { signal });
+/**
+ * Runs for pickers: summary rows, newest first, archived included. With a project id only the runs related to that
+ * project (the given shot's runs first); null lists the newest runs of every project (pages outside the Studio).
+ */
+export function useProjectRunList(projectId: string | null, shotId: string | null = null, limit = 25) {
+  const list = useRunList(limit, "include", projectId === null ? undefined : { related_project_id: projectId }, "summary");
+  const pages = list.data?.pages;
+  const runs = useMemo(() => {
+    const items = pages?.flatMap((page) => page.items) ?? NO_RUNS;
+    if (shotId === null) return items;
+    const own = items.filter((run) => runShotId(run) === shotId);
+    return own.length === 0 ? items : [...own, ...items.filter((run) => runShotId(run) !== shotId)];
+  }, [pages, shotId]);
+  return { ...list, runs };
 }
 
-/** POST /api/runs (202). Never retried: a lost response means the run may exist, so the caller re-reads instead. */
-export function createRun(body: RunRequestBody): Promise<WireRun> {
-  return apiJson<WireRun>("/api/runs", { method: "POST", json: body });
+/** The shot a run was made for: its project work, or the shot its origin note names (tool runs). */
+function runShotId(run: WireRun): string | null {
+  if (run.studio_work?.shot_id !== undefined) return run.studio_work.shot_id;
+  const note = run.request.origin?.note;
+  if (note?.startsWith("{") !== true) return null;
+  try {
+    const parsed: unknown = JSON.parse(note);
+    return isRecord(parsed) && typeof parsed["shot_id"] === "string" ? parsed["shot_id"] : null;
+  } catch {
+    return null;
+  }
+}
+
+export function fetchRun(runId: string, signal?: AbortSignal): Promise<WireRun> {
+  return contractJson("WireRun", `/api/runs/${encodeURIComponent(runId)}`, { signal });
+}
+
+/** Submit once. A lost reply can be resolved from the reservation without posting the body again. */
+export interface FrozenRunSubmission { readonly serializedRun: string }
+
+export interface StudioRunSubmission {
+  readonly studioProjectId: string;
+  readonly submission: Omit<StudioRenderSubmissionRequest, "run"> & { run: RunRequestBody | RunRequest };
+}
+
+export async function createRun(body: RunRequestBody | RunRequest | FrozenRunSubmission | StudioRunSubmission): Promise<WireRun> {
+  const key = Array.from(crypto.getRandomValues(new Uint8Array(16)), (octet) => octet.toString(16).padStart(2, "0")).join("");
+  const unreadable = () => new ApiError(0, { code: "INVALID_RESPONSE", remote_outcome_unknown: true }, t("無法讀取建立結果，請從收據查詢任務"), "POST");
+  try {
+    const path = "studioProjectId" in body ? `/api/studio/projects/${encodeURIComponent(body.studioProjectId)}/render-submissions` : "/api/runs";
+    const payload = "serializedRun" in body ? { body: body.serializedRun } : { json: "submission" in body ? body.submission : body };
+    const run = await contractJson("WireRun", path, { method: "POST", ...payload, headers: { "Content-Type": "application/json", "Idempotency-Key": key } });
+    return run;
+  } catch (cause) {
+    const error = cause instanceof TypeError ? unreadable() : cause;
+    if (!(error instanceof ApiError) || (error.status > 0 && error.status < 500 && !error.remoteOutcomeUnknown)) throw error;
+    try {
+      const receipt = await apiJson(`/api/run-submissions/${key}`);
+      if (isRecord(receipt) && typeof receipt["run_id"] === "string" && typeof receipt["state"] === "string" && receipt["state"] !== "unconfirmed" && receipt["state"] !== "rejected") return await fetchRun(receipt["run_id"]);
+    } catch {
+      // Both reads are advisory. Keep the submission receipt when the Controller is still unavailable.
+    }
+    throw new ApiError(error.status, {
+      code: error.code, message: `${error.message} (${key})`, remote_outcome_unknown: true,
+      details: { ...error.details, idempotency_key: key },
+    }, error.message, "POST");
+  }
+}
+
+/** A failed local refresh after acceptance must not invite a second generation. */
+export async function submitStudioRender(
+  transact: (change: (saved: StudioProject) => Promise<StudioProject>) => Promise<void>,
+  post: (body: StudioRunSubmission) => Promise<WireRun>,
+  intent: Omit<StudioRunSubmission["submission"], "expected_revision">,
+): Promise<{ run: WireRun; refreshError?: unknown }> {
+  const accepted: { run?: WireRun } = {};
+  try {
+    await transact(async (project) => {
+      accepted.run = await post({ studioProjectId: project.project_id, submission: { ...intent, expected_revision: project.revision } });
+      return fetchProject(project.project_id);
+    });
+  } catch (error) {
+    if (accepted.run === undefined) throw error;
+    return { run: accepted.run, refreshError: error };
+  }
+  if (accepted.run === undefined) throw new Error(t("無法讀取建立結果，請從收據查詢任務"));
+  return { run: accepted.run };
 }
 
 export function cancelRun(runId: string): Promise<CancelResult> {
-  return apiJson<CancelResult>(`/api/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" });
+  return contractJson("CancelResult", `/api/runs/${encodeURIComponent(runId)}/cancel`, { method: "POST" });
 }
 
 /** The single query definition for one run: polls while it is running. An empty id disables the query. */
@@ -64,17 +157,45 @@ export function useCachedRun(runId: string | null) {
 /** Page size of the shared run list behind useActiveRuns (one key app-wide, so one poll). */
 export const ACTIVE_RUN_LIST_LIMIT = 50;
 
-const NO_RUNS: readonly WireRun[] = [];
-
 /** The runs executing now (state running; the Controller may run several at once), newest first, from the shared run list. */
 export function useActiveRuns(): { runs: readonly WireRun[]; isPending: boolean } {
-  const list = useRunList(ACTIVE_RUN_LIST_LIMIT);
+  // Summary rows: the chip and the run slots need only state, label and ids (one key app-wide, so one poll)
+  const list = useRunList(ACTIVE_RUN_LIST_LIMIT, "exclude", undefined, "summary");
   const items = list.data?.pages[0]?.items;
+  useRunHeadWatch(items);
   const runs = useMemo(() => {
     const running = items?.filter((item) => item.state === "running") ?? [];
     return running.length > 0 ? running : NO_RUNS;
   }, [items]);
   return { runs, isPending: list.isPending };
+}
+
+/**
+ * The shared run list polls only while one of its runs runs, so a run started outside this tab (an agent through MCP or
+ * phasynctl, another tab) would wait for some other refresh. While the page is visible the newest run alone is read
+ * every POLL.runHead (one summary row, a few KB); when it is one the list does not know, or it runs while the list
+ * thinks nothing does, the list is read again at once.
+ */
+export function runHeadIsNews(head: Pick<WireRun, "run_id" | "state"> | undefined, known: readonly Pick<WireRun, "run_id" | "state">[] | undefined): boolean {
+  if (!head || !known) return false;
+  const listed = known.find((run) => run.run_id === head.run_id);
+  return listed?.state !== head.state;
+}
+
+function useRunHeadWatch(known: readonly WireRun[] | undefined): void {
+  const client = useQueryClient();
+  const head = useQuery({
+    queryKey: qk.runHead(),
+    queryFn: ({ signal }) => fetchRunPage(1, null, signal, "exclude", undefined, "summary"),
+    refetchInterval: POLL.runHead,
+    refetchIntervalInBackground: false,
+    staleTime: 0,
+  });
+  const newest = head.data?.items[0];
+  const news = runHeadIsNews(newest, known);
+  useEffect(() => {
+    if (news) void client.invalidateQueries({ queryKey: qk.runs() });
+  }, [news, newest?.run_id, newest?.state, client]);
 }
 
 export function useCreateRun() {
@@ -132,7 +253,7 @@ export interface PurgeResult {
 
 /** 試算：列出永久刪除會影響的檔案、效能紀錄與 Studio 專案，不做任何變更（query key：qk.runPurgePlan）。 */
 export function fetchPurgePlan(runId: string, signal?: AbortSignal): Promise<PurgeResult> {
-  return apiJson<PurgeResult>(`/api/runs/${encodeURIComponent(runId)}`, { method: "DELETE", query: { dry_run: true }, signal });
+  return contractJson("PurgeResult", `/api/runs/${encodeURIComponent(runId)}`, { method: "DELETE", query: { dry_run: true }, signal });
 }
 
 /**
@@ -140,11 +261,11 @@ export function fetchPurgePlan(runId: string, signal?: AbortSignal): Promise<Pur
  * 任何檔案刪不到時伺服器整筆停下（不刪紀錄、不改專案）並回錯誤；不自動重試。
  */
 export function purgeRun(runId: string): Promise<PurgeResult> {
-  return apiJson<PurgeResult>(`/api/runs/${encodeURIComponent(runId)}`, { method: "DELETE", query: { dry_run: false } });
+  return contractJson("PurgeResult", `/api/runs/${encodeURIComponent(runId)}`, { method: "DELETE", query: { dry_run: false } });
 }
 
 export function setRunArchived(runId: string, archived: boolean): Promise<WireRun> {
-  return apiJson<WireRun>(`/api/runs/${encodeURIComponent(runId)}/archive`, { method: "POST", json: { archived } });
+  return contractJson("WireRun", `/api/runs/${encodeURIComponent(runId)}/archive`, { method: "POST", json: { archived } });
 }
 
 /**
@@ -170,6 +291,6 @@ export function useArchiveRun() {
   return useMutation({
     mutationFn: ({ runId, archived }: { runId: string; archived: boolean }) => setRunArchived(runId, archived),
     onSuccess: (run) => client.setQueryData(qk.run(run.run_id), run),
-    onSettled: (_data, _error, variables) => invalidateAfterRunChange(client, [variables.runId], false),
+    onSettled: (_data, _error, variables) => { invalidateAfterRunChange(client, [variables.runId], false); },
   });
 }

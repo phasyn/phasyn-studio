@@ -1,7 +1,7 @@
 // 挑選比較對象（檢視器內）：以 recording_id 加入（固定在檢視器底部），或從最近紀錄挑選（GET /api/recordings）。
 // 清單只存在 URL 的 ?ids=；這裡只回報要加入的 ID，上限與去重由呼叫端與這裡共同把關。
 import { Plus, Search } from "lucide-react";
-import { useId, useState, type FormEvent } from "react";
+import { useId, useState, type SubmitEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/controls";
 import { providerKind } from "@/components/workbench/kinds";
@@ -23,12 +23,12 @@ export function AddRecordingForm({ ids, onAdd }: { ids: readonly string[]; onAdd
   const [manual, setManual] = useState("");
   const [manualError, setManualError] = useState<string | null>(null);
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     const id = manual.trim();
-    if (!id) return setManualError(t("請輸入 recording_id"));
-    if (ids.includes(id)) return setManualError(t("已在比較清單中"));
-    if (full) return setManualError(t("最多 {maxCompare} 筆", { maxCompare: MAX_COMPARE }));
+    if (!id) { setManualError(t("請輸入 recording_id")); return; }
+    if (ids.includes(id)) { setManualError(t("已在比較清單中")); return; }
+    if (full) { setManualError(t("最多 {maxCompare} 筆", { maxCompare: MAX_COMPARE })); return; }
     setManualError(null);
     setManual("");
     onAdd(id);
@@ -44,10 +44,10 @@ export function AddRecordingForm({ ids, onAdd }: { ids: readonly string[]; onAdd
           compact
           id={inputId}
           value={manual}
-          onChange={(event) => setManual(event.target.value)}
+          onChange={(event) => { setManual(event.target.value); }}
           placeholder="UUID"
           className="machine"
-          aria-invalid={manualError ? true : undefined}
+          aria-invalid={(manualError != null && manualError !== "") ? true : undefined}
           aria-describedby={helpId}
           autoComplete="off"
         />
@@ -55,7 +55,7 @@ export function AddRecordingForm({ ids, onAdd }: { ids: readonly string[]; onAdd
           {t("加入")}
         </Button>
       </div>
-      <p id={helpId} className={cn("text-caption", manualError ? "text-danger" : "text-fg-tertiary")}>
+      <p id={helpId} className={cn("text-caption", (manualError != null && manualError !== "") ? "text-danger" : "text-fg-tertiary")}>
         {manualError ?? (full ? t("已達 {maxCompare} 筆上限，先移除一筆。", { maxCompare: MAX_COMPARE }) : t("至少 2 筆、最多 8 筆；第 1 筆是設定差異的基準。"))}
       </p>
     </form>
@@ -94,7 +94,7 @@ export function RecentRecordingPicker({
           <label htmlFor={filterId} className="text-caption text-fg-tertiary">
             {t("component_id（可留空）")}
           </label>
-          <Input compact id={filterId} value={draft} onChange={(event) => onDraftChange(event.target.value)} className="machine" autoComplete="off" />
+          <Input compact id={filterId} value={draft} onChange={(event) => { onDraftChange(event.target.value); }} className="machine" autoComplete="off" />
         </div>
         <Button type="submit" size="sm" icon={<Search aria-hidden />} className="pointer-coarse:min-h-11">
           {t("查詢")}
@@ -133,7 +133,7 @@ export function RecentRecordingPicker({
                     disabled={included || full}
                     title={included ? t("已在清單中") : full ? t("已達 {maxCompare} 筆上限", { maxCompare: MAX_COMPARE }) : undefined}
                     aria-label={t("{value} {component_id}（{id}）", { value: included ? t("已加入") : t("加入"), component_id: item.context.component_id, id: id.slice(0, 8) })}
-                    onClick={() => onAdd(id)}
+                    onClick={() => { onAdd(id); }}
                     className="pointer-coarse:min-h-11"
                   >
                     {included ? t("已加入") : t("加入")}
@@ -143,7 +143,7 @@ export function RecentRecordingPicker({
             })}
           </ul>
         )
-      ) : recent.error ? (
+      ) : (recent.error != null) ? (
         <div className="p-3">
           <QueryErrorCallout error={recent.error} title={t("最近紀錄讀取失敗")} onRetry={() => void recent.refetch()} retrying={recent.isFetching} />
         </div>

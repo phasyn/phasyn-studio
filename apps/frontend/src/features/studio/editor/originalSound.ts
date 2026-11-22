@@ -10,7 +10,7 @@ function originalVideos(project: StudioProject): { items: Set<string>; files: Se
   const library = new Map((project.library ?? []).map((item) => [item.item_id, item]));
   const ids = new Set<string>();
   const swapSource = findSwapJob(project)?.source.item_id;
-  if (swapSource) ids.add(swapSource);
+  if (swapSource != null && swapSource !== "") ids.add(swapSource);
   for (const shot of project.shots) for (const ref of shot.references ?? []) if (ref.kind === "video") ids.add(ref.item_id);
   const files = new Set<string>();
   for (const id of ids) {
@@ -32,7 +32,7 @@ export function originalSoundClips(project: StudioProject, timeline: StudioTimel
     .filter((clip) => audible.has(clip.track_id) && clip.enabled !== false && clip.effects?.mute !== true)
     .filter((clip) => {
       const source = sources.get(clip.source_id);
-      if (!source || source.kind !== "video" || !source.has_audio) return false;
+      if (source?.kind !== "video" || !source.has_audio) return false;
       return (source.library_id !== undefined && items.has(source.library_id)) || (source.file !== null && files.has(source.file.file_id));
     })
     .sort((a, b) => a.start_frame - b.start_frame)

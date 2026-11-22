@@ -16,7 +16,7 @@ export interface AddCheck {
 /** 已選取的規則裡與這條同組的那一條。 */
 function groupMember(registry: PluginRegistry, refs: readonly StudioPluginRef[], ref: StudioPluginRef): StudioPluginRef | null {
   const group = registry.rules.get(ref)?.rule.group;
-  if (!group) return null;
+  if (!(group != null && group !== "")) return null;
   return refs.find((other) => other !== ref && registry.rules.get(other)?.rule.group === group) ?? null;
 }
 
@@ -25,7 +25,7 @@ export function addCheck(registry: PluginRegistry, refs: readonly StudioPluginRe
   const resolved = resolveRef(registry, ref);
   if (resolved.kind === "missing") return { reason: t("找不到插件「{id}」", { id: ref }), replaces: null };
   const unusable = pluginUnusableReason(resolved.entry.plugin);
-  if (unusable) return { reason: unusable, replaces: null };
+  if (unusable != null && unusable !== "") return { reason: unusable, replaces: null };
   const replaces = groupMember(registry, refs, ref);
   const limit = registryLimits(registry)?.max_project_plugins;
   if (replaces === null && limit !== undefined && !refs.includes(ref) && refs.length >= limit) {
@@ -75,7 +75,7 @@ export function presetPlan(registry: PluginRegistry, refs: readonly StudioPlugin
   const kept = uniqueRefs(refs).filter((ref) => registry.generation.has(ref));
   const next = uniqueRefs([...preset.refs, ...kept]);
   const unusable = pluginUnusableReason(preset.plugin);
-  if (unusable) return { refs: next, reason: unusable };
+  if (unusable != null && unusable !== "") return { refs: next, reason: unusable };
   const missing = preset.refs.find((ref) => {
     const entry = registry.rules.get(ref);
     return !entry || !pluginUsable(entry.plugin);

@@ -38,12 +38,15 @@ from pathlib import Path
 
 from .errors import UnsupportedCombination
 
+
 JIT_CACHE_ENV = "PHASYN_JIT_CACHE_DIR"
 DEFAULT_CUDA_HOMES = ("/usr/local/cuda",)
 
 
 @dataclass(frozen=True)
 class JitToolchain:
+    """Describe the compiler tools available to the runtime."""
+
     cuda_home: str | None
     nvcc: str | None
     nvcc_version: str | None
@@ -52,12 +55,19 @@ class JitToolchain:
 
     @property
     def complete(self) -> bool:
+        """Return whether the JIT toolchain is available."""
         return bool(self.nvcc and self.ninja)
 
     def missing(self) -> list[str]:
-        return [name for name, path in (("nvcc", self.nvcc), ("ninja", self.ninja)) if not path]
+        """List the missing compiler tools."""
+        return [
+            name
+            for name, path in (("nvcc", self.nvcc), ("ninja", self.ninja))
+            if not path
+        ]
 
     def as_dict(self) -> dict[str, str | None]:
+        """Serialize the resolved values used by the runtime."""
         return {
             "cuda_home": self.cuda_home,
             "nvcc": self.nvcc,
@@ -68,6 +78,7 @@ class JitToolchain:
 
 
 def jit_cache_dir(env: Mapping[str, str] | None = None) -> Path:
+    """Locate the cache used for compiled kernels."""
     env = os.environ if env is None else env
     explicit = env.get(JIT_CACHE_ENV)
     if explicit:
@@ -85,7 +96,11 @@ def _private_group(gid: int) -> bool:
     try:
         me = pwd.getpwuid(uid).pw_name
         members = grp.getgrgid(gid).gr_mem
-        primaries = [entry for entry in pwd.getpwall() if entry.pw_gid == gid and entry.pw_uid != uid]
+        primaries = [
+            entry
+            for entry in pwd.getpwall()
+            if entry.pw_gid == gid and entry.pw_uid != uid
+        ]
     except KeyError:
         return False
     return not primaries and all(name == me for name in members)
@@ -147,7 +162,11 @@ def _find_ninja(env: Mapping[str, str]) -> str | None:
         return on_path
     # the runtime env ships the `ninja` wheel (uv.lock); `python -I` does not put
     # its bin directory on PATH
-    for candidate in (Path(sys.prefix) / "bin" / "ninja", Path("/usr/bin/ninja"), Path("/usr/local/bin/ninja")):
+    for candidate in (
+        Path(sys.prefix) / "bin" / "ninja",
+        Path("/usr/bin/ninja"),
+        Path("/usr/local/bin/ninja"),
+    ):
         found = _executable(candidate)
         if found:
             return found
@@ -158,7 +177,9 @@ def _nvcc_version(nvcc: str | None) -> str | None:
     if not nvcc:
         return None
     try:
-        output = subprocess.run([nvcc, "--version"], capture_output=True, text=True, timeout=30, check=False).stdout
+        output = subprocess.run(  # noqa: S603 -- resolved nvcc executable, fixed --version argument
+            [nvcc, "--version"], capture_output=True, text=True, timeout=30, check=False
+        ).stdout
     except (OSError, subprocess.SubprocessError):
         return None
     match = re.search(r"release (\d+\.\d+)", output or "")
@@ -166,6 +187,7 @@ def _nvcc_version(nvcc: str | None) -> str | None:
 
 
 def resolve_jit_toolchain(env: Mapping[str, str] | None = None) -> JitToolchain:
+    """Locate the tools required to compile kernels for this runtime."""
     env = os.environ if env is None else env
     cuda_home, nvcc = _find_nvcc(env)
     return JitToolchain(
@@ -207,7 +229,9 @@ def apply_jit_environment(env: MutableMapping[str, str] | None = None) -> JitToo
     return toolchain
 
 
-def require_jit_toolchain(feature: str, env: Mapping[str, str] | None = None) -> JitToolchain:
+def require_jit_toolchain(
+    feature: str, env: Mapping[str, str] | None = None
+) -> JitToolchain:
     """Fail with a clear diagnostic before any load when the JIT build cannot run."""
     toolchain = resolve_jit_toolchain(env)
     if not toolchain.complete:

@@ -17,7 +17,7 @@ export function runIdName(runId: string): string {
 
 /** The run's own label, else its pipeline's label (blank ones skipped); "" when neither has text. */
 function givenName(run: NamedRun): string {
-  return run.request.label?.trim() || run.request.pipeline.label.trim();
+  return ((run.request.label?.trim()) ?? "") || run.request.pipeline.label.trim();
 }
 
 /** The name the UI shows for a run. */

@@ -28,6 +28,7 @@ from starlette.datastructures import Headers
 from starlette.responses import FileResponse, HTMLResponse
 from starlette.types import Receive, Scope, Send
 
+
 NOTICE = """<!doctype html>
 <html lang="zh-Hant"><head><meta charset="utf-8"><title>Phasyn Studio 主控</title></head>
 <body><h1>Phasyn Studio 主控 API 運作中</h1>
@@ -38,9 +39,14 @@ NOTICE = """<!doctype html>
 IMMUTABLE = "public, max-age=31536000, immutable"
 NO_CACHE = "no-cache"
 # Files other than the page: only the framing rule (a script or style sheet is not a document).
-FRAME_HEADERS = {"Content-Security-Policy": "frame-ancestors 'none'", "X-Frame-Options": "DENY"}
+FRAME_HEADERS = {
+    "Content-Security-Policy": "frame-ancestors 'none'",
+    "X-Frame-Options": "DENY",
+}
 HASHED_DIR = "assets/"  # Vite puts content-hashed file names here
-_INLINE_SCRIPT = re.compile(rb"<script(?![^>]*\bsrc\s*=)[^>]*>(.*?)</script>", re.DOTALL | re.IGNORECASE)
+_INLINE_SCRIPT = re.compile(
+    rb"<script(?![^>]*\bsrc\s*=)[^>]*>(.*?)</script>", re.DOTALL | re.IGNORECASE
+)
 
 
 def page_policy(index_html: bytes) -> str:
@@ -49,7 +55,9 @@ def page_policy(index_html: bytes) -> str:
     Inline styles stay allowed: the UI positions and animates elements through ``style`` attributes.
     """
     hashes = [
-        "'sha256-" + base64.b64encode(hashlib.sha256(match.group(1)).digest()).decode("ascii") + "'"
+        "'sha256-"
+        + base64.b64encode(hashlib.sha256(match.group(1)).digest()).decode("ascii")
+        + "'"
         for match in _INLINE_SCRIPT.finditer(index_html)
         if match.group(1).strip()
     ]
@@ -72,10 +80,15 @@ def page_policy(index_html: bytes) -> str:
 
 
 class SpaFallback:
+    """Serve packaged frontend assets with history fallback for Studio pages."""
+
     def __init__(self, static_dir: Path | None) -> None:
+        """Choose the static directory used for asset and page requests."""
         self.static_dir = static_dir
         self.root: Path | None = None
-        self._policy: tuple[tuple[int, int], str] | None = None  # (mtime_ns, size) of index.html → its policy
+        self._policy: tuple[tuple[int, int], str] | None = (
+            None  # (mtime_ns, size) of index.html → its policy
+        )
         if static_dir is not None and (static_dir / "index.html").is_file():
             self.root = static_dir.resolve()
 
@@ -97,11 +110,17 @@ class SpaFallback:
             return None
         try:
             candidate = (self.root / rel).resolve()
-            return candidate if candidate.is_relative_to(self.root) and candidate.is_file() else None
+            return (
+                candidate
+                if candidate.is_relative_to(self.root) and candidate.is_file()
+                else None
+            )
         except (OSError, ValueError):
             return None
 
-    def _response(self, path: Path, rel: str, scope: Scope, cache_control: str) -> FileResponse:
+    def _response(
+        self, path: Path, rel: str, scope: Scope, cache_control: str
+    ) -> FileResponse:
         headers = {
             "Cache-Control": cache_control,
             **(self._page_headers(path) if rel == "index.html" else FRAME_HEADERS),
@@ -113,15 +132,22 @@ class SpaFallback:
         if not accepts_gzip(Headers(scope=scope).get("accept-encoding")):
             return FileResponse(path, headers=headers)
         media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-        return FileResponse(compressed, headers={**headers, "Content-Encoding": "gzip"}, media_type=media_type)
+        return FileResponse(
+            compressed,
+            headers={**headers, "Content-Encoding": "gzip"},
+            media_type=media_type,
+        )
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Serve the requested static asset or an eligible Studio page."""
         if scope["type"] != "http":
             return
         path = str(scope.get("path") or "/")
         method = str(scope.get("method") or "GET").upper()
         if path == "/api" or path.startswith("/api/"):
-            await error_response(ComponentError("NOT_FOUND", f"找不到 API 路徑 {path}"))(scope, receive, send)
+            await error_response(
+                ComponentError("NOT_FOUND", f"找不到 API 路徑 {path}")
+            )(scope, receive, send)
             return
         if method not in ("GET", "HEAD"):
             err = ComponentError("METHOD_NOT_ALLOWED", f"{method} 不適用於 {path}")
@@ -130,17 +156,21 @@ class SpaFallback:
         if self.root is None:
             # The configured path stays out of the page: responses carry no absolute paths.
             body = NOTICE.format(
-                state="未設定 static_dir" if self.static_dir is None else "static_dir 內沒有 index.html"
+                state="未設定 static_dir"
+                if self.static_dir is None
+                else "static_dir 內沒有 index.html"
             )
-            await HTMLResponse(body, status_code=200 if path == "/" else 404, headers=FRAME_HEADERS)(
-                scope, receive, send
-            )
+            await HTMLResponse(
+                body, status_code=200 if path == "/" else 404, headers=FRAME_HEADERS
+            )(scope, receive, send)
             return
         rel = path.lstrip("/")
         found = self._inside(rel) if rel else None
         if found is None or rel == "index.html":
             index = self.root / "index.html"
-            await self._response(index, "index.html", scope, NO_CACHE)(scope, receive, send)
+            await self._response(index, "index.html", scope, NO_CACHE)(
+                scope, receive, send
+            )
             return
         cache_control = IMMUTABLE if rel.startswith(HASHED_DIR) else NO_CACHE
         await self._response(found, rel, scope, cache_control)(scope, receive, send)

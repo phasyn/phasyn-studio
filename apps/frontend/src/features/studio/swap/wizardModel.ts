@@ -117,8 +117,8 @@ export function deriveWizard(
       referenceVideoShortEdge: limit.referenceVideoShortEdge,
       steps,
       task: "ref2va",
-      width: preset?.width,
-      height: preset?.height,
+      ...(preset?.width === undefined ? {} : { width: preset.width }),
+      ...(preset?.height === undefined ? {} : { height: preset.height }),
       textTokens: approximateTextTokens(prompts[index]?.prompt ?? ""),
       textTokensApproximate: true,
       images: present.map((character) => ({ width: character.image?.width ?? null, height: character.image?.height ?? null })),
@@ -169,7 +169,7 @@ export const SKIP_DETECTION_LABEL = t("不偵測，改用固定分段");
 
 /** 每個步驟擋下前進（與建立）的原因；空陣列＝這一步沒問題。 */
 export function stepProblems(draft: SwapDraft, derived: WizardDerived, context: StepContext): Record<StepId, string[]> {
-  const out = Object.fromEntries(STEP_IDS.map((id) => [id, [] as string[]])) as Record<StepId, string[]>;
+  const out: Record<StepId, string[]> = { source: [], characters: [], cuts: [], plan: [], output: [] };
   const duration = derived.facts?.duration_seconds ?? null;
   if (draft.sourceUpload && draft.sourceUpload.state !== "failed") out.source.push(t("來源影片還在上傳"));
   if (!draft.source) out.source.push(t("選擇或上傳來源影片"));
@@ -190,7 +190,7 @@ export function stepProblems(draft: SwapDraft, derived: WizardDerived, context: 
     else if (image.check === "failed") out.characters.push(t("{name}：{value}", { name, value: image.error ?? t("圖片無法讀取") }));
     else {
       const ratio = referenceRatioProblem(image.width, image.height);
-      if (ratio) out.characters.push(t("{name}：{ratio}", { name, ratio }));
+      if (ratio != null && ratio !== "") out.characters.push(t("{name}：{ratio}", { name, ratio }));
     }
     if (!character.who.trim()) out.characters.push(t("{name}：填寫「取代影片中的誰」", { name }));
     if (!character.appearance.trim()) out.characters.push(t("{name}：填寫「外觀」", { name }));

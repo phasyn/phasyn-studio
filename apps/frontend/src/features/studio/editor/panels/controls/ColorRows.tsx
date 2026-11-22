@@ -23,7 +23,7 @@ export function ColorRows({ clip, edits, sliders = false }: ColorRowsProps) {
         const field = { label, unit, value, min, max };
         return (
           <Row key={key} label={label} hint={hint}>
-            {sliders ? <SliderField {...field} onCommit={(next) => edits.perform(withColorValue(clip, key, next))} /> : null}
+            {sliders ? <SliderField {...field} onCommit={(next) => void edits.perform(withColorValue(clip, key, next))} /> : null}
             <UnitField {...field} hint={hint} onCommit={(next) => edits.apply(withColorValue(clip, key, next))} />
           </Row>
         );
@@ -33,7 +33,7 @@ export function ColorRows({ clip, edits, sliders = false }: ColorRowsProps) {
           label={t("負片")}
           checked={clip.effects?.color?.invert ?? false}
           hint={t("整個片段的色彩反相")}
-          onChange={(invert) => edits.perform(withColor(clip, { invert }))}
+          onChange={(invert) => void edits.perform(withColor(clip, { invert }))}
         />
       </Row>
     </>

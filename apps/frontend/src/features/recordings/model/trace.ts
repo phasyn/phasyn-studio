@@ -1,3 +1,4 @@
+import { toJsonObject as asRecord } from "@/lib/json";
 // torch.profiler Chrome trace（JSON）→ GPU kernel／memcpy 泳道。
 // trace 有自己的時鐘：只在 trace 視窗內有效，獨立成一組，不與事件時間軸對齊或相加。
 import { formatMs } from "@/lib/format";
@@ -25,9 +26,6 @@ interface RawTraceEvent {
   stream: string | null;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
-}
 
 function idText(value: unknown): string {
   return typeof value === "string" || typeof value === "number" ? String(value) : "?";
@@ -44,34 +42,34 @@ function categoryOf(cat: string): ChartCategory | null {
 /** 解析 trace JSON（`{traceEvents:[...]}` 或陣列）；只取 ph=X 的 kernel／gpu_memcpy／gpu_memset。 */
 export function parseChromeTrace(json: unknown, limit = 20_000): TraceModel {
   const root = asRecord(json);
-  const list: unknown[] = Array.isArray(json) ? json : Array.isArray(root?.traceEvents) ? (root.traceEvents as unknown[]) : [];
-  const raw: Array<RawTraceEvent & { category: ChartCategory }> = [];
+  const list: unknown[] = Array.isArray(json) ? json : Array.isArray(root?.["traceEvents"]) ? (root["traceEvents"] as unknown[]) : [];
+  const raw: (RawTraceEvent & { category: ChartCategory })[] = [];
   let skipped = 0;
   let kernelCount = 0;
   let memcpyCount = 0;
   for (const entry of list) {
     const record = asRecord(entry);
-    if (!record || record.ph !== "X" || typeof record.cat !== "string") continue;
-    const category = categoryOf(record.cat);
+    if (record?.["ph"] !== "X" || typeof record["cat"] !== "string") continue;
+    const category = categoryOf(record["cat"]);
     if (!category) continue;
-    const ts = record.ts;
-    const dur = record.dur;
+    const ts = record["ts"];
+    const dur = record["dur"];
     if (typeof ts !== "number" || typeof dur !== "number" || !Number.isFinite(ts) || !Number.isFinite(dur) || dur < 0) {
       skipped += 1;
       continue;
     }
     if (category === "kernel") kernelCount += 1;
     else memcpyCount += 1;
-    const args = asRecord(record.args);
+    const args = asRecord(record["args"]);
     raw.push({
-      name: typeof record.name === "string" ? record.name : "(unnamed)",
-      cat: record.cat,
+      name: typeof record["name"] === "string" ? record["name"] : "(unnamed)",
+      cat: record["cat"],
       ts,
       dur,
-      pid: idText(record.pid),
-      tid: idText(record.tid),
-      device: args && args.device !== undefined ? idText(args.device) : null,
-      stream: args && args.stream !== undefined ? idText(args.stream) : null,
+      pid: idText(record["pid"]),
+      tid: idText(record["tid"]),
+      device: args?.["device"] !== undefined ? idText(args["device"]) : null,
+      stream: args?.["stream"] !== undefined ? idText(args["stream"]) : null,
       category,
     });
   }
@@ -89,7 +87,7 @@ export function parseChromeTrace(json: unknown, limit = 20_000): TraceModel {
     endMs = Math.max(endMs, startMs + durMs);
     const lane = lanes.get(laneKey) ?? { label: `device ${event.device ?? event.pid} · stream ${event.stream ?? event.tid}`, items: [] };
     lane.items.push({
-      key: `trace:${index}`,
+      key: `trace:${String(index)}`,
       category: event.category,
       startMs,
       endMs: startMs + durMs,

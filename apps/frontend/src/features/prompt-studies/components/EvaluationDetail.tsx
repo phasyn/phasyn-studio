@@ -17,7 +17,7 @@ import { t } from "@/i18n";
 import { T } from "@/i18n/T";
 
 function RunLink({ label, runId }: { label: string; runId: string | null }) {
-  if (!runId) return null;
+  if (!(runId != null && runId !== "")) return null;
   return (
     <span className="flex flex-wrap items-center gap-1 text-caption text-fg-tertiary">
       {label}
@@ -75,7 +75,7 @@ export function EvaluationDetail({ study, row, rubric }: { study: PromptStudy; r
       {error ? (
         <Callout tone="danger" title={errorTitle(render, error.code)}>
           <p>{stepErrorText(error) || t("沒有訊息")}</p>
-          {error.remote_outcome_unknown ? <p className="text-warning">{t("遠端結果未知：請到「紀錄・執行紀錄」確認，系統不會自動重送。")}</p> : null}
+          {(error.remote_outcome_unknown === true) ? <p className="text-warning">{t("遠端結果未知：請到「紀錄・執行紀錄」確認，系統不會自動重送。")}</p> : null}
         </Callout>
       ) : null}
       {score && breakdown ? (
@@ -107,7 +107,7 @@ export function EvaluationDetail({ study, row, rubric }: { study: PromptStudy; r
           ))}
         </ul>
       ) : null}
-      {rubricMismatch ? <p className="text-caption text-warning">{t("這次評分的規則雜湊與任務凍結的不同：不能與其他圖直接比較。")}</p> : null}
+      {(rubricMismatch === true) ? <p className="text-caption text-warning">{t("這次評分的規則雜湊與任務凍結的不同：不能與其他圖直接比較。")}</p> : null}
       {comparison && breakdown ? (
         <TableScroll label={t("逐區段判斷與誤差")}>
           <Table className="min-w-[40rem]">
@@ -152,14 +152,14 @@ export function EvaluationDetail({ study, row, rubric }: { study: PromptStudy; r
       ) : null}
       {comparison ? (
         <div className="grid gap-2">
-          {comparison.unjudgeable_reason ? <Callout tone="warning" title={t("視覺模型表示無法判斷")}>{comparison.unjudgeable_reason}</Callout> : null}
+          {(comparison.unjudgeable_reason != null && comparison.unjudgeable_reason !== "") ? <Callout tone="warning" title={t("視覺模型表示無法判斷")}>{comparison.unjudgeable_reason}</Callout> : null}
           <Disclosure summary={t("差異與建議修訂 · {differencesCount}", { differencesCount: comparison.differences.length })} defaultOpen={comparison.differences.length > 0}>
             {comparison.differences.length === 0 ? (
               <p className="text-caption text-fg-tertiary">{t("沒有列出差異。")}</p>
             ) : (
               <ol className="grid list-decimal gap-1.5 pl-5 text-caption">
                 {comparison.differences.map((difference, index) => (
-                  <li key={`${difference.section}-${index}`} className="grid gap-0.5">
+                  <li key={`${difference.section}-${String(index)}`} className="grid gap-0.5">
                     <span className="text-fg">
                       <span className="text-fg-tertiary">{t("{section}：", { section: SECTION_LABELS[difference.section] })}</span>
                       {difference.description_zh_tw}
@@ -179,7 +179,7 @@ export function EvaluationDetail({ study, row, rubric }: { study: PromptStudy; r
             <Disclosure summary={t("非預期元素 · {unexpected_elementsCount}", { unexpected_elementsCount: comparison.unexpected_elements.length })}>
               <ul className="grid list-disc gap-0.5 pl-5 text-caption text-fg-secondary">
                 {comparison.unexpected_elements.map((item, index) => (
-                  <li key={`${index}-${item}`}>{item}</li>
+                  <li key={`${String(index)}-${item}`}>{item}</li>
                 ))}
               </ul>
             </Disclosure>
@@ -187,7 +187,7 @@ export function EvaluationDetail({ study, row, rubric }: { study: PromptStudy; r
           {comparison.text_transcription ? <p className="text-caption text-fg-secondary">{t("評審讀到的文字：{text_transcription}", { text_transcription: comparison.text_transcription })}</p> : null}
           {score ? (
             <p className="flex flex-wrap items-center gap-1 text-caption text-fg-tertiary">
-              <T source={"評分規則雜湊 <0/> · <1>{scorer_version}</1>"} values={{ scorer_version: score.scorer_version }} slots={[<IdText value={score.rubric.sha256} length={12} />, <span className="machine" />]} />
+              <T source={"評分規則雜湊 <0/> · <1>{scorer_version}</1>"} values={{ scorer_version: score.scorer_version }} slots={[<IdText key="slot-0" value={score.rubric.sha256} length={12} />, <span key="slot-1" className="machine" />]} />
             </p>
           ) : null}
         </div>

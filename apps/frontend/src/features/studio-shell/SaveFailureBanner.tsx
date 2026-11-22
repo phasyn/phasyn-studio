@@ -35,13 +35,13 @@ export function SaveFailureBanner() {
   }
   useEffect(() => {
     if (!troubled) return;
-    const timer = window.setTimeout(() => setShown(true), SHOW_AFTER_MS);
-    return () => window.clearTimeout(timer);
+    const timer = window.setTimeout(() => { setShown(true); }, SHOW_AFTER_MS);
+    return () => { window.clearTimeout(timer); };
   }, [troubled]);
   useEffect(() => {
     if (!recovered) return;
-    const timer = window.setTimeout(() => setRecovered(false), RECOVERED_MS);
-    return () => window.clearTimeout(timer);
+    const timer = window.setTimeout(() => { setRecovered(false); }, RECOVERED_MS);
+    return () => { window.clearTimeout(timer); };
   }, [recovered]);
 
   if (troubled && shown) {

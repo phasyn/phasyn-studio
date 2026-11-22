@@ -1,18 +1,27 @@
 // 鏡頭的參考素材（H3 ref2va）：上傳（加進專案素材庫並加到這個鏡頭）、從素材庫加入（錨定在按鈕上的彈出層，可多選）、每個參考
 // 一列（56 px 縮圖、@ 名稱、檔名；拖曳把手調整同類的送出順序，prompt 裡的 @ 名稱與 H3 標籤跟著換；雙擊或 F2 改檔名；其他動作
 // 在列的「…」）、影片／聲音的片段設定；會擋渲染的問題與提醒。數量徽章只在接近 H3 上限時出現（materials.nearLimit）。
-// 鏡頭的方式不送參考素材時（接續上一鏡、首幀圖片、只用文字）只說一行，參考仍保留在鏡頭裡；unsupportedReason 非 null 時停用加入。
+// 鏡頭的方式不送參考素材時（接續上一鏡、首幀圖片、只用文字）只說一行，參考仍保留在鏡頭裡；unsupportedReason 非 null 時停用加入，
+// 並提供「切換路線」打開渲染引擎的路線分頁。方式是表演影片或音訊驅動時，頂端是驅動素材（角色圖片、表演影片／驅動音訊，
+// creative/DrivingMedia.tsx），它們就是同類的第一個參考；H3 的參考規則不適用，參考清單收成一行。
+// 無看鏡頭版面參考（選用，預設關閉）是參考清單上方的一個開關（layout/LayoutReference.tsx）。
 // 拖檔：整個分頁是放開的目標（useFileDropZone），沒有常駐的提示；說明只在沒有參考時的空狀態裡。
-import { AtSign, CircleX, FolderOpen, Info, TriangleAlert, Upload } from "lucide-react";
-import { useContext, useId, useMemo, useRef } from "react";
+import { AtSign, CircleX, FolderOpen, Info, Route, TriangleAlert, Upload } from "lucide-react";
+import { use, useId, useMemo, useRef } from "react";
 import type { StudioLibraryItem, StudioReference } from "@/api/generated/contracts";
 import { ActionButton } from "@/components/common/ActionButton";
 import { EmptyState } from "@/components/common/EmptyState";
+import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
 import { CARD, COUNT, SPRING_SNAPPY } from "@/components/ui/look";
 import { reveal, useFlipList } from "@/components/ui/motion";
 import { cn } from "@/lib/cn";
+import { showEngine } from "../components/generation/engineView";
 import { MODE_LABEL, readingText } from "../components/generation/modeText";
+import { REFERENCES_UNSUPPORTED } from "../components/inspector/referenceSupport";
+import { DrivingMedia } from "../creative/DrivingMedia";
+import { drivingReference, routeDrivingRoles } from "../model/drivingMedia";
+import { DRIVING_KIND } from "../model/providerTraits";
 import { Popover } from "../components/generation/Popover";
 import { usePopover } from "../components/generation/usePopover";
 import { readMode } from "../model/generationMode";
@@ -23,6 +32,7 @@ import { StudioContext } from "../studioContext";
 import { RefMemoryNote } from "../swap/RefMemoryNote";
 import { canMoveReference, moveReference, moveReferenceTo, remapReferenceText } from "./editing";
 import { newLocalId } from "./ids";
+import { LayoutReference } from "./layout/LayoutReference";
 import { LibraryPicker } from "./LibraryPicker";
 import { aliasOrdinal, newReference, presentationLabels, referenceWarnings, replacedReference, validateReferences, videoLibrary, type ReferenceKind } from "./materials";
 import { DropOverlay, LimitBadges } from "./PanelParts";
@@ -63,8 +73,6 @@ export interface ReferencesPanelProps {
 
 const KINDS: ReferenceKind[] = ["image", "video", "audio"];
 const ACCEPT = "image/*,video/*,audio/*";
-/** The generic reason the inspector gives for a route without references (a more specific one is the route's own hint). */
-const GENERIC_UNSUPPORTED = t("目前的運算路由不支援參考素材（需要 ref2va 元件組合）");
 
 export function ReferencesPanel({
   projectId,
@@ -81,28 +89,34 @@ export function ReferencesPanel({
   onPromptChange,
 }: ReferencesPanelProps) {
   const id = useId();
-  const section = useRef<HTMLElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
-  const fileInput = useRef<HTMLInputElement>(null);
-  const uploadButton = useRef<HTMLButtonElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadButtonRef = useRef<HTMLButtonElement>(null);
   const picker = usePopover();
   const uploads = useReferenceUploads({ projectId, shotId: shotId ?? null, library, references, onLibraryChange, onReferencesChange });
   const items = useMemo(() => new Map(library.map((item) => [item.item_id, item])), [library]);
   const labels = useMemo(() => presentationLabels(references, library), [references, library]);
-  const problems = useMemo(() => (references.length > 0 ? validateReferences(references, library, { generatedSeconds: durationSeconds }) : []), [references, library, durationSeconds]);
-  const warnings = useMemo(() => referenceWarnings(references, library, { durationSeconds }), [references, library, durationSeconds]);
   const blocked = disabled ? t("目前無法編輯") : unsupportedReason;
   // The shot's 方式 (outside the Studio's provider there is none and the route's reason is shown as it is)
-  const studio = useContext(StudioContext);
-  const shot = shotId ? studio?.project.shots.find((item) => item.shot_id === shotId) : undefined;
-  const reading = studio && shot ? readMode(shot, findRoute(studio.engine.routes, shot.route), studio.engine.status === "ready") : null;
+  const studio = use(StudioContext);
+  const shot = (shotId != null && shotId !== "") ? studio?.project.shots.find((item) => item.shot_id === shotId) : undefined;
+  const route = studio && shot ? findRoute(studio.engine.routes, shot.route) : null;
+  const reading = studio && shot ? readMode(shot, route, studio.engine.status === "ready") : null;
+  // 表演影片／音訊驅動: the first image / video / audio reference drives the character; the H3 reference rules do not apply
+  const driven = reading?.mode === "performance" || reading?.mode === "audio";
+  const drivingRoles = driven ? routeDrivingRoles(route) : [];
+  const problems = useMemo(() => (!driven && references.length > 0 ? validateReferences(references, library, { generatedSeconds: durationSeconds }) : []), [driven, references, library, durationSeconds]);
+  const warnings = useMemo(() => (driven ? [] : referenceWarnings(references, library, { durationSeconds })), [driven, references, library, durationSeconds]);
+  const usedByRoles = new Set(drivingRoles.map((role) => drivingReference(references, DRIVING_KIND[role])?.ref_id));
+  const extraReferences = references.filter((ref) => !usedByRoles.has(ref.ref_id)).length;
   const notSent =
-    reading?.mode && reading.mode !== "references"
+    reading?.mode && reading.mode !== "references" && !driven
       ? t("方式是「{mode}」：參考素材不會送出（仍保留在鏡頭裡）。", { mode: MODE_LABEL[reading.mode] })
       : reading?.issue === "needs-first-frame"
         ? t("這條路線需要首幀：參考素材不會送出（仍保留在鏡頭裡）。")
         : null;
-  const routeHint = unsupportedReason && unsupportedReason !== GENERIC_UNSUPPORTED ? unsupportedReason : null;
+  const routeHint = (unsupportedReason != null && unsupportedReason !== "") && unsupportedReason !== REFERENCES_UNSUPPORTED ? unsupportedReason : null;
   const routeGone = reading?.issue === "route-missing" ? readingText(reading).problem : null;
   // 清單依類型（圖片、影片、聲音）與序號顯示，和 @ 自動完成一致
   const rows = useMemo(
@@ -122,25 +136,25 @@ export function ReferencesPanel({
     onReferencesChange(next);
     if (text !== prompt) onPromptChange(text);
   };
-  const drag = useReferenceDrag(listRef, (refId, toIndex) => reorder(moveReferenceTo(references, refId, toIndex)));
-  const highlight = useFileDropZone(section, blocked === null, (files) => uploads.addFiles(files, true));
+  const drag = useReferenceDrag(listRef, (refId, toIndex) => { reorder(moveReferenceTo(references, refId, toIndex)); });
+  const highlight = useFileDropZone(sectionRef, blocked === null, (files) => { uploads.addFiles(files, true); });
 
-  const update = (refId: string, patch: Partial<StudioReference>) => onReferencesChange(references.map((ref) => (ref.ref_id === refId ? { ...ref, ...patch } : ref)));
+  const update = (refId: string, patch: Partial<StudioReference>) => { onReferencesChange(references.map((ref) => (ref.ref_id === refId ? { ...ref, ...patch } : ref))); };
   const remove = (refId: string) => {
     const at = rows.findIndex((ref) => ref.ref_id === refId);
     const neighbour = rows[at + 1]?.ref_id ?? rows[at - 1]?.ref_id ?? null;
-    const hadFocus = section.current?.contains(document.activeElement) ?? false;
+    const hadFocus = sectionRef.current?.contains(document.activeElement) ?? false;
     onReferencesChange(references.filter((ref) => ref.ref_id !== refId));
     // The row leaves with its buttons: focus goes to the next row's 「…」, or to 上傳
     if (hadFocus) {
       window.requestAnimationFrame(() => {
-        const next = neighbour ? listRef.current?.querySelector<HTMLElement>(`[data-ref-id="${CSS.escape(neighbour)}"] [data-row-menu] button`) : null;
-        (next ?? uploadButton.current)?.focus({ preventScroll: true });
+        const next = (neighbour != null && neighbour !== "") ? listRef.current?.querySelector<HTMLElement>(`[data-ref-id="${CSS.escape(neighbour)}"] [data-row-menu] button`) : null;
+        (next ?? uploadButtonRef.current)?.focus({ preventScroll: true });
       });
     }
   };
   const rename = (itemId: string, name: string) => {
-    if (libraryRenameProblem(library, itemId, name) || items.get(itemId)?.name === name.trim()) return;
+    if (((libraryRenameProblem(library, itemId, name)) ?? "") || items.get(itemId)?.name === name.trim()) return;
     onLibraryChange(withLibraryItemPatch(library, itemId, { name }));
   };
   const addItems = (chosen: readonly StudioLibraryItem[]) => {
@@ -154,7 +168,7 @@ export function ReferencesPanel({
   const line = drag.state && drag.state.target !== drag.state.from ? drag.state.lineTop : null;
 
   return (
-    <section ref={section} aria-labelledby={`${id}-title`} className="grid min-w-0 gap-2.5">
+    <section ref={sectionRef} aria-labelledby={`${id}-title`} className="grid min-w-0 gap-2.5">
       <div className="flex min-h-9 flex-wrap items-center gap-x-2 gap-y-1">
         <h3 id={`${id}-title`} className="flex items-center gap-1.5 text-data font-semibold text-fg">
           <AtSign aria-hidden className="size-3.5 text-brand-cyan/80" />
@@ -162,7 +176,7 @@ export function ReferencesPanel({
         </h3>
         <LimitBadges references={references} />
         <span className="ml-auto flex items-center gap-1.5">
-          <ActionButton ref={uploadButton} size="sm" variant="secondary" icon={<Upload aria-hidden />} disabledReason={blocked} onClick={() => fileInput.current?.click()}>
+          <ActionButton ref={uploadButtonRef} size="sm" variant="secondary" icon={<Upload aria-hidden />} disabledReason={blocked} onClick={() => fileInputRef.current?.click()}>
             {t("上傳")}
           </ActionButton>
           <ActionButton
@@ -175,11 +189,11 @@ export function ReferencesPanel({
             aria-controls={picker.open ? `${id}-library` : undefined}
             onClick={picker.toggle}
           >
-            <T source={"從素材庫加入<0>{libraryCount}</0>"} values={{ libraryCount: library.length }} slots={[<span className={COUNT} />]} />
+            <T source={"從素材庫加入<0>{libraryCount}</0>"} values={{ libraryCount: library.length }} slots={[<span key="slot-0" className={COUNT} />]} />
           </ActionButton>
         </span>
         <input
-          ref={fileInput}
+          ref={fileInputRef}
           type="file"
           accept={ACCEPT}
           multiple
@@ -192,26 +206,40 @@ export function ReferencesPanel({
         />
       </div>
 
-      {notSent ? (
+      {(notSent != null && notSent !== "") ? (
         <p className="flex items-start gap-1.5 rounded-lg border border-info/30 bg-info/8 px-2.5 py-1.5 text-caption text-info animate-reveal">
           <Info aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-          <span className="min-w-0 [overflow-wrap:anywhere]">
+          <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
             {notSent}
-            {routeHint ? ` ${routeHint}` : ""}
+            {(routeHint != null && routeHint !== "") ? ` ${routeHint}` : ""}
           </span>
+          {studio && (unsupportedReason != null && unsupportedReason !== "") ? (
+            <Button size="sm" variant="quiet" className="-my-1 min-h-7 shrink-0 px-2" icon={<Route aria-hidden />} onClick={() => { showEngine({ tab: "routes", routeId: null }, studio.setEngineOpen); }}>
+              {t("切換路線")}
+            </Button>
+          ) : null}
         </p>
-      ) : unsupportedReason ? (
-        <Callout tone="warning" title={t("目前的路線不支援參考素材")}>
+      ) : (unsupportedReason != null && unsupportedReason !== "") ? (
+        <Callout tone="warning" title={REFERENCES_UNSUPPORTED}>
           {/* 沒有更具體的原因時，內文只說怎麼解決，不重複標題 */}
-          <p>{routeGone ?? routeHint ?? t("在生成列把方式改成「參考素材」。")}</p>
+          <p>{routeGone ?? routeHint ?? t("在生成列把方式改成「參考素材」，或換一條參考生成路線。")}</p>
           {references.length > 0 ? <p>{t("下面的參考仍保留在鏡頭裡，但不能新增。")}</p> : null}
+          {studio ? (
+            <Button size="sm" variant="secondary" className="mt-1" icon={<Route aria-hidden />} onClick={() => { showEngine({ tab: "routes", routeId: null }, studio.setEngineOpen); }}>
+              {t("切換路線")}
+            </Button>
+          ) : null}
         </Callout>
+      ) : null}
+
+      {driven && drivingRoles.length > 0 ? (
+        <DrivingMedia roles={drivingRoles} library={library} references={references} onReferencesChange={onReferencesChange} disabledReason={disabled ? t("目前無法編輯") : null} />
       ) : null}
 
       {uploads.tasks.length > 0 ? (
         <ul className={cn(CARD, "grid gap-0.5 p-1")} aria-label={t("上傳")} aria-live="polite">
           {uploads.tasks.map((task) => (
-            <ReferenceUploadRow key={task.key} task={task} onRetry={() => uploads.retry(task.key)} onDismiss={() => uploads.dismiss(task.key)} />
+            <ReferenceUploadRow key={task.key} task={task} onRetry={() => { uploads.retry(task.key); }} onDismiss={() => { uploads.dismiss(task.key); }} />
           ))}
         </ul>
       ) : null}
@@ -236,9 +264,29 @@ export function ReferencesPanel({
           ))}
         </ul>
       ) : null}
+      {shot && !driven && notSent === null && !(unsupportedReason != null && unsupportedReason !== "") && onPromptChange && prompt !== undefined ? (
+        <LayoutReference
+          shot={shot}
+          prompt={prompt}
+          references={references}
+          library={library}
+          disabledReason={disabled ? t("目前無法編輯") : null}
+          onChange={(next) => {
+            onReferencesChange(next.references);
+            if (next.prompt !== prompt) onPromptChange(next.prompt);
+          }}
+        />
+      ) : null}
       {shot ? <RefMemoryNote shot={shot} /> : null}
 
-      {references.length === 0 ? (
+      {driven ? (
+        extraReferences > 0 ? (
+          <p className="flex items-start gap-1.5 text-caption text-fg-tertiary">
+            <Info aria-hidden className="mt-0.5 size-3.5 shrink-0" />
+            {t("另有 {count} 個參考保留在鏡頭裡，這個方式不會送出。", { count: extraReferences })}
+          </p>
+        ) : null
+      ) : references.length === 0 ? (
         <div className="rounded-xl border border-dashed border-line">
           <EmptyState
             size="compact"
@@ -259,17 +307,17 @@ export function ReferencesPanel({
               mentions={prompt === undefined ? null : mentionCount(prompt, ref.alias)}
               tagUses={prompt === undefined ? 0 : tagUseCount(prompt, [labels.get(ref.ref_id)?.label, labels.get(ref.ref_id)?.soundtrack?.label])}
               disabled={disabled}
-              onChange={(patch) => update(ref.ref_id, patch)}
-              onRemove={() => remove(ref.ref_id)}
-              onInsertMention={onInsertMention}
-              rename={{ problem: (name) => libraryRenameProblem(library, ref.item_id, name), onRename: (name) => rename(ref.item_id, name) }}
+              onChange={(patch) => { update(ref.ref_id, patch); }}
+              onRemove={() => { remove(ref.ref_id); }}
+              {...(onInsertMention === undefined ? {} : { onInsertMention })}
+              rename={{ problem: (name) => libraryRenameProblem(library, ref.item_id, name), onRename: (name) => { rename(ref.item_id, name); } }}
               replace={{
                 items: videoLibrary(library).filter((item) => item.kind === ref.kind && item.item_id !== ref.item_id),
-                onReplace: (itemId) => update(ref.ref_id, replacedReference(ref, itemId, items.get(itemId)?.duration_seconds ?? null)),
-                onUpload: (file) => uploads.replaceWith(file, ref.ref_id),
+                onReplace: (itemId) => { update(ref.ref_id, replacedReference(ref, itemId, items.get(itemId)?.duration_seconds ?? null)); },
+                onUpload: (file) => { uploads.replaceWith(file, ref.ref_id); },
               }}
-              move={reorderable ? { up: canMoveReference(references, ref.ref_id, -1), down: canMoveReference(references, ref.ref_id, 1), onMove: (delta) => reorder(moveReference(references, ref.ref_id, delta)) } : undefined}
-              drag={reorderable ? { onPointerDown: drag.begin(ref.ref_id, ref.kind), active: drag.state?.refId === ref.ref_id } : undefined}
+              {...(reorderable ? { move: { up: canMoveReference(references, ref.ref_id, -1), down: canMoveReference(references, ref.ref_id, 1), onMove: (delta) => { reorder(moveReference(references, ref.ref_id, delta)); } } } : {})}
+              {...(reorderable ? { drag: { onPointerDown: drag.begin(ref.ref_id, ref.kind), active: drag.state?.refId === ref.ref_id } } : {})}
             />
           ))}
           {line !== null ? (
@@ -277,14 +325,14 @@ export function ReferencesPanel({
               aria-hidden
               role="presentation"
               className={cn("pointer-events-none absolute inset-x-2 top-0 h-0.5 rounded-full bg-brand-gradient transition-transform", SPRING_SNAPPY)}
-              style={{ transform: `translateY(${line - 1}px)` }}
+              style={{ transform: `translateY(${String(line - 1)}px)` }}
             />
           ) : null}
         </ul>
       )}
 
       <Popover id={`${id}-library`} open={picker.open} anchor={picker.anchor} label={t("從素材庫加入")} onClose={picker.close} className="w-[min(30rem,calc(100vw-1rem))]">
-        <LibraryPicker library={library} references={references} disabledReason={blocked} onAdd={addItems} onCancel={() => picker.close(true)} />
+        <LibraryPicker library={library} references={references} disabledReason={blocked} onAdd={addItems} onCancel={() => { picker.close(true); }} />
       </Popover>
 
       {highlight ? <DropOverlay highlight={highlight} /> : null}

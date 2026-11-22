@@ -1,3 +1,4 @@
+import { isRecord } from "@/lib/json";
 // 選取元件的事件：該 instance 最新一筆 recording（任何 operation），讀取所有 stream 的事件尾端（每個 stream ≤ 500 筆）。
 // 「即時」開啟時：每 4 秒確認是否有新的 recording；recording 執行中時每 2.5 秒只抓新增的事件。
 // recording 狀態改變（例如執行中→成功）時重新讀一次完整尾端，拿到最後的事件。
@@ -71,7 +72,7 @@ export function useComponentEvents(nodeId: string, componentId: string, { live }
   const recordingId = record?.context.recording_id ?? "";
   // summary 尚未收到（unknown）但元件回報這個 call 仍在進行：當成執行中（顯示「執行中」並即時追事件）
   const activeCall = catalog.data?.nodes.find((node) => node.node_id === nodeId)?.components.find((item) => item.component_id === componentId)?.active_call_id ?? null;
-  const inProgress = record !== null && callInProgress(record, new Set(activeCall ? [activeCall] : []));
+  const inProgress = record !== null && callInProgress(record, new Set((activeCall != null && activeCall !== "") ? [activeCall] : []));
   const state: RecordingSummary["state"] = inProgress ? "running" : (record?.summary.state ?? "unknown");
   const running = state === "running";
 
@@ -98,7 +99,7 @@ export function useComponentEvents(nodeId: string, componentId: string, { live }
       state,
       providerId: context.provider_id,
       runId: context.run_id,
-      recorderMode: context.recording?.mode ?? null,
+      recorderMode: isRecord(context.recording) ? context.recording.mode : null,
       synthetic: context.synthetic,
     };
   }, [record, state]);

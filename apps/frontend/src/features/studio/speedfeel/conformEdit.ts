@@ -150,7 +150,7 @@ export function applyPieces(timeline: StudioTimeline, clip: TimelineClip, pieces
   // From the last edge backwards: the clip keeps its id as the first piece
   for (const frame of [...splits].sort((a, b) => b - a)) {
     const error = run({ type: "split", clipIds: [clip.clip_id], frame: origin + frame, linked });
-    if (error) return { ok: false, reason: error };
+    if (error != null && error !== "") return { ok: false, reason: error };
   }
   const idAt = (frame: number) => document.clips.find((item) => item.track_id === clip.track_id && item.source_id === clip.source_id && item.start_frame === origin + frame)?.clip_id;
   const entries: Entry[] = [];
@@ -163,7 +163,7 @@ export function applyPieces(timeline: StudioTimeline, clip: TimelineClip, pieces
   if (removed.length !== dropped.length) return { ok: false, reason: t("找不到分割後的片段") };
   if (removed.length > 0) {
     const error = run({ type: "delete", clipIds: removed, ripple: false, linked });
-    if (error) return { ok: false, reason: error };
+    if (error != null && error !== "") return { ok: false, reason: error };
   }
 
   const finish = (entry: Entry): string | null => {
@@ -183,7 +183,7 @@ export function applyPieces(timeline: StudioTimeline, clip: TimelineClip, pieces
     const steps = early > 0 ? [keepEnd] : grows ? [move, retime] : [retime, move];
     for (const step of steps) {
       const error = step();
-      if (error) return error;
+      if (error != null && error !== "") return error;
     }
     return null;
   };
@@ -196,17 +196,19 @@ export function applyPieces(timeline: StudioTimeline, clip: TimelineClip, pieces
     const rightEdge = right ? (right.done ? right.place.start : right.now.start) : Number.POSITIVE_INFINITY;
     return leftEdge <= entry.place.start && entry.place.end <= rightEdge;
   };
-  for (let step = 0; step < entries.length; step += 1) {
+  let remaining = entries.length;
+  while (remaining > 0) {
+    remaining -= 1;
     const entry = entries.find((_, index) => fits(index));
     if (!entry) return { ok: false, reason: t("找不到不重疊的套用順序") };
     const error = finish(entry);
-    if (error) return { ok: false, reason: error };
+    if (error != null && error !== "") return { ok: false, reason: error };
     entry.done = true;
   }
   const parts: TimelineClip[] = [];
   for (const entry of entries) {
     const part = document.clips.find((item) => item.clip_id === entry.id);
-    if (!part || part.start_frame !== entry.place.start || clipEnd(part) !== entry.place.end) return { ok: false, reason: t("對齊後的片段和計畫不一致") };
+    if (part?.start_frame !== entry.place.start || clipEnd(part) !== entry.place.end) return { ok: false, reason: t("對齊後的片段和計畫不一致") };
     parts.push(part);
   }
   return { ok: true, timeline: document, parts };

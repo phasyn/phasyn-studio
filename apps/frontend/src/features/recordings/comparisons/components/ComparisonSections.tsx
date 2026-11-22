@@ -1,3 +1,4 @@
+import { hasSlotContent } from "@/lib/dom";
 // 比較內容區的各區段（來源與混淆因素、量測條件、設定差異、量測值）與工具列常駐的比較條件 chip。
 // 區段標題可聚焦（tabIndex=-1），工具列「跳到」會捲到該區段並把焦點交給標題。
 import { ChartColumn, Link2, Link2Off, Scale, ShieldQuestion, TriangleAlert } from "lucide-react";
@@ -16,6 +17,8 @@ import type { ColumnState } from "./ColumnHead";
 import { ComparisonMetricsTable } from "./ComparisonMetricsTable";
 import { SettingsDiffTable } from "./SettingsDiffTable";
 import { T } from "@/i18n/T";
+
+const EMPTY_ITEMS = [] as const;
 
 const SOURCE_ICON: Record<SourceVerdict, typeof Link2> = { same: Link2, different: Link2Off, unknown: ShieldQuestion };
 
@@ -69,9 +72,11 @@ function Confounder({ detail, columns }: { detail: ConfounderDetail; columns: re
       <span className="text-fg">{t("{label}不同", { label: tServer(detail.label) })}</span>
       <ul className="grid min-w-0 gap-0.5">
         {detail.values.map((value, index) => {
-          const context = columns[index]?.data?.context;
+          const column = columns[index];
+            if (!column) return null;
+            const context = column.data?.context;
           return (
-            <li key={columns[index]?.id ?? index} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-2 text-caption">
+            <li key={column.id} className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-2 text-caption">
               <span className="machine text-fg-tertiary" title={columns[index]?.id}>
                 #{index + 1}
                 {context ? ` ${context.component_id}` : ""}
@@ -99,7 +104,7 @@ function Confounder({ detail, columns }: { detail: ConfounderDetail; columns: re
   );
 }
 
-export function SourceSection({ id, data, columns = [] }: { id: string; data: Comparison; columns?: readonly ColumnState[] }) {
+export function SourceSection({ id, data, columns = EMPTY_ITEMS }: { id: string; data: Comparison; columns?: readonly ColumnState[] }) {
   const summary = comparability(data);
   // 伺服器的值依 recording_ids 的順序：欄位照同一個順序對齊
   const aligned = data.recording_ids.map((recordingId): ColumnState => columns.find((column) => column.id === recordingId) ?? { id: recordingId, data: undefined, error: null, isPending: false });
@@ -115,7 +120,7 @@ export function SourceSection({ id, data, columns = [] }: { id: string; data: Co
           <Callout tone="warning" icon={<TriangleAlert />} title={t("{confoundersCount} 個混淆因素：差異不能直接歸因於設定", { confoundersCount: data.confounders.length })}>
             <ul className="grid list-disc gap-1 pl-5">
               {details.map((detail, index) => (
-                <li key={`${index}-${detail.text.slice(0, 32)}`} className="min-w-0 [overflow-wrap:anywhere] text-fg">
+                <li key={`${String(index)}-${detail.text.slice(0, 32)}`} className="min-w-0 [overflow-wrap:anywhere] text-fg">
                   <Confounder detail={detail} columns={aligned} />
                 </li>
               ))}
@@ -129,7 +134,7 @@ export function SourceSection({ id, data, columns = [] }: { id: string; data: Co
       </div>
       {summary.comparable ? (
         <p className="flex items-start gap-2 text-data text-fg-secondary">
-          <T source={"<0>可歸因候選</0>條件可比（同來源、無已知混淆因素）：設定差異是耗時／記憶體差異的可歸因候選；畫質仍要看輸出。"} slots={[<Badge tone="info" />]} />
+          <T source={"<0>可歸因候選</0>條件可比（同來源、無已知混淆因素）：設定差異是耗時／記憶體差異的可歸因候選；畫質仍要看輸出。"} slots={[<Badge key="slot-0" tone="info" />]} />
         </p>
       ) : (
         <p className="text-data text-fg-secondary">{t("有混淆因素或來源不同／未知：不要把耗時或記憶體差異歸因到某個設定（例如精度）。")}</p>
@@ -172,12 +177,12 @@ export function DiffSection({
             label={t("只顯示與基準不同的路徑")}
             description={t("共 {rowsCount} 個路徑，其中 {changedCount} 個與基準不同或無法解讀", { rowsCount: rows.length, changedCount })}
             checked={changedOnly}
-            onChange={(event) => setChangedOnly(event.target.checked)}
+            onChange={(event) => { setChangedOnly(event.target.checked); }}
             className="min-h-8 py-1 text-data"
           />
         ) : null}
       </div>
-      {description ? <p className="text-caption text-fg-tertiary">{description}</p> : null}
+      {hasSlotContent(description) ? <p className="text-caption text-fg-tertiary">{description}</p> : null}
       {rows.length === 0 ? (
         <p className="rounded-md border border-line-subtle bg-sunken px-3 py-3 text-data text-fg-secondary">{emptyText}</p>
       ) : (

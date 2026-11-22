@@ -26,6 +26,7 @@ from .rejection import reject, rejection_of
 from .shots import PROXY_FIELDS
 from .text import caption_fresh, title_fresh
 
+
 PROVIDER_ID = "media.concat"
 PIPELINE_ID = "studio-export"
 SEQUENCE_TYPE = "media.sequence.v1"
@@ -54,13 +55,16 @@ class Exporter:
 
     @classmethod
     def of(cls, descriptor: Mapping[str, Any]) -> Exporter:
+        """Build an export representation from the timeline."""
         facts = (descriptor.get("facts") or {}).get("timeline_export")
         facts = facts if isinstance(facts, Mapping) else {}
         version = facts.get("version")
         return cls(
             str(descriptor["node_id"]),
             str(descriptor["component_id"]),
-            version if isinstance(version, int) and not isinstance(version, bool) else 1,
+            version
+            if isinstance(version, int) and not isinstance(version, bool)
+            else 1,
             facts.get("text") is True,
             facts.get("adjustment") is True,
         )
@@ -76,15 +80,25 @@ def export_geometry(project: Mapping[str, Any], options: Mapping[str, Any]) -> D
         width, height = preset["width"], preset["height"]
     else:
         return {"width": frame["width"], "height": frame["height"]}
-    fit = FITS[options["fit"]] if "fit" in options else (preset["fit"] if preset is not None else "cover")
+    fit = (
+        FITS[options["fit"]]
+        if "fit" in options
+        else (preset["fit"] if preset is not None else "cover")
+    )
     return {"width": width, "height": height, "fit": fit}
 
 
-def _render_range(timeline: Mapping[str, Any], options: Mapping[str, Any]) -> Doc | None:
+def _render_range(
+    timeline: Mapping[str, Any], options: Mapping[str, Any]
+) -> Doc | None:
     if options.get("range", "full") != "work_area":
         return None
     area = timeline.get("work_area")
-    if area is None or area["start_frame"] >= area["end_frame"] or area["end_frame"] > timeline_duration(timeline):
+    if (
+        area is None
+        or area["start_frame"] >= area["end_frame"]
+        or area["end_frame"] > timeline_duration(timeline)
+    ):
         reject("work_area", "請先設定有效的序列入出點；匯出範圍不得超過序列長度")
     return dict(area)
 
@@ -142,11 +156,15 @@ def _rasterized_text(timeline: Doc, width: int, height: int) -> None:
 def _without_disabled(timeline: Doc) -> None:
     """Version 1 has no disabled clips: leave them out, and a transition into one becomes a cut."""
     disabled = {clip["clip_id"] for clip in timeline["clips"] if not clip_enabled(clip)}
-    alone = {pair.left_id for pair in transition_pairs(timeline) if pair.right_id in disabled}
+    alone = {
+        pair.left_id for pair in transition_pairs(timeline) if pair.right_id in disabled
+    }
     timeline["clips"] = [
         {
             key: value
-            for key, value in (without_transition(clip) if clip["clip_id"] in alone else clip).items()
+            for key, value in (
+                without_transition(clip) if clip["clip_id"] in alone else clip
+            ).items()
             if key != "enabled"
         }
         for clip in timeline["clips"]
@@ -155,9 +173,12 @@ def _without_disabled(timeline: Doc) -> None:
 
 
 def _require_adjustments(timeline: Mapping[str, Any]) -> None:
-    """A component that cannot composite adjustment layers gets no timeline with one: it is refused, never rendered
-    without the layer."""
-    adjustments = {source["source_id"] for source in timeline["sources"] if source["kind"] == "adjustment"}
+    """A component that cannot composite adjustment layers gets no timeline with one: it is refused, never rendered without the layer."""
+    adjustments = {
+        source["source_id"]
+        for source in timeline["sources"]
+        if source["kind"] == "adjustment"
+    }
     for clip in timeline["clips"]:
         if clip["source_id"] in adjustments:
             reject(
@@ -168,8 +189,7 @@ def _require_adjustments(timeline: Mapping[str, Any]) -> None:
 
 
 def _without_cuts(timeline: Doc) -> None:
-    """Where a transition's cut is only tells the editor what to give back when it goes; the export draws the
-    overlap, and an export component that predates cuts refuses the member."""
+    """Where a transition's cut is only tells the editor what to give back when it goes; the export draws the overlap, and an export component that predates cuts refuses the member."""
     for clip in timeline["clips"]:
         transition = (clip.get("effects") or {}).get("transition_out")
         if transition and "cut" in transition:
@@ -177,9 +197,13 @@ def _without_cuts(timeline: Doc) -> None:
             clip["effects"] = {**clip["effects"], "transition_out": plain}
 
 
-def render_snapshot(timeline: Mapping[str, Any], exporter: Exporter, width: int, height: int) -> Doc:
+def render_snapshot(
+    timeline: Mapping[str, Any], exporter: Exporter, width: int, height: int
+) -> Doc:
     """The timeline as the export component gets it: no playback proxies, no bookkeeping, only media it can use."""
-    snapshot: Doc = copy.deepcopy({key: value for key, value in timeline.items() if key not in BOOKKEEPING})
+    snapshot: Doc = copy.deepcopy(
+        {key: value for key, value in timeline.items() if key not in BOOKKEEPING}
+    )
     _without_cuts(snapshot)
     if not exporter.adjustment:
         _require_adjustments(snapshot)
@@ -191,7 +215,11 @@ def render_snapshot(timeline: Mapping[str, Any], exporter: Exporter, width: int,
         snapshot["version"] = 1
     used = {clip["source_id"] for clip in snapshot["clips"]}
     snapshot["sources"] = [
-        {key: value for key, value in source.items() if key not in PROXY_FIELDS and key != "pending_take_id"}
+        {
+            key: value
+            for key, value in source.items()
+            if key not in PROXY_FIELDS and key != "pending_take_id"
+        }
         for source in snapshot["sources"]
         if source["source_id"] in used
     ]
@@ -200,12 +228,25 @@ def render_snapshot(timeline: Mapping[str, Any], exporter: Exporter, width: int,
 
 def _exported_shots(timeline: Mapping[str, Any]) -> list[str]:
     """The shots the export shows, in the order they first appear."""
-    shots = {source["source_id"]: source.get("shot_id") for source in timeline["sources"]}
-    ordered = sorted((clip for clip in timeline["clips"] if clip_enabled(clip)), key=lambda clip: clip["start_frame"])
-    return list(dict.fromkeys(str(shots[clip["source_id"]]) for clip in ordered if shots.get(clip["source_id"])))
+    shots = {
+        source["source_id"]: source.get("shot_id") for source in timeline["sources"]
+    }
+    ordered = sorted(
+        (clip for clip in timeline["clips"] if clip_enabled(clip)),
+        key=lambda clip: clip["start_frame"],
+    )
+    return list(
+        dict.fromkeys(
+            str(shots[clip["source_id"]])
+            for clip in ordered
+            if shots.get(clip["source_id"])
+        )
+    )
 
 
-def export_request(project: Mapping[str, Any], options: Mapping[str, Any], exporter: Exporter) -> Doc:
+def export_request(
+    project: Mapping[str, Any], options: Mapping[str, Any], exporter: Exporter
+) -> Doc:
     """``{"body": <RunRequest>, "frames": <frames the export will have>, "shot_ids": [...]}`` for a project.
 
     ``project`` is a normalized Studio project and ``options`` a ``StudioTimelineExportRequest``. Raises
@@ -222,12 +263,19 @@ def export_request(project: Mapping[str, Any], options: Mapping[str, Any], expor
         raise rejection_of(error) from error
     area = _render_range(timeline, options)
     geometry = export_geometry(project, options)
-    snapshot = render_snapshot(timeline, exporter, geometry["width"], geometry["height"])
+    snapshot = render_snapshot(
+        timeline, exporter, geometry["width"], geometry["height"]
+    )
     try:
         validate_timeline(snapshot, for_export=True)
     except ComponentError as error:
         raise rejection_of(error) from error
-    value: Doc = {"clips": [], "timeline": snapshot, **({"render_range": area} if area else {}), **geometry}
+    value: Doc = {
+        "clips": [],
+        "timeline": snapshot,
+        **({"render_range": area} if area else {}),
+        **geometry,
+    }
     value["fps"] = dict(timeline["fps"])
     size = len(canonical_json(value))
     if size > INLINE_MAX_BYTES:
@@ -242,6 +290,12 @@ def export_request(project: Mapping[str, Any], options: Mapping[str, Any], expor
         "crf": QUALITY_CRF[options.get("quality", "high")],
         "preset": options.get("speed", "medium"),
         "audio_bitrate": int(options.get("audio_kbps", 192)) * 1000,
+        # Only when asked, so an export without a loudness target builds exactly the request it did before.
+        **(
+            {"loudness_lufs": int(options["loudness"])}
+            if options.get("loudness") is not None
+            else {}
+        ),
     }
     step = {
         "step_id": "concat",
@@ -250,7 +304,12 @@ def export_request(project: Mapping[str, Any], options: Mapping[str, Any], expor
         "inputs": {"sequence": {"from_input": "sequence"}},
         "parameters": parameters,
     }
-    port = {"name": "sequence", "type_id": SEQUENCE_TYPE, "required": True, "transport": "inline"}
+    port = {
+        "name": "sequence",
+        "type_id": SEQUENCE_TYPE,
+        "required": True,
+        "transport": "inline",
+    }
     body = {
         "pipeline": {
             "pipeline_id": PIPELINE_ID,
@@ -262,8 +321,31 @@ def export_request(project: Mapping[str, Any], options: Mapping[str, Any], expor
         "inputs": {"sequence": {"type_id": SEQUENCE_TYPE, "value": value}},
         "label": label,
     }
-    frames = area["end_frame"] - area["start_frame"] if area else timeline_duration(snapshot)
+    if (
+        isinstance(project.get("project_id"), str)
+        and type(project.get("revision")) is int
+    ):
+        # CLI, MCP and Studio use the same export-origin note. The frozen sequence remains available on the run.
+        body["origin"] = {
+            "note": canonical_json(
+                {
+                    "type": "studio.timeline-export.v1",
+                    "project_id": project["project_id"],
+                    "revision": project["revision"],
+                    "snapshot_sha256": None,
+                }
+            ).decode("utf-8")
+        }
+    frames = (
+        area["end_frame"] - area["start_frame"] if area else timeline_duration(snapshot)
+    )
     return {"body": body, "frames": frames, "shot_ids": _exported_shots(timeline)}
 
 
-__all__ = ["PROVIDER_ID", "Exporter", "export_geometry", "export_request", "render_snapshot"]
+__all__ = [
+    "PROVIDER_ID",
+    "Exporter",
+    "export_geometry",
+    "export_request",
+    "render_snapshot",
+]

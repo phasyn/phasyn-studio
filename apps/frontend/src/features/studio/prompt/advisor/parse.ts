@@ -1,3 +1,4 @@
+import { isListed } from "@/lib/json";
 // Prompt 結構掃描（純函式，不改字）：H3 欄位、分鏡標記、自訂時間標題、段落與鏡頭片段、<d> 台詞、@ 名稱、
 // H3 標籤、Markdown 殘留與 I2VA／FL2VA 對齊行。所有位置都是原文的 [start, end)。
 //
@@ -190,10 +191,12 @@ export function scanSections(text: string): Section[] {
     const open = match[3] ?? "";
     const raw = match[4] ?? "";
     const nameStart = lineStart + indent.length + hashes.length + open.length;
+    const name = raw.toLowerCase();
+    if (!isListed(name, ALL_FIELDS)) continue;
     heads.push({
-      name: raw.toLowerCase() as FieldName,
+      name,
       exactName: raw === raw.toLowerCase(),
-      decorated: Boolean(hashes || open || match[5] || match[6]),
+      decorated: [hashes, open, match[5], match[6]].some((part) => part !== undefined && part !== ""),
       lineStart,
       headStart: lineStart + indent.length,
       nameStart,
@@ -339,7 +342,7 @@ function scanSegments(text: string, paragraphs: readonly Paragraph[], sections: 
       const section = sectionNameAt(sections, range.start);
       if (marker.shot) {
         out.push({ kind: "shot", ...range, label: text.slice(marker.shot.start, marker.shot.bracketEnd), shot: marker.shot, heading: null, section });
-      } else if (marker.heading) {
+      } else {
         out.push({ kind: "time", ...range, label: t("{from}–{to} 秒", { from: marker.heading.from, to: marker.heading.to }), shot: null, heading: marker.heading, section });
       }
     });
@@ -371,21 +374,21 @@ export function scanDialogues(text: string): Dialogue[] {
 }
 
 export function scanMentions(text: string): Mention[] {
-  return [...text.matchAll(new RegExp(MENTION_SOURCE, "gi"))].map((match) => {
-    const word = (match[1] ?? "").toLowerCase() as RefKind;
+  return [...text.matchAll(new RegExp(MENTION_SOURCE, "gi"))].flatMap((match): Mention[] => {
+    const word = (match[1] ?? "").toLowerCase();
+    if (!isListed(word, ["image", "video", "audio"] as const)) return [];
     const ordinal = Number(match[2]);
-    const alias = `${PREFIX[word]}${ordinal}`;
-    return { start: match.index, end: match.index + match[0].length, raw: match[0], kind: word, ordinal, alias, exactCase: match[0].slice(1) === alias };
+    const alias = `${PREFIX[word]}${String(ordinal)}`;
+    return [{ start: match.index, end: match.index + match[0].length, raw: match[0], kind: word, ordinal, alias, exactCase: match[0].slice(1) === alias }];
   });
 }
 
 export function scanLabels(text: string): LabelHit[] {
-  return [...text.matchAll(new RegExp(LABEL_SOURCE, "g"))].map((match) => ({
-    start: match.index,
-    end: match.index + match[0].length,
-    tag: match[1] as LabelHit["tag"],
-    ordinal: Number(match[2]),
-  }));
+  return [...text.matchAll(new RegExp(LABEL_SOURCE, "g"))].flatMap((match): LabelHit[] => {
+    const tag = match[1];
+    return isListed(tag, ["Picture", "Video", "Audio", "Subject"] as const)
+      ? [{ start: match.index, end: match.index + match[0].length, tag, ordinal: Number(match[2]) }] : [];
+  });
 }
 
 export function scanMarkdown(text: string): MarkdownHit[] {

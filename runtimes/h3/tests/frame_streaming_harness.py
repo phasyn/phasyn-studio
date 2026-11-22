@@ -22,11 +22,12 @@ import types
 from pathlib import Path
 from typing import Any
 
+
 H3_STAGES = "sglang.multimodal_gen.runtime.pipelines_core.stages.model_specific_stages.minimax_h3"
 
 
 def stage_module(name: str) -> Any:
-    import sglang.multimodal_gen as mg
+    import sglang.multimodal_gen as mg  # type: ignore[import-untyped]  # Pinned SGLang has no PEP 561 metadata.
 
     root = Path(mg.__path__[0]) / "runtime"
     parts = ["pipelines_core", "stages", "model_specific_stages", "minimax_h3"]
@@ -40,7 +41,9 @@ def stage_module(name: str) -> Any:
 
 
 def vae_config(vae_dir: Path) -> Any:
-    from sglang.multimodal_gen.configs.models.vaes.minimax_h3_video import MiniMaxH3VideoVAEConfig
+    from sglang.multimodal_gen.configs.models.vaes.minimax_h3_video import (  # type: ignore[import-untyped]  # Pinned SGLang has no PEP 561 metadata.
+        MiniMaxH3VideoVAEConfig,
+    )
 
     config = json.loads((vae_dir / "config.json").read_text(encoding="utf-8"))
     config.pop("_class_name", None)
@@ -54,29 +57,33 @@ def build_encoder(vae_dir: Path, device: Any = "cpu") -> tuple[Any, Any]:
     """(the FP32 encode half on ``device``, its arch config)."""
     import torch
     from safetensors import safe_open
-    from sglang.multimodal_gen.runtime.loader.utils import (
+    from sglang.multimodal_gen.runtime.loader.utils import (  # type: ignore[import-untyped]  # Pinned SGLang has no PEP 561 metadata.
         finalize_loaded_model,
         initialize_model,
         load_model_state_dict,
     )
-    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3 import MiniMaxH3VideoVAE
-    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae import klvae
+    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3 import MiniMaxH3VideoVAE  # type: ignore[import-untyped]  # Pinned SGLang has no PEP 561 metadata.
+    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae import klvae  # type: ignore[import-untyped]  # Pinned SGLang has no PEP 561 metadata.
 
     class _DecoderNotBuilt(torch.nn.Module):
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
             super().__init__()
 
     config = vae_config(vae_dir)
     saved = klvae.ViT3DDecoder
     klvae.ViT3DDecoder = _DecoderNotBuilt
     try:
-        vae = initialize_model(MiniMaxH3VideoVAE, {"config": config}, torch.float32, torch.device("meta"))
+        vae = initialize_model(
+            MiniMaxH3VideoVAE, {"config": config}, torch.float32, torch.device("meta")
+        )
     finally:
         klvae.ViT3DDecoder = saved
     for name in ("decoder", "post_quant_conv"):
         delattr(vae, name)
     loaded = {}
-    with safe_open(str(vae_dir / "source" / "model.safetensors"), framework="pt", device="cpu") as handle:
+    with safe_open(
+        str(vae_dir / "source" / "model.safetensors"), framework="pt", device="cpu"
+    ) as handle:
         for name in handle.keys():  # noqa: SIM118 (safe_open is not a mapping)
             if name.split(".", 1)[0] in ("encoder", "quant_conv"):
                 loaded[name] = handle.get_tensor(name)
@@ -93,7 +100,7 @@ def random_encoder(seed: int = 0, *, ch: int = 32) -> Any:
     from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae import klvae
 
     class _DecoderNotBuilt(torch.nn.Module):
-        def __init__(self, *args: Any, **kwargs: Any) -> None:
+        def __init__(self, *_args: Any, **_kwargs: Any) -> None:
             super().__init__()
 
     saved = klvae.ViT3DDecoder
@@ -123,7 +130,9 @@ def random_encoder(seed: int = 0, *, ch: int = 32) -> Any:
         klvae.ViT3DDecoder = saved
     for name in ("decoder", "post_quant_conv"):
         delattr(vae, name)
-    with torch.no_grad():  # non-trivial norm affine parameters (the defaults are ones and zeros)
+    with (
+        torch.no_grad()
+    ):  # non-trivial norm affine parameters (the defaults are ones and zeros)
         for module in vae.encoder.modules():
             if isinstance(module, torch.nn.GroupNorm):
                 module.weight.uniform_(0.5, 1.5)
@@ -133,16 +142,26 @@ def random_encoder(seed: int = 0, *, ch: int = 32) -> Any:
 
 def synthetic_frames(frames: int, height: int, width: int, seed: int = 0) -> Any:
     """A deterministic uint8 video ``[T, H, W, 3]`` with structure in space and time (synthetic test data)."""
-    import numpy as np
+    import numpy as np  # noqa: PLC0415 - Keep this optional experiment dependency behind its runtime check.
 
     rng = np.random.default_rng(seed)
     t = np.arange(frames)[:, None, None, None]
     y = np.arange(height)[None, :, None, None]
     x = np.arange(width)[None, None, :, None]
     c = np.arange(3)[None, None, None, :]
-    wave = 127.5 + 60 * np.sin(0.11 * x + 0.07 * y + 0.5 * t + c) + 40 * np.cos(0.05 * x * (c + 1) - 0.3 * t)
+    wave = (
+        127.5
+        + 60 * np.sin(0.11 * x + 0.07 * y + 0.5 * t + c)
+        + 40 * np.cos(0.05 * x * (c + 1) - 0.3 * t)
+    )
     noise = rng.normal(0.0, 12.0, size=(frames, height, width, 3))
     return np.clip(wave + noise, 0, 255).astype(np.uint8)
 
 
-__all__ = ["build_encoder", "random_encoder", "stage_module", "synthetic_frames", "vae_config"]
+__all__ = [
+    "build_encoder",
+    "random_encoder",
+    "stage_module",
+    "synthetic_frames",
+    "vae_config",
+]

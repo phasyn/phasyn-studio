@@ -1,5 +1,4 @@
 import initialize, { aggregate_peaks } from "./generated/editor-kernel/editor_kernel.js";
-import wasmUrl from "./generated/editor-kernel/editor_kernel_bg.wasm?url";
 import { PEAK_PROTOCOL, readRequest, type PeakReply, type PeakRequest } from "./waveformProtocol";
 
 declare const self: DedicatedWorkerGlobalScope;
@@ -10,7 +9,7 @@ async function run(request: PeakRequest): Promise<void> {
   const identity = { protocol: PEAK_PROTOCOL, requestId: request.requestId, generation: request.generation } as const;
   let reply: PeakReply;
   try {
-    initialization ??= initialize({ module_or_path: wasmUrl });
+    initialization ??= initialize({ module_or_path: new URL("./generated/editor-kernel/editor_kernel_bg.wasm", import.meta.url) });
     await initialization;
   } catch {
     self.postMessage({ ...identity, kind: "error", code: "INITIALIZATION_FAILED" } satisfies PeakReply);

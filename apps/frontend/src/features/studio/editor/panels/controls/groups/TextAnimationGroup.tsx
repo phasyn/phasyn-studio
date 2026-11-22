@@ -3,7 +3,7 @@
 // lanes of Motion, Opacity and Effects, and the lane of each row here shows where the animation is. A picker shows
 // the preset the layer's keys still match, 自訂 when the layer's edge carries keys of someone's own. An animation that
 // an edit of the layer's edge left elsewhere can be put back on the edge.
-import { useContext, useState } from "react";
+import { use, useState } from "react";
 import type { TimelineClip } from "@/api/generated/contracts";
 import { useChangeFade } from "@/components/ui/motion";
 import { t } from "@/i18n";
@@ -72,7 +72,7 @@ function commitNamed(editor: Editor, clip: TimelineClip, label: string): EditRes
 
 /** Where a side's animation is, on the lane of its row (it fades in when the animation changes). */
 function AnimationSpan({ clip, state }: { clip: TimelineClip; state: AnimationState }) {
-  const fade = useChangeFade<HTMLSpanElement>(state.kind === "preset" ? `${state.preset}:${state.start}:${state.frames}` : state.kind);
+  const fade = useChangeFade<HTMLSpanElement>(state.kind === "preset" ? `${state.preset}:${String(state.start)}:${String(state.frames)}` : state.kind);
   if (state.kind !== "preset") return null;
   const duration = Math.max(1, clipDuration(clip));
   const fraction = (processing: number) => Math.max(0, Math.min(1, toClipLocalFrame(clip, processing) / duration));
@@ -84,7 +84,7 @@ function AnimationSpan({ clip, state }: { clip: TimelineClip; state: AnimationSt
       ref={fade}
       aria-hidden
       className="pointer-events-none absolute inset-y-1.5 rounded-sm border border-brand-blue/55 bg-brand-blue/20"
-      style={{ left: laneLeft(from), width: `calc((100% - ${2 * LANE_INSET}px) * ${(to - from).toFixed(5)})` }}
+      style={{ left: laneLeft(from), width: `calc((100% - ${String(2 * LANE_INSET)}px) * ${(to - from).toFixed(5)})` }}
     />
   );
 }
@@ -103,8 +103,8 @@ interface AnimationRowProps {
 
 function AnimationRow({ clip, side, state, other, pending, setPending, change }: AnimationRowProps) {
   const editor = useEditor();
-  const { lead } = useContext(RowLayoutContext);
-  const locked = useContext(FieldLockContext);
+  const { lead } = use(RowLayoutContext);
+  const locked = use(FieldLockContext);
   const text = SIDE_TEXT[side];
   const limit = animationLimit(clip, other);
   const room = framesProblem(clip, MIN_ANIMATION_FRAMES, other);
@@ -113,7 +113,7 @@ function AnimationRow({ clip, side, state, other, pending, setPending, change }:
   const value: Choice = state.kind === "preset" ? state.preset : state.kind;
   const options: ChoiceOption<Choice>[] = [
     { value: "none", label: t("無") },
-    ...TEXT_PRESETS.map((preset) => ({ value: preset.id, label: preset.id === "blur" && blur ? t("{name}（無法使用）", { name: preset[side] }) : preset[side] })),
+    ...TEXT_PRESETS.map((preset) => ({ value: preset.id, label: preset.id === "blur" && (blur != null && blur !== "") ? t("{name}（無法使用）", { name: preset[side] }) : preset[side] })),
     // Shown only while it is what the side has: it is not something to choose
     ...(state.kind === "custom" ? [{ value: "custom" as const, label: t("自訂") }] : []),
   ];
@@ -127,7 +127,7 @@ function AnimationRow({ clip, side, state, other, pending, setPending, change }:
       return;
     }
     const refusal = (choice === "blur" ? blur : null) ?? room;
-    if (refusal) editor.warn(refusal);
+    if (refusal != null && refusal !== "") editor.warn(refusal);
     else report(change(side, choice, frames, text.applied(presetName(choice, side))));
   };
   const seconds = (frames / Math.max(1, editor.fps)).toFixed(2);
@@ -138,7 +138,7 @@ function AnimationRow({ clip, side, state, other, pending, setPending, change }:
       <span className={ROW_LABEL} title={t("{label}：{hint}", { label: text.label, hint: text.hint })}>
         {text.label}
       </span>
-      <SelectField label={text.picker} value={value} options={options} hint={blur ?? undefined} onChange={choose} className="max-w-56 min-w-24 flex-1" />
+      <SelectField label={text.picker} value={value} options={options} {...(blur == null ? {} : { hint: blur })} onChange={choose} className="max-w-56 min-w-24 flex-1" />
       <NumberField
         label={text.length}
         value={frames}
@@ -158,7 +158,7 @@ function AnimationRow({ clip, side, state, other, pending, setPending, change }:
         }}
       />
       {state.kind === "preset" && !state.aligned ? (
-        <TextButton title={text.away} disabledReason={locked} onClick={() => report(change(side, state.preset, state.frames, text.aligned))}>
+        <TextButton title={text.away} disabledReason={locked} onClick={() => { report(change(side, state.preset, state.frames, text.aligned)); }}>
           {t("對齊")}
         </TextButton>
       ) : null}
@@ -198,7 +198,7 @@ export function TextAnimationGroup({ clip }: { clip: TimelineClip }) {
           state={states[side]}
           other={states[side === "in" ? "out" : "in"]}
           pending={pending[side]}
-          setPending={(frames) => setPending((current) => ({ ...current, [side]: frames }))}
+          setPending={(frames) => { setPending((current) => ({ ...current, [side]: frames })); }}
           change={change}
         />
       ))}

@@ -20,13 +20,13 @@ const HALF_GAP = 3;
 
 export function useReferenceDrag(list: RefObject<HTMLElement | null>, onDrop: (refId: string, toIndex: number) => void) {
   const [state, setState] = useState<ReferenceDragState | null>(null);
-  const stop = useRef<(() => void) | null>(null);
-  const drop = useRef(onDrop);
+  const stopRef = useRef<(() => void) | null>(null);
+  const dropRef = useRef(onDrop);
   useEffect(() => {
-    drop.current = onDrop;
+    dropRef.current = onDrop;
   });
   // A drag in progress ends with the list
-  useEffect(() => () => stop.current?.(), []);
+  useEffect(() => () => stopRef.current?.(), []);
 
   const begin = (refId: string, kind: ReferenceKind) => (event: PointerEvent<HTMLButtonElement>) => {
     const root = list.current;
@@ -35,10 +35,10 @@ export function useReferenceDrag(list: RefObject<HTMLElement | null>, onDrop: (r
     const handle = event.currentTarget;
     handle.setPointerCapture(event.pointerId);
     const rows = () => [...root.querySelectorAll<HTMLElement>(`[data-ref-kind="${kind}"]`)];
-    const from = rows().findIndex((row) => row.dataset.refId === refId);
+    const from = rows().findIndex((row) => row.dataset["refId"] === refId);
     let latest: ReferenceDragState = { refId, from, target: from, lineTop: 0 };
     const measure = (y: number) => {
-      const others = rows().filter((row) => row.dataset.refId !== refId);
+      const others = rows().filter((row) => row.dataset["refId"] !== refId);
       const target = others.filter((row) => {
         const box = row.getBoundingClientRect();
         return box.top + box.height / 2 < y;
@@ -51,20 +51,20 @@ export function useReferenceDrag(list: RefObject<HTMLElement | null>, onDrop: (r
       latest = { refId, from, target, lineTop };
       setState(latest);
     };
-    const onMove = (next: globalThis.PointerEvent) => measure(next.clientY);
+    const onMove = (next: globalThis.PointerEvent) => { measure(next.clientY); };
     const finish = (commit: boolean) => {
-      stop.current?.();
-      if (commit && latest.target !== latest.from) drop.current(refId, latest.target);
+      stopRef.current?.();
+      if (commit && latest.target !== latest.from) dropRef.current(refId, latest.target);
     };
-    const onUp = () => finish(true);
-    const onCancel = () => finish(false);
+    const onUp = () => { finish(true); };
+    const onCancel = () => { finish(false); };
     const onKey = (key: KeyboardEvent) => {
       if (key.key !== "Escape") return;
       key.preventDefault();
       finish(false);
     };
-    stop.current = () => {
-      stop.current = null;
+    stopRef.current = () => {
+      stopRef.current = null;
       handle.removeEventListener("pointermove", onMove);
       handle.removeEventListener("pointerup", onUp);
       handle.removeEventListener("pointercancel", onCancel);

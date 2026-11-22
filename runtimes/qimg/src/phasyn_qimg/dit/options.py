@@ -1,5 +1,4 @@
-"""Settings/parameter schema, defaults and semantic checks for ``qimg.dit`` (torch-free; shared by
-describe() and load()/invoke()).
+"""Settings/parameter schema, defaults and semantic checks for ``qimg.dit`` (torch-free; shared by describe() and load()/invoke()).
 
 - The two variants are two different components: ``bf16`` (native BF16 transformer; placement is an
   explicit ``phase``/``group_stream``/``none``; LoRA/slider adapters and a transformer override are allowed)
@@ -31,6 +30,11 @@ from phasyn_components.settings import normalize_recording
 from .. import memory
 from ..latents import latent_hw
 
+
+_MAX_ADAPTER_SCALE = 5
+_MAX_GUIDANCE = 20
+_MAX_FLOW_SHIFT = 3
+
 PROVIDER_ID = "qimg.dit"
 KIND = "dit.denoise"
 CONDITIONING_TYPE = "qimg.conditioning.v1"
@@ -41,7 +45,10 @@ REF_LATENTS_KIND = "qimg_ref_latents"
 LATENT_KIND = "qimg_latent"
 
 VARIANTS = ("bf16", "gguf_q4km")
-PLACEMENTS: dict[str, tuple[str, ...]] = {"bf16": ("phase", "group_stream", "none"), "gguf_q4km": ("gguf_phase",)}
+PLACEMENTS: dict[str, tuple[str, ...]] = {
+    "bf16": ("phase", "group_stream", "none"),
+    "gguf_q4km": ("gguf_phase",),
+}
 ALL_PLACEMENTS = ("phase", "group_stream", "none", "gguf_phase")
 PIN_MODES = ("static", "dynamic")
 PREVIEW_MODES = ("off", "vae_thumbnail", "linear_fit")
@@ -57,8 +64,8 @@ PREVIEW_SCHEMA: dict[str, Any] = {
     "properties": {
         "mode": {
             "enum": list(PREVIEW_MODES),
-            "description": "off＝不產生預覽；vae_thumbnail＝CPU FP32 VAE 解碼縮小的 x0 估計（元件 load 時需 preview_vae=true）；"
-            "linear_fit＝以我們自己擬合的 64→3 係數投影（係數檔不存在時 422）",
+            "description": "off\N{FULLWIDTH EQUALS SIGN}不產生預覽；vae_thumbnail\N{FULLWIDTH EQUALS SIGN}CPU FP32 VAE 解碼縮小的 x0 估計（元件 load 時需 preview_vae=true）；"
+            "linear_fit\N{FULLWIDTH EQUALS SIGN}以我們自己擬合的 64→3 係數投影（係數檔不存在時 422）",
         },
         "every": {
             "type": "integer",
@@ -66,7 +73,12 @@ PREVIEW_SCHEMA: dict[str, Any] = {
             "maximum": 100,
             "description": "每幾步一張（第 1 步與最後一步一定有）",
         },
-        "max_side": {"type": "integer", "minimum": 256, "maximum": 512, "description": "預覽最長邊（px）"},
+        "max_side": {
+            "type": "integer",
+            "minimum": 256,
+            "maximum": 512,
+            "description": "預覽最長邊（px）",
+        },
     },
     "additionalProperties": False,
 }
@@ -79,7 +91,7 @@ PARAMS: dict[str, dict[str, Any]] = {
         "maximum": 2048,
         "multipleOf": 32,
         "default": 1024,
-        "description": "輸出寬（px）；Qwen-Image 2.1 一個 VLM 影像槽＝2×2 latent token，pipeline 對齊 32，不暗中縮放",
+        "description": "輸出寬（px）；Qwen-Image 2.1 一個 VLM 影像槽\N{FULLWIDTH EQUALS SIGN}2×2 latent token，pipeline 對齊 32，不暗中縮放",
     },
     "height": {
         "type": "integer",
@@ -89,13 +101,19 @@ PARAMS: dict[str, dict[str, Any]] = {
         "default": 1024,
         "description": "輸出高（px；32 的倍數）",
     },
-    "steps": {"type": "integer", "minimum": 2, "maximum": 100, "default": 40, "description": "取樣步數（至少 2）"},
+    "steps": {
+        "type": "integer",
+        "minimum": 2,
+        "maximum": 100,
+        "default": 40,
+        "description": "取樣步數（至少 2）",
+    },
     "guidance": {
         "type": "number",
         "minimum": 0,
         "maximum": 20,
         "default": 1.0,
-        "description": "true_cfg_scale：≤1 不使用 CFG；>1 用 neg + s·(cond−neg)，需要 conditioning 以 cfg=true 編碼負向，每步 forward 加倍",
+        "description": "true_cfg_scale：≤1 不使用 CFG；>1 用 neg + s·(cond\N{MINUS SIGN}neg)，需要 conditioning 以 cfg=true 編碼負向，每步 forward 加倍",
     },
     "sigma_schedule": {
         "enum": ["native", "karras", "exponential"],
@@ -105,13 +123,13 @@ PARAMS: dict[str, dict[str, Any]] = {
     "flow_shift_mu": {
         "anyOf": [{"type": "null"}, {"type": "number", "minimum": -1, "maximum": 3}],
         "default": None,
-        "description": "null＝依解析度自動 μ（pipeline 原生）；數值＝固定 exp(μ) shift（關閉 dynamic shifting，保留 terminal stretch）",
+        "description": "null\N{FULLWIDTH EQUALS SIGN}依解析度自動 μ（pipeline 原生）；數值\N{FULLWIDTH EQUALS SIGN}固定 exp(μ) shift（關閉 dynamic shifting，保留 terminal stretch）",
     },
     "seed": {
         "type": "integer",
         "minimum": 0,
         "maximum": SEED_MAX,
-        "description": "CPU torch.Generator 種子（必填；−1 由呼叫端先解析成實際值並記錄）",
+        "description": "CPU torch.Generator 種子（必填；\N{MINUS SIGN}1 由呼叫端先解析成實際值並記錄）",
     },
     "preview": {**copy.deepcopy(PREVIEW_SCHEMA), "default": dict(PREVIEW_DEFAULT)},
 }
@@ -126,9 +144,19 @@ INVOKE_DEFAULTS: dict[str, Any] = {
 }
 
 
-def _rel_path_schema(description: str, *, nullable: bool, suffix: str | None = None) -> dict[str, Any]:
-    pattern = r"^(?!/)(?!.*(^|/)\.\.(/|$)).+" + (re.escape(suffix) + "$" if suffix else "")
-    string = {"type": "string", "minLength": 1, "maxLength": 4096, "pattern": pattern, "description": description}
+def _rel_path_schema(
+    description: str, *, nullable: bool, suffix: str | None = None
+) -> dict[str, Any]:
+    pattern = r"^(?!/)(?!.*(^|/)\.\.(/|$)).+" + (
+        re.escape(suffix) + "$" if suffix else ""
+    )
+    string = {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096,
+        "pattern": pattern,
+        "description": description,
+    }
     if not nullable:
         return string
     return {"anyOf": [{"type": "null"}, string], "description": description}
@@ -137,10 +165,26 @@ def _rel_path_schema(description: str, *, nullable: bool, suffix: str | None = N
 ADAPTER_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        "name": {"type": "string", "pattern": r"^[A-Za-z0-9_-]{1,64}$", "description": "adapter 名稱（唯一）"},
-        "path": _rel_path_schema("LoRA／slider safetensors（相對 model_path）", nullable=False, suffix=".safetensors"),
-        "scale": {"type": "number", "minimum": -5, "maximum": 5, "description": "權重（slider 可為負）"},
-        "kind": {"enum": list(ADAPTER_KINDS), "description": "lora 或 slider（只是標示；載入方式相同）"},
+        "name": {
+            "type": "string",
+            "pattern": r"^[A-Za-z0-9_-]{1,64}$",
+            "description": "adapter 名稱（唯一）",
+        },
+        "path": _rel_path_schema(
+            "LoRA／slider safetensors（相對 model_path）",
+            nullable=False,
+            suffix=".safetensors",
+        ),
+        "scale": {
+            "type": "number",
+            "minimum": -5,
+            "maximum": 5,
+            "description": "權重（slider 可為負）",
+        },
+        "kind": {
+            "enum": list(ADAPTER_KINDS),
+            "description": "lora 或 slider（只是標示；載入方式相同）",
+        },
     },
     "required": ["name", "path", "scale"],
     "additionalProperties": False,
@@ -149,10 +193,11 @@ ADAPTER_SCHEMA: dict[str, Any] = {
 PROVIDER_OPTIONS: dict[str, Any] = {
     "variant": {
         "enum": list(VARIANTS),
-        "description": "bf16＝原生 BF16 Transformer；gguf_q4km＝GGUF Q4_K_M 量化權重（BF16 運算）。兩者是不同元件",
+        "description": "bf16\N{FULLWIDTH EQUALS SIGN}原生 BF16 Transformer；gguf_q4km\N{FULLWIDTH EQUALS SIGN}GGUF Q4_K_M 量化權重（BF16 運算）。兩者是不同元件",
     },
     "base": _rel_path_schema(
-        "Qwen-Image 2.1 pipeline 目錄（含 transformer／vae／text_encoder／scheduler；相對 model_path）", nullable=False
+        "Qwen-Image 2.1 pipeline 目錄（含 transformer／vae／text_encoder／scheduler；相對 model_path）",
+        nullable=False,
     ),
     "gguf_file": _rel_path_schema(
         "gguf_q4km 的 Transformer GGUF 檔（相對 model_path；variant=gguf_q4km 時必填，沒有預設值）",
@@ -160,7 +205,8 @@ PROVIDER_OPTIONS: dict[str, Any] = {
         suffix=".gguf",
     ),
     "transformer_override": _rel_path_schema(
-        "（bf16）覆寫 Transformer 目錄（recipe；相對 model_path）；載入前檢查類別與 ABI", nullable=True
+        "（bf16）覆寫 Transformer 目錄（recipe；相對 model_path）；載入前檢查類別與 ABI",
+        nullable=True,
     ),
     "adapters": {
         "type": "array",
@@ -173,14 +219,17 @@ PROVIDER_OPTIONS: dict[str, Any] = {
         "description": "load 時載入一份 CPU FP32 VAE 供 vae_thumbnail 預覽（佔主記憶體；量測值記在 load 紀錄）",
     },
     "preview_coefficients": {
-        "anyOf": [{"type": "null"}, {"type": "string", "minLength": 1, "maxLength": 4096}],
-        "description": "linear_fit 係數 JSON（null＝套件內建檔；相對路徑以 model_path 為根）。由 fit_preview_coefficients.py 從我們自己的輸出擬合",
+        "anyOf": [
+            {"type": "null"},
+            {"type": "string", "minLength": 1, "maxLength": 4096},
+        ],
+        "description": "linear_fit 係數 JSON（null\N{FULLWIDTH EQUALS SIGN}套件內建檔；相對路徑以 model_path 為根）。由 fit_preview_coefficients.py 從我們自己的輸出擬合",
     },
     "memory_model": {
         "enum": list(memory.MEMORY_MODELS),
-        "description": "VRAM 准入的記憶體模型：auto＝依 is_integrated 判斷（讀不到就不猜，需明確設定）；"
-        "unified＝整合／統一記憶體（UMA）GPU，可用＝MemAvailable − unified_reserve_bytes；"
-        "discrete＝獨立 GPU，可用＝mem_get_info free（原規則）",
+        "description": "VRAM 准入的記憶體模型：auto\N{FULLWIDTH EQUALS SIGN}依 is_integrated 判斷（讀不到就不猜，需明確設定）；"
+        "unified\N{FULLWIDTH EQUALS SIGN}整合／統一記憶體（UMA）GPU，可用\N{FULLWIDTH EQUALS SIGN}MemAvailable \N{MINUS SIGN} unified_reserve_bytes；"
+        "discrete\N{FULLWIDTH EQUALS SIGN}獨立 GPU，可用\N{FULLWIDTH EQUALS SIGN}mem_get_info free（原規則）",
     },
     "unified_reserve_bytes": {
         "type": "integer",
@@ -196,12 +245,12 @@ OFFLOAD_SCHEMA: dict[str, Any] = {
     "properties": {
         "mode": {
             "enum": list(ALL_PLACEMENTS),
-            "description": "placement：phase＝每次呼叫前整個 Transformer 移入 GPU、結束移回 CPU；group_stream＝逐 block 串流"
-            "（record_stream）；none＝常駐 GPU；gguf_phase＝GGUF 版的 phase",
+            "description": "placement：phase\N{FULLWIDTH EQUALS SIGN}每次呼叫前整個 Transformer 移入 GPU、結束移回 CPU；group_stream\N{FULLWIDTH EQUALS SIGN}逐 block 串流"
+            "（record_stream）；none\N{FULLWIDTH EQUALS SIGN}常駐 GPU；gguf_phase\N{FULLWIDTH EQUALS SIGN}GGUF 版的 phase",
         },
         "pin_memory": {
             "enum": list(PIN_MODES),
-            "description": "group_stream 專用：static＝load 時建立整份 pinned 副本（需通過 RAM 檢查）；dynamic＝每次搬運時暫時 pin",
+            "description": "group_stream 專用：static\N{FULLWIDTH EQUALS SIGN}load 時建立整份 pinned 副本（需通過 RAM 檢查）；dynamic\N{FULLWIDTH EQUALS SIGN}每次搬運時暫時 pin",
         },
     },
     "required": ["mode"],
@@ -209,10 +258,13 @@ OFFLOAD_SCHEMA: dict[str, Any] = {
 }
 
 PRECISION_PROPERTIES: dict[str, Any] = {
-    "compute_dtype": {"enum": ["bf16"], "description": "DiT 運算 dtype（兩個 variant 都是 BF16）"},
+    "compute_dtype": {
+        "enum": ["bf16"],
+        "description": "DiT 運算 dtype（兩個 variant 都是 BF16）",
+    },
 }
 PRECISION_UNAVAILABLE = {
-    "weight_format": "由 provider_options.variant 決定：bf16＝原生 BF16 safetensors；gguf_q4km＝GGUF Q4_K_M（packed，BF16 運算）",
+    "weight_format": "由 provider_options.variant 決定：bf16\N{FULLWIDTH EQUALS SIGN}原生 BF16 safetensors；gguf_q4km\N{FULLWIDTH EQUALS SIGN}GGUF Q4_K_M（packed，BF16 運算）",
     "weight_dtype": "由 variant 決定；實際參數 dtype 分布記在 load observed.parameter_dtypes",
     "quantization": "不提供線上量化；GGUF 量化由 variant=gguf_q4km 的檔案決定",
     "autocast_dtype": "不使用 autocast",
@@ -227,12 +279,20 @@ PRECISION_UNAVAILABLE = {
 def _conditional_rules() -> list[dict[str, Any]]:
     gguf = {
         "properties": {
-            "provider_options": {"properties": {"variant": {"const": "gguf_q4km"}}, "required": ["variant"]}
+            "provider_options": {
+                "properties": {"variant": {"const": "gguf_q4km"}},
+                "required": ["variant"],
+            }
         },
         "required": ["provider_options"],
     }
     stream = {
-        "properties": {"offload": {"properties": {"mode": {"const": "group_stream"}}, "required": ["mode"]}},
+        "properties": {
+            "offload": {
+                "properties": {"mode": {"const": "group_stream"}},
+                "required": ["mode"],
+            }
+        },
         "required": ["offload"],
     }
     return [
@@ -251,7 +311,13 @@ def _conditional_rules() -> list[dict[str, Any]]:
                     },
                 }
             },
-            "else": {"properties": {"offload": {"properties": {"mode": {"enum": list(PLACEMENTS["bf16"])}}}}},
+            "else": {
+                "properties": {
+                    "offload": {
+                        "properties": {"mode": {"enum": list(PLACEMENTS["bf16"])}}
+                    }
+                }
+            },
         },
         {
             "if": stream,
@@ -262,6 +328,7 @@ def _conditional_rules() -> list[dict[str, Any]]:
 
 
 def build_settings_schema() -> dict[str, Any]:
+    """Describe the allowed component settings."""
     schema = settings_schema(
         precision_properties=PRECISION_PROPERTIES,
         offload_schema=OFFLOAD_SCHEMA,
@@ -279,10 +346,18 @@ def build_settings_schema() -> dict[str, Any]:
 
 
 def parameters_schema() -> dict[str, Any]:
-    return {"type": "object", "properties": copy.deepcopy(PARAMS), "additionalProperties": False}
+    """Describe accepted invocation parameters."""
+    return {
+        "type": "object",
+        "properties": copy.deepcopy(PARAMS),
+        "additionalProperties": False,
+    }
 
 
-def default_settings(variant: str = "bf16", placement: str | None = None) -> dict[str, Any]:
+def default_settings(
+    variant: str = "bf16", placement: str | None = None
+) -> dict[str, Any]:
+    """Build the default component settings."""
     mode = placement or PLACEMENTS[variant][0]
     offload: dict[str, Any] = {"mode": mode}
     if mode == "group_stream":
@@ -316,18 +391,26 @@ def default_settings(variant: str = "bf16", placement: str | None = None) -> dic
 # ---------------------------------------------------------------------------------------------- 已解析的設定
 @dataclass(frozen=True)
 class Adapter:
+    """An adapter path with its fusion weight."""
+
     name: str
     path: str
     scale: float
     kind: str = "lora"
 
     def to_dict(self) -> dict[str, Any]:
-        return {"name": self.name, "path": self.path, "scale": self.scale, "kind": self.kind}
+        """Serialize this value for the runtime contract."""
+        return {
+            "name": self.name,
+            "path": self.path,
+            "scale": self.scale,
+            "kind": self.kind,
+        }
 
 
 @dataclass(frozen=True)
 class DitOptions:
-    """load 設定解析後的結果（相對路徑已接到 model_path 上）。"""
+    """load 設定解析後的結果（相對路徑已接到 model_path 上）."""
 
     model_root: Path
     variant: str
@@ -345,41 +428,49 @@ class DitOptions:
 
     @property
     def base_dir(self) -> Path:
+        """Return the configured base model directory."""
         return self.model_root / self.base
 
     @property
     def transformer_dir(self) -> Path:
-        """實際載入的 Transformer 目錄（bf16：覆寫或 base/transformer；GGUF：companion config 目錄）。"""
+        """實際載入的 Transformer 目錄（bf16：覆寫或 base/transformer；GGUF：companion config 目錄）."""
         if self.variant == "bf16" and self.transformer_override:
             return self.model_root / self.transformer_override
         return self.base_dir / "transformer"
 
     @property
     def gguf_path(self) -> Path | None:
+        """Resolve the configured GGUF file."""
         return None if self.gguf_file is None else self.model_root / self.gguf_file
 
     def adapter_path(self, adapter: Adapter) -> Path:
+        """Resolve an adapter relative to the base model."""
         return self.model_root / adapter.path
 
     @property
     def scheduler_config_path(self) -> Path:
+        """Return the model scheduler configuration path."""
         return self.base_dir / "scheduler" / "scheduler_config.json"
 
     @property
     def text_encoder_config_path(self) -> Path:
+        """Return the text encoder configuration path."""
         return self.base_dir / "text_encoder" / "config.json"
 
     @property
     def vae_dir(self) -> Path:
+        """Return the VAE model directory."""
         return self.base_dir / "vae"
 
     def coefficients_path(self, packaged: Path) -> Path:
+        """Return the preview coefficient path."""
         if not self.preview_coefficients:
             return packaged
         candidate = Path(self.preview_coefficients)
         return candidate if candidate.is_absolute() else self.model_root / candidate
 
     def to_effective(self) -> dict[str, Any]:
+        """Describe the resolved runtime settings."""
         return {
             "variant": self.variant,
             "base": self.base,
@@ -394,12 +485,18 @@ class DitOptions:
 
 
 def unsupported(message: str, **details: Any) -> ComponentError:
+    """Build the error for an unsupported option combination."""
     return ComponentError("UNSUPPORTED_SETTING", message, details=details or None)
 
 
 def check_relative(value: Any, what: str) -> str:
-    """相對 model_path 的路徑：非空、非絕對、不含 ``..``（符號連結允許，因為 models/ 本來就以連結組成）。"""
-    if not isinstance(value, str) or not value.strip() or "\x00" in value or "\\" in value:
+    """相對 model_path 的路徑：非空、非絕對、不含 ``..``（符號連結允許，因為 models/ 本來就以連結組成）."""
+    if (
+        not isinstance(value, str)
+        or not value.strip()
+        or "\x00" in value
+        or "\\" in value
+    ):
         raise unsupported(f"{what} 必須是相對 model_path 的路徑字串")
     path = PurePosixPath(value)
     if path.is_absolute() or ".." in path.parts:
@@ -408,88 +505,32 @@ def check_relative(value: Any, what: str) -> str:
 
 
 def parse_options(load: Mapping[str, Any]) -> DitOptions:
-    """load 設定 → DitOptions；任何組合錯誤都 422（與 schema 的 allOf 規則相同，給直接呼叫與更清楚的訊息）。"""
+    """Load 設定 → DitOptions；任何組合錯誤都 422（與 schema 的 allOf 規則相同，給直接呼叫與更清楚的訊息）."""
     model_path = load.get("model_path")
     if not model_path:
-        raise ComponentError("COMPONENT_NOT_CONFIGURED", "未設定 load.model_path（Phasyn models 根目錄）")
+        raise ComponentError(
+            "COMPONENT_NOT_CONFIGURED", "未設定 load.model_path（Phasyn models 根目錄）"
+        )
     options = dict(load.get("provider_options") or {})
     offload = dict(load.get("offload") or {})
     variant = options.get("variant")
     if variant not in VARIANTS:
-        raise unsupported(f"provider_options.variant 必須是 {'／'.join(VARIANTS)}", variant=variant)
-    placement = offload.get("mode")
-    if placement not in PLACEMENTS[variant]:
         raise unsupported(
-            f"variant={variant} 的 placement（offload.mode）只能是 {'／'.join(PLACEMENTS[variant])}，收到 {placement}",
-            variant=variant,
-            placement=placement,
+            f"provider_options.variant 必須是 {'／'.join(VARIANTS)}", variant=variant
         )
-    pin = offload.get("pin_memory")
-    if placement == "group_stream":
-        if pin not in PIN_MODES:
-            raise unsupported(
-                "group_stream 需要明確設定 offload.pin_memory（static／dynamic）；不自動選擇", pin_memory=pin
-            )
-    elif pin is not None:
-        raise unsupported(f"offload.pin_memory 只用於 group_stream；placement={placement} 不接受（不假裝套用）")
-    extra = sorted(set(offload) - {"mode", "pin_memory"})
-    if extra:
-        raise unsupported(f"offload 不支援欄位 {', '.join(extra)}")
+    placement, pin = _placement(offload, variant)
     precision = dict(load.get("precision") or {})
     if precision.get("compute_dtype", "bf16") != "bf16":
         raise unsupported(
-            "qimg.dit 只支援 compute_dtype=bf16（不自動換精度）", compute_dtype=precision.get("compute_dtype")
+            "qimg.dit 只支援 compute_dtype=bf16（不自動換精度）",
+            compute_dtype=precision.get("compute_dtype"),
         )
     base = check_relative(options.get("base") or DEFAULT_BASE, "provider_options.base")
-    gguf_file = options.get("gguf_file")
-    override = options.get("transformer_override")
-    raw_adapters = options.get("adapters") or []
-    if variant == "gguf_q4km":
-        if raw_adapters or override:
-            raise unsupported("GGUF 模型不支援 Adapter（LoRA／slider）或 Transformer 覆寫；請改用 bf16 元件")
-        if not gguf_file:
-            raise unsupported(
-                "variant=gguf_q4km 需要 provider_options.gguf_file（相對 load.model_path 的 .gguf 檔；沒有預設值）"
-            )
-        gguf_file = check_relative(gguf_file, "provider_options.gguf_file")
-        if not gguf_file.lower().endswith(".gguf"):
-            raise unsupported("provider_options.gguf_file 必須是 .gguf 檔")
-    else:
-        if gguf_file:
-            raise unsupported("provider_options.gguf_file 只用於 variant=gguf_q4km（不假裝套用）")
-        gguf_file = None
-        if override:
-            override = check_relative(override, "provider_options.transformer_override")
-    adapters: list[Adapter] = []
-    names: set[str] = set()
-    if not isinstance(raw_adapters, Sequence) or isinstance(raw_adapters, (str, bytes)):
-        raise unsupported("provider_options.adapters 必須是清單")
-    if len(raw_adapters) > MAX_ADAPTERS:
-        raise unsupported(f"adapter 最多 {MAX_ADAPTERS} 個")
-    for i, raw in enumerate(raw_adapters):
-        if not isinstance(raw, Mapping):
-            raise unsupported(f"adapters[{i}] 必須是物件")
-        name = str(raw.get("name") or "")
-        if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", name):
-            raise unsupported(f"adapters[{i}].name 只能用英數、_、-（1–64 字）")
-        if name in names:
-            raise unsupported(f"adapter 名稱重複：{name}")
-        names.add(name)
-        path = check_relative(raw.get("path"), f"adapters[{i}].path")
-        if not path.endswith(".safetensors"):
-            raise unsupported(f"adapters[{i}] 必須使用 safetensors（不載入 pickle）")
-        try:
-            scale = float(raw.get("scale"))  # type: ignore[arg-type]
-        except (TypeError, ValueError):
-            raise unsupported(f"adapters[{i}].scale 必須是數值") from None
-        if not math.isfinite(scale) or not -5 <= scale <= 5:
-            raise unsupported(f"adapters[{i}].scale 必須在 −5..5")
-        kind = str(raw.get("kind") or "lora")
-        if kind not in ADAPTER_KINDS:
-            raise unsupported(f"adapters[{i}].kind 必須是 lora 或 slider")
-        adapters.append(Adapter(name=name, path=path, scale=scale, kind=kind))
+    gguf_file, override, adapters = _weight_options(options, variant)
     coefficients = options.get("preview_coefficients")
-    if coefficients is not None and (not isinstance(coefficients, str) or not coefficients.strip()):
+    if coefficients is not None and (
+        not isinstance(coefficients, str) or not coefficients.strip()
+    ):
         raise unsupported("provider_options.preview_coefficients 必須是路徑字串或 null")
     memory_model, unified_reserve = memory.parse_settings(
         options.get("memory_model", "auto"),
@@ -513,9 +554,112 @@ def parse_options(load: Mapping[str, Any]) -> DitOptions:
     )
 
 
+def _weight_options(
+    options: Mapping[str, Any], variant: str
+) -> tuple[str | None, str | None, list[Adapter]]:
+    gguf_file = options.get("gguf_file")
+    override = options.get("transformer_override")
+    raw_adapters = options.get("adapters") or []
+    if variant == "gguf_q4km":
+        if raw_adapters or override:
+            raise unsupported(
+                "GGUF 模型不支援 Adapter（LoRA／slider）或 Transformer 覆寫；請改用 bf16 元件"
+            )
+        if not gguf_file:
+            raise unsupported(
+                "variant=gguf_q4km 需要 provider_options.gguf_file（相對 load.model_path 的 .gguf 檔；沒有預設值）"
+            )
+        gguf_file = check_relative(gguf_file, "provider_options.gguf_file")
+        if not gguf_file.lower().endswith(".gguf"):
+            raise unsupported("provider_options.gguf_file 必須是 .gguf 檔")
+    else:
+        if gguf_file:
+            raise unsupported(
+                "provider_options.gguf_file 只用於 variant=gguf_q4km（不假裝套用）"
+            )
+        gguf_file = None
+        if override:
+            override = check_relative(override, "provider_options.transformer_override")
+    adapters = _adapters(raw_adapters)
+    return gguf_file, override, adapters
+
+
+def _adapters(raw_adapters: Any) -> list[Adapter]:
+    adapters: list[Adapter] = []
+    names: set[str] = set()
+    if not isinstance(raw_adapters, Sequence) or isinstance(raw_adapters, (str, bytes)):
+        raise unsupported("provider_options.adapters 必須是清單")
+    if len(raw_adapters) > MAX_ADAPTERS:
+        raise unsupported(f"adapter 最多 {MAX_ADAPTERS} 個")
+    for i, raw in enumerate(raw_adapters):
+        if not isinstance(raw, Mapping):
+            raise unsupported(f"adapters[{i}] 必須是物件")
+        name = str(raw.get("name") or "")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", name):
+            raise unsupported(
+                f"adapters[{i}].name 只能用英數、_、-（1\N{EN DASH}64 字）"
+            )
+        if name in names:
+            raise unsupported(f"adapter 名稱重複：{name}")
+        names.add(name)
+        path = check_relative(raw.get("path"), f"adapters[{i}].path")
+        if not path.endswith(".safetensors"):
+            raise unsupported(f"adapters[{i}] 必須使用 safetensors（不載入 pickle）")
+        scale, kind = _adapter_properties(raw, i)
+        adapters.append(Adapter(name=name, path=path, scale=scale, kind=kind))
+    return adapters
+
+
+def _adapter_properties(raw: Mapping[str, Any], i: int) -> tuple[float, str]:
+    try:
+        scale = float(raw.get("scale"))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        raise unsupported(f"adapters[{i}].scale 必須是數值") from None
+    if (
+        not math.isfinite(scale)
+        or not -_MAX_ADAPTER_SCALE <= scale <= _MAX_ADAPTER_SCALE
+    ):
+        raise unsupported(f"adapters[{i}].scale 必須在 \N{MINUS SIGN}5..5")
+    kind = str(raw.get("kind") or "lora")
+    if kind not in ADAPTER_KINDS:
+        raise unsupported(f"adapters[{i}].kind 必須是 lora 或 slider")
+    return scale, kind
+
+
+def _placement(offload: Mapping[str, Any], variant: str) -> tuple[str, str | None]:
+    placement = offload.get("mode")
+    if placement not in PLACEMENTS[variant]:
+        raise unsupported(
+            f"variant={variant} 的 placement（offload.mode）只能是 {'／'.join(PLACEMENTS[variant])}，收到 {placement}",
+            variant=variant,
+            placement=placement,
+        )
+    pin = offload.get("pin_memory")
+    if placement == "group_stream":
+        if pin not in PIN_MODES:
+            raise unsupported(
+                "group_stream 需要明確設定 offload.pin_memory（static／dynamic）；不自動選擇",
+                pin_memory=pin,
+            )
+    elif pin is not None:
+        raise unsupported(
+            f"offload.pin_memory 只用於 group_stream；placement={placement} 不接受（不假裝套用）"
+        )
+    extra = sorted(set(offload) - {"mode", "pin_memory"})
+    if extra:
+        raise unsupported(f"offload 不支援欄位 {', '.join(extra)}")
+    return placement, pin
+
+
 def gguf_kernels_requested(environ: Mapping[str, str] | None = None) -> bool:
+    """Report whether accelerated GGUF kernels were requested."""
     env = os.environ if environ is None else environ
-    return env.get(GGUF_KERNEL_ENV, "false").strip().lower() in {"1", "true", "yes", "on"}
+    return env.get(GGUF_KERNEL_ENV, "false").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 def read_config(path: Path, root: Path | None = None) -> dict[str, Any]:
@@ -524,21 +668,28 @@ def read_config(path: Path, root: Path | None = None) -> dict[str, Any]:
         doc = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:
         raise ComponentError(
-            "COMPONENT_NOT_CONFIGURED", f"無法讀取 {display_path(path, root)}：{type(exc).__name__}"
+            "COMPONENT_NOT_CONFIGURED",
+            f"無法讀取 {display_path(path, root)}：{type(exc).__name__}",
         ) from exc
     if not isinstance(doc, dict):
-        raise ComponentError("COMPONENT_NOT_CONFIGURED", f"{display_path(path, root)} 不是 JSON object")
+        raise ComponentError(
+            "COMPONENT_NOT_CONFIGURED", f"{display_path(path, root)} 不是 JSON object"
+        )
     return doc
 
 
 def abi_problems(
-    transformer_config: Mapping[str, Any], text_config: Mapping[str, Any], vae_config: Mapping[str, Any]
+    transformer_config: Mapping[str, Any],
+    text_config: Mapping[str, Any],
+    vae_config: Mapping[str, Any],
 ) -> list[str]:
     """ABI check without allocating weights: class allowlist, hidden_size == context_in_dim, z_dim == in_channels."""
     problems: list[str] = []
     cls = transformer_config.get("_class_name")
     if cls != TRANSFORMER_CLASS:
-        problems.append(f"不支援的 Transformer 類別 {cls}（只接受 {TRANSFORMER_CLASS}）")
+        problems.append(
+            f"不支援的 Transformer 類別 {cls}（只接受 {TRANSFORMER_CLASS}）"
+        )
     text = text_config.get("text_config", text_config)
     hidden = text.get("hidden_size") if isinstance(text, Mapping) else None
     if hidden != transformer_config.get("context_in_dim"):
@@ -553,13 +704,25 @@ def abi_problems(
     return problems
 
 
-def configuration_problem(opts: DitOptions, *, environ: Mapping[str, str] | None = None) -> tuple[str, str] | None:
-    """describe()/load() 前的檔案與相容性檢查（只讀 JSON、stat 檔案；不配置權重）→ (code, 原因)。"""
+def configuration_problem(
+    opts: DitOptions, *, environ: Mapping[str, str] | None = None
+) -> tuple[str, str] | None:
+    """describe()/load() 前的檔案與相容性檢查（只讀 JSON、stat 檔案；不配置權重）→ (code, 原因)."""
     root = opts.model_root
     if not root.is_dir():
-        return "COMPONENT_NOT_CONFIGURED", "load.model_path 指向的模型根目錄不存在（權重未就緒或路徑錯誤；不自動下載）"
+        return (
+            "COMPONENT_NOT_CONFIGURED",
+            "load.model_path 指向的模型根目錄不存在（權重未就緒或路徑錯誤；不自動下載）",
+        )
     if opts.variant == "gguf_q4km" and gguf_kernels_requested(environ):
-        return "UNSUPPORTED_SETTING", f"GGUF 只使用本機 PyTorch 反量化；請移除環境變數 {GGUF_KERNEL_ENV}"
+        return (
+            "UNSUPPORTED_SETTING",
+            f"GGUF 只使用本機 PyTorch 反量化；請移除環境變數 {GGUF_KERNEL_ENV}",
+        )
+    return _weight_problem(opts, root)
+
+
+def _weight_problem(opts: DitOptions, root: Path) -> tuple[str, str] | None:
     for path, what in (
         (opts.transformer_dir / "config.json", "Transformer config"),
         (opts.text_encoder_config_path, "Text encoder config（ABI 檢查用）"),
@@ -582,7 +745,15 @@ def configuration_problem(opts: DitOptions, *, environ: Mapping[str, str] | None
     for adapter in opts.adapters:
         path = opts.adapter_path(adapter)
         if not path.is_file():
-            return "COMPONENT_NOT_CONFIGURED", f"找不到 adapter {adapter.name}：{display_path(path, root)}"
+            return (
+                "COMPONENT_NOT_CONFIGURED",
+                f"找不到 adapter {adapter.name}：{display_path(path, root)}",
+            )
+    return _weight_abi_problem(opts)
+
+
+def _weight_abi_problem(opts: DitOptions) -> tuple[str, str] | None:
+    root = opts.model_root
     if opts.preview_vae and not any(opts.vae_dir.glob("*.safetensors")):
         return (
             "COMPONENT_NOT_CONFIGURED",
@@ -599,11 +770,15 @@ def configuration_problem(opts: DitOptions, *, environ: Mapping[str, str] | None
 
 
 def num_layers(opts: DitOptions | None) -> int:
-    """describe 的 parts 數：讀 Transformer config（讀不到時用 Qwen-Image 2.1 的 32）。"""
+    """Describe 的 parts 數：讀 Transformer config（讀不到時用 Qwen-Image 2.1 的 32）."""
     if opts is None:
         return 32
     try:
-        return int(read_config(opts.transformer_dir / "config.json", opts.model_root).get("num_layers", 32))
+        return int(
+            read_config(opts.transformer_dir / "config.json", opts.model_root).get(
+                "num_layers", 32
+            )
+        )
     except (ComponentError, TypeError, ValueError):
         return 32
 
@@ -611,16 +786,21 @@ def num_layers(opts: DitOptions | None) -> int:
 # ---------------------------------------------------------------------------------------------- 參數
 @dataclass(frozen=True)
 class PreviewRequest:
+    """The requested preview strategy and cadence."""
+
     mode: str
     every: int
     max_side: int
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize this value for the runtime contract."""
         return {"mode": self.mode, "every": self.every, "max_side": self.max_side}
 
 
 @dataclass(frozen=True)
 class DitParams:
+    """Validated image denoising parameters."""
+
     width: int
     height: int
     steps: int
@@ -632,19 +812,22 @@ class DitParams:
 
     @property
     def cfg(self) -> bool:
-        """Qwen 語意：guidance > 1 才啟用 CFG（與 pipeline 的 do_true_cfg 相同）。"""
+        """Qwen 語意：guidance > 1 才啟用 CFG（與 pipeline 的 do_true_cfg 相同）."""
         return self.guidance > 1
 
     @property
     def latent_hw(self) -> tuple[int, int]:
+        """Return the latent height and width."""
         return latent_hw(self.width, self.height)
 
     @property
     def target_tokens(self) -> int:
+        """Count the tokens in the target latent."""
         h, w = self.latent_hw
         return h * w
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize this value for the runtime contract."""
         return {
             "width": self.width,
             "height": self.height,
@@ -661,46 +844,59 @@ def _int(value: Any, name: str, lo: int, hi: int, *, multiple: int = 1) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise ComponentError("INVALID_ARGUMENT", f"{name} 必須是整數")
     if not lo <= value <= hi:
-        raise ComponentError("INVALID_ARGUMENT", f"{name} 必須在 {lo}–{hi}，收到 {value}")
+        raise ComponentError(
+            "INVALID_ARGUMENT", f"{name} 必須在 {lo}\N{EN DASH}{hi}，收到 {value}"
+        )
     if value % multiple:
         raise ComponentError(
-            "INVALID_ARGUMENT", f"{name} 必須是 {multiple} 的倍數，收到 {value}（不暗中縮放）", details={name: value}
+            "INVALID_ARGUMENT",
+            f"{name} 必須是 {multiple} 的倍數，收到 {value}（不暗中縮放）",
+            details={name: value},
         )
     return value
 
 
 def parse_params(parameters: Mapping[str, Any]) -> DitParams:
-    """呼叫參數（runtime host 已疊好 invoke defaults）＋schema 預設 → DitParams；不合法 → 422。"""
+    """呼叫參數（runtime host 已疊好 invoke defaults）+schema 預設 → DitParams；不合法 → 422."""
     merged = {**copy.deepcopy(INVOKE_DEFAULTS), **dict(parameters)}
     unknown = sorted(set(merged) - set(PARAMS))
     if unknown:
         raise ComponentError("INVALID_ARGUMENT", f"不支援的參數 {', '.join(unknown)}")
     if merged.get("seed") is None:
-        raise ComponentError("INVALID_ARGUMENT", "seed 必填（−1／隨機由呼叫端先解析成實際整數並記錄）")
+        raise ComponentError(
+            "INVALID_ARGUMENT",
+            "seed 必填（\N{MINUS SIGN}1／隨機由呼叫端先解析成實際整數並記錄）",
+        )
     guidance = merged.get("guidance")
-    if isinstance(guidance, bool) or not isinstance(guidance, (int, float)) or not math.isfinite(float(guidance)):
+    if (
+        isinstance(guidance, bool)
+        or not isinstance(guidance, (int, float))
+        or not math.isfinite(float(guidance))
+    ):
         raise ComponentError("INVALID_ARGUMENT", "guidance 必須是有限數值")
-    if not 0 <= float(guidance) <= 20:
-        raise ComponentError("INVALID_ARGUMENT", "guidance 必須在 0–20")
+    if not 0 <= float(guidance) <= _MAX_GUIDANCE:
+        raise ComponentError("INVALID_ARGUMENT", "guidance 必須在 0\N{EN DASH}20")
     schedule = merged.get("sigma_schedule")
     if schedule not in ("native", "karras", "exponential"):
-        raise ComponentError("INVALID_ARGUMENT", "sigma_schedule 必須是 native／karras／exponential")
+        raise ComponentError(
+            "INVALID_ARGUMENT", "sigma_schedule 必須是 native／karras／exponential"
+        )
     mu = merged.get("flow_shift_mu")
     if mu is not None:
-        if isinstance(mu, bool) or not isinstance(mu, (int, float)) or not math.isfinite(float(mu)):
-            raise ComponentError("INVALID_ARGUMENT", "flow_shift_mu 必須是 null 或有限數值")
-        if not -1 <= float(mu) <= 3:
-            raise ComponentError("INVALID_ARGUMENT", "flow_shift_mu 必須在 −1..3")
+        if (
+            isinstance(mu, bool)
+            or not isinstance(mu, (int, float))
+            or not math.isfinite(float(mu))
+        ):
+            raise ComponentError(
+                "INVALID_ARGUMENT", "flow_shift_mu 必須是 null 或有限數值"
+            )
+        if not -1 <= float(mu) <= _MAX_FLOW_SHIFT:
+            raise ComponentError(
+                "INVALID_ARGUMENT", "flow_shift_mu 必須在 \N{MINUS SIGN}1..3"
+            )
         mu = float(mu)
-    raw_preview = merged.get("preview")
-    preview = {**PREVIEW_DEFAULT, **(dict(raw_preview) if isinstance(raw_preview, Mapping) else {})}
-    if not isinstance(raw_preview, Mapping) and raw_preview is not None:
-        raise ComponentError("INVALID_ARGUMENT", "preview 必須是物件")
-    bad = sorted(set(preview) - set(PREVIEW_DEFAULT))
-    if bad:
-        raise ComponentError("INVALID_ARGUMENT", f"preview 不支援欄位 {', '.join(bad)}")
-    if preview["mode"] not in PREVIEW_MODES:
-        raise ComponentError("INVALID_ARGUMENT", f"preview.mode 必須是 {'／'.join(PREVIEW_MODES)}")
+    preview = _preview_parameters(merged)
     return DitParams(
         width=_int(merged.get("width"), "width", 256, 2048, multiple=32),
         height=_int(merged.get("height"), "height", 256, 2048, multiple=32),
@@ -715,6 +911,24 @@ def parse_params(parameters: Mapping[str, Any]) -> DitParams:
             max_side=_int(preview["max_side"], "preview.max_side", 256, 512),
         ),
     )
+
+
+def _preview_parameters(merged: Mapping[str, Any]) -> dict[str, Any]:
+    raw_preview = merged.get("preview")
+    preview = {
+        **PREVIEW_DEFAULT,
+        **(dict(raw_preview) if isinstance(raw_preview, Mapping) else {}),
+    }
+    if not isinstance(raw_preview, Mapping) and raw_preview is not None:
+        raise ComponentError("INVALID_ARGUMENT", "preview 必須是物件")
+    bad = sorted(set(preview) - set(PREVIEW_DEFAULT))
+    if bad:
+        raise ComponentError("INVALID_ARGUMENT", f"preview 不支援欄位 {', '.join(bad)}")
+    if preview["mode"] not in PREVIEW_MODES:
+        raise ComponentError(
+            "INVALID_ARGUMENT", f"preview.mode 必須是 {'／'.join(PREVIEW_MODES)}"
+        )
+    return preview
 
 
 __all__ = [

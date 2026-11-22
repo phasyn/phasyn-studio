@@ -12,10 +12,10 @@ export function EffectDropMarks({ effect, trackId, zoom }: { effect: EffectDropP
       const width = Math.max(4, (mark.end - mark.start) * zoom);
       return (
         <span
-          key={`${mark.start}-${mark.end}`}
+          key={`${String(mark.start)}-${String(mark.end)}`}
           className={cn(
             "pointer-events-none absolute inset-y-[2px] z-20 animate-fade-in rounded-[5px] border-2",
-            effect.error ? "border-danger bg-danger/15" : "border-brand-cyan bg-brand-cyan/15",
+            (effect.error != null && effect.error !== "") ? "border-danger bg-danger/15" : "border-brand-cyan bg-brand-cyan/15",
           )}
           style={{ left: ((mark.start + mark.end) / 2) * zoom - width / 2, width }}
         />

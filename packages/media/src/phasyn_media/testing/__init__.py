@@ -14,13 +14,22 @@ from pathlib import Path
 from ..errors import MediaError
 from ..tools import find_ffmpeg, list_encoders, run_tool
 
+
 _TIMEOUT_S = 60.0
 
 
 @functools.lru_cache(maxsize=4)
 def _has_lavfi(ffmpeg: str) -> bool:
-    result = run_tool([ffmpeg, "-hide_banner", "-nostdin", "-devices"], timeout=_TIMEOUT_S, max_stdout_bytes=1 << 20)
-    names = (line.split()[1] for line in result.stdout.decode("utf-8", "replace").splitlines() if len(line.split()) > 1)
+    result = run_tool(
+        [ffmpeg, "-hide_banner", "-nostdin", "-devices"],
+        timeout=_TIMEOUT_S,
+        max_stdout_bytes=1 << 20,
+    )
+    names = (
+        line.split()[1]
+        for line in result.stdout.decode("utf-8", "replace").splitlines()
+        if len(line.split()) > 1
+    )
     return result.returncode == 0 and "lavfi" in names
 
 
@@ -39,7 +48,7 @@ def ffmpeg_unavailable(*encoders: str) -> str | None:
     return None
 
 
-def synthetic_clip(
+def synthetic_clip(  # noqa: PLR0913 - Preserve the public keyword signature.
     path: Path,
     *,
     seconds: float = 1.0,
@@ -55,17 +64,31 @@ def synthetic_clip(
     ``tags`` are written as container metadata, like the title or position a camera file carries.
     """
     argv = [find_ffmpeg(), "-hide_banner", "-nostdin", "-v", "error", "-y"]
-    argv += ["-f", "lavfi", "-i", f"color=c={color}:s={width}x{height}:r={fps}:d={seconds}"]
+    argv += [
+        "-f",
+        "lavfi",
+        "-i",
+        f"color=c={color}:s={width}x{height}:r={fps}:d={seconds}",
+    ]
     if tone_hz is not None:
-        argv += ["-f", "lavfi", "-i", f"sine=frequency={tone_hz}:sample_rate=48000:duration={seconds}"]
+        argv += [
+            "-f",
+            "lavfi",
+            "-i",
+            f"sine=frequency={tone_hz}:sample_rate=48000:duration={seconds}",
+        ]
     argv += ["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p"]
     if tone_hz is not None:
         argv += ["-c:a", "aac"]
     for key, value in (tags or {}).items():
         argv += ["-metadata", f"{key}={value}"]
-    result = run_tool([*argv, str(path)], timeout=_TIMEOUT_S, what="FFmpeg synthetic clip")
+    result = run_tool(
+        [*argv, str(path)], timeout=_TIMEOUT_S, what="FFmpeg synthetic clip"
+    )
     if result.returncode != 0:
-        raise MediaError("MEDIA_TOOL_FAILED", f"synthetic clip failed: {result.stderr[-300:]}")
+        raise MediaError(
+            "MEDIA_TOOL_FAILED", f"synthetic clip failed: {result.stderr[-300:]}"
+        )
     return path
 
 

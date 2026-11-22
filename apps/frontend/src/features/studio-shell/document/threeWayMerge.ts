@@ -86,7 +86,7 @@ function mergeAt(path: string, base: unknown, latest: unknown, mine: unknown, ou
   if (Array.isArray(latest) && Array.isArray(mine)) {
     const from = Array.isArray(base) ? base : [];
     const key = idKeyOf(from, latest, mine);
-    if (key) {
+    if (key != null && key !== "") {
       const index = (items: unknown[]) => new Map(items.map((item) => [label(item, key), item]));
       const b = index(from);
       const l = index(latest);
@@ -115,7 +115,7 @@ function changedPaths(path: string, before: unknown, after: unknown): string[] {
   }
   if (Array.isArray(before) && Array.isArray(after)) {
     const key = idKeyOf(before, after);
-    if (key) {
+    if (key != null && key !== "") {
       const b = new Map(before.map((item) => [label(item, key), item]));
       const a = new Map(after.map((item) => [label(item, key), item]));
       return [...new Set([...b.keys(), ...a.keys()])].flatMap((id) =>
@@ -147,7 +147,7 @@ function pin(path: string, merged: unknown, mine: unknown, pinned: ReadonlySet<s
   }
   if (Array.isArray(merged) && Array.isArray(mine)) {
     const key = idKeyOf(merged, mine);
-    if (key) {
+    if (key != null && key !== "") {
       const mineById = new Map(mine.map((item) => [label(item, key), item]));
       const out = merged.map((item) => pin(`${path}[${label(item, key)}]`, item, mineById.get(label(item, key)), pinned));
       for (const [id, item] of mineById) if (!merged.some((x) => label(x, key) === id) && pinned.has(`${path}[${id}]`)) out.push(item);

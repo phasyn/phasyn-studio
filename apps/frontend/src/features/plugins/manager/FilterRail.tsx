@@ -26,7 +26,7 @@ function RailButton<T extends string>({ group, option }: { group: RailGroup<T>; 
     <button
       type="button"
       aria-current={active ? "true" : undefined}
-      onClick={() => group.onChange(option.id)}
+      onClick={() => { group.onChange(option.id); }}
       className={cn(
         "pressable relative flex min-h-9 w-full items-center gap-2 rounded-md px-2.5 text-left text-body",
         active ? "text-fg" : "text-fg-secondary hover:bg-raised/70 hover:text-fg",

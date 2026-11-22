@@ -1,3 +1,4 @@
+import { isListed } from "@/lib/json";
 // 面板尺寸與開合：這台瀏覽器的偏好（localStorage）；讀寫失敗（私密模式、停用儲存）時用預設值，不影響功能。
 // Storage keys: `phasyn.<kind>.<key>` with kind panel (sizes), flag, choice or set; callers pass a key that is unique
 // app-wide, namespaced by area when needed (e.g. "studio.timeline.zoom" → phasyn.panel.studio.timeline.zoom).
@@ -67,7 +68,7 @@ export function usePersistentChoice<T extends string>(key: string, fallback: T, 
   const [value, setValue] = useState<T>(() => {
     try {
       const raw = window.localStorage.getItem(storageKey);
-      return raw !== null && (allowed as readonly string[]).includes(raw) ? (raw as T) : fallback;
+      return isListed(raw, allowed) ? raw : fallback;
     } catch {
       return fallback;
     }

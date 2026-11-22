@@ -15,10 +15,8 @@ function toggleOption(value: boolean | undefined): string {
 }
 
 function withToggle(values: BulkValues, key: ToggleKey, option: string): BulkValues {
-  const next: BulkValues = { ...values };
-  if (option === "") delete next[key];
-  else next[key] = option === "on";
-  return next;
+  const { [key]: _prior, ...others } = values;
+  return option === "" ? others : { ...others, [key]: option === "on" };
 }
 
 /** 工具列下拉（32 px）：可見的短標籤在左側。 */
@@ -43,7 +41,7 @@ export function StripSelect({
         {label}
       </label>
       <div className={cn("min-w-28", className)}>
-        <Select compact id={id} value={value} onChange={(event) => onChange(event.target.value)} className="w-auto min-w-full">
+        <Select compact id={id} value={value} onChange={(event) => { onChange(event.target.value); }} className="w-auto min-w-full">
           {children}
         </Select>
       </div>
@@ -92,10 +90,10 @@ export function BulkStrip({
     <ToolStrip label={t("批次套用")} className="gap-x-3 bg-brand-soft px-3 animate-rise-in">
       <p className="flex items-center gap-1.5 text-data font-semibold text-fg">
         <ListChecks aria-hidden className="size-4 text-action-fg" />
-        <T source={"已選 <0>{count}</0> 個{value}"} values={{ count, value: hidden > 0 ? <span className="text-caption font-normal text-fg-tertiary">{t("（另 {hidden} 個被篩選隱藏或離線，不會套用）", { hidden })}</span> : null }} slots={[<span className="machine" />]} />
+        <T source={"已選 <0>{count}</0> 個{value}"} values={{ count, value: hidden > 0 ? <span className="text-caption font-normal text-fg-tertiary">{t("（另 {hidden} 個被篩選隱藏或離線，不會套用）", { hidden })}</span> : null }} slots={[<span key="slot-0" className="machine" />]} />
       </p>
       <ToolSeparator />
-      <StripSelect id="bulk-mode" label={t("模式")} value={values.mode ?? ""} onChange={(next) => onChange({ ...values, mode: next || undefined })}>
+      <StripSelect id="bulk-mode" label={t("模式")} value={values.mode ?? ""} onChange={(next) => { const { mode: _previous, ...rest } = values; onChange(next ? { ...rest, mode: next } : rest); }}>
         <option value="">{t("不變")}</option>
         {RECORDER_MODES.map((mode) => (
           <option key={mode} value={mode}>
@@ -109,7 +107,7 @@ export function BulkStrip({
           id={`bulk-${toggle.key}`}
           label={toggle.short}
           value={toggleOption(values[toggle.key])}
-          onChange={(next) => onChange(withToggle(values, toggle.key, next))}
+          onChange={(next) => { onChange(withToggle(values, toggle.key, next)); }}
           className="min-w-22"
         >
           <option value="">{t("不變")}</option>
@@ -117,7 +115,7 @@ export function BulkStrip({
           <option value="off">{t("關")}</option>
         </StripSelect>
       ))}
-      <StripSelect id="bulk-log" label="log" value={values.log_level ?? ""} onChange={(next) => onChange({ ...values, log_level: next || undefined })}>
+      <StripSelect id="bulk-log" label="log" value={values.log_level ?? ""} onChange={(next) => { const { log_level: _previous, ...rest } = values; onChange(next ? { ...rest, log_level: next } : rest); }}>
         <option value="">{t("不變")}</option>
         {LOG_LEVELS.map((level) => (
           <option key={level} value={level}>
@@ -176,20 +174,20 @@ export function SaveStrip({
         <span className="inline-flex items-center gap-2 text-data text-info">
           <LoaderCircle aria-hidden className="size-4 animate-spin" />
           <span>
-            <T source={"依序儲存中 <0>{done}／{total}</0>"} values={{ done: progress.done, total: progress.total }} slots={[<span className="machine" />]} />
+            <T source={"依序儲存中 <0>{done}／{total}</0>"} values={{ done: progress.done, total: progress.total }} slots={[<span key="slot-0" className="machine" />]} />
           </span>
           {/* 實測比例（已完成／總數），數字在左側文字。 */}
           <span aria-hidden className="relative block h-1.5 w-24 overflow-hidden rounded-full bg-line-subtle">
             <span
               className="absolute inset-y-0 left-0 rounded-full bg-brand-gradient transition-[width] duration-(--duration-base) ease-linear animate-shimmer"
-              style={{ width: `${progress.total > 0 ? Math.max((progress.done / progress.total) * 100, 4) : 4}%` }}
+              style={{ width: `${String(progress.total > 0 ? Math.max((progress.done / progress.total) * 100, 4) : 4)}%` }}
             />
           </span>
         </span>
       ) : dirtyCount > 0 ? (
         <span className="inline-flex items-center gap-1.5 text-data text-warning">
           <PencilLine aria-hidden className="size-4" />
-          <T source={"<0>{dirtyCount}</0> 個元件有未儲存的變更{value}"} values={{ dirtyCount, value: hiddenDirty > 0 ? <span className="text-caption text-fg-tertiary">{t("（{hiddenDirty} 個被篩選隱藏）", { hiddenDirty })}</span> : null }} slots={[<span className="machine" />]} />
+          <T source={"<0>{dirtyCount}</0> 個元件有未儲存的變更{value}"} values={{ dirtyCount, value: hiddenDirty > 0 ? <span className="text-caption text-fg-tertiary">{t("（{hiddenDirty} 個被篩選隱藏）", { hiddenDirty })}</span> : null }} slots={[<span key="slot-0" className="machine" />]} />
         </span>
       ) : null}
       {showSaveAll ? (
@@ -215,7 +213,7 @@ export function SaveStrip({
       ) : null}
       {!progress && summary ? (
         <span id={summaryId} tabIndex={-1} className="ml-auto inline-flex items-center gap-2 rounded-sm text-caption text-fg-secondary outline-none focus-visible:outline-2">
-          <T source={"上次儲存：{summary}<0>清除結果</0>"} values={{ summary }} slots={[<Button size="sm" variant="quiet" onClick={onClearResults} />]} />
+          <T source={"上次儲存：{summary}<0>清除結果</0>"} values={{ summary }} slots={[<Button key="slot-0" size="sm" variant="quiet" onClick={onClearResults} />]} />
         </span>
       ) : null}
     </ToolStrip>

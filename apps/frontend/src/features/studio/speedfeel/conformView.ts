@@ -23,7 +23,7 @@ export interface ConformVerdictView {
 
 /** Frames with their sign: +5, −4, ±0. */
 export function signedFrames(frames: number): string {
-  return `${frames > 0 ? "+" : frames < 0 ? "−" : "±"}${Math.abs(frames)}`;
+  return `${frames > 0 ? "+" : frames < 0 ? "−" : "±"}${String(Math.abs(frames))}`;
 }
 
 /** The verdict; `plan` is null before the plan is made (the summary then rests on the analysis alone). */
@@ -39,7 +39,7 @@ export function conformVerdict(analysis: ConformAnalysis, plan: ConformPlanResul
       line: t("原片有 {count} 個切點，生成沒有能配對的切點（相差 {frames} 影格以內才配對）：對齊補不了，可以重新生成這段。", { count: analysis.originalCuts.length, frames: MAX_CUT_SHIFT }),
     };
   }
-  if (plan?.ok && timing.matched === 0) {
+  if ((plan?.ok === true) && timing.matched === 0) {
     // The early switch is the only cut to move
     const end = plan.plan.anchors.find((anchor) => anchor.original >= analysis.length);
     return {
@@ -50,7 +50,7 @@ export function conformVerdict(analysis: ConformAnalysis, plan: ConformPlanResul
       }),
     };
   }
-  if (plan?.ok) {
+  if (plan?.ok === true) {
     const { before, after, anchors } = plan.plan;
     const low = Math.min(...timing.offsets);
     const high = Math.max(...timing.offsets);
@@ -67,7 +67,7 @@ export function conformVerdict(analysis: ConformAnalysis, plan: ConformPlanResul
       }),
     };
   }
-  if (plan && plan.settled) return { label: t("已經對齊"), tone: "success", line: plan.reason };
+  if (plan?.settled === true) return { label: t("已經對齊"), tone: "success", line: plan.reason };
   if (plan) return { label: t("沒辦法對齊"), tone: "warning", line: plan.reason };
   return { label: t("準時 {onTime}／{matched}", { onTime: timing.onTime, matched: timing.matched }), tone: "info", line: t("生成有 {onTime}／{matched} 個切點準時（差 {tolerance} 影格以內）。", { onTime: timing.onTime, matched: timing.matched, tolerance: ON_TIME_FRAMES }) };
 }
@@ -98,7 +98,7 @@ function endRow(take: number, length: number, blocked: readonly (CutAnchor & { r
 /** Every cut of both clips in order, with what the conform makes of it. */
 export function pairRows(analysis: ConformAnalysis, plan: ConformPlanResult | null): PairRow[] {
   const blocked = plan ? (plan.ok ? plan.plan.blocked : plan.blocked) : [];
-  const applied = plan?.ok ? plan.plan.anchors : [];
+  const applied = (plan?.ok === true) ? plan.plan.anchors : [];
   const switched = endSwitchCut(analysis);
   return analysis.pairs.map((pair): PairRow => {
     const { original, take } = pair;

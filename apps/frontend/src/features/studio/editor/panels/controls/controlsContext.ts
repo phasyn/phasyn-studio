@@ -1,3 +1,4 @@
+import { isRecord } from "@/lib/json";
 // What the fields and groups of the property panels share without passing it through every row: the density of the
 // panel they stand in, the reason nothing can be edited (a locked track), and which groups of Effect Controls are
 // open. The open groups are remembered in this browser, per kind of clip.
@@ -28,12 +29,12 @@ const openGroups = createPersistentStore<Record<ClipKindId, GroupId[]>>({
   key: "phasyn.studio.nle.controls.groups",
   initial: DEFAULT_OPEN,
   parse: (raw) => {
-    const entry = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+    const entry = isRecord(raw) ? raw : {};
     return {
-      video: parseGroups(entry.video, DEFAULT_OPEN.video),
-      audio: parseGroups(entry.audio, DEFAULT_OPEN.audio),
-      text: parseGroups(entry.text, DEFAULT_OPEN.text),
-      adjustment: parseGroups(entry.adjustment, DEFAULT_OPEN.adjustment),
+      video: parseGroups(entry["video"], DEFAULT_OPEN.video),
+      audio: parseGroups(entry["audio"], DEFAULT_OPEN.audio),
+      text: parseGroups(entry["text"], DEFAULT_OPEN.text),
+      adjustment: parseGroups(entry["adjustment"], DEFAULT_OPEN.adjustment),
     };
   },
 });

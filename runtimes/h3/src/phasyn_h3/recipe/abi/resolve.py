@@ -38,6 +38,8 @@ class ResolveContext:
 
 @dataclass
 class ModelInputPlan:
+    """Describe model inputs resolved from the submitted job."""
+
     geometry: dict[str, Any]
     schedule: dict[str, Any]
     # binary sigma grids (safetensors); its sha256 is schedule.sigmas_digest

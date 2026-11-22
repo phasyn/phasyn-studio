@@ -1,6 +1,8 @@
+import { matchesReply } from "@/api/http";
+import { wireDefinitions } from "@/lib/contractSchemas";
 import { Activity, ArrowDown, ArrowUp, FilePlus, Folder, Inbox, LayoutTemplate, LoaderCircle, SearchX, TriangleAlert, Workflow, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { use, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 import { useCatalog } from "@/api/catalog";
 import { qk } from "@/api/keys";
@@ -24,7 +26,7 @@ import { TEXT_TONE } from "@/components/workbench/tones";
 import { WorkbenchPage } from "@/components/workbench/WorkbenchPage";
 import { cn } from "@/lib/cn";
 import { uniqueName } from "@/lib/ids";
-import { isRecord } from "@/lib/json";
+import { nonEmptyText, isRecord } from "@/lib/json";
 import { ActivityLog } from "@/features/activity";
 import { makeLookup } from "./catalogIndex";
 import { describeLocation, layoutSections, locatePipeline, movePipelineToGroup, stepPipeline, UNGROUPED_LABEL, type GroupKey, type LayoutContent, type PipelineLocation } from "./layoutModel";
@@ -43,11 +45,11 @@ interface NewDraftState {
   unresolved?: string[];
 }
 
-function readDraftState(state: unknown): NewDraftState | null {
-  if (!isRecord(state) || !isRecord(state.draft)) return null;
-  const draft = state.draft as unknown as WirePipeline;
-  if (typeof draft.pipeline_id !== "string" || !Array.isArray(draft.steps)) return null;
-  const unresolved = Array.isArray(state.unresolved) ? state.unresolved.filter((item): item is string => typeof item === "string") : [];
+function readDraftState(state: unknown, definitions: Record<string, unknown>): NewDraftState | null {
+  if (!isRecord(state)) return null;
+  const draft = state["draft"];
+  if (!matchesReply(draft, "WirePipeline", definitions)) return null;
+  const unresolved = Array.isArray(state["unresolved"]) ? state["unresolved"].filter((item): item is string => typeof item === "string") : [];
   return { draft, unresolved };
 }
 
@@ -115,9 +117,7 @@ function SavedPipeline({
           icon={<SearchX />}
           title={t("這個元件組合已不存在")}
           description={
-            <>
-              <T source={"主控上沒有 <0>{pipelineId}</0>：可能已在其他視窗或分頁刪除。已建立的 run 仍保有各自的副本。"} values={{ pipelineId }} slots={[<code className="machine" />]} />
-            </>
+            <T source={"主控上沒有 <0>{pipelineId}</0>：可能已在其他視窗或分頁刪除。已建立的 run 仍保有各自的副本。"} values={{ pipelineId }} slots={[<code key="slot-0" className="machine" />]} />
           }
           action={
             <Link to="/admin/pipelines" className={buttonVariants({ variant: "secondary", size: "sm" })}>
@@ -229,14 +229,14 @@ function PipelineRow({
               label={t("上移「{name}」", { name })}
               icon={<ArrowUp aria-hidden />}
               disabledReason={blocked ?? (up ? null : t("已經在最上面"))}
-              onClick={() => apply(up, "up")}
+              onClick={() => { apply(up, "up"); }}
             />
             <ToolButton
               data-layout-control="down"
               label={t("下移「{name}」", { name })}
               icon={<ArrowDown aria-hidden />}
               disabledReason={blocked ?? (down ? null : t("已經在最下面"))}
-              onClick={() => apply(down, "down")}
+              onClick={() => { apply(down, "down"); }}
             />
             <Select
               compact
@@ -347,7 +347,7 @@ function LayoutStatus({ editor }: { editor: PipelineLayoutEditor }) {
           <span aria-hidden className="absolute inset-x-0 -bottom-px h-0.5 bg-brand-gradient-soft animate-shimmer" />
         </div>
       ) : null}
-      {editor.error ? (
+      {(editor.error != null && editor.error !== "") ? (
         <div className="flex shrink-0 items-start gap-2 border-b border-line-subtle bg-sunken px-4 py-2 text-data text-fg-secondary animate-rise-in">
           <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning" />
           <span className="min-w-0 flex-1">{editor.error}</span>
@@ -369,6 +369,7 @@ function LayoutStatus({ editor }: { editor: PipelineLayoutEditor }) {
 
 /** 元件組合頁：已保存的元件組合清單；開啟或新建時進入編輯器。範本只建立可編輯草稿。 */
 export function PipelinesPage() {
+  const definitions = use(wireDefinitions());
   const { pipelineId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -377,17 +378,17 @@ export function PipelinesPage() {
   const [templateOpen, setTemplateOpen] = useState(false);
   const isNew = location.pathname.replace(/\/+$/, "") === "/admin/pipelines/new";
   const existingIds = new Set(list.data?.items.map((item) => item.pipeline_id) ?? []);
-  const newState = isNew ? readDraftState(location.state) : null;
+  const newState = isNew ? readDraftState(location.state, definitions) : null;
 
   const openDraft = (draft: WirePipeline, unresolved: string[] = []) => {
     void navigate("/admin/pipelines/new", { state: { draft, unresolved } satisfies NewDraftState });
   };
   const createActions = (
     <>
-      <Button size="sm" icon={<FilePlus aria-hidden />} onClick={() => openDraft(emptyPipeline(uniqueName("pipeline", existingIds), t("新元件組合")))}>
+      <Button size="sm" icon={<FilePlus aria-hidden />} onClick={() => { openDraft(emptyPipeline(uniqueName("pipeline", existingIds), t("新元件組合"))); }}>
         {t("新增空白元件組合")}
       </Button>
-      <Button size="sm" variant="primary" icon={<LayoutTemplate aria-hidden />} onClick={() => setTemplateOpen(true)}>
+      <Button size="sm" variant="primary" icon={<LayoutTemplate aria-hidden />} onClick={() => { setTemplateOpen(true); }}>
         {t("從範本建立")}
       </Button>
     </>
@@ -404,10 +405,10 @@ export function PipelinesPage() {
     />
   );
 
-  if (isNew || pipelineId) {
+  if (isNew || (pipelineId != null && pipelineId !== "")) {
     const open: DocTab = isNew
-      ? { id: "new", label: newState?.draft.label || t("新元件組合"), icon: Workflow, iconTone: "action", to: location.pathname, active: true, closeTo: "/admin/pipelines" }
-      : { id: pipelineId ?? "", label: list.data?.items.find((item) => item.pipeline_id === pipelineId)?.label || pipelineId || "", icon: Workflow, iconTone: "action", to: location.pathname, active: true, closeTo: "/admin/pipelines" };
+      ? { id: "new", label: (newState?.draft.label ?? "") || t("新元件組合"), icon: Workflow, iconTone: "action", to: location.pathname, active: true, closeTo: "/admin/pipelines" }
+      : { id: pipelineId ?? "", label: nonEmptyText(list.data?.items.find((item) => item.pipeline_id === pipelineId)?.label) ?? pipelineId ?? "", icon: Workflow, iconTone: "action", to: location.pathname, active: true, closeTo: "/admin/pipelines" };
     const tabs = [LIST_TAB, open];
     return (
       <>
@@ -459,7 +460,7 @@ export function PipelinesPage() {
               {notice ? (
                 <Callout tone="info" title={t("伺服器上已經沒有這個元件組合")} className="m-4 mb-0 shrink-0 animate-rise-in">
                   <p>
-                    <T source={"<0>{pipelineId}</0> 可能已在其他視窗或分頁刪除；清單已更新。已建立的 run 仍保有各自的副本。"} values={{ pipelineId: notice.pipelineId }} slots={[<code className="machine" />]} />
+                    <T source={"<0>{pipelineId}</0> 可能已在其他視窗或分頁刪除；清單已更新。已建立的 run 仍保有各自的副本。"} values={{ pipelineId: notice.pipelineId }} slots={[<code key="slot-0" className="machine" />]} />
                   </p>
                   <Button size="sm" variant="quiet" icon={<X aria-hidden />} onClick={() => void navigate(location.pathname, { replace: true, state: null })}>
                     {t("關閉這則訊息")}
@@ -467,7 +468,7 @@ export function PipelinesPage() {
                 </Callout>
               ) : null}
               <LayoutStatus editor={editor} />
-              {list.isPending || (editor.layout.isPending && !editor.layout.data) ? (
+              {list.isPending || editor.layout.isPending ? (
                 <LoadingRows label={t("讀取元件組合清單…")} />
               ) : list.isError ? (
                 <div className="p-4">
@@ -480,7 +481,7 @@ export function PipelinesPage() {
                   title={t("尚未保存任何元件組合")}
                   description={t("範本：生成（TE→DiT→正式解碼）、參考生成（TE→參考編碼→DiT→正式解碼）、反推語意→caption。")}
                   action={
-                    <Button icon={<LayoutTemplate aria-hidden />} onClick={() => setTemplateOpen(true)}>
+                    <Button icon={<LayoutTemplate aria-hidden />} onClick={() => { setTemplateOpen(true); }}>
                       {t("從範本建立")}
                     </Button>
                   }

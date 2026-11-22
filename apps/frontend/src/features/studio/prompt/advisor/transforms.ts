@@ -71,7 +71,7 @@ export function convertTimeHeadings(text: string): string {
   return applyEdits(
     text,
     headings.map((heading, index) => {
-      const marker = index === 0 ? "[Shot 1]" : `[Shot ${index + 1}] At ${formatCueTime(heading.from)},`;
+      const marker = index === 0 ? "[Shot 1]" : `[Shot ${String(index + 1)}] At ${formatCueTime(heading.from)},`;
       const next = text.charAt(heading.end);
       const separator = heading.end >= text.length || next === "\n" || next === "\r" ? "" : " ";
       return { start: heading.start, end: heading.end, insert: marker + separator };
@@ -107,7 +107,7 @@ export function renumberShots(text: string): string {
 export function canonicalizeCueTimes(text: string): string {
   const edits: Edit[] = [];
   for (const shot of scanShotMarkers(text)) {
-    if (shot.at && shot.at.seconds !== null && !isCanonicalCueTime(shot.at.text)) {
+    if (shot.at?.seconds != null && !isCanonicalCueTime(shot.at.text)) {
       edits.push({ start: shot.at.textStart, end: shot.at.textStart + shot.at.text.length, insert: formatCueTime(shot.at.seconds) });
     }
     if (shot.range) {
@@ -271,7 +271,7 @@ export function isTitleLine(line: string): boolean {
   const match = TITLE_LINE.exec(line);
   if (!match) return false;
   const inner = match[1] ?? "";
-  return !/[。，,.!?！？；;]/u.test(inner) && !/_/.test(inner);
+  return !/[。，,.!?！？；;]/u.test(inner) && !inner.includes('_');
 }
 
 /**

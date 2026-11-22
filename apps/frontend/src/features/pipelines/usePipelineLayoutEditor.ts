@@ -26,7 +26,7 @@ export function usePipelineLayoutEditor() {
   });
 
   /** polite live region；同一句話連續出現時加不換行空白，讓螢幕閱讀器再唸一次。 */
-  const announce = (message: string) => setAnnouncement((previous) => (previous === message ? `${message}${NBSP}` : message));
+  const announce = (message: string) => { setAnnouncement((previous) => (previous === message ? `${message}${NBSP}` : message)); };
 
   /** 套用新的分類與排序：畫面立即更新，保存成功後宣告 message；失敗時還原並說明。 */
   const commit = (next: LayoutContent, message: string) => {
@@ -35,7 +35,7 @@ export function usePipelineLayoutEditor() {
     save.mutate(
       { content: next, epoch: layoutSaveEpoch(client) },
       {
-        onSuccess: () => announce(message),
+        onSuccess: () => { announce(message); },
         onError: (failure) => {
           const text = layoutSaveErrorMessage(failure);
           setError(text);
@@ -58,7 +58,7 @@ export function usePipelineLayoutEditor() {
     announce,
     /** 最近一次保存失敗的說明（看得到的訊息）。 */
     error,
-    dismissError: () => setError(null),
+    dismissError: () => { setError(null); },
   };
 }
 

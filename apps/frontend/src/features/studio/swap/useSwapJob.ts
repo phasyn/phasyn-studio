@@ -57,7 +57,7 @@ export function useSwapJob(info: SwapProjectInfo | null): SwapJobApi {
   const [exporting, setExporting] = useState(false);
   const exportingRef = useRef(false);
   /** 這個分頁已經嘗試過自動匯出的專案（工作設定寫回之前，避免同一個畫面重複送出）。 */
-  const autoTried = useRef<string | null>(null);
+  const autoTriedRef = useRef<string | null>(null);
   const busyReason = busy === "render" ? t("正在送出渲染請求") : busy === "export" ? t("正在送出匯出請求") : null;
   const unavailable = engineUnavailable(engine);
 
@@ -89,7 +89,7 @@ export function useSwapJob(info: SwapProjectInfo | null): SwapJobApi {
       if (progress.counts.rendering > 0) return t("還有段落在渲染：等它完成或取消後再送");
       if (ids.length === 0) return t("沒有要渲染的段落");
       const block = runBlockedReason ?? busyReason ?? unavailable;
-      if (block) return block;
+      if (block != null && block !== "") return block;
       const shots = ids.flatMap((id) => project.shots.filter((shot) => shot.shot_id === id));
       const empty = shots.find((shot) => !shot.prompt.trim());
       if (empty) return t("「{title}」沒有 prompt", { title: empty.title });
@@ -107,7 +107,7 @@ export function useSwapJob(info: SwapProjectInfo | null): SwapJobApi {
     if (missing > 0) return t("還有 {missing} 段沒有可用的 take：先渲染完成", { missing });
     if (progress.phase === "exporting") return t("正在匯出");
     const block = runBlockedReason ?? busyReason ?? (exporting ? t("正在送出匯出請求") : null);
-    if (block) return block;
+    if (block != null && block !== "") return block;
     if (!engine.concat.usable || !concat) return engine.concat.reason ?? t("序列匯出元件（media.concat）無法使用");
     if (exportPreview && exportPreview.problems.length > 0) return exportPreview.problems.join(t("；"));
     return null;
@@ -118,7 +118,7 @@ export function useSwapJob(info: SwapProjectInfo | null): SwapJobApi {
       if (!info || exportingRef.current) return;
       const component = engine.concat.component;
       if (!engine.concat.usable || !component) {
-        notify({ tone: "warning", title: t("序列匯出元件無法使用"), detail: engine.concat.reason ?? undefined, link: { label: t("開啟渲染引擎"), to: "#engine" } });
+        notify({ tone: "warning", title: t("序列匯出元件無法使用"), ...(engine.concat.reason == null ? {} : { detail: engine.concat.reason }), link: { label: t("開啟渲染引擎"), to: "#engine" } });
         return;
       }
       exportingRef.current = true;
@@ -155,9 +155,9 @@ export function useSwapJob(info: SwapProjectInfo | null): SwapJobApi {
   // 全部段落完成 → 自動匯出一次。先把「已嘗試」寫回工作設定（隨自動保存），不論成敗都不會再自動送出。
   useEffect(() => {
     if (!info || !progress || !shouldAutoExport(project, info, progress)) return;
-    if (runBlockedReason || busy || exportingRef.current || doc.status === "conflict" || doc.status === "error" || !engine.concat.usable) return;
-    if (autoTried.current === project.project_id) return;
-    autoTried.current = project.project_id;
+    if ((runBlockedReason ?? "") || busy || exportingRef.current || doc.status === "conflict" || doc.status === "error" || !engine.concat.usable) return;
+    if (autoTriedRef.current === project.project_id) return;
+    autoTriedRef.current = project.project_id;
     dispatch({ type: "setLibrary", library: libraryWithJob(project.library ?? [], info.source.item_id, { auto_export: false }) });
     void exportNow(true);
   }, [busy, dispatch, doc.status, engine.concat.usable, exportNow, info, progress, project, runBlockedReason]);
@@ -166,7 +166,7 @@ export function useSwapJob(info: SwapProjectInfo | null): SwapJobApi {
     (shot: StudioShot): string | null => {
       if (shot.takes.some((take) => take.state === "rendering")) return t("這段正在渲染");
       const block = runBlockedReason ?? busyReason ?? unavailable;
-      if (block) return block;
+      if (block != null && block !== "") return block;
       if (!shot.prompt.trim()) return t("這段沒有 prompt");
       return planRender(project, [shot], ["preflight"], { routes: engine.routes, catalog, plugins, randomSeed: () => 0 }).problem;
     },
@@ -177,7 +177,7 @@ export function useSwapJob(info: SwapProjectInfo | null): SwapJobApi {
     progress,
     batch,
     batchSize,
-    setBatchSize: (size: BatchSize) => swapBatchSize.set(size),
+    setBatchSize: (size: BatchSize) => { swapBatchSize.set(size); },
     renderReason,
     stale,
     staleReason,

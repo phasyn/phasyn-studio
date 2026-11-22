@@ -10,7 +10,7 @@ export function SearchBox({ value, onChange, placeholder, label }: { value: stri
         compact
         type="search"
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => { onChange(event.target.value); }}
         placeholder={placeholder}
         aria-label={label}
         autoComplete="off"

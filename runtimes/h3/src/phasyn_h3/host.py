@@ -10,14 +10,19 @@ Recorder, and RUNTIME_COST becomes the recording's ``cost.stages`` (the ETA data
 from __future__ import annotations
 
 import contextlib
+import importlib
 import json
 import time
 from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
-from typing import Any, NoReturn
+from typing import Any, NoReturn, cast
 
 from phasyn_components.errors import Cancelled, ComponentError, is_registered
 from phasyn_components.recorder import Recorder
+
+from phasyn_h3.recipe.abi.canonical import canonical_digest
+from phasyn_h3.recipe.abi.stage import StageCanceled, StageContext, StageInput
+
 
 # recipe error codes -> component contract codes; any other code becomes RUNTIME_ERROR unless it is a
 # registered contract code (the recipe's own code is always kept in details.runtime_error_code)
@@ -61,12 +66,12 @@ class _LinkedToken:
 
     def raise_if_set(self) -> None:
         if self.is_set():
-            from phasyn_h3.recipe.abi.stage import StageCanceled
-
             raise StageCanceled("已要求取消")
 
 
-def reraise_stop(exc: Cancelled, check_cancelled: Callable[[], None] | None) -> NoReturn:
+def reraise_stop(
+    exc: Cancelled, check_cancelled: Callable[[], None] | None
+) -> NoReturn:
     """A stage stopped at a cancel point: raise what it really was.
 
     The recipe's cancel signal is ``RunContext.cancelled()``, true for a user cancel *and* for an
@@ -94,11 +99,15 @@ def record_cost_entries(rec: Recorder, doc: Any) -> int:
             continue
         seconds = entry.get("seconds")
         raw_shape = entry.get("shape")
-        shape: dict[str, Any] = dict(raw_shape) if isinstance(raw_shape, Mapping) else {}
+        shape: dict[str, Any] = (
+            dict(raw_shape) if isinstance(raw_shape, Mapping) else {}
+        )
         try:
             rec.record_cost(
                 str(entry.get("stage")),
-                work=entry.get("work"),  # validated by the recorder (ValueError / TypeError below)
+                work=cast(
+                    float, entry.get("work")
+                ),  # validated by the recorder (ValueError / TypeError below)
                 unit=str(entry.get("unit")),
                 compute_ms=None if seconds is None else float(seconds) * 1000.0,
                 **shape,
@@ -120,14 +129,18 @@ def rope_cache_reset() -> Callable[[], None]:
     evict 後清空這個快取，讓重新載入時重建 RoPE buffer；不改任何數值。``_ROPE_DICT`` 是私有符號：
     載入時先確認它還在（``pins.ROPE_CACHE_ATTRS``），不在就明確失敗，不讓這個修正悄悄失效。
     """
-    import importlib
-
-    from phasyn_h3.recipe.runtime.errors import ShimError
-    from phasyn_h3.recipe.runtime.pins import ROPE_CACHE_ATTRS, ROPE_CACHE_MODULE, check_attrs
+    from phasyn_h3.recipe.runtime.errors import ShimError  # noqa: PLC0415 - Keep runtime initialization on the operation that needs it.
+    from phasyn_h3.recipe.runtime.pins import (  # noqa: PLC0415 - Keep runtime initialization on the operation that needs it.
+        ROPE_CACHE_ATTRS,
+        ROPE_CACHE_MODULE,
+        check_attrs,
+    )
 
     try:
         factory = importlib.import_module(ROPE_CACHE_MODULE)
-    except ImportError as exc:  # the pinned module moved: a source mismatch, not a runtime crash
+    except (
+        ImportError
+    ) as exc:  # the pinned module moved: a source mismatch, not a runtime crash
         raise ComponentError(
             "UPSTREAM_PATCH_SOURCE_MISMATCH",
             f"SGLang 沒有 {ROPE_CACHE_MODULE}（evict 後清除 RoPE 快取需要它）",
@@ -137,7 +150,9 @@ def rope_cache_reset() -> Callable[[], None]:
         check_attrs(factory, ROPE_CACHE_ATTRS, what="evict 後清除 RoPE 快取")
     except ShimError as exc:
         raise ComponentError(
-            exc.reason_code, exc.message, details={"expected": exc.expected, "actual": exc.actual}
+            exc.reason_code,
+            exc.message,
+            details={"expected": exc.expected, "actual": exc.actual},
         ) from exc
 
     def clear() -> None:
@@ -156,7 +171,7 @@ def _parse_diag(diag: Mapping[str, Any]) -> Any:
 class H3Host:
     """One host per component process; owns the SGLangH3Provider (component registry and SGLang process state)."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - Preserve the existing provider or recipe ABI.
         self,
         *,
         device: Mapping[str, Any],
@@ -167,11 +182,12 @@ class H3Host:
         weight_streaming: Mapping[str, Any] | None = None,
     ) -> None:
         # CUDA_VISIBLE_DEVICES 已由 Node 設成此元件的 GPU UUID；程序內可見 index 為 0
+        """Configure the stage backend and its recording callbacks."""
         work_dir.mkdir(parents=True, exist_ok=True)
-        from phasyn_h3.recipe.runtime.sglang_env import apply_process_environment
+        from phasyn_h3.recipe.runtime.sglang_env import apply_process_environment  # noqa: PLC0415 - Keep runtime initialization on the operation that needs it.
 
         apply_process_environment(work_dir / "sglang_h3")
-        from phasyn_h3.recipe.runtime.provider import SGLangH3Provider
+        from phasyn_h3.recipe.runtime.provider import SGLangH3Provider  # noqa: PLC0415 - Keep runtime initialization on the operation that needs it.
 
         self.device = {"device_uuid": str(device.get("id")), "device_index": 0}
         self.instrumentation = instrumentation
@@ -179,7 +195,9 @@ class H3Host:
         self.video_vae_scope = video_vae_scope
         # orchestration only (h3.video_decode provider_options.weight_streaming; same values, recipe
         # stages/vae_weight_streaming.py); None keeps the resident decode
-        self.weight_streaming = dict(weight_streaming) if weight_streaming is not None else None
+        self.weight_streaming = (
+            dict(weight_streaming) if weight_streaming is not None else None
+        )
         self.provider = SGLangH3Provider(
             self.device,
             workdir=work_dir,
@@ -195,11 +213,15 @@ class H3Host:
     def _on_component(self, kind: str, run: Any, module: Any) -> Iterator[None]:
         """Around each use of a component: the DiT of a denoise stage gets the recorder hooks."""
         instr = self.instrumentation
-        if instr is None or kind != "transformer" or getattr(run, "kind", None) != "denoise_av":
+        if (
+            instr is None
+            or kind != "transformer"
+            or getattr(run, "kind", None) != "denoise_av"
+        ):
             yield
             return
-        from phasyn_h3.recipe.runtime.dit_trace import wrapped_step_profiler
-        from phasyn_h3.recipe.runtime.pins import LAYERWISE_MANAGER_ATTRS
+        from phasyn_h3.recipe.runtime.dit_trace import wrapped_step_profiler  # noqa: PLC0415 - Keep runtime initialization on the operation that needs it.
+        from phasyn_h3.recipe.runtime.pins import LAYERWISE_MANAGER_ATTRS  # noqa: PLC0415 - Keep runtime initialization on the operation that needs it.
 
         with (
             wrapped_step_profiler(instr.wrap_step_profiler),
@@ -208,7 +230,7 @@ class H3Host:
             yield
 
     # ------------------------------------------------------------------ stages
-    def stage(
+    def stage(  # noqa: PLR0913 - Preserve the existing provider or recipe ABI.
         self,
         kind: str,
         plan: Mapping[str, Any],
@@ -223,12 +245,10 @@ class H3Host:
         progress: Any = None,
         options: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
-        """``options``：stage 的編排選項（例如 encode_references 的 ``reference_scope``），放進 stage dict。
+        """``options``：stage 的編排選項（例如 encode_references 的 ``reference_scope``），放進 stage dict.
 
-        ``cancelled`` is the recipe's stop signal; ``check_cancelled`` classifies a stop (``reraise_stop``)."""
-        from phasyn_h3.recipe.abi.canonical import canonical_digest
-        from phasyn_h3.recipe.abi.stage import StageContext, StageInput
-
+        ``cancelled`` is the recipe's stop signal; ``check_cancelled`` classifies a stop (``reraise_stop``).
+        """
         out_dir.mkdir(parents=True, exist_ok=True)
         stage = {**dict(options or {}), "kind": kind, "stage_id": kind, "inputs": []}
         progress_sink = progress or (lambda _doc: None)
@@ -247,11 +267,17 @@ class H3Host:
             memory_level=0,
             attachments={k: Path(v) for k, v in attachments.items()},
         )
-        phase = "load" if kind == "load_dit" else ("encode" if kind == "decode_video" else None)
+        phase = (
+            "load"
+            if kind == "load_dit"
+            else ("encode" if kind == "decode_video" else None)
+        )
         t0 = time.perf_counter_ns()
         with rec.span(f"h3.{kind}", part=f"stage.{kind}", phase=phase):
             try:
-                result = self.provider.execute_stage(stage, ctx)  # cancellation propagates as Cancelled
+                result = self.provider.execute_stage(
+                    stage, ctx
+                )  # cancellation propagates as Cancelled
             except Cancelled as exc:
                 reraise_stop(exc, check_cancelled)
         host_ms = (time.perf_counter_ns() - t0) / 1e6
@@ -259,13 +285,22 @@ class H3Host:
         if result.status != "succeeded":
             raise self._error(kind, result)
         outputs = {o.name: o for o in result.outputs}
-        rec.log("info", f"stage {kind} 完成", host_ms=round(host_ms, 3), outputs=sorted(outputs))
+        rec.log(
+            "info",
+            f"stage {kind} 完成",
+            host_ms=round(host_ms, 3),
+            outputs=sorted(outputs),
+        )
         return outputs
 
     def _error(self, kind: str, result: Any) -> ComponentError:
         code = str(result.error_code or "RUNTIME_ERROR")
-        errors = [d for d in result.diagnostics if d.get("severity", "error") == "error"]
-        message = "; ".join(str(d.get("message")) for d in errors[:3]) or f"stage {kind} 失敗"
+        errors = [
+            d for d in result.diagnostics if d.get("severity", "error") == "error"
+        ]
+        message = (
+            "; ".join(str(d.get("message")) for d in errors[:3]) or f"stage {kind} 失敗"
+        )
         return ComponentError(
             contract_code(code),
             f"H3 stage {kind} 失敗（{code}）：{message}"[:4000],
@@ -273,46 +308,26 @@ class H3Host:
                 "stage": kind,
                 "runtime_error_code": code,
                 "diagnostics": [
-                    {k: d.get(k) for k in ("code", "message", "field_paths", "severity")}
+                    {
+                        k: d.get(k)
+                        for k in ("code", "message", "field_paths", "severity")
+                    }
                     for d in result.diagnostics[:20]
                 ],
             },
         )
 
-    def _record_diagnostics(self, kind: str, diagnostics: list[dict[str, Any]], rec: Recorder, allocator: Any) -> None:
+    def _record_diagnostics(
+        self,
+        kind: str,
+        diagnostics: list[dict[str, Any]],
+        rec: Recorder,
+        allocator: Any,
+    ) -> None:
         for diag in diagnostics:
             code = str(diag.get("code"))
             if code == "RUNTIME_MEMORY":
-                doc = _parse_diag(diag) or {}
-                if allocator is not None:
-                    allocator.merge_peaks(doc.get("max_allocated_bytes"), doc.get("max_reserved_bytes"))
-                if doc.get("max_rss_bytes") is not None:
-                    rec.max_metric(
-                        "host_lifetime_peak_bytes",
-                        int(doc["max_rss_bytes"]),
-                        quality="instrumented",
-                        scope="actor_process_lifetime",
-                        method="getrusage_ru_maxrss",
-                    )
-                if doc.get("pinned_host_bytes") is not None:
-                    rec.max_metric(
-                        "owned_pinned_host_bytes", int(doc["pinned_host_bytes"]), scope="component_owned_payload"
-                    )
-                h2d = int(doc.get("h2d_bytes") or 0)
-                if h2d:
-                    rec.transfer(
-                        "weight_h2d",
-                        direction="H2D",
-                        submitted_bytes=h2d,
-                        part=f"stage.{kind}",
-                        byte_basis="logical_tensor",
-                        src="pinned_host",
-                        dst="device",
-                        src_memory_kind="pinned",
-                        dst_memory_kind="device",
-                        reason="component offload materialize／host restore（registry 量測）",
-                    )
-                rec.log("debug", f"{kind} RUNTIME_MEMORY", memory=doc)
+                _record_runtime_memory(diag, kind, rec, allocator)
             elif code == "RUNTIME_COST":
                 record_cost_entries(rec, _parse_diag(diag))
             elif code == "RUNTIME_COMPUTE":
@@ -344,7 +359,11 @@ class H3Host:
                 )
             else:
                 severity = str(diag.get("severity", "info"))
-                level = "warning" if severity == "warning" else ("error" if severity == "error" else "info")
+                level = (
+                    "warning"
+                    if severity == "warning"
+                    else ("error" if severity == "error" else "info")
+                )
                 message = str(diag.get("message") or "")
                 parsed = _parse_diag(diag)
                 fields: dict[str, Any] = {"code": code, "stage": kind}
@@ -356,7 +375,7 @@ class H3Host:
                     rec.note(f"{kind}：{message}"[:NOTE_LIMIT])
 
     def end_invoke(self, rec: Recorder) -> dict[str, Any]:
-        """call 結束：gc＋同步＋empty_cache；回傳常駐元件事實（after_use 已套用）。"""
+        """Call 結束：gc\N{FULLWIDTH PLUS SIGN}同步\N{FULLWIDTH PLUS SIGN}empty_cache；回傳常駐元件事實（after_use 已套用）."""
         with rec.span("h3.synchronize_stage", part="runtime.release"):
             report = self.provider.synchronize_stage()
         rec.log(
@@ -369,20 +388,34 @@ class H3Host:
         )
         return dict(report)
 
-    def warm(self, plan: Mapping[str, Any], stage_kind: str, component: str, rec: Recorder) -> None:
-        """只載入權重、不跑 stage（load 階段）；after_use 規則照常套用。
+    def warm(
+        self, plan: Mapping[str, Any], stage_kind: str, component: str, rec: Recorder
+    ) -> None:
+        """只載入權重、不跑 stage（load 階段）；after_use 規則照常套用.
 
         stage 自己驗證的元件以外（encode_references 裡的 audio VAE）用 stage 執行時相同的
-        ``component_policy_for`` 解析，載入身分與之後 invoke 取用的完全一致（不會重載）。"""
-        from phasyn_h3.recipe.abi.stage import StageContext
-        from phasyn_h3.recipe.runtime.policy import component_policy_for, resolve_stage_policy
-        from phasyn_h3.recipe.runtime.stages.common import StageRun
+        ``component_policy_for`` 解析，載入身分與之後 invoke 取用的完全一致（不會重載）。
+        """
+        from phasyn_h3.recipe.runtime.policy import (  # noqa: PLC0415 - Keep runtime initialization on the operation that needs it.
+            component_policy_for,
+            resolve_stage_policy,
+        )
+        from phasyn_h3.recipe.runtime.stages.common import StageRun  # noqa: PLC0415 - Keep runtime initialization on the operation that needs it.
 
         facts = self.provider.backend.facts()
         policy = resolve_stage_policy(
-            dict(plan), stage_kind, memory_level=0, adapter_overrides=None, sm_major=facts.sm_major, sm=facts.sm
+            dict(plan),
+            stage_kind,
+            memory_level=0,
+            adapter_overrides=None,
+            sm_major=facts.sm_major,
+            sm=facts.sm,
         )
-        override = None if component in policy.components else component_policy_for(policy, component)
+        override = (
+            None
+            if component in policy.components
+            else component_policy_for(policy, component)
+        )
         ctx = StageContext(
             assignment={"stage_id": "warm"},
             plan=plan,
@@ -398,18 +431,73 @@ class H3Host:
             memory_level=0,
             attachments={},
         )
-        run = StageRun(provider=self.provider, stage={"kind": stage_kind, "stage_id": "warm"}, ctx=ctx, policy=policy)
+        run = StageRun(
+            provider=self.provider,
+            stage={"kind": stage_kind, "stage_id": "warm"},
+            ctx=ctx,
+            policy=policy,
+        )
         with (
             rec.span(f"h3.warm.{component}", part=component, phase="load"),
             self.provider.use_component(run, component, policy_override=override),
         ):
             pass
         for diag in run.diagnostics:
-            rec.log("info", f"warm {component}: {diag.get('code')}", fact=_parse_diag(diag) or diag.get("message"))
+            rec.log(
+                "info",
+                f"warm {component}: {diag.get('code')}",
+                fact=_parse_diag(diag) or diag.get("message"),
+            )
 
     def shutdown(self) -> None:
+        """Release the components and resources owned by this host."""
         with contextlib.suppress(Exception):
             self.provider.shutdown()
 
 
-__all__ = ["ERROR_MAP", "H3Host", "contract_code", "record_cost_entries", "reraise_stop"]
+__all__ = [
+    "ERROR_MAP",
+    "H3Host",
+    "contract_code",
+    "record_cost_entries",
+    "reraise_stop",
+]
+
+
+def _record_runtime_memory(
+    diag: dict[str, Any], kind: str, rec: Recorder, allocator: Any
+) -> None:
+    doc = _parse_diag(diag) or {}
+    if allocator is not None:
+        allocator.merge_peaks(
+            doc.get("max_allocated_bytes"), doc.get("max_reserved_bytes")
+        )
+    if doc.get("max_rss_bytes") is not None:
+        rec.max_metric(
+            "host_lifetime_peak_bytes",
+            int(doc["max_rss_bytes"]),
+            quality="instrumented",
+            scope="actor_process_lifetime",
+            method="getrusage_ru_maxrss",
+        )
+    if doc.get("pinned_host_bytes") is not None:
+        rec.max_metric(
+            "owned_pinned_host_bytes",
+            int(doc["pinned_host_bytes"]),
+            scope="component_owned_payload",
+        )
+    h2d = int(doc.get("h2d_bytes") or 0)
+    if h2d:
+        rec.transfer(
+            "weight_h2d",
+            direction="H2D",
+            submitted_bytes=h2d,
+            part=f"stage.{kind}",
+            byte_basis="logical_tensor",
+            src="pinned_host",
+            dst="device",
+            src_memory_kind="pinned",
+            dst_memory_kind="device",
+            reason="component offload materialize／host restore（registry 量測）",
+        )
+    rec.log("debug", f"{kind} RUNTIME_MEMORY", memory=doc)

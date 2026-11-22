@@ -21,14 +21,20 @@ from phasyn_components import contracts
 from phasyn_components.canonical import digest
 from phasyn_components.errors import ComponentError
 
-from .scene import SECTION_KEYS, SceneError, scene_sha256, section_text, validate_intentional_changes, validate_scene
+from .scene import (
+    SECTION_KEYS,
+    SceneError,
+    scene_sha256,
+    section_text,
+    validate_intentional_changes,
+    validate_scene,
+)
+
 
 COMPILER_VERSION = "prompt-compiler/1"
 CORE_SECTIONS = frozenset({"subject", "action", "composition", "style", "visible_text"})
 PROMPT_CHAR_LIMIT = 12000
-UNCHECKED_TOKENS_REASON = (
-    "CPU 編譯不載入 tokenizer；實際 token 數由 qimg.conditioning 在生成時以實際 processor 檢查（超過上限 422，不截斷）"
-)
+UNCHECKED_TOKENS_REASON = "CPU 編譯不載入 tokenizer；實際 token 數由 qimg.conditioning 在生成時以實際 processor 檢查（超過上限 422，不截斷）"
 
 
 # The rule data that determines the compiled prompts. ``compiler_sha256`` is its canonical-JSON digest, so it
@@ -56,7 +62,7 @@ def compile_scene(
     *,
     view_ids: Iterable[str] | None = None,
 ) -> dict[str, Any]:
-    """PromptScene → PromptCandidates（core 在前）。場景語意不合法 → 422 INVALID_ARGUMENT。"""
+    """PromptScene → PromptCandidates（core 在前）。場景語意不合法 → 422 INVALID_ARGUMENT."""
     try:
         validate_scene(scene, origin="manual", view_ids=view_ids)
         changes = validate_intentional_changes(scene, intentional_changes)
@@ -71,14 +77,21 @@ def compile_scene(
         keys = [
             key
             for key in SECTION_KEYS
-            if (variant == "detailed" or key in core) and section_text(scene["sections"][key], language).strip()
+            if (variant == "detailed" or key in core)
+            and section_text(scene["sections"][key], language).strip()
         ]
-        prompt = "\n".join(section_text(scene["sections"][key], language).strip() for key in keys)
+        prompt = "\n".join(
+            section_text(scene["sections"][key], language).strip() for key in keys
+        )
         if len(prompt) > PROMPT_CHAR_LIMIT:
             raise ComponentError(
                 "PROMPT_TOO_LONG",
                 f"{variant} 超過 12,000 Unicode 字元（{len(prompt)}）；不截斷，請縮短場景描述",
-                details={"variant": variant, "chars": len(prompt), "limit": PROMPT_CHAR_LIMIT},
+                details={
+                    "variant": variant,
+                    "chars": len(prompt),
+                    "limit": PROMPT_CHAR_LIMIT,
+                },
                 status=422,
             )
         items.append(
@@ -101,12 +114,14 @@ def compile_scene(
         "identical": items[0]["prompt_sha256"] == items[1]["prompt_sha256"],
         "items": items,
     }
-    contracts.validate("PromptCandidates", result, code="RUNTIME_ERROR", what="編譯結果")
+    contracts.validate(
+        "PromptCandidates", result, code="RUNTIME_ERROR", what="編譯結果"
+    )
     return result
 
 
 def unique_candidates(items: Iterable[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
-    """每個不同 prompt 只留一個（core 優先）；生成與搜尋用這個去重。"""
+    """每個不同 prompt 只留一個（core 優先）；生成與搜尋用這個去重."""
     result: list[Mapping[str, Any]] = []
     seen: set[str] = set()
     for item in items:

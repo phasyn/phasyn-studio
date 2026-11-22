@@ -85,22 +85,21 @@ export function StudyWorkspace({ initial }: { initial: PromptStudy }) {
   const runner = useTaskRunner({ doc, catalog: catalog.data, routes, components });
 
   // 生成設定：元件組合沒選時用第一個能用的 t2i 元件組合（Image Studio judges text-to-image, as "Apply to Image Studio" does）
-  const [settingsDraft, setSettings] = useState<GenerationSettings>(() => initialSettings(initial));
+  const [settingsDraft, setSettingsDraft] = useState<GenerationSettings>(() => initialSettings(initial));
   const imageStudioRoutes = useMemo(() => deriveImageStudioRoutes(pipelines.data?.items, catalog.data), [pipelines.data, catalog.data]);
   const defaultRoute = defaultRouteId(routes, (routeId) => shotRouteProblem(imageStudioRoutes, routeId, "t2i") === null);
   const settings = settingsDraft.route && routes.some((route) => route.id === settingsDraft.route) ? settingsDraft : { ...settingsDraft, route: defaultRoute };
 
   // 分頁
   const tab: TabId = tabOf(params.get("tab")) ?? (study.versions.length === 0 ? "source" : "scene");
-  const goTab = (next: TabId) =>
-    setParams(
+  const goTab = (next: TabId) => { setParams(
       (previous) => {
         const query = new URLSearchParams(previous);
         query.set("tab", next);
         return query;
       },
       { replace: true },
-    );
+    ); };
 
   /** 建立任務時一起存進研究 settings 的內容（目前的生成設定與元件選擇；下次開啟沿用）。 */
   const persistSettings = () => ({ ...doc.latest().settings, generation: settings, components });
@@ -117,7 +116,7 @@ export function StudyWorkspace({ initial }: { initial: PromptStudy }) {
   const busy = runner.state.busy;
   const open = openTask(study);
   /** 研究已刪除：離開時不再確認。 */
-  const deleted = useRef(false);
+  const deletedRef = useRef(false);
   const readOnly = study.archived;
   const accepted = acceptedRef(study);
 
@@ -131,12 +130,12 @@ export function StudyWorkspace({ initial }: { initial: PromptStudy }) {
     catalogLoading: catalog.isPending,
     choices,
     chosen,
-    setComponent: (role: ComponentRole, key: string) => setComponentKeys((current) => ({ ...current, [role]: key })),
+    setComponent: (role: ComponentRole, key: string) => { setComponentKeys((current) => ({ ...current, [role]: key })); },
     components,
     sourceSize: sourceSize ?? measured,
     setSourceSize,
     settings,
-    setSettings,
+    setSettings: setSettingsDraft,
     persistSettings,
     readOnly,
     open,
@@ -146,8 +145,8 @@ export function StudyWorkspace({ initial }: { initial: PromptStudy }) {
       sceneState.selectVersion(ref.version_id);
       goTab("scene");
     },
-    requestAccept: (ref, taskId) => setAccepting({ ref, taskId }),
-    requestApply: (ref, applied) => setApplying({ ref, settings: applied }),
+    requestAccept: (ref, taskId) => { setAccepting({ ref, taskId }); },
+    requestApply: (ref, applied) => { setApplying({ ref, settings: applied }); },
   };
 
   const openTaskTab = (task: PromptStudyTask) => {
@@ -166,13 +165,13 @@ export function StudyWorkspace({ initial }: { initial: PromptStudy }) {
 
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
-      !deleted.current && (dirty || busy) && (currentLocation.pathname !== nextLocation.pathname || new URLSearchParams(nextLocation.search).get("study") !== study.study_id),
+      !deletedRef.current && (dirty || busy) && (currentLocation.pathname !== nextLocation.pathname || new URLSearchParams(nextLocation.search).get("study") !== study.study_id),
   );
   useEffect(() => {
     if (!dirty && !busy) return;
-    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); };
     window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
+    return () => { window.removeEventListener("beforeunload", warn); };
   }, [dirty, busy]);
 
   const listPath = location.pathname;
@@ -218,10 +217,10 @@ export function StudyWorkspace({ initial }: { initial: PromptStudy }) {
             >
               {study.archived ? t("取消封存") : t("封存")}
             </ActionButton>
-            <Button size="sm" variant="quiet" icon={<Download aria-hidden />} onClick={() => downloadJson(`${study.study_id}.json`, study)}>
+            <Button size="sm" variant="quiet" icon={<Download aria-hidden />} onClick={() => { downloadJson(`${study.study_id}.json`, study); }}>
               {t("下載 JSON")}
             </Button>
-            <Button size="sm" variant="danger" icon={<Trash2 aria-hidden />} disabled={busy} title={busy ? t("執行中不能刪除") : undefined} onClick={() => setDeleting(true)}>
+            <Button size="sm" variant="danger" icon={<Trash2 aria-hidden />} disabled={busy} title={busy ? t("執行中不能刪除") : undefined} onClick={() => { setDeleting(true); }}>
               {t("刪除…")}
             </Button>
           </>
@@ -241,7 +240,7 @@ export function StudyWorkspace({ initial }: { initial: PromptStudy }) {
           <ErrorCallout error={doc.saveError} write title={t("研究文件沒有保存（不會自動重送）")} onRetry={() => void doc.reload().catch(() => undefined)} retryLabel={t("重新讀取研究")} />
         </div>
       ) : null}
-      <FlowTabs tabs={tabs} value={tab} onChange={(id) => goTab(tabOf(id) ?? "source")} idPrefix={TAB_PREFIX} label={t("圖片反推步驟")} />
+      <FlowTabs tabs={tabs} value={tab} onChange={(id) => { goTab(tabOf(id) ?? "source"); }} idPrefix={TAB_PREFIX} label={t("圖片反推步驟")} />
       <RunnerStrip runner={runner} />
       {TABS.map((item) => (
         <DockBody key={item.id} role="tabpanel" id={`${TAB_PREFIX}-panel-${item.id}`} aria-labelledby={`${TAB_PREFIX}-tab-${item.id}`} hidden={item.id !== tab}>
@@ -281,7 +280,7 @@ export function StudyWorkspace({ initial }: { initial: PromptStudy }) {
         candidate={acceptTarget}
         taskId={accepting?.taskId ?? null}
         open={accepting !== null}
-        onOpenChange={(next) => (next ? undefined : setAccepting(null))}
+        onOpenChange={(next) => { if (!(next)) { setAccepting(null); } }}
         onAccept={async (versionId, acceptance) => {
           await doc.update((current) => ({ ...current, accepted_version_id: versionId, acceptance }));
         }}
@@ -294,14 +293,14 @@ export function StudyWorkspace({ initial }: { initial: PromptStudy }) {
         catalog={catalog.data}
         routesLoading={ws.routesLoading}
         open={applying !== null}
-        onOpenChange={(next) => (next ? undefined : setApplying(null))}
+        onOpenChange={(next) => { if (!(next)) { setApplying(null); } }}
       />
       <DeleteStudyDialog
         study={deleting ? { study_id: study.study_id, title: study.title, revision: study.revision } : null}
         open={deleting}
         onOpenChange={setDeleting}
         onDeleted={() => {
-          deleted.current = true;
+          deletedRef.current = true;
           void navigate(listPath, { replace: true });
         }}
       />

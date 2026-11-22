@@ -95,6 +95,8 @@ async def file_response(store: FileStore, file_id: str, range_header: str | None
     """A published file (``FILE_NOT_FOUND`` otherwise), whole or one byte range."""
     fid = require_uuid(file_id, "file_id")
     ref = await asyncio.to_thread(store.fileref, fid)
+    # A record whose content is gone is missing too: say so before the 200 starts, not as a broken stream
+    await asyncio.to_thread(store.payload_path, fid)
     size = int(ref["size_bytes"])
     headers = {
         "Accept-Ranges": "bytes",

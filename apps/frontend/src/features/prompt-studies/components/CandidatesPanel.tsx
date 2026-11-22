@@ -1,5 +1,6 @@
 // 候選（core／detailed）：已儲存版本的正式候選（prompt.scene_compile 的結果）＋編修中的即時預覽與逐區段差異。
 // 預覽與元件用同一套規則，但正式候選以儲存時的編譯結果為準；兩者不一致時照實提醒。
+import { withOccurrenceKeys } from "@/lib/occurrenceKeys";
 import { Copy, TriangleAlert } from "lucide-react";
 import { useId } from "react";
 import { CopyButton } from "@/components/common/values";
@@ -36,17 +37,17 @@ const STATUS_TEXT: Record<SectionDiffRow["status"], { text: string; tone: "neutr
 function InlineDiff({ before, after }: { before: string; after: string }) {
   return (
     <p className="text-caption leading-5 [overflow-wrap:anywhere]">
-      {diffChars(before, after).map((part, index) =>
+      {withOccurrenceKeys(diffChars(before, after), (part) => JSON.stringify([part.op, part.text])).map(({ item: part, key }) =>
         part.op === "equal" ? (
-          <span key={index} className="text-fg-secondary">
+          <span key={key} className="text-fg-secondary">
             {part.text}
           </span>
         ) : part.op === "delete" ? (
-          <del key={index} className="rounded-xs bg-danger/15 text-danger decoration-danger/60">
+          <del key={key} className="rounded-sm bg-danger/15 text-danger decoration-danger/60">
             {part.text}
           </del>
         ) : (
-          <ins key={index} className="rounded-xs bg-success/15 text-success no-underline">
+          <ins key={key} className="rounded-sm bg-success/15 text-success no-underline">
             {part.text}
           </ins>
         ),
@@ -118,7 +119,7 @@ export function CandidatesPanel({
         <SegmentedTabs
           tabs={(["core", "detailed"] as const).map((item) => ({ id: item, label: VARIANT_LABELS[item] }))}
           value={variant}
-          onChange={(next) => onVariant(next === "detailed" ? "detailed" : "core")}
+          onChange={(next) => { onVariant(next === "detailed" ? "detailed" : "core"); }}
           idPrefix={`${id}-variant`}
           label={t("候選種類")}
         />
@@ -133,12 +134,12 @@ export function CandidatesPanel({
               <span className="text-caption text-fg-secondary">{t("已儲存的候選（{variant}）· {promptCount} 字", { variant: VARIANT_LABELS[variant], promptCount: Array.from(candidate.prompt).length })}</span>
               <CopyButton value={candidate.prompt} label={t("複製 {variant} 候選", { variant })} />
             </div>
-            <pre tabIndex={0} aria-label={t("已儲存的 {variant} 候選", { variant })} className="max-h-64 overflow-auto rounded-lg border border-line-subtle bg-sunken px-3 py-2 font-mono text-caption leading-5 whitespace-pre-wrap text-fg [overflow-wrap:anywhere] focus-visible:outline-2 focus-visible:outline-focus">
+            <pre  /* eslint-disable-line jsx-a11y-x/no-noninteractive-tabindex -- Keyboard users can focus this scrollable region and scroll its overflow. */ tabIndex={0} aria-label={t("已儲存的 {variant} 候選", { variant })} className="max-h-64 overflow-auto rounded-lg border border-line-subtle bg-sunken px-3 py-2 font-mono text-caption leading-5 whitespace-pre-wrap text-fg [overflow-wrap:anywhere] focus-visible:outline-2 focus-visible:outline-focus">
               {candidate.prompt || t("（空白）")}
             </pre>
             {token ? <p className={cn("text-caption", token === "too_long" ? "text-danger" : token === "unchecked" ? "text-fg-tertiary" : "text-success")}>{TOKEN_TEXT[token].text}</p> : null}
-            <p className="machine text-caption text-fg-tertiary">{t("{compiler_version} · {sectionsCount} 個區段{value}", { compiler_version: version.candidates.compiler_version, sectionsCount: candidate.sections.length, value: candidate.target_tokens !== null ? ` · ${candidate.target_tokens} tokens` : "" })}</p>
-            {candidate.token_reason ? <p className="text-caption text-fg-tertiary">{candidate.token_reason}</p> : null}
+            <p className="machine text-caption text-fg-tertiary">{t("{compiler_version} · {sectionsCount} 個區段{value}", { compiler_version: version.candidates.compiler_version, sectionsCount: candidate.sections.length, value: candidate.target_tokens !== null ? ` · ${String(candidate.target_tokens)} tokens` : "" })}</p>
+            {(candidate.token_reason != null && candidate.token_reason !== "") ? <p className="text-caption text-fg-tertiary">{candidate.token_reason}</p> : null}
           </div>
         ) : (
           <Callout tone="warning" title={t("這一版沒有 {variant} 候選", { variant })} className="rounded-lg">

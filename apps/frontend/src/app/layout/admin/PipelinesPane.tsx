@@ -1,8 +1,10 @@
+import { changesPage } from "../shell/viewTransition";
+import { pageTransition } from "@/lib/dom";
 // 「元件組合」分頁：全部元件組合、各分類（資料夾，可收合，順序可拖曳）、未分類；元件組合可拖曳排序或放進分類。
 // 鍵盤：Alt+↑／↓ 移動聚焦的元件組合或分類；右鍵、Shift+F10 或列上的 ⋯ 開啟動作選單（每個移動都有對應選項）。
 // 分類只決定顯示順序（主控 /api/pipeline-layout），不修改任何元件組合；保存失敗會還原並說明，不自動重送。
 import { ArrowDown, ArrowUp, Check, Folder, FolderInput, FolderPlus, Inbox, LoaderCircle, Pencil, Plus, Trash2, TriangleAlert, X } from "lucide-react";
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type SubmitEvent } from "react";
 import { useLocation, useNavigate } from "react-router";
 import { ErrorCallout } from "@/components/common/ErrorCallout";
 import { Button } from "@/components/ui/button";
@@ -49,7 +51,6 @@ import {
   type PipelineTreeDrop,
 } from "./pipelineTree";
 import { SearchBox } from "./SearchBox";
-import { changesPage } from "../shell/viewTransition";
 import { useFolderExpansion } from "./useFolderExpansion";
 import { t } from "@/i18n";
 
@@ -95,10 +96,10 @@ function GroupNameForm({
     inputRef.current?.select();
   }, []);
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSubmitted(true);
-    if (error) {
+    if (error != null && error !== "") {
       inputRef.current?.focus();
       return;
     }
@@ -116,7 +117,7 @@ function GroupNameForm({
           id={inputId}
           compact
           value={value}
-          onChange={(event) => setValue(event.target.value)}
+          onChange={(event) => { setValue(event.target.value); }}
           onKeyDown={(event) => {
             if (event.key !== "Escape") return;
             event.preventDefault();
@@ -167,7 +168,7 @@ function DeleteGroupDialog({
         <DialogContent
           onCloseAutoFocus={(event) => {
             const target = onClosed();
-            if (!target) return;
+            if (!(target != null && target !== "")) return;
             event.preventDefault();
             requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-tree-item="${CSS.escape(target)}"]`)?.focus());
           }}
@@ -182,7 +183,7 @@ function DeleteGroupDialog({
             <DialogBody>
               <ul className="grid gap-1 text-data text-fg-secondary">
                 {names.map((name, index) => (
-                  <li key={`${index}:${name}`} className="truncate">
+                  <li key={`${String(index)}:${name}`} className="truncate">
                     {name}
                   </li>
                 ))}
@@ -211,7 +212,7 @@ export function PipelinesPane({ query, onQuery }: { query: string; onQuery: (val
   const navigate = useNavigate();
   const paneId = useId();
   const addGroupRef = useRef<HTMLButtonElement>(null);
-  const afterDelete = useRef<string | null>(null);
+  const afterDeleteRef = useRef<string | null>(null);
   const menuId = useId();
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [nameForm, setNameForm] = useState<NameFormState | null>(null);
@@ -221,8 +222,8 @@ export function PipelinesPane({ query, onQuery }: { query: string; onQuery: (val
   // 剛移動過的列短暫標示（約 0.9 秒）
   useEffect(() => {
     if (!flash) return;
-    const timer = window.setTimeout(() => setFlash(null), 900);
-    return () => window.clearTimeout(timer);
+    const timer = window.setTimeout(() => { setFlash(null); }, 900);
+    return () => { window.clearTimeout(timer); };
   }, [flash]);
 
   const list = pipelines.data?.items ?? [];
@@ -234,11 +235,11 @@ export function PipelinesPane({ query, onQuery }: { query: string; onQuery: (val
   const reorderBlocked = editor.blockedReason ?? (searching ? t("搜尋時不能調整順序：清除搜尋後再拖曳或移動") : null);
   const layoutUnsupported = !editor.layout.data && isNotFound(editor.layout.error);
 
-  const pipelineLabel = (pipelineId: string) => list.find((item) => item.pipeline_id === pipelineId)?.label || pipelineId;
+  const pipelineLabel = (pipelineId: string) => (list.find((item) => item.pipeline_id === pipelineId)?.label ?? "") || pipelineId;
   // 移動後列可能換了位置（DOM 節點被移動會失去焦點）：下一個畫面再聚焦（以 DOM 查詢，不在 render 中讀 ref）
   const focusLater = (treeId: string) =>
     requestAnimationFrame(() => document.getElementById(paneId)?.querySelector<HTMLElement>(`[data-tree-item="${CSS.escape(treeId)}"]`)?.focus());
-  const flashRow = (id: string) => setFlash((previous) => ({ id, nonce: (previous?.nonce ?? 0) + 1 }));
+  const flashRow = (id: string) => { setFlash((previous) => ({ id, nonce: (previous?.nonce ?? 0) + 1 })); };
 
   const applyPipelineMove = (pipelineId: string, result: MoveResult, via: "drag" | "keyboard" | "menu"): boolean => {
     if (!result) return false;
@@ -270,7 +271,7 @@ export function PipelinesPane({ query, onQuery }: { query: string; onQuery: (val
       editor.announce(node?.kind === "all" ? t("「全部元件組合」固定在最上面，不能移動") : t("「{ungroupedLabel}」固定在最後，不能移動", { ungroupedLabel: UNGROUPED_LABEL }));
       return false;
     }
-    if (reorderBlocked || !content) {
+    if ((reorderBlocked ?? "") || !content) {
       editor.announce(reorderBlocked ?? t("分類與排序尚未讀取"));
       return false;
     }
@@ -287,7 +288,7 @@ export function PipelinesPane({ query, onQuery }: { query: string; onQuery: (val
   };
 
   const drag: TreeDragOptions<PipelineTreeDrop> | undefined =
-    content && !reorderBlocked
+    content && !(reorderBlocked != null && reorderBlocked !== "")
       ? {
           canDrag: (item) => canDragPipelineTreeItem(item.id),
           resolve: (sourceId, over, fraction, rows) => resolvePipelineTreeDrop(content, sourceId, over, fraction, rows),
@@ -295,7 +296,7 @@ export function PipelinesPane({ query, onQuery }: { query: string; onQuery: (val
             if (drop.kind === "pipeline") applyPipelineMove(drop.pipelineId, movePipeline(content, drop.pipelineId, drop.to), "drag");
             else applyGroupMove(drop.groupId, moveGroup(content, drop.groupId, drop.toIndex), "drag");
           },
-          onCancel: () => editor.announce(t("已取消拖曳，順序沒有改變")),
+          onCancel: () => { editor.announce(t("已取消拖曳，順序沒有改變")); },
         }
       : undefined;
 
@@ -326,12 +327,12 @@ export function PipelinesPane({ query, onQuery }: { query: string; onQuery: (val
     editor.commit(renameGroup(content, form.groupId, name), t("已把分類「{name}」重新命名為「{name2}」", { name: group.name, name2: name }));
   };
 
-  const deleting = content && deletingId ? (findGroup(content, deletingId) ?? null) : null;
+  const deleting = content && (deletingId != null && deletingId !== "") ? (findGroup(content, deletingId) ?? null) : null;
   const confirmDelete = () => {
     if (!content || !deleting) return;
     const index = content.groups.findIndex((group) => group.group_id === deleting.group_id);
     const next = content.groups[index + 1] ?? content.groups[index - 1];
-    afterDelete.current = next ? pipelineGroupTreeId(next.group_id) : PIPELINE_UNGROUPED_ID;
+    afterDeleteRef.current = next ? pipelineGroupTreeId(next.group_id) : PIPELINE_UNGROUPED_ID;
     const count = deleting.pipeline_ids.length;
     editor.commit(
       deleteGroup(content, deleting.group_id),
@@ -345,15 +346,15 @@ export function PipelinesPane({ query, onQuery }: { query: string; onQuery: (val
     const up = stepPipeline(content, pipelineId, -1);
     const down = stepPipeline(content, pipelineId, 1);
     return [
-      { id: "up", label: t("上移"), icon: ArrowUp, shortcut: "Alt+↑", disabledReason: reorderBlocked ?? (up ? null : t("已經在最上面")), onSelect: () => applyPipelineMove(pipelineId, up, "menu") },
-      { id: "down", label: t("下移"), icon: ArrowDown, shortcut: "Alt+↓", disabledReason: reorderBlocked ?? (down ? null : t("已經在最下面")), onSelect: () => applyPipelineMove(pipelineId, down, "menu") },
+      { id: "up", label: t("上移"), icon: ArrowUp, shortcut: "Alt+↑", disabledReason: reorderBlocked ?? (up ? null : t("已經在最上面")), onSelect: () => void applyPipelineMove(pipelineId, up, "menu") },
+      { id: "down", label: t("下移"), icon: ArrowDown, shortcut: "Alt+↓", disabledReason: reorderBlocked ?? (down ? null : t("已經在最下面")), onSelect: () => void applyPipelineMove(pipelineId, down, "menu") },
       {
         id: "move-to",
         label: t("移到分類…"),
         icon: FolderInput,
         separatorBefore: true,
         disabledReason: editor.blockedReason ?? (content.groups.length === 0 ? t("還沒有分類：先按上方的「新增分類」") : null),
-        onSelect: () => setMenu({ ...state, mode: "move-to", anchor: { ...state.anchor } }),
+        onSelect: () => { setMenu({ ...state, mode: "move-to", anchor: { ...state.anchor } }); },
       },
     ];
   };
@@ -367,7 +368,7 @@ export function PipelinesPane({ query, onQuery }: { query: string; onQuery: (val
         label: group.name,
         icon: Folder,
         disabledReason: where === group.group_id ? t("目前就在這個分類") : null,
-        onSelect: () => applyPipelineMove(pipelineId, movePipelineToGroup(content, pipelineId, group.group_id), "menu"),
+        onSelect: () => void applyPipelineMove(pipelineId, movePipelineToGroup(content, pipelineId, group.group_id), "menu"),
       })),
       {
         id: "ungrouped",
@@ -375,7 +376,7 @@ export function PipelinesPane({ query, onQuery }: { query: string; onQuery: (val
         icon: Inbox,
         separatorBefore: content.groups.length > 0,
         disabledReason: where === null ? t("目前就在「{ungroupedLabel}」", { ungroupedLabel: UNGROUPED_LABEL }) : null,
-        onSelect: () => applyPipelineMove(pipelineId, movePipelineToGroup(content, pipelineId, null), "menu"),
+        onSelect: () => void applyPipelineMove(pipelineId, movePipelineToGroup(content, pipelineId, null), "menu"),
       },
     ];
   };
@@ -385,17 +386,17 @@ export function PipelinesPane({ query, onQuery }: { query: string; onQuery: (val
     const up = stepGroup(content, groupId, -1);
     const down = stepGroup(content, groupId, 1);
     return [
-      { id: "rename", label: t("重新命名…"), icon: Pencil, disabledReason: editor.blockedReason, onSelect: () => openNameForm({ mode: "rename", groupId }) },
-      { id: "up", label: t("上移"), icon: ArrowUp, shortcut: "Alt+↑", separatorBefore: true, disabledReason: reorderBlocked ?? (up ? null : t("已經是第一個分類")), onSelect: () => applyGroupMove(groupId, up, "menu") },
+      { id: "rename", label: t("重新命名…"), icon: Pencil, disabledReason: editor.blockedReason, onSelect: () => { openNameForm({ mode: "rename", groupId }); } },
+      { id: "up", label: t("上移"), icon: ArrowUp, shortcut: "Alt+↑", separatorBefore: true, disabledReason: reorderBlocked ?? (up ? null : t("已經是第一個分類")), onSelect: () => void applyGroupMove(groupId, up, "menu") },
       {
         id: "down",
         label: t("下移"),
         icon: ArrowDown,
         shortcut: "Alt+↓",
         disabledReason: reorderBlocked ?? (down ? null : t("已經是最後一個分類（「{ungroupedLabel}」固定在最後）", { ungroupedLabel: UNGROUPED_LABEL })),
-        onSelect: () => applyGroupMove(groupId, down, "menu"),
+        onSelect: () => void applyGroupMove(groupId, down, "menu"),
       },
-      { id: "delete", label: t("刪除分類…"), icon: Trash2, tone: "danger", separatorBefore: true, disabledReason: editor.blockedReason, onSelect: () => setDeletingId(groupId) },
+      { id: "delete", label: t("刪除分類…"), icon: Trash2, tone: "danger", separatorBefore: true, disabledReason: editor.blockedReason, onSelect: () => { setDeletingId(groupId); } },
     ];
   };
 
@@ -434,7 +435,7 @@ export function PipelinesPane({ query, onQuery }: { query: string; onQuery: (val
           icon={<FolderPlus aria-hidden />}
           pressed={nameForm?.mode === "create"}
           disabledReason={editor.blockedReason}
-          onClick={() => (nameForm?.mode === "create" ? closeNameForm() : openNameForm({ mode: "create" }))}
+          onClick={() => { if (nameForm?.mode === "create") { closeNameForm(); } else { openNameForm({ mode: "create" }); } }}
         />
         <ToolButton label={t("新增元件組合")} icon={<Plus aria-hidden />} onClick={() => void navigate("/admin/pipelines/new")} />
       </div>
@@ -447,7 +448,7 @@ export function PipelinesPane({ query, onQuery }: { query: string; onQuery: (val
           {t("正在保存分類與排序…")}
         </p>
       ) : null}
-      {editor.error ? (
+      {(editor.error != null && editor.error !== "") ? (
         <div className="flex shrink-0 items-start gap-2 border-b border-line-subtle bg-sunken px-3 py-2 text-caption text-fg-secondary">
           <TriangleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0 text-warning" />
           <span className="min-w-0 flex-1">{editor.error}</span>
@@ -458,7 +459,7 @@ export function PipelinesPane({ query, onQuery }: { query: string; onQuery: (val
         <p className="shrink-0 border-b border-line-subtle px-3 py-2 text-caption text-fg-tertiary">{t("{layoutUnsupported}；目前依 ID 排序，不能分類或拖曳。", { layoutUnsupported: LAYOUT_UNSUPPORTED })}</p>
       ) : null}
       <DockBody>
-        {pipelines.isPending || (editor.layout.isPending && !editor.layout.data) ? (
+        {pipelines.isPending || editor.layout.isPending ? (
           <p role="status" className="px-3 py-4 text-caption text-fg-secondary">
             {t("正在讀取元件組合…")}
           </p>
@@ -483,27 +484,23 @@ export function PipelinesPane({ query, onQuery }: { query: string; onQuery: (val
                 expanded={expanded}
                 onToggle={onToggle}
                 onActivate={(item) => {
-                  if (item.to) void navigate(item.to, { viewTransition: changesPage(item.to, location.pathname) });
+                  if (item.to != null && item.to !== "") void navigate(item.to, pageTransition(changesPage(item.to, location.pathname)));
                 }}
-                drag={drag}
+                {...(drag === undefined ? {} : { drag })}
                 onMoveKey={onMoveKey}
-                menu={
-                  content
-                    ? {
+                {...(content ? { menu: {
                         menuId,
                         openId: menu?.itemId ?? null,
                         has: (item) => canDragPipelineTreeItem(item.id),
                         label: menuLabel,
-                        open: (item, anchor, returnFocus, focus) => setMenu({ itemId: item.id, mode: "actions", anchor, returnFocus, focus }),
-                        close: () => setMenu(null),
-                      }
-                    : undefined
-                }
+                        open: (item, anchor, returnFocus, focus) => { setMenu({ itemId: item.id, mode: "actions", anchor, returnFocus, focus }); },
+                        close: () => { setMenu(null); },
+                      } } : {})}
                 highlightId={flash?.id ?? null}
-                instructions={content ? INSTRUCTIONS : undefined}
+                {...(content ? { instructions: INSTRUCTIONS } : {})}
               />
             )}
-            {pipelines.data && pipelines.data.items.length === 0 && !searching ? (
+            {pipelines.data.items.length === 0 && !searching ? (
               <p className="px-3 pb-3 text-caption text-fg-tertiary">{t("尚未保存任何元件組合：按「＋」新增，或在清單頁從範本建立。")}</p>
             ) : null}
           </>
@@ -521,17 +518,17 @@ export function PipelinesPane({ query, onQuery }: { query: string; onQuery: (val
           anchor={menu.anchor}
           returnFocus={menu.returnFocus}
           initialFocus={menu.focus}
-          onClose={() => setMenu(null)}
+          onClose={() => { setMenu(null); }}
         />
       ) : null}
       <DeleteGroupDialog
         group={deleting}
         names={deleting ? deleting.pipeline_ids.map(pipelineLabel) : []}
         onConfirm={confirmDelete}
-        onClose={() => setDeletingId(null)}
+        onClose={() => { setDeletingId(null); }}
         onClosed={() => {
-          const target = afterDelete.current;
-          afterDelete.current = null;
+          const target = afterDeleteRef.current;
+          afterDeleteRef.current = null;
           return target;
         }}
       />

@@ -24,6 +24,7 @@ import { SegmentCompare } from "./SegmentCompare";
 import type { SwapJobApi } from "./useSwapJob";
 import { t, tServer } from "@/i18n";
 import { errorHeadline } from "@/i18n/errors";
+import { failureText } from "@/lib/errors";
 
 const TONE_TEXT: Record<SummaryTone, string> = {
   info: "text-info",
@@ -51,17 +52,17 @@ const playable = (segment: Pick<SegmentView, "state">) => segment.state === "don
  * take that appears later (a render that just ended) is checked once; when several appear together, only the newest.
  */
 function useAutoCheck(segments: readonly SegmentView[], targets: ReadonlyMap<string, CompareTarget>): void {
-  const known = useRef<Set<string> | null>(null);
+  const knownRef = useRef<Set<string> | null>(null);
   useEffect(() => {
     const ready = segments.flatMap((segment) => {
       const target = targets.get(segment.shot.shot_id);
-      return playable(segment) && target?.ok ? [{ index: segment.index, target }] : [];
+      return playable(segment) && (target?.ok === true) ? [{ index: segment.index, target }] : [];
     });
-    if (known.current === null) {
-      known.current = new Set(ready.map((item) => item.target.takeId));
+    if (knownRef.current === null) {
+      knownRef.current = new Set(ready.map((item) => item.target.takeId));
       return;
     }
-    const seen = known.current;
+    const seen = knownRef.current;
     const fresh = ready.filter((item) => !seen.has(item.target.takeId));
     for (const item of fresh) seen.add(item.target.takeId);
     const newest = fresh.sort((a, b) => a.target.takeCreatedAt.localeCompare(b.target.takeCreatedAt) || a.index - b.index).at(-1);
@@ -83,7 +84,7 @@ export function SegmentTable({ progress, job, projectId, onNavigate }: { progres
     else next.delete(shotId);
     setOpen(next);
     const target = targets.get(shotId);
-    if (opening && target?.ok) requestComparison(target);
+    if (opening && (target?.ok === true)) requestComparison(target);
   };
   const last = progress.segments.length - 1;
   return (
@@ -129,9 +130,9 @@ export function SegmentTable({ progress, job, projectId, onNavigate }: { progres
                     projectId={projectId}
                     onNavigate={onNavigate}
                     target={target}
-                    check={target?.ok ? (checks.get(target.key) ?? null) : null}
+                    check={(target?.ok === true) ? (checks.get(target.key) ?? null) : null}
                     open={open.has(segment.shot.shot_id)}
-                    onToggle={() => toggle(segment.shot.shot_id)}
+                    onToggle={() => { toggle(segment.shot.shot_id); }}
                   />
                 );
               })}
@@ -148,15 +149,9 @@ function SegmentError({ code, message }: { code: string; message: string }) {
   const headline = errorHeadline(code);
   const hint = segmentErrorHint(code);
   return (
-    <span className="mt-0.5 grid gap-0.5 text-caption [overflow-wrap:anywhere]" title={t("{code}：{message}", { code, message })}>
-      <span className="line-clamp-2 text-fg-secondary">
-        {headline ?? (
-          <>
-            <code className="machine">{code}</code> {message}
-          </>
-        )}
-      </span>
-      {hint ? <span className="text-fg-tertiary">{hint}</span> : null}
+    <span className="mt-0.5 grid gap-0.5 text-caption [overflow-wrap:anywhere]" title={failureText(code, message)}>
+      <span className="line-clamp-2 text-fg-secondary">{headline ?? failureText(code, message)}</span>
+      {(hint != null && hint !== "") ? <span className="text-fg-tertiary">{hint}</span> : null}
     </span>
   );
 }
@@ -242,7 +237,7 @@ function SegmentRow({ segment, last, job, projectId, onNavigate, target, check, 
         <td className="px-2 py-1.5">
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className={cn("inline-flex items-center gap-1 text-caption [&_svg]:size-3.5", tone)}>
-              <icon.icon aria-hidden className={icon.spin ? "animate-spin" : undefined} />
+              <icon.icon aria-hidden className={(icon.spin === true) ? "animate-spin" : undefined} />
               {SEGMENT_LABELS[state]}
             </span>
             {done ? <CheckBadge check={check} /> : null}
@@ -250,11 +245,11 @@ function SegmentRow({ segment, last, job, projectId, onNavigate, target, check, 
           {error ? <SegmentError code={error.code} message={tServer(error.message)} /> : null}
           {state === "skipped" ? <span className="mt-0.5 block text-caption text-fg-tertiary">{t("同一個 run 的其他段落失敗，這段沒有開始")}</span> : null}
         </td>
-        <td className={cn("px-2 py-1.5 text-caption", join?.midShot ? "text-warning" : "text-fg-secondary")}>{join ? join.text : "—"}</td>
+        <td className={cn("px-2 py-1.5 text-caption", (join?.midShot === true) ? "text-warning" : "text-fg-secondary")}>{join ? join.text : "—"}</td>
         <td className="px-2 py-1.5">
           <span className="flex flex-wrap items-center gap-1">
             {/* 渲染中也保留按鈕（停用並說明原因），按下後焦點不會掉到對話框外 */}
-            <ActionButton size="sm" variant="secondary" icon={<RotateCcw aria-hidden />} disabledReason={job.retryReason(shot)} onClick={() => job.retrySegment(shot.shot_id)} title={done ? t("再渲染一個新的 take（完成後成為使用中的 take，之後要重新匯出）") : t("渲染這一段")}>
+            <ActionButton size="sm" variant="secondary" icon={<RotateCcw aria-hidden />} disabledReason={job.retryReason(shot)} onClick={() => { job.retrySegment(shot.shot_id); }} title={done ? t("再渲染一個新的 take（完成後成為使用中的 take，之後要重新匯出）") : t("渲染這一段")}>
               {done ? t("重新渲染") : t("渲染")}
             </ActionButton>
             <Link
@@ -285,7 +280,7 @@ function SegmentRow({ segment, last, job, projectId, onNavigate, target, check, 
       {done && open && target ? (
         <tr>
           <td colSpan={6} className="px-2 pt-0 pb-3">
-            <SegmentCompare id={panelId} target={target} check={check} onRun={() => (target.ok ? requestComparison(target, { force: true }) : undefined)} speedFeel={speedFeel} />
+            <SegmentCompare id={panelId} target={target} check={check} onRun={() => { if (target.ok) { requestComparison(target, { force: true }); } }} speedFeel={speedFeel} />
           </td>
         </tr>
       ) : null}

@@ -38,7 +38,7 @@ function Body({ shot, take, onDone, onCancel }: { shot: StudioImageShot; take: S
   const firstOpen = options.find((option) => option.blocked === null)?.shot.shot_id ?? NEW_SHOT;
   const [target, setTarget] = useState<string>(firstOpen);
   const selected = options.find((option) => option.shot.shot_id === target) ?? null;
-  const targetId = selected && selected.blocked === null ? selected.shot.shot_id : target === NEW_SHOT ? NEW_SHOT : null;
+  const targetId = selected?.blocked === null ? selected.shot.shot_id : target === NEW_SHOT ? NEW_SHOT : null;
   const candidates = routesFor(use, engine.videoRoutes);
   const needsRoute = target === NEW_SHOT || (selected?.route?.capability ?? null) !== use;
   const preferred = candidates.find((route) => route.ready) ?? candidates[0];
@@ -49,13 +49,13 @@ function Body({ shot, take, onDone, onCancel }: { shot: StudioImageShot; take: S
 
   const apply = () => {
     const item = white.item;
-    if (blocked || !item || !targetId) return;
+    if ((blocked ?? "") || !item || !(targetId != null && targetId !== "")) return;
     const routeId = route === KEEP_ROUTE ? null : route;
     if (targetId === NEW_SHOT) {
       const base = newShot(project, { route: routeId ?? defaultRouteFor(project, engine.videoRoutes) });
       const prepared = use === "ref2va" ? attachReference(base, item, newLocalId("ref")) : { shot: attachFirstFrame(base, item.item_id), alias: null, problem: null };
       if (!prepared.shot) {
-        notify({ tone: "warning", title: t("沒有新增影片鏡頭"), detail: prepared.problem ?? undefined });
+        notify({ tone: "warning", title: t("沒有新增影片鏡頭"), detail: prepared.problem });
         return;
       }
       dispatch({ type: "addVideoShotWith", shot: prepared.shot, item, afterShotId: project.shots.at(-1)?.shot_id ?? null });
@@ -77,8 +77,8 @@ function Body({ shot, take, onDone, onCancel }: { shot: StudioImageShot; take: S
           <ImageThumb file={take.image_white?.file ?? take.image?.file} className="aspect-square w-24 rounded-lg shadow-raised" backdrop="white" fit="contain" alt={t("白底版")} />
           <div className="grid gap-1 text-data">
             <p className="text-fg">{t("「{value}」take {takeNumber}・seed {seed}", { value: shot.title || t("未命名圖片"), takeNumber: takeNumber(shot, take.take_id), seed: take.seed })}</p>
-            <p className="text-caption text-fg-tertiary">{white.existing ? t("一律使用白底版（H3 讀透明 PNG 時也是鋪白底）。已在素材庫（「{value}」）。", { value: white.item?.name ?? "" }) : t("一律使用白底版（H3 讀透明 PNG 時也是鋪白底）。會先加入專案素材庫。")}</p>
-            {white.problem ? (
+            <p className="text-caption text-fg-tertiary">{white.existing ? t("一律使用白底版（H3 讀透明 PNG 時也是鋪白底）。已在素材庫（「{value}」）。", { value: white.item.name }) : t("一律使用白底版（H3 讀透明 PNG 時也是鋪白底）。會先加入專案素材庫。")}</p>
+            {(white.problem != null && white.problem !== "") ? (
               <p role="alert" className="text-caption text-danger">
                 {white.problem}
               </p>
@@ -102,17 +102,17 @@ function Body({ shot, take, onDone, onCancel }: { shot: StudioImageShot; take: S
                   "flex cursor-pointer items-start gap-2 rounded-lg px-2.5 py-2 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-focus",
                   CHOICE_BASE,
                   use === option.value ? CHOICE_SELECTED : CHOICE_IDLE,
-                  option.disabled && "cursor-not-allowed opacity-70",
+                  option.disabled != null && option.disabled !== "" && "cursor-not-allowed opacity-70",
                 )}
               >
-                <input type="radio" name={`${id}-use`} checked={use === option.value} disabled={option.disabled !== null} onChange={() => setUse(option.value)} className="mt-0.5 accent-action" aria-describedby={option.disabled ? `${id}-${option.value}-reason` : undefined} />
+                <input type="radio" name={`${id}-use`} checked={use === option.value} disabled={option.disabled !== null} onChange={() => { setUse(option.value); }} className="mt-0.5 accent-action" aria-describedby={(option.disabled != null && option.disabled !== "") ? `${id}-${option.value}-reason` : undefined} />
                 <span className="grid min-w-0 gap-0.5">
                   <span className="flex items-center gap-1.5 text-data text-fg">
                     <option.icon aria-hidden className="size-3.5 text-fg-tertiary" />
                     {option.label}
                   </span>
                   <span className="text-caption text-fg-tertiary">{option.hint}</span>
-                  {option.disabled ? (
+                  {(option.disabled != null && option.disabled !== "") ? (
                     <span id={`${id}-${option.value}-reason`} className="text-caption text-warning">
                       {option.disabled}
                     </span>
@@ -132,11 +132,11 @@ function Body({ shot, take, onDone, onCancel }: { shot: StudioImageShot; take: S
                   className={cn(
                     "flex items-start gap-2 rounded-lg px-2.5 py-1.5 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-focus",
                     CHOICE_BASE,
-                    option.blocked ? "cursor-not-allowed border-line-subtle bg-canvas opacity-70" : "cursor-pointer",
-                    target === option.shot.shot_id && !option.blocked ? CHOICE_SELECTED : !option.blocked ? CHOICE_IDLE : "",
+                    (option.blocked != null && option.blocked !== "") ? "cursor-not-allowed border-line-subtle bg-canvas opacity-70" : "cursor-pointer",
+                    target === option.shot.shot_id && !(option.blocked != null && option.blocked !== "") ? CHOICE_SELECTED : !(option.blocked != null && option.blocked !== "") ? CHOICE_IDLE : "",
                   )}
                 >
-                  <input type="radio" name={`${id}-target`} checked={target === option.shot.shot_id} disabled={option.blocked !== null} onChange={() => setTarget(option.shot.shot_id)} className="mt-0.5 accent-action" />
+                  <input type="radio" name={`${id}-target`} checked={target === option.shot.shot_id} disabled={option.blocked !== null} onChange={() => { setTarget(option.shot.shot_id); }} className="mt-0.5 accent-action" />
                   <span className="grid min-w-0 flex-1 gap-0.5">
                     <span className="flex min-w-0 items-center gap-1.5 text-data text-fg">
                       <span className="machine shrink-0 text-caption text-fg-tertiary">{String(option.index + 1).padStart(2, "0")}</span>
@@ -146,14 +146,14 @@ function Body({ shot, take, onDone, onCancel }: { shot: StudioImageShot; take: S
                     <span className="truncate text-caption text-fg-tertiary">
                       {t("{value}・參考素材 {valueCount} 個", { value: option.route ? t("{label}（{capability}）", { label: option.route.label, capability: option.route.capability }) : t("路由 {route}", { route: option.shot.route }), valueCount: (option.shot.references ?? []).length })}
                     </span>
-                    {option.blocked ? <span className="text-caption text-fg-tertiary">{option.blocked}</span> : option.note ? <span className="text-caption text-warning">{option.note}</span> : null}
+                    {(option.blocked != null && option.blocked !== "") ? <span className="text-caption text-fg-tertiary">{option.blocked}</span> : (option.note != null && option.note !== "") ? <span className="text-caption text-warning">{option.note}</span> : null}
                   </span>
                 </label>
               </li>
             ))}
             <li>
               <label className={cn("flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-1.5 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-focus", CHOICE_BASE, target === NEW_SHOT ? CHOICE_SELECTED : "border-dashed border-line bg-canvas hover:border-line-strong hover:bg-raised/60")}>
-                <input type="radio" name={`${id}-target`} checked={target === NEW_SHOT} onChange={() => setTarget(NEW_SHOT)} className="accent-action" />
+                <input type="radio" name={`${id}-target`} checked={target === NEW_SHOT} onChange={() => { setTarget(NEW_SHOT); }} className="accent-action" />
                 <Plus aria-hidden className="size-3.5 text-fg-tertiary" />
                 <span className="text-data text-fg">{t("新增一個影片鏡頭（放在最後）")}</span>
               </label>
@@ -164,7 +164,7 @@ function Body({ shot, take, onDone, onCancel }: { shot: StudioImageShot; take: S
         {needsRoute ? (
           <label className="grid gap-1 text-caption font-medium text-fg-secondary">
             {target === NEW_SHOT ? t("新鏡頭的運算路由") : t("同時把這個鏡頭的運算路由改成 {use} 元件組合", { use })}
-            <Select compact value={route} onChange={(event) => setRouteChoice(event.target.value)}>
+            <Select compact value={route} onChange={(event) => { setRouteChoice(event.target.value); }}>
               <option value={KEEP_ROUTE}>{target === NEW_SHOT ? t("專案預設（之後在 Video Studio 改）") : t("不改（之後在 Video Studio 改）")}</option>
               {candidates.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -191,7 +191,7 @@ function Body({ shot, take, onDone, onCancel }: { shot: StudioImageShot; take: S
           {target === NEW_SHOT ? t("新增鏡頭並套用") : t("套用到鏡頭")}
         </Button>
       </DialogFooter>
-      {blocked && !white.problem ? <p className="sr-only">{blocked}</p> : null}
+      {(blocked != null && blocked !== "") && !(white.problem != null && white.problem !== "") ? <p className="sr-only">{blocked}</p> : null}
     </>
   );
 }
@@ -208,7 +208,7 @@ export function SendToVideoDialog() {
     setDone(null);
   };
   return (
-    <Dialog open={open} onOpenChange={(next) => (next ? undefined : close())}>
+    <Dialog open={open} onOpenChange={(next) => { if (!(next)) { close(); } }}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>{t("用在影片鏡頭")}</DialogTitle>
@@ -220,7 +220,7 @@ export function SendToVideoDialog() {
               <p role="status" className={cn("flex items-start gap-2 text-data text-success", RISE_IN)}>
                 <CircleCheck aria-hidden className="mt-0.5 size-4 shrink-0 animate-pop-in" />
                 <span>
-                  {done.alias
+                  {(done.alias != null && done.alias !== "")
                     ? t("已套用到影片鏡頭「{value}」：參考素材 @{alias}，在影片的 prompt 用 @{alias2} 引用這張圖。", { value: done.title || t("未命名鏡頭"), alias: done.alias, alias2: done.alias })
                     : done.use === "fl2va"
                       ? t("已套用到影片鏡頭「{value}」：首幀改成這張圖（fl2va；在影片鏡頭「生成」分頁的「首幀」可以查看或改回）。", { value: done.title || t("未命名鏡頭") })

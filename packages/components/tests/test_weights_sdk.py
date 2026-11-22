@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from typing import Any
 
 import pytest
+
 from phasyn_components.errors import ComponentError
 from phasyn_components.weights import (
     WeightFile,
@@ -17,8 +19,11 @@ from phasyn_components.weights import (
     safe_relative,
 )
 
+
 REV = "a" * 40
-LICENSE = WeightLicense(name="Test License", url="https://example.test/license", note="research only")
+LICENSE = WeightLicense(
+    name="Test License", url="https://example.test/license", note="research only"
+)
 
 
 def test_paths_must_stay_relative() -> None:
@@ -31,7 +36,15 @@ def test_paths_must_stay_relative() -> None:
 
 def test_sets_are_pinned_and_consistent() -> None:
     files = (WeightFile(path="a.json", size=1, git_oid="1" * 40),)
-    good = WeightSet(set_id="s", label="S", repo="org/name", revision=REV, license=LICENSE, dest="", files=files)
+    good = WeightSet(
+        set_id="s",
+        label="S",
+        repo="org/name",
+        revision=REV,
+        license=LICENSE,
+        dest="",
+        files=files,
+    )
     assert good.total_bytes == 1
     for kwargs in (
         {"revision": "main"},
@@ -41,20 +54,27 @@ def test_sets_are_pinned_and_consistent() -> None:
         {"dest": "../x"},
     ):
         with pytest.raises(ComponentError):
-            WeightSet(
-                **{
-                    "set_id": "s",
-                    "label": "S",
-                    "repo": "org/name",
-                    "revision": REV,
-                    "license": LICENSE,
-                    "dest": "",
-                    "files": files,
-                    **kwargs,
-                }
-            )
+            arguments: dict[str, Any] = {
+                "set_id": "s",
+                "label": "S",
+                "repo": "org/name",
+                "revision": REV,
+                "license": LICENSE,
+                "dest": "",
+                "files": files,
+                **kwargs,
+            }
+            WeightSet(**arguments)
     with pytest.raises(ComponentError):
-        WeightSet(set_id="s", label="S", repo="org/name", revision=REV, license=LICENSE, dest="", files=files * 2)
+        WeightSet(
+            set_id="s",
+            label="S",
+            repo="org/name",
+            revision=REV,
+            license=LICENSE,
+            dest="",
+            files=files * 2,
+        )
     with pytest.raises(ComponentError):
         WeightSet(
             set_id="s",
@@ -71,8 +91,14 @@ def test_sets_are_pinned_and_consistent() -> None:
 def test_both_verification_hashes(tmp_path: Path) -> None:
     data = b"hello\n"
     # `git hash-object` of "hello\n"
-    lfs = WeightFile(path="big.bin", size=len(data), sha256=hashlib.sha256(data).hexdigest())
-    git = WeightFile(path="config.json", size=len(data), git_oid="ce013625030ba8dba906f756967f9e9ca394464a")
+    lfs = WeightFile(
+        path="big.bin", size=len(data), sha256=hashlib.sha256(data).hexdigest()
+    )
+    git = WeightFile(
+        path="config.json",
+        size=len(data),
+        git_oid="ce013625030ba8dba906f756967f9e9ca394464a",
+    )
     digest = new_digest(git)
     digest.update(data)
     assert digest.hexdigest() == git.git_oid

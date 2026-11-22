@@ -4,8 +4,9 @@ import { fetchCatalog } from "@/api/catalog";
 import type { ComponentDescriptor } from "@/api/generated/contracts";
 import { sleep } from "@/lib/async";
 import { formatMs } from "@/lib/format";
-import { t, tServer } from "@/i18n";
+import { t } from "@/i18n";
 import { observeStart, StartCancelled, watchStart } from "./startWatch";
+import { failureText } from "@/lib/errors";
 
 /** How long to wait for a load or stop before reporting an unknown outcome. */
 export const WAIT_TIMEOUT_MS = 30 * 60 * 1000;
@@ -73,7 +74,7 @@ export async function waitUntilStopped(target: ComponentRef, options: WaitOption
     await sleep(pollMs, signal);
     const current = await read(target, signal);
     if (current?.state === "stopped") return;
-    if (current?.state === "error") throw new Error(current.last_error ? t("{code}：{message}", { code: current.last_error.code, message: tServer(current.last_error.message) }) : t("元件進入錯誤狀態"));
+    if (current?.state === "error") throw new Error(current.last_error ? failureText(current.last_error.code, current.last_error.message) : t("元件進入錯誤狀態"));
   }
   throw new WaitTimeout("stopped", timeoutMs);
 }

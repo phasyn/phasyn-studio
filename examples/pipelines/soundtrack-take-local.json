@@ -1,0 +1,47 @@
+{
+  "pipeline_id": "soundtrack-take-local",
+  "label": "替已選 Take 換上定稿聲軌（CPU）",
+  "inputs": [
+    {
+      "name": "video",
+      "type_id": "media.asset.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "完整的原始影片 Asset，含幀數、幀率與來源 latent。"
+    },
+    {
+      "name": "soundtrack",
+      "type_id": "media.audio.v1",
+      "required": true,
+      "transport": "file",
+      "description": "定稿聲軌：任何音檔（單聲道、其他取樣率、整數格式、TTS 輸出）都會先轉成雙聲道，並補靜音或裁切到影片長度。"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "mux",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "mux",
+      "inputs": {
+        "video": {
+          "from_input": "video"
+        },
+        "audio": {
+          "from_input": "soundtrack"
+        }
+      },
+      "parameters": {
+        "audio_codec": "aac",
+        "audio_bitrate": 192000,
+        "trim_to_seconds": null,
+        "audio_fit": "conform"
+      }
+    }
+  ],
+  "outputs": {
+    "final": {
+      "from_step": "mux",
+      "output": "asset"
+    }
+  }
+}

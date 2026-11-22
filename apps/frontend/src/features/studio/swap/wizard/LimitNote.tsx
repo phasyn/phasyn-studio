@@ -20,14 +20,14 @@ export function LimitNote({ derived, api }: { derived: WizardDerived; api: SwapD
   const canTry = limit.source !== "measured" && limit.ditId !== null;
   return (
     <div className="grid gap-1.5">
-      <NoteList tone={limit.fallback ? "warning" : "info"} icon={<MemoryStick aria-hidden />} title={t("換角上限（依運算路由的 DiT）")} items={items} />
+      <NoteList tone={(limit.fallback != null && limit.fallback !== "") ? "warning" : "info"} icon={<MemoryStick aria-hidden />} title={t("換角上限（依運算路由的 DiT）")} items={items} />
       {canTry ? (
         <Switch
           id={id}
           label={t("超過預設上限試跑")}
           description={t("還沒量測：可以加到 {max} 個角色、選更長的段落；顯存不夠的段落會失敗", { max: MAX_SWAP_CHARACTERS })}
           checked={api.draft.trial}
-          onChange={(event) => api.update({ trial: event.target.checked })}
+          onChange={(event) => { api.update({ trial: event.target.checked }); }}
           className="justify-self-start"
         />
       ) : null}

@@ -14,15 +14,21 @@ run cannot take more memory than that; an allocation beyond it fails the run.
 
 from __future__ import annotations
 
+import importlib
 import json
+import logging
 import os
 import resource
 import sys
-import traceback
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .model import TextFailure, check_request, request_from_wire
 from .native import require_supported_platform, unavailable
+
+
+if TYPE_CHECKING:
+    from .engine import Engine
+
 
 MAX_REQUEST_BYTES = 256 * 1024 * 1024
 # Measured: 300 px text covering an 8000x5000 canvas (the media limit) peaked at 813 MiB resident and ran under a
@@ -35,7 +41,11 @@ EXIT_REFUSED = 2
 def _limit_memory() -> None:
     """Lower the address-space limit of this process; a lower limit it inherited is kept."""
     soft, hard = resource.getrlimit(resource.RLIMIT_AS)
-    limit = MAX_ADDRESS_SPACE_BYTES if soft == resource.RLIM_INFINITY else min(soft, MAX_ADDRESS_SPACE_BYTES)
+    limit = (
+        MAX_ADDRESS_SPACE_BYTES
+        if soft == resource.RLIM_INFINITY
+        else min(soft, MAX_ADDRESS_SPACE_BYTES)
+    )
     resource.setrlimit(resource.RLIMIT_AS, (limit, hard))
 
 
@@ -50,21 +60,26 @@ def _render(data: bytes) -> dict[str, Any]:
     require_supported_platform()
     _limit_memory()
     try:
-        from .engine import Engine  # NumPy and the native bindings are imported here, not before
+        engine_module = importlib.import_module(".engine", __package__)
     except ImportError as exc:
         raise unavailable(f"cannot import {exc.name}") from exc
-    engine = Engine()
+    engine: Engine = engine_module.Engine()
     try:
         return engine.render(request, out_dir)
     finally:
         engine.close()
 
 
-def _error(reason: str, job_id: str | None, item: int | None, detail: str | None) -> dict[str, Any]:
-    return {"error": {"reason": reason, "job_id": job_id, "item": item, "detail": detail}}
+def _error(
+    reason: str, job_id: str | None, item: int | None, detail: str | None
+) -> dict[str, Any]:
+    return {
+        "error": {"reason": reason, "job_id": job_id, "item": item, "detail": detail}
+    }
 
 
 def main() -> int:
+    """Run the isolated text-render worker."""
     answer_fd = os.dup(sys.stdout.fileno())
     os.dup2(sys.stderr.fileno(), sys.stdout.fileno())
     status = EXIT_REFUSED
@@ -74,10 +89,14 @@ def main() -> int:
     except TextFailure as failure:
         answer = _error(failure.reason, failure.job_id, failure.item, failure.detail)
     except Exception as exc:  # the process boundary: the parent gets the kind of failure, the trace stays on stderr
-        traceback.print_exc()
+        logging.getLogger(__name__).exception("Text worker failed")
         answer = _error("text_render_failed", None, None, type(exc).__name__)
     with os.fdopen(answer_fd, "wb") as stream:
-        stream.write(json.dumps(answer, ensure_ascii=True, sort_keys=True, separators=(",", ":")).encode("ascii"))
+        stream.write(
+            json.dumps(
+                answer, ensure_ascii=True, sort_keys=True, separators=(",", ":")
+            ).encode("ascii")
+        )
     return status
 
 

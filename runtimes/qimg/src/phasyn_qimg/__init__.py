@@ -20,6 +20,7 @@ not distributed with this repository.
 
 from __future__ import annotations
 
+
 # TypedValue type_id ---------------------------------------------------------
 TYPE_PROMPT = "text.prompt.v1"
 TYPE_IMAGE_FILE = "media.image.v1"
@@ -42,7 +43,7 @@ KIND_BY_TYPE = {
     TYPE_LATENT: KIND_LATENT,
 }
 
-# Qwen-Image 2.1 的幾何：VAE 空間壓縮 16；一個 Qwen3-VL 影像 slot＝2×2 latent token（32×32 px）
+# Qwen-Image 2.1 的幾何：VAE 空間壓縮 16；一個 Qwen3-VL 影像 slot=2×2 latent token（32×32 px）
 VAE_SCALE_FACTOR = 16
 SIZE_MULTIPLE = 32
 

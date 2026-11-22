@@ -1,4 +1,5 @@
-// 插件的生成設定（契約 StudioPluginGeneration；檢查的規則在 「Evaluating rules」第 7 點）：
+import { isRecord } from "@/lib/json";
+// 插件的生成設定（契約 StudioPluginGeneration；檢查的規則在 ）：
 //   require＝專案選用這個生成設定時，渲染規劃檢查每一項：實際的值不在允許的清單裡就擋下渲染並說明，兩邊的值都不改；
 //   defaults＝只在使用者按「套用」時寫進專案（看得見的一次寫入），渲染時從不偷偷套用。
 // 能表達的欄位是白名單（畫面、影格數、步數、shift、路由能力、參考影片短邊）；seed、模型、dtype 與裝置無法表達。
@@ -40,16 +41,20 @@ const FIELD_LABELS: Record<GenerationField, () => string> = {
 };
 
 export function generationFieldLabel(field: string): string {
-  return field in FIELD_LABELS ? FIELD_LABELS[field as GenerationField]() : field;
+  return isGenerationField(field) ? FIELD_LABELS[field]() : field;
+}
+
+function isGenerationField(value: string): value is GenerationField {
+  return Object.hasOwn(FIELD_LABELS, value);
 }
 
 function isFrameSize(value: unknown): value is FrameSize {
-  return typeof value === "object" && value !== null && typeof (value as FrameSize).width === "number" && typeof (value as FrameSize).height === "number";
+  return isRecord(value) && typeof value["width"] === "number" && typeof value["height"] === "number";
 }
 
 /** 欄位值的顯示寫法：畫面是 1280×736，其餘照原樣。 */
 export function formatGenerationValue(value: unknown): string {
-  if (isFrameSize(value)) return `${value.width}×${value.height}`;
+  if (isFrameSize(value)) return `${String(value.width)}×${String(value.height)}`;
   return typeof value === "number" || typeof value === "string" ? String(value) : t("未知");
 }
 
@@ -75,7 +80,7 @@ export interface GenerationFinding {
 }
 
 function actualOf(actuals: GenerationActuals, field: string): unknown {
-  return Object.hasOwn(actuals, field) ? actuals[field as GenerationField] : null;
+  return isGenerationField(field) ? actuals[field] : null;
 }
 
 /** 選用的生成設定裡，目前不符合的要求（空陣列＝全部符合）。 */

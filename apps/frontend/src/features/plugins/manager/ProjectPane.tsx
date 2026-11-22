@@ -70,16 +70,16 @@ function RowView({ row, project }: { row: Row; project: PluginProjectBinding }) 
     <div className="flex min-h-11 items-center gap-2.5 pr-1 pl-3">
       {row.contribution ? <ContributionIcon kind={row.contribution.kind} /> : <CircleAlert aria-hidden className="size-4 shrink-0 text-warning" />}
       <span className={cn("min-w-0 flex-1 truncate text-body", row.contribution ? "text-fg" : "machine text-fg-secondary")}>{label}</span>
-      {row.problem ? (
+      {(row.problem != null && row.problem !== "") ? (
         <span className="shrink-0 text-data font-medium text-warning">{row.contribution ? t("需要處理") : t("找不到")}</span>
       ) : (
         <span className="hidden min-w-0 shrink truncate text-caption text-fg-tertiary @min-[30rem]/list:inline">{row.contribution ? pluginName(row.contribution.plugin) : ""}</span>
       )}
       <ToggleSwitch
         checked={row.active}
-        label={check.replaces ? `${name}\n${replaceNote(registry, check.replaces)}` : name}
+        label={(check.replaces != null && check.replaces !== "") ? `${name}\n${replaceNote(registry, check.replaces)}` : name}
         disabledReason={check.reason}
-        onChange={(next) => project.onRefsChange(next ? withRef(registry, project.refs, row.ref) : withoutRef(project.refs, row.ref))}
+        onChange={(next) => { project.onRefsChange(next ? withRef(registry, project.refs, row.ref) : withoutRef(project.refs, row.ref)); }}
       />
     </div>
   );
@@ -97,7 +97,7 @@ function PresetBar({ project }: { project: PluginProjectBinding }) {
         registry={registry}
         refs={project.refs}
         onChange={project.onRefsChange}
-        onApplied={(label) => notify("success", t("這個專案已套用「{label}」", { label }))}
+        onApplied={(label) => { notify("success", t("這個專案已套用「{label}」", { label })); }}
         className="flex-nowrap"
       />
     </div>
@@ -125,7 +125,7 @@ function RowDetail({ row, project }: { row: Row; project: PluginProjectBinding }
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {row.active ? (
-            <ActionButton variant="secondary" icon={item ? <X aria-hidden /> : <Unlink aria-hidden />} onClick={() => project.onRefsChange(withoutRef(project.refs, row.ref))}>
+            <ActionButton variant="secondary" icon={item ? <X aria-hidden /> : <Unlink aria-hidden />} onClick={() => { project.onRefsChange(withoutRef(project.refs, row.ref)); }}>
               {item ? t("從這個專案移除") : t("移除引用")}
             </ActionButton>
           ) : (
@@ -133,21 +133,21 @@ function RowDetail({ row, project }: { row: Row; project: PluginProjectBinding }
               variant="primary"
               icon={<CircleCheck aria-hidden />}
               disabledReason={check.reason}
-              title={check.replaces ? replaceNote(registry, check.replaces) : undefined}
-              onClick={() => project.onRefsChange(withRef(registry, project.refs, row.ref))}
+              title={(check.replaces != null && check.replaces !== "") ? replaceNote(registry, check.replaces) : undefined}
+              onClick={() => { project.onRefsChange(withRef(registry, project.refs, row.ref)); }}
             >
               {t("在這個專案使用")}
             </ActionButton>
           )}
           {item ? (
-            <Button variant="secondary" icon={<PackageSearch aria-hidden />} onClick={() => showPlugin(item.plugin.plugin_id)}>
+            <Button variant="secondary" icon={<PackageSearch aria-hidden />} onClick={() => { showPlugin(item.plugin.plugin_id); }}>
               {t("查看插件")}
             </Button>
           ) : null}
         </div>
       </header>
       <div className="grid min-h-0 flex-1 content-start gap-3 overflow-y-auto p-4">
-        {row.problem ? <Callout tone="warning" title={row.problem} /> : null}
+        {(row.problem != null && row.problem !== "") ? <Callout tone="warning" title={row.problem} /> : null}
         {item?.rule ? <RulePreview rule={item.rule.rule} /> : null}
         {item?.generation ? <GenerationPreview generation={item.generation.generation} /> : null}
       </div>
@@ -167,7 +167,7 @@ export function ProjectPane({ project, railOpen, onToggleRail, detailOpen, onTog
   const attention = all.filter((row) => row.problem !== null).length;
   const limit = registryLimits(registry)?.max_project_plugins ?? null;
   const filtered = projectView.kind !== "all" || projectView.status !== "all" || projectView.query.trim() !== "";
-  const clearFilters = () => setProjectView({ kind: "all", status: "all", query: "" });
+  const clearFilters = () => { setProjectView({ kind: "all", status: "all", query: "" }); };
   return (
     <div className={cn("grid min-h-0 flex-1", paneColumns(railOpen, detailOpen))}>
       {railOpen ? (
@@ -177,7 +177,7 @@ export function ProjectPane({ project, railOpen, onToggleRail, detailOpen, onTog
               id: "contribution-kind",
               title: t("種類"),
               value: projectView.kind,
-              onChange: (kind) => setProjectView({ kind }),
+              onChange: (kind) => { setProjectView({ kind }); },
               options: [
                 // 「全部」也列出找不到的引用（它們沒有種類），所以數的是清單的列數
                 { id: "all", label: t("全部"), icon: LayoutGrid, count: all.length },
@@ -190,7 +190,7 @@ export function ProjectPane({ project, railOpen, onToggleRail, detailOpen, onTog
               id: "contribution-status",
               title: t("狀態"),
               value: projectView.status,
-              onChange: (status) => setProjectView({ status }),
+              onChange: (status) => { setProjectView({ status }); },
               options: [
                 { id: "all", label: t("全部"), icon: LayoutGrid, count: all.length },
                 { id: "active", label: t("套用中"), icon: CircleCheck, count: activeCount },
@@ -206,7 +206,7 @@ export function ProjectPane({ project, railOpen, onToggleRail, detailOpen, onTog
           <ToolToggle pressed={railOpen} label={railOpen ? t("收起篩選") : t("展開篩選")} onClick={onToggleRail}>
             {railOpen ? <PanelLeftClose aria-hidden /> : <PanelLeftOpen aria-hidden />}
           </ToolToggle>
-          <label className="relative min-w-32 flex-1">
+          <div className="relative min-w-32 flex-1">
             <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-fg-tertiary" />
             <Input
               compact
@@ -214,10 +214,10 @@ export function ProjectPane({ project, railOpen, onToggleRail, detailOpen, onTog
               value={projectView.query}
               aria-label={t("搜尋項目")}
               placeholder={t("搜尋名稱、說明或插件")}
-              onChange={(event) => setProjectView({ query: event.target.value })}
+              onChange={(event) => { setProjectView({ query: event.target.value }); }}
               className="pl-8"
             />
-          </label>
+          </div>
           <span className="machine shrink-0 text-data text-fg-secondary" title={limit === null ? undefined : t("一個專案最多選 {limit} 個插件項目", { limit })}>
             {limit === null ? t("套用 {count}", { count: activeCount }) : t("套用 {count} / {limit}", { count: activeCount, limit })}
           </span>

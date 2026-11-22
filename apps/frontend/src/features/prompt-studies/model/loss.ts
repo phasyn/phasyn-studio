@@ -52,7 +52,7 @@ function finish(rows: Omit<SectionLossRow, "contribution">[], comparisonUnjudgea
   const fraction = applicableWeight > 0 ? evaluableWeight / applicableWeight : 0;
   const reasons: string[] = [];
   if (fraction < MIN_EVALUABLE_FRACTION) reasons.push(t("可判斷權重只有 {fraction}（需要至少 {minEvaluableFraction}）", { fraction: formatFraction(fraction), minEvaluableFraction: formatFraction(MIN_EVALUABLE_FRACTION) }));
-  if (comparisonUnjudgeable) reasons.push(t("視覺模型表示無法判斷：{comparisonUnjudgeable}", { comparisonUnjudgeable }));
+  if (comparisonUnjudgeable != null && comparisonUnjudgeable !== "") reasons.push(t("視覺模型表示無法判斷：{comparisonUnjudgeable}", { comparisonUnjudgeable }));
   if (evaluableWeight === 0) reasons.push(t("沒有可判斷的適用區段"));
   const unverified = reasons.length > 0;
   const loss = unverified ? null : weighted / evaluableWeight;
@@ -124,6 +124,8 @@ export function metricTone(label: MetricLabel): LossTone {
       return "warning";
     case "missing":
       return "danger";
+    case "not_applicable":
+    case "uncertain":
     default:
       return "neutral";
   }

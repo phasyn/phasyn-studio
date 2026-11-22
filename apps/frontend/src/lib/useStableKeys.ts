@@ -11,11 +11,11 @@ export interface StableKeys {
 
 export function useStableKeys(count: number): StableKeys {
   const [state, setState] = useState<{ keys: string[]; next: number }>({ keys: [], next: 0 });
-  const keys = Array.from({ length: count }, (_, index) => state.keys[index] ?? `k${count}-${index}`);
+  const keys = Array.from({ length: count }, (_, index) => state.keys[index] ?? `k${String(count)}-${String(index)}`);
   return {
     keys,
-    append: () => setState({ keys: [...keys, `n${state.next}`], next: state.next + 1 }),
-    remove: (index) => setState({ keys: keys.filter((_, position) => position !== index), next: state.next }),
+    append: () => { setState({ keys: [...keys, `n${String(state.next)}`], next: state.next + 1 }); },
+    remove: (index) => { setState({ keys: keys.filter((_, position) => position !== index), next: state.next }); },
     move: (from, to) => {
       if (to < 0 || to >= keys.length) return;
       const copy = [...keys];

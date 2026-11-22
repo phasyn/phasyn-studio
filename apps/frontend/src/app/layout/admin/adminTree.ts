@@ -131,12 +131,12 @@ export function explorerSelection(pathname: string, search: URLSearchParams): st
   if (page === "components") {
     const node = search.get("node");
     const component = search.get("component");
-    return node && component ? componentTreeId(node, component) : null;
+    return (node != null && node !== "") && (component != null && component !== "") ? componentTreeId(node, component) : null;
   }
   if (page === "pipelines") {
-    if (!parts[2]) return PIPELINE_LIST_ID;
+    if (!(parts[2] != null && parts[2] !== "")) return PIPELINE_LIST_ID;
     const detail = decodeSegment(parts[2]);
-    return detail && detail !== "new" ? pipelineTreeId(detail) : null;
+    return (detail != null && detail !== "") && detail !== "new" ? pipelineTreeId(detail) : null;
   }
   return null;
 }

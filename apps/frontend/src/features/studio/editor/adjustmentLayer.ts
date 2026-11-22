@@ -35,5 +35,5 @@ export function createAdjustmentLayer(timeline: StudioTimeline, at: number, widt
   const { source, clip } = adjustmentParts(at, frames, track.track_id, { width, height }, allocate);
   const next: StudioTimeline = { ...timeline, sources: [...timeline.sources, source], tracks: existing ? timeline.tracks : [...timeline.tracks, track], clips: [...timeline.clips, clip] };
   const problem = timelineProblem(next);
-  return problem ? { ok: false, error: problem } : { ok: true, value: { timeline: next, clipId: clip.clip_id } };
+  return (problem != null && problem !== "") ? { ok: false, error: problem } : { ok: true, value: { timeline: next, clipId: clip.clip_id } };
 }

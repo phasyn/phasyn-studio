@@ -11,7 +11,7 @@ import { newLocalId } from "../references/ids";
 /** After the next frame, focus the shot's row; `fallback` when it is gone. */
 export function focusShotLater(shotId: string | null, fallback?: () => HTMLElement | null): void {
   requestAnimationFrame(() => {
-    const element = shotId ? document.querySelector<HTMLElement>(`[data-studio-row="${CSS.escape(shotId)}"]`) : null;
+    const element = (shotId != null && shotId !== "") ? document.querySelector<HTMLElement>(`[data-studio-row="${CSS.escape(shotId)}"]`) : null;
     (element ?? fallback?.() ?? null)?.focus();
   });
 }
@@ -20,7 +20,7 @@ export interface ShotActions {
   /** Select the shot and show its take in the monitor (stops sequence playback). */
   openInSource: (shotId: string) => void;
   /** Make this take the active one (the timeline follows it; a fixed-seed shot adopts its seed). */
-  useTake: (shotId: string, takeId: string) => void;
+  selectTake: (shotId: string, takeId: string) => void;
   /**
    * 「套用這個 take 的設定」: copy the take's seed, references and route to its shot (model/variants.ts takeSettings) and
    * make it the active take, so the shot is no longer stale against it. What changed; null when nothing could be copied.
@@ -65,7 +65,7 @@ export function useShotActions(): ShotActions {
       selectShot(shotId);
       setMonitorMode("source");
     },
-    useTake(shotId, takeId) {
+    selectTake(shotId, takeId) {
       dispatch({ type: "setActiveTake", shotId, takeId, adoptSeed: true });
     },
     applyTake(shotId, takeId) {

@@ -52,7 +52,7 @@ export function createTimelineView(): TimelineViewStore {
     },
     subscribe(listener) {
       listeners.add(listener);
-      return () => listeners.delete(listener);
+      return () => void listeners.delete(listener);
     },
   };
 }

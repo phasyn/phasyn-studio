@@ -33,7 +33,7 @@ export function createPlayheadStore(): PlayheadStore {
     },
     subscribe(listener) {
       listeners.add(listener);
-      return () => listeners.delete(listener);
+      return () => void listeners.delete(listener);
     },
   };
 }

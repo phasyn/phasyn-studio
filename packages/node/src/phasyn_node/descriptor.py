@@ -15,6 +15,7 @@ from phasyn_components.errors import ComponentError
 from phasyn_components.ids import is_local_id
 from phasyn_components.provider import FACTS_MAX_BYTES
 
+
 ComponentState = Literal["stopped", "loading", "ready", "busy", "stopping", "error"]
 RecorderState = Literal["off", "unknown", "degraded", "ok"]
 
@@ -24,9 +25,14 @@ TEXT_MAX = 16000
 
 
 def ports(items: Any) -> list[dict[str, Any]]:
+    """Return the advertised port definitions."""
     out: list[dict[str, Any]] = []
     for port in items or []:
-        if not isinstance(port, Mapping) or not is_local_id(port.get("name")) or not is_local_id(port.get("type_id")):
+        if (
+            not isinstance(port, Mapping)
+            or not is_local_id(port.get("name"))
+            or not is_local_id(port.get("type_id"))
+        ):
             continue
         transport = port.get("transport")
         out.append(
@@ -42,6 +48,7 @@ def ports(items: Any) -> list[dict[str, Any]]:
 
 
 def parts(items: Any) -> list[dict[str, Any]]:
+    """Return the advertised component part definitions."""
     out: list[dict[str, Any]] = []
     for part in items or []:
         if not isinstance(part, Mapping) or not part.get("path"):
@@ -54,7 +61,11 @@ def parts(items: Any) -> list[dict[str, Any]]:
                 "path": str(part["path"])[:TEXT_MAX],
                 "kind": str(part.get("kind") or "part")[:TEXT_MAX],
                 "settings_schema": dict(schema) if isinstance(schema, Mapping) else {},
-                "observable": [str(x)[:TEXT_MAX] for x in (part.get("observable") or []) if isinstance(x, str)],
+                "observable": [
+                    str(x)[:TEXT_MAX]
+                    for x in (part.get("observable") or [])
+                    if isinstance(x, str)
+                ],
                 "coverage": coverage if coverage in PART_COVERAGE else "full",
                 "reason": None if reason is None else str(reason)[:TEXT_MAX],
             }
@@ -77,7 +88,9 @@ def facts(value: Any) -> dict[str, Any] | None:
     return copy.deepcopy(dict(value)) if size <= FACTS_MAX_BYTES else None
 
 
-def normalize_error(doc: Any, *, default_code: str, default_message: str) -> dict[str, Any]:
+def normalize_error(
+    doc: Any, *, default_code: str, default_message: str
+) -> dict[str, Any]:
     """A runtime-reported error as a contract Error (a default when the runtime gave none)."""
     if isinstance(doc, Mapping) and doc.get("code"):
         return ComponentError.from_dict(doc).to_dict()
@@ -85,6 +98,7 @@ def normalize_error(doc: Any, *, default_code: str, default_message: str) -> dic
 
 
 def recorder_state_of(mode: str, summary: Mapping[str, Any] | None) -> RecorderState:
+    """Resolve recorder status from mode and the latest summary."""
     if mode == "off":
         return "off"
     if summary is None:
@@ -95,4 +109,12 @@ def recorder_state_of(mode: str, summary: Mapping[str, Any] | None) -> RecorderS
     return "ok"
 
 
-__all__ = ["ComponentState", "RecorderState", "facts", "normalize_error", "parts", "ports", "recorder_state_of"]
+__all__ = [
+    "ComponentState",
+    "RecorderState",
+    "facts",
+    "normalize_error",
+    "parts",
+    "ports",
+    "recorder_state_of",
+]

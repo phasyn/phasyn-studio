@@ -1,3 +1,4 @@
+import { pageTransition, hasSlotContent } from "@/lib/dom";
 import { X, type LucideIcon } from "lucide-react";
 import { useRef, type ReactNode } from "react";
 import { Link } from "react-router";
@@ -40,19 +41,19 @@ export function DocTabs({ tabs, label, trailing }: { tabs: readonly DocTab[]; la
             >
               <Link
                 to={tab.to}
-                viewTransition
+                {...pageTransition()}
                 aria-current={tab.active ? "page" : undefined}
                 title={tab.title ?? tab.label}
                 className={cn(
                   "flex h-full min-w-0 items-center gap-1.5 pl-3 text-data no-underline outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-inset",
-                  tab.closeTo ? "pr-1" : "pr-3",
+                  (tab.closeTo != null && tab.closeTo !== "") ? "pr-1" : "pr-3",
                   tab.active ? "font-medium text-fg" : "text-fg-secondary hover:text-fg",
                 )}
               >
                 {Icon ? <Icon aria-hidden className={cn("size-3.5 shrink-0", tab.iconTone ? TEXT_TONE[tab.iconTone] : "text-fg-tertiary")} /> : null}
                 <span className="truncate">{tab.label}</span>
               </Link>
-              {tab.closeTo ? (
+              {(tab.closeTo != null && tab.closeTo !== "") ? (
                 <Link
                   to={tab.closeTo}
                   aria-label={t("關閉 {label}", { label: tab.label })}
@@ -67,7 +68,7 @@ export function DocTabs({ tabs, label, trailing }: { tabs: readonly DocTab[]; la
         })}
         <ActiveIndicator container={listRef} edge="top" as="li" selector="[data-active]" />
       </ul>
-      {trailing ? <div className="ml-auto flex shrink-0 items-center gap-1 px-2">{trailing}</div> : null}
+      {hasSlotContent(trailing) ? <div className="ml-auto flex shrink-0 items-center gap-1 px-2">{trailing}</div> : null}
     </nav>
   );
 }

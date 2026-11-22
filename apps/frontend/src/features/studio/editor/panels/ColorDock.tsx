@@ -1,3 +1,4 @@
+import { fieldValue } from "@/lib/json";
 // The Color dock of the Color layout: the basic colour correction of the selected clips on video tracks, with room
 // for a slider beside every value. The same values are in the Color group of Effect Controls (one clip). With several
 // clips selected, the dock shows the values of the clip in focus and a change of one value reaches every selected
@@ -23,8 +24,8 @@ function sharedColorEdits(target: EditTarget, warn: (reason: string) => void, sh
     if (after === undefined) return applyClips(target, clips.map(withoutColor));
     const before: Color = shown.effects?.color ?? {};
     const change: Color = {};
-    for (const key of Object.keys(after) as (keyof Color)[]) {
-      if (after[key] !== before[key]) Object.assign(change, { [key]: after[key] });
+    for (const [key, value] of Object.entries(after)) {
+      if (value !== fieldValue(before, key)) Object.assign(change, { [key]: value });
     }
     return applyClips(target, clips.map((clip) => withColor(clip, change)));
   };
@@ -41,6 +42,7 @@ function sharedColorEdits(target: EditTarget, warn: (reason: string) => void, sh
 function ClipColor({ clip, clips }: { clip: TimelineClip; clips: readonly TimelineClip[] }) {
   const editor = useEditor();
   const several = clips.length > 1;
+  // eslint-disable-next-line @eslint-react/no-unstable-context-value -- The lock reason is a primitive string or null; React compares it by value.
   const lock = clips.map((item) => lockReason(editor.timeline, item, editor.linked)).find((reason) => reason !== null) ?? null;
   const edits = several ? sharedColorEdits(editor, editor.warn, clip, clips) : clipEdits(editor, editor.warn);
   const changed = clips.some(colorChanged);
@@ -52,8 +54,8 @@ function ClipColor({ clip, clips }: { clip: TimelineClip; clips: readonly Timeli
     if (typeof result === "string") editor.warn(result);
   };
   return (
-    <DensityContext.Provider value="comfortable">
-      <FieldLockContext.Provider value={lock}>
+    <DensityContext value="comfortable">
+      <FieldLockContext value={lock}>
         <div data-keep-focus="" className="flex min-h-0 flex-1 flex-col">
           <header className="flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle px-3">
             <h2 className="min-w-0 flex-1 truncate text-body font-semibold text-fg" title={several ? names : clip.name}>
@@ -64,7 +66,7 @@ function ClipColor({ clip, clips }: { clip: TimelineClip; clips: readonly Timeli
               icon={<RotateCcw aria-hidden />}
               title={several ? t("選取的片段都回到原本的色彩") : t("回到原本的色彩")}
               disabledReason={lock ?? (changed ? null : t("已經是預設值"))}
-              onClick={() => edits.perform(withoutColor(clip))}
+              onClick={() => void edits.perform(withoutColor(clip))}
             >
               {t("重設")}
             </TextButton>
@@ -90,8 +92,8 @@ function ClipColor({ clip, clips }: { clip: TimelineClip; clips: readonly Timeli
             <ColorRows clip={clip} edits={edits} sliders />
           </div>
         </div>
-      </FieldLockContext.Provider>
-    </DensityContext.Provider>
+      </FieldLockContext>
+    </DensityContext>
   );
 }
 

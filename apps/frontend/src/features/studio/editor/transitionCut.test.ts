@@ -1,8 +1,10 @@
+import { isListed } from "@/lib/json";
 // Data integrity of transitions on their cut. The editor's core runs the Controller's vectors of the transition command
 // (contracts/examples/timeline-commands/transition.json), so both make the same document; the edits around a recorded
 // cut (delete, trim, rearrange, export) keep what the clips lent the transition and give it back where it ends.
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import transitionVectors from "@contracts/examples/timeline-commands/transition.json";
+import { TRANSITION_KINDS } from "../model/clipEffects";
+import { contractFixture } from "@/test/fixtures";
 import { describe, expect, it } from "vitest";
 import type { StudioTimeline, TimelineClip } from "@/api/generated/contracts";
 import { executeEdit, type EditCommand } from "./commands";
@@ -10,41 +12,23 @@ import { exportSnapshot } from "./export";
 import { createEditHistory } from "./history";
 import { clipEnd, timelineDuration } from "./model";
 
-interface WireTransition {
-  op: "transition";
-  clip_id: string;
-  kind: string;
-  frames?: number;
-  direction?: string;
-  easing?: "linear" | "ease_in" | "ease_out" | "ease_in_out";
-  softness?: number;
-  alignment?: "center" | "start" | "end";
-  linked?: boolean;
-}
-
-interface TransitionVector {
-  name: string;
-  before: StudioTimeline;
-  command: WireTransition;
-  after?: StudioTimeline;
-  reject_reason?: string;
-}
-
-function vectors(): TransitionVector[] {
-  const path = fileURLToPath(new URL("../../../../../../contracts/examples/timeline-commands/transition.json", import.meta.url));
-  return (JSON.parse(readFileSync(path, "utf8")) as { vectors: TransitionVector[] }).vectors;
-}
+type WireTransition = (typeof transitionVectors.vectors)[number]["command"];
 
 /** The editor's command of a wire command (fade_black and fade_white are stored as dips; the default length is 12). */
 function editOf(command: WireTransition): EditCommand {
   const kind = command.kind === "fade_black" ? "dip_to_black" : command.kind === "fade_white" ? "dip_to_white" : command.kind;
-  const options = { ...(command.direction ? { direction: command.direction } : {}), ...(command.easing ? { easing: command.easing } : {}), ...(command.softness !== undefined ? { softness: command.softness } : {}) };
-  return { type: "transition", clipId: command.clip_id, kind: kind as Extract<EditCommand, { type: "transition" }>["kind"], frames: command.frames ?? 12, options, alignment: command.alignment, linked: command.linked !== false };
+  const easing = "easing" in command ? command.easing : undefined;
+  if (easing !== undefined && !isListed(easing, ["linear", "ease_in", "ease_out", "ease_in_out"] as const)) throw new Error("Unknown transition easing");
+  const alignment = command.alignment;
+  if (alignment !== undefined && !isListed(alignment, ["center", "start", "end"] as const)) throw new Error("Unknown transition alignment");
+  const options = { ...((command.direction != null && command.direction !== "") ? { direction: command.direction } : {}), ...(easing === undefined ? {} : { easing }), ...(command.softness !== undefined ? { softness: command.softness } : {}) };
+  if (!isListed(kind, ["cut", ...TRANSITION_KINDS] as const)) throw new Error("Unknown transition kind");
+  return { type: "transition", clipId: command.clip_id, kind, frames: command.frames ?? 12, options, ...(alignment === undefined ? {} : { alignment }), linked: command.linked !== false };
 }
 
 function counting(): (prefix: string) => string {
   let serial = 0;
-  return (prefix) => `${prefix}-${++serial}`;
+  return (prefix) => `${prefix}-${String(++serial)}`;
 }
 
 function edited(timeline: StudioTimeline, command: EditCommand): StudioTimeline {
@@ -68,7 +52,7 @@ function film(): StudioTimeline {
   const source = (id: string, frames: number, kind: "video" | "audio" = "video") => ({ source_id: id, name: id, kind, file: null, duration_frames: frames, width: 64, height: 32, has_audio: true });
   const track = (id: string, kind: "video" | "audio", name: string) => ({ track_id: id, kind, name, locked: false, muted: false, solo: false, sync_lock: true, gain_db: 0, pan: 0 });
   const take = (id: string, sourceId: string, start: number): TimelineClip[] => (["video", "audio"] as const).map((kind) => ({
-    clip_id: `${kind[0]}${id}`, source_id: sourceId, track_id: `${kind}-1`, name: id, start_frame: start, in_frame: 0, out_frame: 48, linked_id: `l${id}`, motion: structuredClone(motion),
+    clip_id: `${String(kind[0])}${id}`, source_id: sourceId, track_id: `${kind}-1`, name: id, start_frame: start, in_frame: 0, out_frame: 48, linked_id: `l${id}`, motion: structuredClone(motion),
   }));
   return {
     version: 2, fps: { num: 24, den: 1 }, master_gain_db: 0, placed_shot_ids: [],
@@ -80,13 +64,14 @@ function film(): StudioTimeline {
   };
 }
 
-const crossfade = (clipId: string, frames = 12, alignment?: "center" | "start" | "end"): EditCommand => ({ type: "transition", clipId, kind: "crossfade", frames, alignment, linked: true });
+const crossfade = (clipId: string, frames = 12, alignment?: "center" | "start" | "end"): EditCommand => ({ type: "transition", clipId, kind: "crossfade", frames, ...(alignment === undefined ? {} : { alignment }), linked: true });
 
 describe("the transition command follows the Controller's vectors", () => {
   // A command the wire contract refuses by its shape (cut with an alignment) is the Controller's to check
-  it.each(vectors().filter((vector) => vector.reject_reason !== "invalid_command"))("$name", (vector) => {
-    const snapshot = structuredClone(vector.before);
-    const result = executeEdit(vector.before, editOf(vector.command), counting());
+  it.each(transitionVectors.vectors.filter((vector) => vector.reject_reason !== "invalid_command"))("$name", (vector) => {
+    const before = contractFixture("StudioTimeline", vector.before);
+    const snapshot = structuredClone(before);
+    const result = executeEdit(before, editOf(vector.command), counting());
     expect(vector.before).toEqual(snapshot);
     if (vector.after) expect(result.ok ? result.value : result.error).toEqual(vector.after);
     else expect(result.ok).toBe(false);

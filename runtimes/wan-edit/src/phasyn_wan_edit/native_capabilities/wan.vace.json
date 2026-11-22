@@ -1,0 +1,577 @@
+{
+  "label": "Wan VACE 影片編輯與控制",
+  "kind": "wan.vace",
+  "inputs": [
+    {
+      "name": "prompt",
+      "type_id": "text.prompt.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "Describe the resulting shot"
+    },
+    {
+      "name": "source",
+      "type_id": "media.video.v1",
+      "required": false,
+      "transport": "file",
+      "description": "Original source clip"
+    },
+    {
+      "name": "control",
+      "type_id": "media.video.v1",
+      "required": false,
+      "transport": "file",
+      "description": "Frame-aligned pose, depth, edge or rendered layout guide"
+    },
+    {
+      "name": "first_frame",
+      "type_id": "media.image.v1",
+      "required": false,
+      "transport": "file",
+      "description": "First-frame anchor"
+    },
+    {
+      "name": "last_frame",
+      "type_id": "media.image.v1",
+      "required": false,
+      "transport": "file",
+      "description": "Last-frame anchor"
+    },
+    {
+      "name": "layout",
+      "type_id": "media.image.v1",
+      "required": false,
+      "transport": "file",
+      "description": "Still layout control"
+    },
+    {
+      "name": "reference",
+      "type_id": "media.image.v1",
+      "required": false,
+      "transport": "file",
+      "description": "Optional visual reference"
+    },
+    {
+      "name": "mask_video",
+      "type_id": "media.video.v1",
+      "required": false,
+      "transport": "file",
+      "description": "Full-source monochrome edit mask with matching frames and timestamps. White regenerates, black preserves."
+    },
+    {
+      "name": "mask_image",
+      "type_id": "media.image.v1",
+      "required": false,
+      "transport": "file",
+      "description": "One stationary monochrome edit mask, reused at every selected source frame. Use instead of mask_video."
+    }
+  ],
+  "outputs": [
+    {
+      "name": "asset",
+      "type_id": "media.asset.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "Complete derived video Asset"
+    },
+    {
+      "name": "video_file",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": "Independent silent MP4"
+    }
+  ],
+  "parameters_schema": {
+    "type": "object",
+    "properties": {
+      "width": {
+        "type": "integer",
+        "minimum": 128,
+        "maximum": 1280,
+        "multipleOf": 16
+      },
+      "height": {
+        "type": "integer",
+        "minimum": 128,
+        "maximum": 1280,
+        "multipleOf": 16
+      },
+      "frames": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 129
+      },
+      "steps": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "default": 30
+      },
+      "seed": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 4294967295,
+        "default": 42
+      },
+      "guidance": {
+        "type": "number",
+        "minimum": 1,
+        "maximum": 20,
+        "default": 5
+      },
+      "conditioning_scale": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 2,
+        "default": 1
+      },
+      "fps_num": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 240000
+      },
+      "fps_den": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 1001
+      },
+      "negative_prompt": {
+        "type": "string",
+        "maxLength": 8192,
+        "default": ""
+      },
+      "operation": {
+        "type": "string",
+        "enum": [
+          "retake",
+          "extend_before",
+          "extend_after",
+          "gap",
+          "control",
+          "layout"
+        ]
+      },
+      "start_frame": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 100000
+      },
+      "end_frame": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100000
+      },
+      "context_frames": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 32,
+        "default": 8
+      },
+      "mask_required": {
+        "type": "boolean",
+        "default": false,
+        "description": "Require exactly one spatial mask for this retake."
+      },
+      "composite_unmasked": {
+        "type": "boolean",
+        "default": true,
+        "description": "Restore decoded source pixels wherever the mask is black before encoding a masked retake."
+      },
+      "deliver": {
+        "type": "string",
+        "enum": [
+          "patch",
+          "joined"
+        ],
+        "default": "patch",
+        "description": "延展的交付方式：patch＝只有新生成的影格；joined＝原片加延展接成一個新 take（保留原音，新的部分是靜音）"
+      }
+    },
+    "required": [
+      "operation"
+    ],
+    "additionalProperties": false
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "load": {
+        "type": "object",
+        "properties": {
+          "model_path": {
+            "type": "string",
+            "description": "Node 本機模型路徑（使用者提供，不由主控下載）"
+          },
+          "model_revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "device": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "cuda"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "maxLength": 16384,
+                "pattern": "^[^\\x00-\\x1f\\x7f]*$"
+              },
+              "resource_group": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id",
+              "resource_group"
+            ],
+            "additionalProperties": false
+          },
+          "precision": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          },
+          "offload": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          },
+          "part_overrides": {
+            "type": "array"
+          },
+          "provider_options": {
+            "type": "object",
+            "properties": {
+              "residency": {
+                "enum": [
+                  "model_offload",
+                  "sequential_offload",
+                  "gpu"
+                ],
+                "default": "model_offload"
+              },
+              "min_free_vram_gib": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "minimum": 0,
+                "maximum": 1024,
+                "default": null,
+                "description": "載入與每次生成前要求的最低可用 GPU 記憶體（GiB）；null＝依 residency 的規劃下限（model_offload／gpu 13 GiB，sequential_offload 不檢查），0＝不檢查"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "device",
+          "model_path"
+        ],
+        "additionalProperties": false
+      },
+      "invoke": {
+        "type": "object",
+        "properties": {
+          "width": {
+            "type": "integer",
+            "minimum": 128,
+            "maximum": 1280,
+            "multipleOf": 16
+          },
+          "height": {
+            "type": "integer",
+            "minimum": 128,
+            "maximum": 1280,
+            "multipleOf": 16
+          },
+          "frames": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 129
+          },
+          "steps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 30
+          },
+          "seed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 4294967295,
+            "default": 42
+          },
+          "guidance": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 20,
+            "default": 5
+          },
+          "conditioning_scale": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 2,
+            "default": 1
+          },
+          "fps_num": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 240000
+          },
+          "fps_den": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1001
+          },
+          "negative_prompt": {
+            "type": "string",
+            "maxLength": 8192,
+            "default": ""
+          },
+          "operation": {
+            "type": "string",
+            "enum": [
+              "retake",
+              "extend_before",
+              "extend_after",
+              "gap",
+              "control",
+              "layout"
+            ]
+          },
+          "start_frame": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000
+          },
+          "end_frame": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000
+          },
+          "context_frames": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32,
+            "default": 8
+          },
+          "mask_required": {
+            "type": "boolean",
+            "default": false,
+            "description": "Require exactly one spatial mask for this retake."
+          },
+          "composite_unmasked": {
+            "type": "boolean",
+            "default": true,
+            "description": "Restore decoded source pixels wherever the mask is black before encoding a masked retake."
+          }
+        },
+        "additionalProperties": false
+      },
+      "recording": {
+        "type": "object"
+      }
+    },
+    "required": [
+      "load",
+      "invoke",
+      "recording"
+    ],
+    "additionalProperties": false
+  },
+  "default_settings": {
+    "invoke": {
+      "operation": "retake"
+    },
+    "load": {
+      "device": {
+        "id": "GPU-REPLACE",
+        "kind": "cuda",
+        "resource_group": "gpu"
+      },
+      "model_path": "/path/to/models/Wan2.1-VACE-1.3B-diffusers",
+      "provider_options": {
+        "residency": "model_offload"
+      }
+    },
+    "recording": {
+      "batch_max_bytes": 262144,
+      "batch_max_events": 256,
+      "capture_prompt": true,
+      "capture_stderr": true,
+      "cuda_pending_event_pairs": 4096,
+      "device_sample_hz": 2,
+      "finite_scan": false,
+      "gpu_event_timing": true,
+      "log_level": "info",
+      "max_detail_bytes_per_recording": 2147483648,
+      "mode": "detailed",
+      "parts": [],
+      "publish_interval_ms": 1000,
+      "queue_max_bytes": 16777216,
+      "queue_max_events": 8192,
+      "record_shapes": false,
+      "segment_bytes": 67108864,
+      "steps": [],
+      "tensor_dump": false,
+      "trace_parts": [],
+      "trace_steps": [
+        0,
+        1
+      ],
+      "with_stack": false
+    }
+  },
+  "schema_version": "1.0",
+  "provider_id": "wan.vace",
+  "entry_point": "phasyn_wan_edit.provider:WanEditProvider",
+  "operations": [
+    "retake",
+    "extend_before",
+    "extend_after",
+    "gap",
+    "control",
+    "layout"
+  ],
+  "capability_version": "1.0.0",
+  "license": "Apache-2.0",
+  "models": [
+    {
+      "id": "Wan-AI/Wan2.1-VACE-1.3B-diffusers",
+      "revision": "ec4d2cb062b548996b179d493fdd05340de702a1",
+      "license": "Apache-2.0",
+      "variants": [
+        "1.3B-diffusers-safetensors"
+      ],
+      "files": [
+        {
+          "path": "model_index.json",
+          "size_bytes": 408,
+          "sha256": "078a0c056f61edae212c2e7e78fcb061e48a9bc886c08fb245bf5e165e371ea2"
+        },
+        {
+          "path": "scheduler/scheduler_config.json",
+          "size_bytes": 751,
+          "sha256": "070dc020808eec985634b83015c1596425c264d8fa80afe22aa1e02e9e903e6c"
+        },
+        {
+          "path": "text_encoder/config.json",
+          "size_bytes": 850,
+          "sha256": "6de5b5703cea483f528659de1e9f3b81955833a027b2a785d3c0f17dc07a938c"
+        },
+        {
+          "path": "text_encoder/model-00001-of-00003.safetensors",
+          "size_bytes": 4935812536,
+          "sha256": "a8e861969c7433e707cc5a74065d795d36cca07ec96eb6763eb4083df7248f58"
+        },
+        {
+          "path": "text_encoder/model-00002-of-00003.safetensors",
+          "size_bytes": 4983103192,
+          "sha256": "d57d948ece4837d850b7a859a4415121d57cacf8b9ee1d4db200c67f592902d7"
+        },
+        {
+          "path": "text_encoder/model-00003-of-00003.safetensors",
+          "size_bytes": 1442935480,
+          "sha256": "0da9ee284e21d1406df708788db1d502d95d75f69faa25cd26151bf8829b7c5f"
+        },
+        {
+          "path": "text_encoder/model.safetensors.index.json",
+          "size_bytes": 22476,
+          "sha256": "31c4c7bcce679eaa0dd4667462394ddb013dc2f748e0bffc893dc9146a320dab"
+        },
+        {
+          "path": "tokenizer/special_tokens_map.json",
+          "size_bytes": 7079,
+          "sha256": "456b58fd240a06c743a7c2cf8008bec501240d68ebd1fc4018ea569505fea270"
+        },
+        {
+          "path": "tokenizer/spiece.model",
+          "size_bytes": 4548313,
+          "sha256": "e3909a67b780650b35cf529ac782ad2b6b26e6d1f849d3fbb6a872905f452458"
+        },
+        {
+          "path": "tokenizer/tokenizer.json",
+          "size_bytes": 16837459,
+          "sha256": "20a46ac256746594ed7e1e3ef733b83fbc5a6f0922aa7480eda961743de080ef"
+        },
+        {
+          "path": "tokenizer/tokenizer_config.json",
+          "size_bytes": 61786,
+          "sha256": "89bef11d01c80a229079666dd470d536aba87b8eaa00b51cc481ba625be59269"
+        },
+        {
+          "path": "transformer/config.json",
+          "size_bytes": 662,
+          "sha256": "58a07adcbe6ae67624d66918ca2ba65615f931c4a26d8f384ae8ac1e68de0608"
+        },
+        {
+          "path": "transformer/diffusion_pytorch_model-00001-of-00002.safetensors",
+          "size_bytes": 4999964504,
+          "sha256": "192804a4e10b5bb0a13f5c224bc4ec9707b3b8cc0def8eea005dbce7c9d6752a"
+        },
+        {
+          "path": "transformer/diffusion_pytorch_model-00002-of-00002.safetensors",
+          "size_bytes": 2146103400,
+          "sha256": "dadaf1d5e9ccf826e2c497aa9fc2756a044f606d0aa919e5405a734a121bcf7e"
+        },
+        {
+          "path": "transformer/diffusion_pytorch_model.safetensors.index.json",
+          "size_bytes": 114130,
+          "sha256": "2ed4b491e7a7f3e8185526d5d9a259944871a122a1eec86808bac9194a965d83"
+        },
+        {
+          "path": "vae/config.json",
+          "size_bytes": 724,
+          "sha256": "7a3afcf422b9a9d63e0b6ca7e0d3b5193220a61f5b203bb8417900bc090705e8"
+        },
+        {
+          "path": "vae/diffusion_pytorch_model.safetensors",
+          "size_bytes": 507591892,
+          "sha256": "d6e524b3fffede1787a74e81b30976dce5400c4439ba64222168e607ed19e793"
+        }
+      ],
+      "file_scope": "17 pinned component, tokenizer, scheduler and model files; verified before loading."
+    }
+  ],
+  "resources": {
+    "devices": [
+      "cuda"
+    ],
+    "required_modules": [
+      "torch",
+      "diffusers",
+      "transformers",
+      "accelerate",
+      "ftfy",
+      "sentencepiece",
+      "safetensors",
+      "PIL",
+      "numpy"
+    ],
+    "executables": [
+      "ffmpeg",
+      "ffprobe"
+    ],
+    "vram_bytes": null,
+    "memory_basis": "Unmeasured. Host RAM and peak GPU memory depend on residency, canvas, reference and frame count."
+  },
+  "execution": {
+    "cache": "none",
+    "retry": "verify_stopped_first",
+    "cancellation": "cooperative",
+    "progress": [
+      "stage",
+      "updates"
+    ],
+    "error_contract": "ComponentError",
+    "retry_condition": "Confirm the prior attempt stopped and inspect any published output before requesting another run."
+  }
+}

@@ -53,7 +53,7 @@ export function ChartItemsTable({
                 <Td className="machine text-caption text-fg-tertiary">{item.part ?? "—"}</Td>
                 <Td>
                   {onSelect ? (
-                    <Button size="sm" variant="quiet" onClick={() => onSelect(item)} className="pointer-coarse:min-h-11" aria-label={t("在右側檢視器檢視：{label}", { label: item.label })}>
+                    <Button size="sm" variant="quiet" onClick={() => { onSelect(item); }} className="pointer-coarse:min-h-11" aria-label={t("在右側檢視器檢視：{label}", { label: item.label })}>
                       {t("檢視")}
                     </Button>
                   ) : null}
@@ -69,7 +69,7 @@ export function ChartItemsTable({
         </span>
         {rows.length > PAGE ? (
           <LoadMoreButton
-            onLoad={() => setLimit((current) => current + PAGE)}
+            onLoad={() => { setLimit((current) => current + PAGE); }}
             pending={false}
             hasMore={rows.length > limit}
             label={t("再顯示 {min} 項", { min: Math.min(PAGE, Math.max(0, rows.length - limit)) })}

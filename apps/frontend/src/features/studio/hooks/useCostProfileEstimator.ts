@@ -60,7 +60,7 @@ export function useCostProfileEstimator(routes: readonly StudioRoute[]): Segment
         const used = routes.filter((route) => segments.some((segment) => segment.routeId === route.id));
         const wanted = componentKeys(used);
         // Fresh lists come from the cache; a Node whose profiles cannot be read only leaves its steps unknown
-        const read = await Promise.all(nodesOf(used).map((nodeId) => client.fetchQuery(profileQuery(nodeId)).then((list) => list.items, (): CostProfile[] => [])));
+        const read = await Promise.all(nodesOf(used).map((nodeId) => client.query(profileQuery(nodeId)).then((list) => list.items, (): CostProfile[] => [])));
         const profiles = read.flat().filter((profile) => wanted.has(`${profile.node_id}\u0000${profile.component_id}`));
         return profileEstimator(id, profiles, etaRoutes).estimate(segments, signal);
       },

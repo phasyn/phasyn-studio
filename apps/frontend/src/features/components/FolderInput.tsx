@@ -39,10 +39,10 @@ export function FolderInput({
         disabled={disabled}
         autoComplete="off"
         spellCheck={false}
-        placeholder={defaultFolder ? t("空白＝{defaultFolder}（預設分類）", { defaultFolder: folderDisplayPath(defaultFolder) }) : t("空白＝依 provider 預設分類")}
+        placeholder={(defaultFolder != null && defaultFolder !== "") ? t("空白＝{defaultFolder}（預設分類）", { defaultFolder: folderDisplayPath(defaultFolder) }) : t("空白＝依 provider 預設分類")}
         aria-invalid={invalid || undefined}
         aria-describedby={describedBy}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => { onChange(event.target.value); }}
       />
       <datalist id={listId}>
         {suggestions.map((folder) => (

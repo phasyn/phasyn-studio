@@ -21,7 +21,7 @@ describe("error codes", () => {
   });
 
   it("gives every server code a next step (its own hint or its kind's)", () => {
-    expect(SERVER_CODES.filter((code) => !errorHint(code))).toEqual([]);
+    expect(SERVER_CODES.filter((code) => !((errorHint(code) ?? "") !== ""))).toEqual([]);
   });
 
   // The kind (client, conflict, unavailable, remote, internal) only picks a generic hint. These codes mean something

@@ -28,13 +28,21 @@ from .limits import DEFAULT_LIMITS, MediaLimits
 from .probe import probe, run_ffprobe_json
 from .tools import find_ffmpeg, input_url, redact, run_tool, summarize_stderr
 
+
+_MIN_ENDPOINT_SAMPLES = 2
+
+
 _PACKET_ENTRIES = "stream=time_base,avg_frame_rate,r_frame_rate,width,height,duration:packet=pts,dts,flags"
-MAX_SAMPLE_GRID = 1_000_000  # sampling grid points of one video (an hour at 60 fps is 216,000)
+MAX_SAMPLE_GRID = (
+    1_000_000  # sampling grid points of one video (an hour at 60 fps is 216,000)
+)
 _JPEG_TIMEOUT_S = 60.0
 
 
 @dataclass(frozen=True)
 class FrameTime:
+    """The selected frame and its presentation timestamp."""
+
     index: int  # frame number in presentation order (0-based)
     pts: int
     time_base: Fraction
@@ -46,7 +54,9 @@ def _time_base(value: Any) -> Fraction:
     try:
         tb = Fraction(int(num), int(den or 1))
     except (ValueError, ZeroDivisionError) as exc:
-        raise MediaError("MEDIA_TOOL_FAILED", "ffprobe 回報的 time_base 無法解析") from exc
+        raise MediaError(
+            "MEDIA_TOOL_FAILED", "ffprobe 回報的 time_base 無法解析"
+        ) from exc
     if tb <= 0:
         raise MediaError("MEDIA_TOOL_FAILED", "ffprobe 回報的 time_base 無法解析")
     return tb
@@ -78,9 +88,15 @@ def frame_times(
     stream = streams[0]
     tb = _time_base(stream.get("time_base"))
     try:
-        pts_values = sorted(int(p["pts"]) for p in doc.get("packets") or [] if p.get("pts") not in (None, "N/A"))
+        pts_values = sorted(
+            int(p["pts"])
+            for p in doc.get("packets") or []
+            if p.get("pts") not in (None, "N/A")
+        )
     except (TypeError, ValueError) as exc:
-        raise MediaError("MEDIA_TOOL_FAILED", "ffprobe 回報的 packet PTS 無法解析") from exc
+        raise MediaError(
+            "MEDIA_TOOL_FAILED", "ffprobe 回報的 packet PTS 無法解析"
+        ) from exc
     if not pts_values:
         raise MediaError("INVALID_ARGUMENT", "影片軌沒有可用的 PTS")
     if len(pts_values) > limits.max_frames:
@@ -101,7 +117,10 @@ def frame_times(
             expected=f"<= {limits.max_duration_seconds:g} s",
             actual=f"{float(span):g} s",
         )
-    frames = [FrameTime(i, pts, tb, float((pts - start) * tb)) for i, pts in enumerate(pts_values)]
+    frames = [
+        FrameTime(i, pts, tb, float((pts - start) * tb))
+        for i, pts in enumerate(pts_values)
+    ]
     info = {
         "width": stream.get("width"),
         "height": stream.get("height"),
@@ -114,7 +133,11 @@ def frame_times(
 
 
 def plan_samples(
-    frames: list[FrameTime], *, sampling_fps: float, preserve_endpoints: bool = True, max_frames: int | None = None
+    frames: list[FrameTime],
+    *,
+    sampling_fps: float,
+    preserve_endpoints: bool = True,
+    max_frames: int | None = None,
 ) -> list[FrameTime]:
     """Real frames closest to a ``sampling_fps`` grid; keeps the endpoints; thins evenly to ``max_frames``."""
     if not frames:
@@ -124,7 +147,12 @@ def plan_samples(
     last = frames[-1].seconds
     count = max(1, math.floor(last * sampling_fps) + 1)
     if count > MAX_SAMPLE_GRID:
-        raise MediaError("INVALID_ARGUMENT", "取樣點數超過上限", expected=f"<= {MAX_SAMPLE_GRID}", actual=str(count))
+        raise MediaError(
+            "INVALID_ARGUMENT",
+            "取樣點數超過上限",
+            expected=f"<= {MAX_SAMPLE_GRID}",
+            actual=str(count),
+        )
     targets = [i / sampling_fps for i in range(count)]
     times = np.array([f.seconds for f in frames])
     chosen: dict[int, FrameTime] = {}
@@ -135,7 +163,7 @@ def plan_samples(
         chosen[0] = frames[0]
         chosen[len(frames) - 1] = frames[-1]
     ordered = [chosen[k] for k in sorted(chosen)]
-    if max_frames is not None and len(ordered) > max_frames >= 2:
+    if max_frames is not None and len(ordered) > max_frames >= _MIN_ENDPOINT_SAMPLES:
         keep = {0, len(ordered) - 1} if preserve_endpoints else set()
         slots = max_frames - len(keep)
         inner = [i for i in range(len(ordered)) if i not in keep]
@@ -146,7 +174,7 @@ def plan_samples(
     return ordered
 
 
-def extract_frames(
+def extract_frames(  # noqa: PLR0913 - Preserve the public keyword signature.
     path: str | Path,
     samples: list[FrameTime],
     *,
@@ -171,7 +199,9 @@ def extract_frames(
     out_w = max(2, round(width * scale / 2) * 2)
     out_h = max(2, round(height * scale / 2) * 2)
     order = [s.index for s in samples]
-    unique = sorted(set(order))  # select emits each frame once; duplicates are expanded below
+    unique = sorted(
+        set(order)
+    )  # select emits each frame once; duplicates are expanded below
     expr = "+".join(f"eq(n\\,{i})" for i in unique)
     argv = [
         find_ffmpeg(), "-hide_banner", "-nostdin", "-nostats", "-v", "error",
@@ -192,7 +222,10 @@ def extract_frames(
     if result.returncode != 0:
         marks = {os.fspath(local.path): "<input>", input_url(local.path): "<input>"}
         detail = summarize_stderr(redact(result.stderr, marks), 600)
-        raise MediaError("MEDIA_TOOL_FAILED", "FFmpeg 取樣影格失敗" + (f"：{detail}" if detail else ""))
+        raise MediaError(
+            "MEDIA_TOOL_FAILED",
+            "FFmpeg 取樣影格失敗" + (f"：{detail}" if detail else ""),
+        )
     n = len(result.stdout) // frame_bytes
     if n != len(unique) or len(result.stdout) % frame_bytes:
         raise MediaError("MEDIA_INCOMPLETE", f"取樣影格數 {n} ≠ 要求 {len(unique)}")
@@ -221,7 +254,9 @@ def encode_jpeg(frame: np.ndarray, *, quality: int = 85, cancel: Any = None) -> 
     )
     if result.returncode != 0 or not result.stdout:
         detail = summarize_stderr(result.stderr, 300)
-        raise MediaError("MEDIA_TOOL_FAILED", "JPEG 編碼失敗" + (f"：{detail}" if detail else ""))
+        raise MediaError(
+            "MEDIA_TOOL_FAILED", "JPEG 編碼失敗" + (f"：{detail}" if detail else "")
+        )
     return result.stdout
 
 

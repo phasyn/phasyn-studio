@@ -19,8 +19,8 @@ export function SeedForm({ shot }: { shot: StudioShot }) {
   const { dispatch } = useStudio();
   const id = useId();
   const random = shot.seed === RANDOM_SEED;
-  const active = activeTake(shot);
-  const update = (seed: number) => dispatch({ type: "updateShot", shotId: shot.shot_id, patch: { seed } });
+  const recordedSeed = activeTake(shot)?.seed ?? null;
+  const update = (seed: number) => { dispatch({ type: "updateShot", shotId: shot.shot_id, patch: { seed } }); };
   return (
     <div className="grid gap-3 p-3">
       <p className="text-data font-semibold text-fg">Seed</p>
@@ -32,12 +32,12 @@ export function SeedForm({ shot }: { shot: StudioShot }) {
           { value: "random", label: t("每次隨機"), title: t("每次渲染抽一個新的 seed，記在 take 上") },
           { value: "fixed", label: t("固定"), title: t("每次渲染都用同一個 seed：相同設定可以重現同一個 take") },
         ]}
-        onChange={(next) => update(next === "random" ? RANDOM_SEED : (active?.seed ?? randomSeed()))}
+        onChange={(next) => { update(next === "random" ? RANDOM_SEED : (recordedSeed ?? randomSeed())); }}
       />
       {random ? (
         <p className="text-caption text-fg-tertiary">
-          {active ? (
-            <T source={"每次渲染抽一個新的 seed，記在 take 上；使用中 take 的 seed 是 <0>{seed}</0>。"} values={{ seed: active.seed }} slots={[<span className="machine text-fg-secondary" />]} />
+          {recordedSeed !== null ? (
+            <T source={"每次渲染抽一個新的 seed，記在 take 上；使用中 take 的 seed 是 <0>{seed}</0>。"} values={{ seed: recordedSeed }} slots={[<span key="slot-0" className="machine text-fg-secondary" />]} />
           ) : (
             t("每次渲染抽一個新的 seed，記在 take 上。")
           )}
@@ -48,15 +48,15 @@ export function SeedForm({ shot }: { shot: StudioShot }) {
             {t("固定的 seed")}
           </label>
           <div className="flex items-start gap-1.5">
-            <NumberField id={`${id}-value`} integer value={shot.seed} min={RANDOM_SEED} max={MAX_SEED} onCommit={(value) => update(value ?? RANDOM_SEED)} describedBy={`${id}-rule`} className="min-w-0 flex-1" />
-            <Button size="icon-sm" variant="secondary" icon={<Dices aria-hidden />} aria-label={t("換一個新的 seed")} title={t("換一個新的 seed")} onClick={() => update(randomSeed())} />
+            <NumberField id={`${id}-value`} integer value={shot.seed} min={RANDOM_SEED} max={MAX_SEED} onCommit={(value) => { update(value ?? RANDOM_SEED); }} describedBy={`${id}-rule`} className="min-w-0 flex-1" />
+            <Button size="icon-sm" variant="secondary" icon={<Dices aria-hidden />} aria-label={t("換一個新的 seed")} title={t("換一個新的 seed")} onClick={() => { update(randomSeed()); }} />
           </div>
           <p id={`${id}-rule`} className="text-caption text-fg-tertiary">
             {t("0–{max}；輸入 -1 改回每次隨機。", { max: MAX_SEED })}
           </p>
-          {active && active.seed !== shot.seed ? (
-            <Button size="sm" variant="quiet" className="justify-self-start px-2" onClick={() => update(active.seed)}>
-              <T source={"改用使用中 take 的 seed（<0>{seed}</0>）"} values={{ seed: active.seed }} slots={[<span className="machine" />]} />
+          {recordedSeed !== null && recordedSeed !== shot.seed ? (
+            <Button size="sm" variant="quiet" className="justify-self-start px-2" onClick={() => { update(recordedSeed); }}>
+              <T source={"改用使用中 take 的 seed（<0>{seed}</0>）"} values={{ seed: recordedSeed }} slots={[<span key="slot-0" className="machine" />]} />
             </Button>
           ) : null}
         </div>

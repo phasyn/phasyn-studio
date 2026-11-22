@@ -20,7 +20,7 @@ function setup(cancel: FakeHandler, scope?: string) {
 
 describe("CancelRunDialog", () => {
   it("names the run, shows the scope and sends one cancel request however fast it is clicked", async () => {
-    const { user, posts } = setup(() => ({ run_id: RUN_ID, accepted: true, message: "已送出取消" }), "批次的 3 個鏡頭都會停止");
+    const { user, posts } = setup(() => ({ call_id: null, process_exited: null, accepted: true, message: "已送出取消" }), "批次的 3 個鏡頭都會停止");
     expect(screen.getByRole("dialog", { name: "取消 run「夜景」？" })).toBeInTheDocument();
     expect(screen.getByText("批次的 3 個鏡頭都會停止")).toBeInTheDocument();
     expect(screen.getByText(RUN_ID)).toBeInTheDocument();
@@ -36,7 +36,7 @@ describe("CancelRunDialog", () => {
   });
 
   it("closes without sending anything when the user keeps the run", async () => {
-    const { user, onOpenChange, posts } = setup(() => ({ run_id: RUN_ID, accepted: true, message: "已送出取消" }));
+    const { user, onOpenChange, posts } = setup(() => ({ call_id: null, process_exited: null, accepted: true, message: "已送出取消" }));
     await user.click(screen.getByRole("button", { name: "不要取消" }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(posts()).toHaveLength(0);

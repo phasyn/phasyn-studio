@@ -23,11 +23,11 @@ export function ColumnHead({ index, column }: { index: number; column: ColumnSta
           <span className="rounded-full border border-brand-blue/40 bg-brand-soft px-1.5 text-[11px] leading-4 font-semibold text-action-fg">{t("基準")}</span>
         ) : null}
         {context ? <OperationBadge operation={context.operation} /> : null}
-        {context?.synthetic ? <SyntheticBadge /> : null}
+        {(context?.synthetic === true) ? <SyntheticBadge /> : null}
       </span>
       {context ? (
         <span className="machine text-data break-all text-fg">{context.component_id}</span>
-      ) : column.error ? (
+      ) : (column.error != null) ? (
         <span className="text-caption text-danger">{t("讀取失敗：{code}", { code: describeError(column.error).code })}</span>
       ) : (
         <span className="text-caption text-fg-tertiary">{column.isPending ? t("讀取中…") : "—"}</span>

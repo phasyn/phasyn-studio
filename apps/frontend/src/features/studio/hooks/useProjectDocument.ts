@@ -7,7 +7,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import type { StudioProject } from "@/api/generated/contracts";
-import { fetchProject, saveProject, studioKeys } from "@/api/studioProjects";
+import { fetchProject, readMergedProject, saveProject, studioKeys } from "@/api/studioProjects";
 import { createDocReducer, useAutosaveDocument } from "@/features/studio-shell";
 import { projectReducer, type ProjectAction } from "../model/project";
 
@@ -24,5 +24,5 @@ export function useProjectDocument(initial: StudioProject) {
     },
     [client],
   );
-  return useAutosaveDocument({ initial, reducer: projectDocReducer, save: saveProject, fetchLatest, publish });
+  return useAutosaveDocument({ initial, parseMerged: readMergedProject, reducer: projectDocReducer, save: saveProject, fetchLatest, publish });
 }

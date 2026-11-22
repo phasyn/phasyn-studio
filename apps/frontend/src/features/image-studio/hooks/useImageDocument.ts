@@ -4,7 +4,7 @@
 // re-applied on the latest version.
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
-import { fetchProject, saveProject, studioKeys } from "@/api/studioProjects";
+import { fetchProject, readMergedProject, saveProject, studioKeys } from "@/api/studioProjects";
 import { createDocReducer, useAutosaveDocument } from "@/features/studio-shell";
 import { imageProjectReducer, type ImageProjectAction } from "../model/project";
 import type { ImageStudioProject } from "../types";
@@ -24,5 +24,5 @@ export function useImageDocument(initial: ImageStudioProject) {
     },
     [client],
   );
-  return useAutosaveDocument({ initial, reducer: imageDocReducer, save, fetchLatest, publish });
+  return useAutosaveDocument({ initial, parseMerged: readMergedProject, reducer: imageDocReducer, save, fetchLatest, publish });
 }

@@ -33,10 +33,10 @@ function ReplaceDefinitionDialog({
 }) {
   const { descriptor, node } = entry;
   const put = usePutComponent();
-  const inFlight = useRef(false);
+  const inFlightRef = useRef(false);
   const send = () => {
-    if (inFlight.current) return;
-    inFlight.current = true;
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     put.mutate(
       {
         nodeId: node.node_id,
@@ -48,7 +48,7 @@ function ReplaceDefinitionDialog({
           settings,
           autostart: descriptor.autostart,
           folder: descriptor.folder,
-          ...(descriptor.exclusive_group ? { exclusive_group: descriptor.exclusive_group } : {}),
+          ...((descriptor.exclusive_group != null && descriptor.exclusive_group !== "") ? { exclusive_group: descriptor.exclusive_group } : {}),
           ...(descriptor.limits ? { limits: descriptor.limits } : {}),
         },
       },
@@ -58,13 +58,13 @@ function ReplaceDefinitionDialog({
           onReplaced();
         },
         onSettled: () => {
-          inFlight.current = false;
+          inFlightRef.current = false;
         },
       },
     );
   };
   return (
-    <Dialog open onOpenChange={(open) => (put.isPending ? undefined : onOpenChange(open))}>
+    <Dialog open onOpenChange={(open) => { if (!(put.isPending)) { onOpenChange(open); } }}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("移除 {count} 個欄位並替換定義？", { count: removed.length })}</DialogTitle>
@@ -84,7 +84,7 @@ function ReplaceDefinitionDialog({
           {put.isError ? <ErrorCallout error={put.error} write title={t("定義沒有替換")} /> : null}
         </DialogBody>
         <DialogFooter>
-          <Button variant="quiet" disabled={put.isPending} onClick={() => onOpenChange(false)}>
+          <Button variant="quiet" disabled={put.isPending} onClick={() => { onOpenChange(false); }}>
             {t("取消")}
           </Button>
           <Button variant="danger" icon={<Eraser aria-hidden />} pending={put.isPending} onClick={send}>
@@ -134,7 +134,7 @@ export function DefinitionRepair({
             ))}
           </ul>
           <div>
-            <ActionButton size="sm" variant="danger" icon={<Eraser aria-hidden />} disabledReason={blocked} onClick={() => setConfirming(true)}>
+            <ActionButton size="sm" variant="danger" icon={<Eraser aria-hidden />} disabledReason={blocked} onClick={() => { setConfirming(true); }}>
               {t("移除這些欄位並替換定義…")}
             </ActionButton>
           </div>
@@ -150,7 +150,7 @@ export function DefinitionRepair({
           <ul aria-label={t("不支援的值")} className="grid gap-0.5">
             {values.map((item) => (
               <li key={`${item.path}:${item.message}`} className="text-caption text-fg-secondary">
-                <button type="button" className="machine text-left text-action-fg underline underline-offset-2 hover:text-action-hover" onClick={() => onJump(item.jump)}>
+                <button type="button" className="machine text-left text-action-fg underline underline-offset-2 hover:text-action-hover" onClick={() => { onJump(item.jump); }}>
                   {item.path || t("（整份設定）")}
                 </button>
                 <span>{t("：{message}", { message: item.message })}</span>

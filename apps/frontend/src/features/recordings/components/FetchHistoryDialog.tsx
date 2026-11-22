@@ -1,7 +1,8 @@
+import { isNonzeroNumber } from "@/lib/json";
 // 「讀取此 Node 歷史紀錄」：明確的一次 HTTP 補抓，只把 Node 本地已寫的 log／事件補進主控索引。
 // 不會重新執行、派送、重試或恢復任何工作，也不改 run 狀態；失敗不自動重送。
 import { CircleCheck, DatabaseBackup, TriangleAlert } from "lucide-react";
-import { useId, useState, type FormEvent } from "react";
+import { useId, useState, type SubmitEvent } from "react";
 import type { Recording } from "@/api/generated/contracts";
 import { Button } from "@/components/ui/button";
 import { Callout } from "@/components/ui/callout";
@@ -23,7 +24,7 @@ export function FetchHistoryDialog({ recording, nodeLabel }: { recording: Record
   const streams = useEventStreams(id, open);
   const mutation = useFetchHistory(id);
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (mutation.isPending) return;
     const trimmed = afterSeq.trim();
@@ -69,7 +70,7 @@ export function FetchHistoryDialog({ recording, nodeLabel }: { recording: Record
             </div>
             <Field id={`${formId}-stream`} label="stream" help={t("不指定時由 Node 補抓此 recording 的所有 stream。")}>
               {(describedBy) => (
-                <Select id={`${formId}-stream`} value={streamId} onChange={(event) => setStreamId(event.target.value)} aria-describedby={describedBy}>
+                <Select id={`${formId}-stream`} value={streamId} onChange={(event) => { setStreamId(event.target.value); }} aria-describedby={describedBy}>
                   <option value="">{t("全部 stream")}</option>
                   {(streams.data?.streams ?? []).map((stream) => (
                     <option key={stream.stream_id} value={stream.stream_id}>
@@ -86,9 +87,9 @@ export function FetchHistoryDialog({ recording, nodeLabel }: { recording: Record
                   id={`${formId}-after`}
                   inputMode="numeric"
                   value={afterSeq}
-                  onChange={(event) => setAfterSeq(event.target.value)}
+                  onChange={(event) => { setAfterSeq(event.target.value); }}
                   aria-describedby={describedBy}
-                  aria-invalid={seqError ? true : undefined}
+                  aria-invalid={(seqError != null && seqError !== "") ? true : undefined}
                   className="machine"
                 />
               )}
@@ -102,10 +103,10 @@ export function FetchHistoryDialog({ recording, nodeLabel }: { recording: Record
           ) : null}
           {errorInfo ? (
             <Callout tone="danger" title={errorInfo.headline} role="alert" className="animate-rise-in">
-              {errorInfo.serverMessage ? <p>{errorInfo.serverMessage}</p> : null}
+              {(errorInfo.serverMessage != null && errorInfo.serverMessage !== "") ? <p>{errorInfo.serverMessage}</p> : null}
               <p className="machine text-caption text-fg-tertiary">
                 {errorInfo.code}
-                {errorInfo.status ? ` · HTTP ${errorInfo.status}` : ""}
+                {isNonzeroNumber(errorInfo.status) ? ` · HTTP ${String(errorInfo.status)}` : ""}
               </p>
               {outcomeUnknown ? <p className="text-warning">{t("遠端結果未知：補抓可能已在 Node 端完成。可關閉後重新讀取事件確認；不會自動重送。")}</p> : null}
             </Callout>

@@ -69,7 +69,7 @@ export interface MetaPlan {
 /** 伺服器上的資料夾正規化（與輸入同一套規則）；不合法的舊值保持原樣比較。 */
 function serverFolder(folder: string | null): string | null {
   const parsed = parseFolderInput(folder ?? "");
-  return parsed.error ? folder : parsed.value;
+  return (parsed.error != null && parsed.error !== "") ? folder : parsed.value;
 }
 
 /**
@@ -81,10 +81,10 @@ export function buildMetaPatch(descriptor: MetaFields, draft: MetaDraft): MetaPl
   const label = draft.label.trim();
   const labelError = label === "" ? t("顯示名稱不能是空的") : null;
   const labelChanged = label !== descriptor.label.trim();
-  if (!labelError && labelChanged) patch.label = label;
+  if (!(labelError != null && labelError !== "") && labelChanged) patch.label = label;
   const folder = parseFolderInput(draft.folder);
-  const folderChanged = folder.error ? draft.folder !== (descriptor.folder ?? "") : folder.value !== serverFolder(descriptor.folder);
-  if (!folder.error && folderChanged) patch.folder = folder.value;
+  const folderChanged = (folder.error != null && folder.error !== "") ? draft.folder !== (descriptor.folder ?? "") : folder.value !== serverFolder(descriptor.folder);
+  if (!(folder.error != null && folder.error !== "") && folderChanged) patch.folder = folder.value;
   const autostartChanged = draft.autostart !== descriptor.autostart;
   if (autostartChanged) patch.autostart = draft.autostart;
   // limits：解析後與伺服器值比較（格式或縮排不同不算修改）

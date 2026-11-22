@@ -7,7 +7,8 @@ import { useEditorDraft } from "../../drafts";
 import { formatNumber, parseNumber } from "./numbers";
 
 /** What a commit handler answers: nothing or true = applied; false = refused; a string = refused for that reason. */
-export type CommitResult = void | boolean | string;
+/** An edit may complete directly or return an explicit acceptance or refusal. */
+export type CommitHandler<T> = ((value: T) => void) | ((value: T) => boolean | string);
 
 interface DraftState<T> {
   /** The document value the text was typed over: when the document changes underneath, the draft is dropped. */
@@ -29,7 +30,7 @@ export interface FieldDraft {
   revert: () => void;
 }
 
-function refusal(result: CommitResult): string | null {
+function refusal(result: unknown): string | null {
   if (typeof result === "string") return result;
   return result === false ? t("無法套用剪輯") : null;
 }
@@ -42,7 +43,7 @@ export interface NumberDraftOptions {
   decimals: number;
   /** What an arrow key adds or takes away (Shift: ten times as much). */
   step: number;
-  onCommit: (value: number) => CommitResult;
+  onCommit: CommitHandler<number>;
   /** Why the field is read-only; null or absent when it can be edited. */
   disabledReason?: string | null;
   /** The input's ref when the caller needs to focus the field itself. */
@@ -64,12 +65,12 @@ export function useNumberDraft({
   disabledReason,
   inputRef,
 }: NumberDraftOptions): DraftBinding<HTMLInputElement, NumberDraft> {
-  const own = useRef<HTMLInputElement>(null);
-  const ref = inputRef ?? own;
+  const ownRef = useRef<HTMLInputElement>(null);
+  const ref = inputRef ?? ownRef;
   const [draft, setDraft] = useState<DraftState<number> | null>(null);
   const active = draft?.base === value ? draft : null;
   const commit = (): boolean => {
-    if (!active || disabledReason) return true;
+    if (!active || (disabledReason != null && disabledReason !== "")) return true;
     const next = parseNumber(active.text);
     if (!Number.isFinite(next) || next < min || next > max || (decimals === 0 && !Number.isInteger(next))) {
       const range = { min: formatNumber(min, decimals), max: formatNumber(max, decimals) };
@@ -77,7 +78,7 @@ export function useNumberDraft({
       return false;
     }
     const refused = next === value ? null : refusal(onCommit(next));
-    if (refused) {
+    if (refused != null && refused !== "") {
       setDraft({ ...active, error: refused });
       return false;
     }
@@ -85,7 +86,7 @@ export function useNumberDraft({
     return true;
   };
   const nudge = (direction: 1 | -1, large: boolean) => {
-    if (disabledReason) return;
+    if (disabledReason != null && disabledReason !== "") return;
     const typed = active ? parseNumber(active.text) : value;
     const from = Number.isFinite(typed) ? typed : value;
     const next = Math.min(max, Math.max(min, from + direction * step * (large ? 10 : 1)));
@@ -95,9 +96,9 @@ export function useNumberDraft({
   const field: NumberDraft = {
     text: active?.text ?? formatNumber(value, decimals),
     error: active?.error ?? null,
-    setText: (text) => setDraft({ base: value, text, error: null }),
+    setText: (text) => { setDraft({ base: value, text, error: null }); },
     commit,
-    revert: () => setDraft(null),
+    revert: () => { setDraft(null); },
     nudge,
   };
   return [ref, field];
@@ -121,20 +122,20 @@ export interface TextDraftOptions<E extends HTMLElement> {
   value: string;
   /** Why the text cannot be committed; null when it can. */
   validate?: (text: string) => string | null;
-  onCommit: (text: string) => CommitResult;
+  onCommit: CommitHandler<string>;
   disabledReason?: string | null;
   inputRef?: RefObject<E | null>;
 }
 
 export function useTextDraft<E extends HTMLElement>({ value, validate, onCommit, disabledReason, inputRef }: TextDraftOptions<E>): DraftBinding<E> {
-  const own = useRef<E>(null);
-  const ref = inputRef ?? own;
+  const ownRef = useRef<E>(null);
+  const ref = inputRef ?? ownRef;
   const [draft, setDraft] = useState<DraftState<string> | null>(null);
   const active = draft?.base === value ? draft : null;
   const commit = (): boolean => {
-    if (!active || disabledReason) return true;
+    if (!active || (disabledReason != null && disabledReason !== "")) return true;
     const refused = active.text === value ? null : (validate?.(active.text) ?? refusal(onCommit(active.text)));
-    if (refused) {
+    if (refused != null && refused !== "") {
       setDraft({ ...active, error: refused });
       return false;
     }
@@ -145,9 +146,9 @@ export function useTextDraft<E extends HTMLElement>({ value, validate, onCommit,
   const field: FieldDraft = {
     text: active?.text ?? value,
     error: active?.error ?? null,
-    setText: (text) => setDraft({ base: value, text, error: null }),
+    setText: (text) => { setDraft({ base: value, text, error: null }); },
     commit,
-    revert: () => setDraft(null),
+    revert: () => { setDraft(null); },
   };
   return [ref, field];
 }

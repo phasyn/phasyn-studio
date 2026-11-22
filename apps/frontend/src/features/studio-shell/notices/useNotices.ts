@@ -43,12 +43,12 @@ export function trimNotices(items: readonly Notice[], max = MAX_NOTICES): Notice
 
 export function useNotices(): { notices: Notice[]; notify: (notice: NoticeInput) => void; dismiss: (id: number) => void } {
   const [notices, setNotices] = useState<Notice[]>([]);
-  const nextId = useRef(1);
+  const nextIdRef = useRef(1);
   const notify = useCallback((notice: NoticeInput) => {
-    const id = nextId.current++;
+    const id = nextIdRef.current++;
     const timeoutMs = autoCloseMs(notice);
-    setNotices((items) => trimNotices([...items, { ...notice, id, timeoutMs }]));
+    setNotices((items) => trimNotices([...items, { ...notice, id, ...(timeoutMs === undefined ? {} : { timeoutMs }) }]));
   }, []);
-  const dismiss = useCallback((id: number) => setNotices((items) => items.filter((item) => item.id !== id)), []);
+  const dismiss = useCallback((id: number) => { setNotices((items) => items.filter((item) => item.id !== id)); }, []);
   return { notices, notify, dismiss };
 }

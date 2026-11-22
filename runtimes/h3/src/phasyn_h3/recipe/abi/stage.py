@@ -28,13 +28,19 @@ class CancelSignal(Protocol):
 
     reason: str
 
-    def is_set(self) -> bool: ...
+    def is_set(self) -> bool:
+        """Return whether cancellation has been requested."""
+        ...
 
-    def raise_if_set(self) -> None: ...
+    def raise_if_set(self) -> None:
+        """Raise the stage cancellation error when cancellation is requested."""
+        ...
 
 
 @dataclass(frozen=True)
 class StageInput:
+    """Bind a named stage input to a declared asset."""
+
     name: str
     path: Path | None
     artifact: Mapping[str, Any] | None
@@ -42,6 +48,8 @@ class StageInput:
 
 @dataclass(frozen=True)
 class OutputFile:
+    """Describe a file published by a completed stage."""
+
     name: str
     path: Path
     media_type: str
@@ -50,6 +58,8 @@ class OutputFile:
 
 @dataclass
 class StageResult:
+    """Return the outputs and measurements of a stage."""
+
     status: str  # succeeded | failed | canceled
     outputs: list[OutputFile] = field(default_factory=list)
     diagnostics: list[dict[str, Any]] = field(default_factory=list)
@@ -59,6 +69,8 @@ class StageResult:
 
 @dataclass
 class StageContext:
+    """Provide the paths, inputs and callbacks of a running stage."""
+
     assignment: Mapping[str, Any]
     plan: Mapping[str, Any]
     stage: Mapping[str, Any]
@@ -75,4 +87,11 @@ class StageContext:
     attachments: Mapping[str, Path] = field(default_factory=dict)
 
 
-__all__ = ["CancelSignal", "OutputFile", "StageCanceled", "StageContext", "StageInput", "StageResult"]
+__all__ = [
+    "CancelSignal",
+    "OutputFile",
+    "StageCanceled",
+    "StageContext",
+    "StageInput",
+    "StageResult",
+]

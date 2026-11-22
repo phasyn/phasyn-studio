@@ -26,12 +26,11 @@ export function useViewport(scrollRef: RefObject<HTMLElement | null>, deps: unkn
   useLayoutEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
-    const read = () =>
-      setViewport((current) =>
+    const read = () => { setViewport((current) =>
         current.width === element.clientWidth && current.height === element.clientHeight && current.scrollTop === element.scrollTop
           ? current
           : { width: element.clientWidth, height: element.clientHeight, scrollTop: element.scrollTop },
-      );
+      ); };
     const observer = new ResizeObserver(read);
     observer.observe(element);
     element.addEventListener("scroll", read, { passive: true });

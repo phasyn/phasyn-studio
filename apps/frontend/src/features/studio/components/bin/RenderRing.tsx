@@ -6,7 +6,7 @@ import { cn } from "@/lib/cn";
 import { t } from "@/i18n";
 
 export function RenderRing({ fraction, waiting = false, size = 20, className }: { fraction: number | null; waiting?: boolean; size?: number; className?: string }) {
-  if (fraction !== null) return <CircularProgress value={fraction} size={size} label={t("DiT 去噪進度")} className={className} />;
+  if (fraction !== null) return <CircularProgress value={fraction} size={size} label={t("DiT 去噪進度")} {...(className === undefined ? {} : { className })} />;
   return (
     <span role="progressbar" aria-label={waiting ? t("排隊中") : t("渲染中")} className={cn("inline-grid shrink-0 place-items-center", className)} style={{ width: size, height: size }}>
       <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden focusable="false" className={waiting ? undefined : "animate-spin"}>

@@ -20,7 +20,7 @@ export function StatusChip({
   title?: string;
   className?: string;
 }) {
-  const fade = useChangeFade<HTMLSpanElement>(`${tone}:${label}:${spinning ? 1 : 0}`);
+  const fade = useChangeFade<HTMLSpanElement>(`${tone}:${label}:${String(spinning ? 1 : 0)}`);
   return (
     <span
       title={title}

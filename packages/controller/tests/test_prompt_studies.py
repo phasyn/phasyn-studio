@@ -11,17 +11,35 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from controller_support import CONTROLLER_ID, ENDPOINT_A, NODE_A, FakeNode, Harness, descriptor
+from controller_support import (
+    CONTROLLER_ID,
+    ENDPOINT_A,
+    NODE_A,
+    FakeNode,
+    Harness,
+    descriptor,
+)
 from phasyn_components import contracts
 from phasyn_components.canonical import digest
 from phasyn_components.errors import ComponentError
 from phasyn_components.files import FileStore
 from phasyn_components.testing import ids
+
 from phasyn_controller.runs import encode_run
+
 
 URL = "/api/prompt-studies"
 NOW = "2026-10-18T00:00:00.000Z"
-KEYS = ("subject", "action", "composition", "environment", "lighting", "appearance", "style", "visible_text")
+KEYS = (
+    "subject",
+    "action",
+    "composition",
+    "environment",
+    "lighting",
+    "appearance",
+    "style",
+    "visible_text",
+)
 CORE = {"subject", "action", "composition", "style", "visible_text"}
 SOURCE = {
     "node_id": CONTROLLER_ID,
@@ -37,25 +55,63 @@ def sha(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def scene(language: str = "zh-TW", *, subject: str = "一個紅色茶壺。", locked: tuple[str, ...] = ()) -> dict[str, Any]:
+def scene(
+    language: str = "zh-TW",
+    *,
+    subject: str = "一個紅色茶壺。",
+    locked: tuple[str, ...] = (),
+) -> dict[str, Any]:
     sections = {
-        key: {"text_en": "", "text_zh_tw": "", "explanation_zh_tw": "", "observation_ids": [], "locked": key in locked}
+        key: {
+            "text_en": "",
+            "text_zh_tw": "",
+            "explanation_zh_tw": "",
+            "observation_ids": [],
+            "locked": key in locked,
+        }
         for key in KEYS
     }
     zh = language == "zh-TW"
     sections["subject"].update(
-        text_en="A red teapot.", text_zh_tw=subject if zh else "", explanation_zh_tw="可見", observation_ids=["o001"]
+        text_en="A red teapot.",
+        text_zh_tw=subject if zh else "",
+        explanation_zh_tw="可見",
+        observation_ids=["o001"],
     )
     sections["composition"].update(
-        text_en="It is centered.", text_zh_tw="置中。" if zh else "", explanation_zh_tw="位置", observation_ids=["o002"]
+        text_en="It is centered.",
+        text_zh_tw="置中。" if zh else "",
+        explanation_zh_tw="位置",
+        observation_ids=["o002"],
     )
     sections["lighting"].update(  # 不在 core：detailed 與 core 不同
-        text_en="Soft light.", text_zh_tw="柔光。" if zh else "", explanation_zh_tw="光線", observation_ids=["o003"]
+        text_en="Soft light.",
+        text_zh_tw="柔光。" if zh else "",
+        explanation_zh_tw="光線",
+        observation_ids=["o003"],
     )
     observations = [
-        {"id": "o001", "view_id": "v-full", "section": "subject", "claim_en": "A teapot.", "certainty": "observed"},
-        {"id": "o002", "view_id": "v-full", "section": "composition", "claim_en": "Centered.", "certainty": "observed"},
-        {"id": "o003", "view_id": "v-full", "section": "lighting", "claim_en": "Soft light.", "certainty": "observed"},
+        {
+            "id": "o001",
+            "view_id": "v-full",
+            "section": "subject",
+            "claim_en": "A teapot.",
+            "certainty": "observed",
+        },
+        {
+            "id": "o002",
+            "view_id": "v-full",
+            "section": "composition",
+            "claim_en": "Centered.",
+            "certainty": "observed",
+        },
+        {
+            "id": "o003",
+            "view_id": "v-full",
+            "section": "lighting",
+            "claim_en": "Soft light.",
+            "certainty": "observed",
+        },
     ]
     return {
         "schema_version": 1,
@@ -66,12 +122,23 @@ def scene(language: str = "zh-TW", *, subject: str = "一個紅色茶壺。", lo
     }
 
 
-def candidates(value: dict[str, Any], intentional: tuple[str, ...] = ()) -> dict[str, Any]:
+def candidates(
+    value: dict[str, Any], intentional: tuple[str, ...] = ()
+) -> dict[str, Any]:
     field = "text_zh_tw" if value["prompt_language"] == "zh-TW" else "text_en"
-    core = CORE | set(intentional) | {key for key in KEYS if value["sections"][key]["locked"]}
+    core = (
+        CORE
+        | set(intentional)
+        | {key for key in KEYS if value["sections"][key]["locked"]}
+    )
     items = []
     for variant in ("core", "detailed"):
-        keys = [key for key in KEYS if (variant == "detailed" or key in core) and value["sections"][key][field].strip()]
+        keys = [
+            key
+            for key in KEYS
+            if (variant == "detailed" or key in core)
+            and value["sections"][key][field].strip()
+        ]
         prompt = "\n".join(value["sections"][key][field].strip() for key in keys)
         items.append(
             {
@@ -90,7 +157,8 @@ def candidates(value: dict[str, Any], intentional: tuple[str, ...] = ()) -> dict
     }
 
 
-def version(
+# Named fixture fields map directly to independent version metadata.
+def version(  # noqa: PLR0913
     version_id: str,
     number: int,
     value: dict[str, Any],
@@ -120,14 +188,17 @@ def version(
     }
 
 
-def render(version_id: str, variant: str, seed: int, run_id: str, *, state: str = "succeeded") -> dict[str, Any]:
+def render(
+    version_id: str, variant: str, seed: int, run_id: str, *, state: str = "succeeded"
+) -> dict[str, Any]:
     return {
         "kind": "render", "version_id": version_id, "variant": variant, "seed": seed, "split": "manual", "round": 0,
         "run_id": run_id, "state": state, "image": None, "image_asset": None, "error": None,
     }  # fmt: skip
 
 
-def task(
+# Named fixture fields map directly to independent task metadata.
+def task(  # noqa: PLR0913
     task_id: str,
     *,
     state: str = "running",
@@ -136,7 +207,12 @@ def task(
     run_ids: tuple[str, ...] = (),
     results: tuple[dict[str, Any], ...] = (),
 ) -> dict[str, Any]:
-    req = request or {"kind": "render", "variants": ["core", "detailed"], "seeds": [1, 2], "settings": {"steps": 40}}
+    req = request or {
+        "kind": "render",
+        "variants": ["core", "detailed"],
+        "seeds": [1, 2],
+        "settings": {"steps": 40},
+    }
     return {
         "task_id": task_id,
         "kind": req["kind"],
@@ -158,7 +234,9 @@ def task(
     }
 
 
-def study(study_id: str, source: dict[str, Any] = SOURCE, **fields: Any) -> dict[str, Any]:
+def study(
+    study_id: str, source: dict[str, Any] = SOURCE, **fields: Any
+) -> dict[str, Any]:
     doc = {
         "study_id": study_id,
         "title": f"研究 {study_id}",
@@ -166,7 +244,13 @@ def study(study_id: str, source: dict[str, Any] = SOURCE, **fields: Any) -> dict
         "created_at": NOW,
         "updated_at": NOW,
         "language": "zh-TW",
-        "source": {"file": source, "name": "teapot.png", "width": 640, "height": 480, "library_item": None},
+        "source": {
+            "file": source,
+            "name": "teapot.png",
+            "width": 640,
+            "height": 480,
+            "library_item": None,
+        },
         "crops": [],
         "settings": {"render_pipeline_id": "t2i-local"},
         "versions": [],
@@ -207,18 +291,35 @@ def test_crud_revision_conflict_listing_and_contract(tmp_path: Path) -> None:
             again = await saved(h, {**first, "title": "茶壺"})
             assert again["revision"] == 2 and again["created_at"] == first["created_at"]
             mismatch = await h.client.put(f"{URL}/other", json=again)
-            assert mismatch.status_code == 422 and mismatch.json()["code"] == "INVALID_ARGUMENT"
+            assert (
+                mismatch.status_code == 422
+                and mismatch.json()["code"] == "INVALID_ARGUMENT"
+            )
             invalid = await put(h, {**again, "language": "ja"}, 422)
             assert invalid["details"]["schema"] == "PromptStudy"
             await saved(h, study("s2", archived=True))
             listing = (await h.client.get(URL)).json()["items"]
             assert [item["study_id"] for item in listing] == ["s1"]
             contracts.validate("PromptStudyList", {"items": listing})
-            assert listing[0]["source_name"] == "teapot.png" and listing[0]["version_count"] == 0
-            only = (await h.client.get(URL, params={"archived": "only"})).json()["items"]
+            assert (
+                listing[0]["source_name"] == "teapot.png"
+                and listing[0]["version_count"] == 0
+            )
+            only = (await h.client.get(URL, params={"archived": "only"})).json()[
+                "items"
+            ]
             assert [item["study_id"] for item in only] == ["s2"]
-            assert len((await h.client.get(URL, params={"archived": "include"})).json()["items"]) == 2
-            assert (await h.client.get(URL, params={"archived": "yes"})).status_code == 422
+            assert (
+                len(
+                    (await h.client.get(URL, params={"archived": "include"})).json()[
+                        "items"
+                    ]
+                )
+                == 2
+            )
+            assert (
+                await h.client.get(URL, params={"archived": "yes"})
+            ).status_code == 422
             missing = await h.client.get(f"{URL}/nope")
             assert missing.status_code == 404 and missing.json()["code"] == "NOT_FOUND"
 
@@ -233,9 +334,16 @@ def test_versions_are_append_only_and_internally_consistent(tmp_path: Path) -> N
             edited = copy.deepcopy(doc)
             edited["versions"][0]["note"] = "改寫歷史"
             changed = await put(h, edited, 409)
-            assert changed["code"] == "STATE_CONFLICT" and changed["details"]["version_id"] == "v1"
-            assert (await put(h, {**doc, "versions": []}, 409))["code"] == "STATE_CONFLICT"
-            assert (await put(h, {**doc, "language": "en"}, 409))["code"] == "STATE_CONFLICT"
+            assert (
+                changed["code"] == "STATE_CONFLICT"
+                and changed["details"]["version_id"] == "v1"
+            )
+            assert (await put(h, {**doc, "versions": []}, 409))[
+                "code"
+            ] == "STATE_CONFLICT"
+            assert (await put(h, {**doc, "language": "en"}, 409))[
+                "code"
+            ] == "STATE_CONFLICT"
             moved = {**doc, "source": {**doc["source"], "name": "other.png"}}
             assert (await put(h, moved, 409))["code"] == "STATE_CONFLICT"
             crops = [{"view_id": "v-crop-1", "x0": 0, "y0": 0, "x1": 0.5, "y1": 0.5}]
@@ -245,8 +353,18 @@ def test_versions_are_append_only_and_internally_consistent(tmp_path: Path) -> N
             bad_cases = {
                 "number": {**version("v2", 3, locked, parent="v1", origin="manual")},
                 "parent": {**version("v2", 2, locked, origin="manual")},
-                "sha": {**version("v2", 2, locked, parent="v1", origin="manual"), "scene": scene(subject="改過")},
-                "unlocked": version("v2", 2, scene(), parent="v1", origin="manual", intentional=("lighting",)),
+                "sha": {
+                    **version("v2", 2, locked, parent="v1", origin="manual"),
+                    "scene": scene(subject="改過"),
+                },
+                "unlocked": version(
+                    "v2",
+                    2,
+                    scene(),
+                    parent="v1",
+                    origin="manual",
+                    intentional=("lighting",),
+                ),
                 "language": version("v2", 2, scene("en"), parent="v1", origin="manual"),
             }
             for name, bad in bad_cases.items():
@@ -260,11 +378,20 @@ def test_versions_are_append_only_and_internally_consistent(tmp_path: Path) -> N
             crop_ref["observations"][0]["view_id"] = "v-crop-1"
             result = await put(h, {**doc, "versions": [*doc["versions"], version("v2", 2, crop_ref, parent="v1", origin="manual")]}, 422)  # fmt: skip
             assert "視圖" in result["message"]
-            tampered = version("v2", 2, locked, parent="v1", origin="manual", intentional=("subject",))
+            tampered = version(
+                "v2", 2, locked, parent="v1", origin="manual", intentional=("subject",)
+            )
             tampered["candidates"]["items"][0]["prompt"] += "（偷改）"
-            assert "prompt_sha256" in (await put(h, {**doc, "versions": [*doc["versions"], tampered]}, 422))["message"]
+            assert (
+                "prompt_sha256"
+                in (
+                    await put(h, {**doc, "versions": [*doc["versions"], tampered]}, 422)
+                )["message"]
+            )
 
-            good = version("v2", 2, locked, parent="v1", origin="manual", intentional=("subject",))
+            good = version(
+                "v2", 2, locked, parent="v1", origin="manual", intentional=("subject",)
+            )
             appended = await saved(h, {**doc, "versions": [*doc["versions"], good]})
             assert [item["number"] for item in appended["versions"]] == [1, 2]
 
@@ -280,7 +407,12 @@ def test_tasks_terminal_immutable_budgets_and_archive(tmp_path: Path) -> None:
                 "kind": "reconstruct", "search_seeds": [11, 22], "holdout_seeds": [33, 44], "max_rounds": 2,
                 "max_images": 16, "max_vision_operations": 96, "stop_after_no_improvement": 1, "settings": {},
             }  # fmt: skip
-            running = task("t1", request=reconstruct, run_ids=(run_id,), results=(render("v1", "core", 11, run_id),))
+            running = task(
+                "t1",
+                request=reconstruct,
+                run_ids=(run_id,),
+                results=(render("v1", "core", 11, run_id),),
+            )
             doc = await saved(h, study("s1", versions=[v1], tasks=[running]))
             changed_request = copy.deepcopy(doc)
             changed_request["tasks"][0]["request"]["max_images"] = 32
@@ -288,7 +420,12 @@ def test_tasks_terminal_immutable_budgets_and_archive(tmp_path: Path) -> None:
             archive = await put(h, {**doc, "archived": True}, 409)
             assert archive["details"]["running_task_ids"] == ["t1"]
             done = copy.deepcopy(doc)
-            done["tasks"][0].update(state="succeeded", stop_reason="completed", finished_at=NOW, phase="done")
+            done["tasks"][0].update(
+                state="succeeded",
+                stop_reason="completed",
+                finished_at=NOW,
+                phase="done",
+            )
             doc = await saved(h, done)
             revived = copy.deepcopy(doc)
             revived["tasks"][0]["state"] = "running"
@@ -297,19 +434,43 @@ def test_tasks_terminal_immutable_budgets_and_archive(tmp_path: Path) -> None:
             assert (await put(h, {**doc, "tasks": []}, 409))["code"] == "STATE_CONFLICT"
 
             overlap = task("t2", request={**reconstruct, "holdout_seeds": [22, 55]})
-            assert "重疊" in (await put(h, {**doc, "tasks": [*doc["tasks"], overlap]}, 422))["message"]
+            assert (
+                "重疊"
+                in (await put(h, {**doc, "tasks": [*doc["tasks"], overlap]}, 422))[
+                    "message"
+                ]
+            )
             small = task("t2", request={**reconstruct, "max_images": 8})
-            assert "預算" in (await put(h, {**doc, "tasks": [*doc["tasks"], small]}, 422))["message"]
+            assert (
+                "預算"
+                in (await put(h, {**doc, "tasks": [*doc["tasks"], small]}, 422))[
+                    "message"
+                ]
+            )
             many = task("t2", request={**reconstruct, "max_rounds": 1, "max_images": 8},
                         results=tuple(render("v1", "core", seed, run_id) for seed in range(9)))  # fmt: skip
-            assert "超過預算" in (await put(h, {**doc, "tasks": [*doc["tasks"], many]}, 422))["message"]
+            assert (
+                "超過預算"
+                in (await put(h, {**doc, "tasks": [*doc["tasks"], many]}, 422))[
+                    "message"
+                ]
+            )
             no_base = task("t2", base=None)
-            assert "base_version_id" in (await put(h, {**doc, "tasks": [*doc["tasks"], no_base]}, 422))["message"]
+            assert (
+                "base_version_id"
+                in (await put(h, {**doc, "tasks": [*doc["tasks"], no_base]}, 422))[
+                    "message"
+                ]
+            )
             ghost = task("t2", base="v9")
-            assert (await put(h, {**doc, "tasks": [*doc["tasks"], ghost]}, 422))["code"] == "INVALID_ARGUMENT"
+            assert (await put(h, {**doc, "tasks": [*doc["tasks"], ghost]}, 422))[
+                "code"
+            ] == "INVALID_ARGUMENT"
 
             archived = await saved(h, {**doc, "archived": True})
-            more = await put(h, {**archived, "tasks": [*archived["tasks"], task("t2")]}, 409)
+            more = await put(
+                h, {**archived, "tasks": [*archived["tasks"], task("t2")]}, 409
+            )
             assert "封存" in more["message"]
             await saved(h, {**archived, "archived": False})
 
@@ -327,7 +488,15 @@ def write_run(h: Harness, outputs: dict[str, Any], *, state: str = "succeeded") 
                 "pipeline_id": "p",
                 "label": "",
                 "inputs": [],
-                "steps": [{"step_id": "s", "node_id": NODE_A, "component_id": "gen", "inputs": {}, "parameters": {}}],
+                "steps": [
+                    {
+                        "step_id": "s",
+                        "node_id": NODE_A,
+                        "component_id": "gen",
+                        "inputs": {},
+                        "parameters": {},
+                    }
+                ],
                 "outputs": {},
             },
             "inputs": {},
@@ -346,7 +515,7 @@ def write_run(h: Harness, outputs: dict[str, Any], *, state: str = "succeeded") 
 
 
 def image_outputs(node: FakeNode) -> tuple[dict[str, Any], list[dict[str, Any]]]:
-    """t2i 的輸出：image.asset.v1（inline 值內嵌的 FileRef，purge 一樣會刪）＋一個頂層 FileRef。"""
+    """t2i 的輸出：image.asset.v1（inline 值內嵌的 FileRef，purge 一樣會刪）+一個頂層 FileRef。"""
     image = node.publish_file(b"png rgba", "image/png")
     white = node.publish_file(b"png white", "image/png")
     asset = {"asset_id": str(uuid.uuid4()), "file": image, "width": 8, "height": 8}
@@ -369,7 +538,9 @@ def library_project(ref: dict[str, Any]) -> dict[str, Any]:
 
 
 async def upload(h: Harness, data: bytes = b"\x89PNG source") -> dict[str, Any]:
-    resp = await h.client.post("/api/files", params={"media_type": "image/png"}, content=data)
+    resp = await h.client.post(
+        "/api/files", params={"media_type": "image/png"}, content=data
+    )
     assert resp.status_code == 201, resp.text
     return dict(resp.json())
 
@@ -380,35 +551,88 @@ def node_with_files(tmp_path: Path) -> FakeNode:
     return node
 
 
+async def assert_shared_run_protected(h: Harness, other_run: str) -> None:
+    # A run cited by a study cannot be purged on its own (dry run included); the 409 names the studies.
+    for dry_run in ("true", "false"):
+        refused = await h.client.delete(
+            f"/api/runs/{other_run}", params={"dry_run": dry_run}
+        )
+        assert (
+            refused.status_code == 409 and refused.json()["code"] == "STATE_CONFLICT"
+        ), refused.text
+        cited = refused.json()["details"]["prompt_studies"]
+        assert sorted(item["study_id"] for item in cited) == ["s1", "s2"]
+    assert (await h.client.get(f"/api/runs/{other_run}")).status_code == 200
+
+
+async def assert_deletion_needs_revision_and_mode(h: Harness, revision: int) -> None:
+    stale = await h.client.delete(f"{URL}/s1", params={"mode": "all", "revision": 0})
+    assert stale.status_code == 409 and stale.json()["code"] == "REVISION_CONFLICT"
+    assert (
+        await h.client.delete(f"{URL}/s1", params={"revision": revision})
+    ).status_code == 422
+
+
+def assert_exclusive_files_deleted(
+    node: FakeNode, files: list[dict[str, Any]], shared_files: list[dict[str, Any]]
+) -> None:
+    assert node.files is not None
+    for ref in files:  # 包含 image.asset.v1 內嵌的檔案
+        assert node.files.meta(ref["file_id"]) is None
+    for ref in shared_files:
+        assert node.files.meta(ref["file_id"]) is not None
+
+
 def test_deletion_modes_preview_scope_and_execute(tmp_path: Path) -> None:
     async def scenario() -> None:
         async with Harness(tmp_path / "ctl") as h:
             node = node_with_files(tmp_path)
             await h.add_node(node)
             source = await upload(h)
-            analysis = write_run(h, {"result": {"type_id": "prompt.vision.result.v1", "value": {"op": "caption"}}})
+            analysis = write_run(
+                h,
+                {
+                    "result": {
+                        "type_id": "prompt.vision.result.v1",
+                        "value": {"op": "caption"},
+                    }
+                },
+            )
             outputs, files = image_outputs(node)
             image_run = write_run(h, outputs)
             shared_outputs, shared_files = image_outputs(node)
             studio_run = write_run(h, shared_outputs)
-            other_run = write_run(h, {"result": {"type_id": "prompt.vision.result.v1", "value": {}}})
+            other_run = write_run(
+                h, {"result": {"type_id": "prompt.vision.result.v1", "value": {}}}
+            )
             ghost = str(uuid.uuid4())
-            resp = await h.client.put("/api/studio/projects/p1", json=library_project(shared_files[1]))
+            resp = await h.client.put(
+                "/api/studio/projects/p1", json=library_project(shared_files[1])
+            )
             assert resp.status_code == 200, resp.text
             v1 = version("v1", 1, scene(), run_ids=(analysis,))
             finished = task(
                 "t1",
                 state="succeeded",
                 run_ids=(image_run, studio_run, other_run, ghost),
-                results=(render("v1", "core", 1, image_run), render("v1", "detailed", 1, studio_run)),
+                results=(
+                    render("v1", "core", 1, image_run),
+                    render("v1", "detailed", 1, studio_run),
+                ),
             )
             doc = await saved(h, study("s1", source, versions=[v1], tasks=[finished]))
             other = await saved(h, study("s2", source=SOURCE, versions=[version("v1", 1, scene())],
                                          tasks=[task("t9", state="failed", run_ids=(other_run,))]))  # fmt: skip
 
-            keep = (await h.client.get(f"{URL}/s1/deletion-preview", params={"mode": "keep_images"})).json()
+            keep = (
+                await h.client.get(
+                    f"{URL}/s1/deletion-preview", params={"mode": "keep_images"}
+                )
+            ).json()
             contracts.validate("PromptStudyDeletionPlan", keep)
-            actions = {row["run_id"]: (row["role"], row["action"]) for row in keep["runs"]}
+            actions = {
+                row["run_id"]: (row["role"], row["action"]) for row in keep["runs"]
+            }
             assert actions == {
                 image_run: ("image", "keep"),
                 studio_run: ("image", "shared"),
@@ -416,28 +640,35 @@ def test_deletion_modes_preview_scope_and_execute(tmp_path: Path) -> None:
                 ghost: ("unknown", "missing"),
                 analysis: ("analysis", "delete"),
             }
-            assert keep["dry_run"] is True and keep["can_delete"] is True and keep["counts"]["runs_delete"] == 1
-            assert keep["source"]["action"] == "delete" and keep["source"]["file"] == source
-            everything = (await h.client.get(f"{URL}/s1/deletion-preview", params={"mode": "all"})).json()
-            assert {row["run_id"]: row["action"] for row in everything["runs"]}[image_run] == "delete"
+            assert (
+                keep["dry_run"] is True
+                and keep["can_delete"] is True
+                and keep["counts"]["runs_delete"] == 1
+            )
+            assert (
+                keep["source"]["action"] == "delete"
+                and keep["source"]["file"] == source
+            )
+            everything = (
+                await h.client.get(f"{URL}/s1/deletion-preview", params={"mode": "all"})
+            ).json()
+            assert {row["run_id"]: row["action"] for row in everything["runs"]}[
+                image_run
+            ] == "delete"
             assert everything["counts"] == {
                 "versions": 1, "tasks": 1, "evaluations": 0, "images": 0, "runs_delete": 2, "runs_keep": 2,
             }  # fmt: skip
-            assert (await h.client.get(f"{URL}/s1/deletion-preview", params={"mode": "x"})).status_code == 422
+            assert (
+                await h.client.get(f"{URL}/s1/deletion-preview", params={"mode": "x"})
+            ).status_code == 422
 
-            # A run cited by a study cannot be purged on its own (dry run included); the 409 names the studies.
-            for dry_run in ("true", "false"):
-                refused = await h.client.delete(f"/api/runs/{other_run}", params={"dry_run": dry_run})
-                assert refused.status_code == 409 and refused.json()["code"] == "STATE_CONFLICT", refused.text
-                cited = refused.json()["details"]["prompt_studies"]
-                assert sorted(item["study_id"] for item in cited) == ["s1", "s2"]
-            assert (await h.client.get(f"/api/runs/{other_run}")).status_code == 200
+            await assert_shared_run_protected(h, other_run)
 
-            stale = await h.client.delete(f"{URL}/s1", params={"mode": "all", "revision": 0})
-            assert stale.status_code == 409 and stale.json()["code"] == "REVISION_CONFLICT"
-            assert (await h.client.delete(f"{URL}/s1", params={"revision": doc["revision"]})).status_code == 422
+            await assert_deletion_needs_revision_and_mode(h, doc["revision"])
 
-            resp = await h.client.delete(f"{URL}/s1", params={"mode": "all", "revision": doc["revision"]})
+            resp = await h.client.delete(
+                f"{URL}/s1", params={"mode": "all", "revision": doc["revision"]}
+            )
             assert resp.status_code == 200, resp.text
             result = resp.json()
             contracts.validate("PromptStudyDeletionPlan", result)
@@ -451,22 +682,23 @@ def test_deletion_modes_preview_scope_and_execute(tmp_path: Path) -> None:
                 assert (await h.client.get(f"/api/runs/{gone}")).status_code == 404
             for kept in (studio_run, other_run):
                 assert (await h.client.get(f"/api/runs/{kept}")).status_code == 200
-            assert node.files is not None
-            for ref in files:  # 包含 image.asset.v1 內嵌的檔案
-                assert node.files.meta(ref["file_id"]) is None
-            for ref in shared_files:
-                assert node.files.meta(ref["file_id"]) is not None
+            assert_exclusive_files_deleted(node, files, shared_files)
             with pytest.raises(ComponentError):
                 h.ctl.files.fileref(source["file_id"])
             assert (await h.client.get(f"{URL}/s2")).json() == other
             still_cited = await h.client.delete(f"/api/runs/{other_run}")
             assert still_cited.status_code == 409
-            assert [item["study_id"] for item in still_cited.json()["details"]["prompt_studies"]] == ["s2"]
+            assert [
+                item["study_id"]
+                for item in still_cited.json()["details"]["prompt_studies"]
+            ] == ["s2"]
 
     asyncio.run(scenario())
 
 
-def test_deletion_blocks_running_work_and_stops_on_partial_failure(tmp_path: Path) -> None:
+def test_deletion_blocks_running_work_and_stops_on_partial_failure(
+    tmp_path: Path,
+) -> None:
     async def scenario() -> None:
         async with Harness(tmp_path / "ctl") as h:
             node = node_with_files(tmp_path)
@@ -475,31 +707,66 @@ def test_deletion_blocks_running_work_and_stops_on_partial_failure(tmp_path: Pat
             outputs, files = image_outputs(node)
             image_run = write_run(h, outputs)
             v1 = version("v1", 1, scene())
-            doc = await saved(h, study("s1", source, versions=[v1], tasks=[task("t1", run_ids=(image_run,))]))
-            plan = (await h.client.get(f"{URL}/s1/deletion-preview", params={"mode": "keep_images"})).json()
-            assert plan["can_delete"] is False and plan["blocking"][0]["code"] == "TASK_RUNNING"
-            blocked = await h.client.delete(f"{URL}/s1", params={"mode": "keep_images", "revision": doc["revision"]})
-            assert blocked.status_code == 409 and blocked.json()["details"]["blocking"][0]["task_id"] == "t1"
+            doc = await saved(
+                h,
+                study(
+                    "s1",
+                    source,
+                    versions=[v1],
+                    tasks=[task("t1", run_ids=(image_run,))],
+                ),
+            )
+            plan = (
+                await h.client.get(
+                    f"{URL}/s1/deletion-preview", params={"mode": "keep_images"}
+                )
+            ).json()
+            assert (
+                plan["can_delete"] is False
+                and plan["blocking"][0]["code"] == "TASK_RUNNING"
+            )
+            blocked = await h.client.delete(
+                f"{URL}/s1", params={"mode": "keep_images", "revision": doc["revision"]}
+            )
+            assert (
+                blocked.status_code == 409
+                and blocked.json()["details"]["blocking"][0]["task_id"] == "t1"
+            )
 
             stopped = copy.deepcopy(doc)
-            stopped["tasks"][0].update(state="interrupted", stop_reason="interrupted", finished_at=NOW)
+            stopped["tasks"][0].update(
+                state="interrupted", stop_reason="interrupted", finished_at=NOW
+            )
             doc = await saved(h, stopped)
-            node.file_delete_errors["*"] = ComponentError("RUNTIME_ERROR", "假 Node：磁碟唯讀")
-            failed = await h.client.delete(f"{URL}/s1", params={"mode": "all", "revision": doc["revision"]})
+            node.file_delete_errors["*"] = ComponentError(
+                "RUNTIME_ERROR", "假 Node：磁碟唯讀"
+            )
+            failed = await h.client.delete(
+                f"{URL}/s1", params={"mode": "all", "revision": doc["revision"]}
+            )
             assert failed.status_code == 502, failed.text
             body = failed.json()
             assert "已停止" in body["message"] and "不自動重試" in body["message"]
             rows = {row["run_id"]: row for row in body["details"]["runs"]}
-            assert rows[image_run]["status"] == "failed" and body["details"]["deleted"] is False
+            assert (
+                rows[image_run]["status"] == "failed"
+                and body["details"]["deleted"] is False
+            )
             assert body["details"]["source"]["status"] == "planned"  # 原圖還沒動
             assert (await h.client.get(f"{URL}/s1")).status_code == 200  # 研究文件保留
             assert (await h.client.get(f"/api/runs/{image_run}")).status_code == 200
             h.ctl.files.fileref(source["file_id"])  # 仍在
 
             node.file_delete_errors.clear()
-            retried = await h.client.delete(f"{URL}/s1", params={"mode": "all", "revision": doc["revision"]})
+            retried = await h.client.delete(
+                f"{URL}/s1", params={"mode": "all", "revision": doc["revision"]}
+            )
             assert retried.status_code == 200, retried.text
-            assert {row["run_id"]: row["status"] for row in retried.json()["runs"]} == {image_run: "deleted"}
-            assert node.files is not None and all(node.files.meta(ref["file_id"]) is None for ref in files)
+            assert {row["run_id"]: row["status"] for row in retried.json()["runs"]} == {
+                image_run: "deleted"
+            }
+            assert node.files is not None and all(
+                node.files.meta(ref["file_id"]) is None for ref in files
+            )
 
     asyncio.run(scenario())

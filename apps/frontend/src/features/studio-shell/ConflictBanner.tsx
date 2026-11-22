@@ -19,8 +19,7 @@ export function ConflictBanner() {
   const [pending, setPending] = useState<Choice | null>(null);
   const [confirm, setConfirm] = useState<{ choice: "overwrite" | "rebase"; preview: ConflictPreview } | null>(null);
   if (doc.status !== "conflict") return null;
-  const fail = (choice: Choice, error: unknown) =>
-    notify({ tone: "danger", title: choice === "reload" ? t("重新載入失敗") : choice === "overwrite" ? t("覆寫失敗") : t("合併失敗"), detail: errorText(error) });
+  const fail = (choice: Choice, error: unknown) => { notify({ tone: "danger", title: choice === "reload" ? t("重新載入失敗") : choice === "overwrite" ? t("覆寫失敗") : t("合併失敗"), detail: errorText(error) }); };
   const act = async (choice: Choice, choices?: ReadonlyMap<string, Side>) => {
     setPending(choice);
     try {
@@ -70,7 +69,7 @@ export function ConflictBanner() {
       </Button>
       <ConflictConfirm
         state={confirm}
-        onCancel={() => setConfirm(null)}
+        onCancel={() => { setConfirm(null); }}
         onConfirm={(choices) => {
           const choice = confirm?.choice;
           setConfirm(null);

@@ -64,8 +64,8 @@ function wrap(paragraph: string, maxWidth: number, measure: (text: string) => nu
       line = token.trimStart();
     }
     // 單一個比整行還寬的拉丁字：逐字元切開（以 code point 為單位，不切斷 surrogate pair）
-    while ([...line.trimEnd()].length > 1 && measure(line.trimEnd()) > maxWidth) {
-      const chars = [...line.trimEnd()];
+    while (Array.from(line.trimEnd()).length > 1 && measure(line.trimEnd()) > maxWidth) {
+      const chars = Array.from(line.trimEnd());
       let cut = chars.length - 1;
       while (cut > 1 && measure(chars.slice(0, cut).join("")) > maxWidth) cut -= 1;
       lines.push(chars.slice(0, cut).join(""));
@@ -123,7 +123,7 @@ export function layoutTitle(
 }
 
 function fontFor(fontPx: number, style?: TitleStyle): string {
-  return `${style?.font_weight ?? 600} ${fontPx}px ${style ? TITLE_FONT_FAMILIES[style.font_family] : TITLE_FONT_STACK}`;
+  return `${String(style?.font_weight ?? 600)} ${String(fontPx)}px ${style ? TITLE_FONT_FAMILIES[style.font_family] : TITLE_FONT_STACK}`;
 }
 
 /** 在 canvas 上畫出標題；舊預設保留白字黑邊與左下字幕條，自訂樣式使用指定字色。 */
@@ -167,6 +167,6 @@ export async function renderTitlePng(title: TitleText, width: number, height: nu
   await document.fonts.ready.catch(() => undefined);
   drawTitle(context, layoutTitle(title, width, height, canvasMeasure(context)));
   return new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error(t("無法把文字圖層輸出成 PNG")))), "image/png");
+    canvas.toBlob((blob) => { if (blob) { resolve(blob); } else { reject(new Error(t("無法把文字圖層輸出成 PNG"))); } }, "image/png");
   });
 }

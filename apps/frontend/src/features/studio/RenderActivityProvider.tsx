@@ -31,5 +31,5 @@ export function RenderActivityProvider({ children }: { children: ReactNode }) {
     () => (run ? renderActivity(project, run, views, { remaining: clock.byRun.get(run.run_id) ?? null, estimating: clock.pending, now: clock.now }, lookup) : null),
     [project, run, views, clock, lookup],
   );
-  return <RenderActivityContext.Provider value={activity}>{children}</RenderActivityContext.Provider>;
+  return <RenderActivityContext value={activity}>{children}</RenderActivityContext>;
 }

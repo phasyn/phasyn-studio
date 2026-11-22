@@ -2,10 +2,11 @@
 // (Effect Controls keeps one for the stopwatch and shows a keyframe lane beside every row; the docks keep neither).
 // ClipPanel: what the animated rows, the lanes and the key strip of Effect Controls act on: the selected clip, the
 // playhead, the way to apply an edit, and the selected key.
-import { createContext, useContext } from "react";
+import { createContext, use } from "react";
 import type { TimelineClip } from "@/api/generated/contracts";
 import type { PlayheadStore } from "../../../hooks/playhead";
-import type { ClipEdits } from "./clipEdits";
+import type { FixedLengthTiming } from "../../timing";
+import type { ClipEdits, EditResult } from "./clipEdits";
 
 export interface RowLayout {
   /** Rows keep a slot for the stopwatch, so the labels of animated and fixed properties line up. */
@@ -31,6 +32,7 @@ export interface ClipPanel extends ClipEdits {
   seek: (frame: number) => void;
   /** Reports why something a button or a drag asked for was not done. */
   warn: (reason: string) => void;
+  fixedLengthTiming: (edit: FixedLengthTiming) => EditResult;
   selection: KeySelection | null;
   select: (selection: KeySelection | null) => void;
   /**
@@ -43,7 +45,7 @@ export interface ClipPanel extends ClipEdits {
 export const ClipPanelContext = createContext<ClipPanel | null>(null);
 
 export function useClipPanel(): ClipPanel {
-  const panel = useContext(ClipPanelContext);
+  const panel = use(ClipPanelContext);
   if (!panel) throw new Error("useClipPanel must be used inside Effect Controls");
   return panel;
 }

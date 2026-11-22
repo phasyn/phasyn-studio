@@ -1,0 +1,411 @@
+{
+  "label": "Wan2.2 表演影片驅動角色生成",
+  "kind": "wan.performance",
+  "inputs": [
+    {
+      "name": "character",
+      "type_id": "media.image.v1",
+      "required": true,
+      "transport": "file",
+      "description": "角色參考圖"
+    },
+    {
+      "name": "driving",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": "單人驅動表演影片"
+    },
+    {
+      "name": "prompt",
+      "type_id": "text.prompt.v1",
+      "required": false,
+      "transport": "inline",
+      "description": "選用的畫面描述"
+    },
+    {
+      "name": "prepared",
+      "type_id": "wan.animate-conditioning.v1",
+      "required": false,
+      "transport": "file",
+      "description": "同來源及配方的既有 Wan 表演條件"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "asset",
+      "type_id": "media.asset.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "完整且已探測的生成影片"
+    },
+    {
+      "name": "video_file",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": "成片檔案"
+    },
+    {
+      "name": "conditioning",
+      "type_id": "wan.animate-conditioning.v1",
+      "required": true,
+      "transport": "file",
+      "description": "可重用的參考圖、姿態與臉部影片條件索引"
+    }
+  ],
+  "parameters_schema": {
+    "type": "object",
+    "properties": {
+      "seed": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2147483647,
+        "default": 42
+      },
+      "steps": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "default": 20
+      },
+      "size": {
+        "type": "string",
+        "enum": [
+          "256*256",
+          "384*256",
+          "512*320",
+          "832*480",
+          "1280*720"
+        ],
+        "default": "1280*720",
+        "description": "Target area for native body pose and video synthesis. Preserves character aspect and aligns output dimensions to 16 pixels; facial crops remain 512 pixels."
+      },
+      "chunk_frames": {
+        "type": "integer",
+        "enum": [
+          5,
+          9,
+          13,
+          17,
+          21,
+          25,
+          29,
+          33,
+          37,
+          41,
+          45,
+          49,
+          53,
+          57,
+          61,
+          65,
+          69,
+          73,
+          77
+        ],
+        "default": 77,
+        "description": "Native frames per denoising window at 30 fps, with one overlap frame. Shorter windows reduce activation memory and change temporal context."
+      }
+    },
+    "additionalProperties": false
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "load": {
+        "type": "object",
+        "properties": {
+          "model_path": {
+            "type": "string",
+            "description": "Node 本機模型路徑（使用者提供，不由主控下載）"
+          },
+          "model_revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "device": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "cuda"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "maxLength": 16384,
+                "pattern": "^[^\\x00-\\x1f\\x7f]*$"
+              },
+              "resource_group": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id",
+              "resource_group"
+            ],
+            "additionalProperties": false
+          },
+          "precision": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          },
+          "offload": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          },
+          "part_overrides": {
+            "type": "array"
+          },
+          "provider_options": {
+            "type": "object",
+            "properties": {
+              "engine_path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "convert_model_dtype": {
+                "type": "boolean",
+                "default": false,
+                "description": "Apply the pinned native model's optional DiT parameter conversion to its configured dtype."
+              },
+              "max_duration_seconds": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 3600,
+                "default": 30,
+                "description": "Local allocation limit for one input clip, in seconds."
+              },
+              "dit_offload": {
+                "type": "string",
+                "enum": [
+                  "native",
+                  "cpu_blocks",
+                  "disk_blocks"
+                ],
+                "default": "native",
+                "description": "DiT load strategy. Stream one native transformer block from CPU memory or directly from the verified original checkpoint shards on disk."
+              }
+            },
+            "required": [
+              "engine_path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "device",
+          "model_path"
+        ],
+        "additionalProperties": false
+      },
+      "invoke": {
+        "type": "object",
+        "properties": {
+          "seed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647,
+            "default": 42
+          },
+          "steps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 20
+          },
+          "size": {
+            "type": "string",
+            "enum": [
+              "256*256",
+              "384*256",
+              "512*320",
+              "832*480",
+              "1280*720"
+            ],
+            "default": "1280*720",
+            "description": "Target area for native body pose and video synthesis. Preserves character aspect and aligns output dimensions to 16 pixels; facial crops remain 512 pixels."
+          },
+          "chunk_frames": {
+            "type": "integer",
+            "enum": [
+              5,
+              9,
+              13,
+              17,
+              21,
+              25,
+              29,
+              33,
+              37,
+              41,
+              45,
+              49,
+              53,
+              57,
+              61,
+              65,
+              69,
+              73,
+              77
+            ],
+            "default": 77,
+            "description": "Native frames per denoising window at 30 fps, with one overlap frame. Shorter windows reduce activation memory and change temporal context."
+          }
+        },
+        "additionalProperties": false
+      },
+      "recording": {
+        "type": "object"
+      }
+    },
+    "required": [
+      "load",
+      "invoke",
+      "recording"
+    ],
+    "additionalProperties": false
+  },
+  "default_settings": {
+    "load": {
+      "model_path": "/path/to/models/Wan2.2-Animate-14B",
+      "model_revision": "cb93a225fbaf1ca100f54e79da8f994995b689b3",
+      "device": {
+        "kind": "cuda",
+        "id": "GPU-REPLACE-0",
+        "resource_group": "gpu-0"
+      },
+      "provider_options": {
+        "engine_path": "/path/to/engines/Wan2.2-1ea34ff"
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "device_sample_hz": 2,
+      "publish_interval_ms": 1000,
+      "batch_max_events": 256,
+      "batch_max_bytes": 262144,
+      "queue_max_events": 8192,
+      "queue_max_bytes": 16777216,
+      "segment_bytes": 67108864,
+      "max_detail_bytes_per_recording": 2147483648,
+      "cuda_pending_event_pairs": 4096,
+      "trace_steps": [
+        0,
+        1
+      ],
+      "trace_parts": [],
+      "record_shapes": false,
+      "with_stack": false,
+      "capture_prompt": true,
+      "tensor_dump": false,
+      "capture_stderr": true,
+      "finite_scan": false,
+      "gpu_event_timing": true,
+      "log_level": "info",
+      "parts": [],
+      "steps": [],
+      "mode": "detailed"
+    }
+  },
+  "schema_version": "1.0",
+  "provider_id": "wan.performance",
+  "entry_point": "phasyn_wan_native.provider:PerformanceProvider",
+  "operations": [
+    "performance_to_video"
+  ],
+  "capability_version": "1.0.0",
+  "license": "Apache-2.0",
+  "models": [
+    {
+      "id": "Wan-AI/Wan2.2-Animate-14B",
+      "revision": "cb93a225fbaf1ca100f54e79da8f994995b689b3",
+      "license": "Apache-2.0",
+      "variants": [
+        "Animate-14B"
+      ],
+      "files": [
+        {
+          "path": "Wan2.1_VAE.pth",
+          "sha256": "acf6c5aa49ad281d4b561e10656e2397c446a8ba4b8d8f19d3dd125c2628bc6a",
+          "size_bytes": 507609928
+        },
+        {
+          "path": "diffusion_pytorch_model-00001-of-00004.safetensors",
+          "sha256": "575c2dba750c3b40240fb742a4224453aa97dfbd3c5f5a0086be431cdefdd69c",
+          "size_bytes": 9875257880
+        },
+        {
+          "path": "diffusion_pytorch_model-00002-of-00004.safetensors",
+          "sha256": "b90b820627d43eeeb1ae0489182f9a8c870374fd72cc99dccb9eddfc2ace8325",
+          "size_bytes": 9975378288
+        },
+        {
+          "path": "diffusion_pytorch_model-00003-of-00004.safetensors",
+          "sha256": "e2aa343b0ba04f563566e9959a439611a18189cd9accdc04d59681be9ce5be50",
+          "size_bytes": 9954400528
+        },
+        {
+          "path": "diffusion_pytorch_model-00004-of-00004.safetensors",
+          "sha256": "e5fea7f38aa4cb70ed59a9ecf406d0c05f3dfc85ee70bc83de35679c42642d1b",
+          "size_bytes": 4744748472
+        },
+        {
+          "path": "models_clip_open-clip-xlm-roberta-large-vit-huge-14.pth",
+          "sha256": "628c9998b613391f193eb67ff68da9667d75f492911e4eb3decf23460a158c38",
+          "size_bytes": 4772359047
+        },
+        {
+          "path": "models_t5_umt5-xxl-enc-bf16.pth",
+          "sha256": "7cace0da2b446bbbbc57d031ab6cf163a3d59b366da94e5afe36745b746fd81d",
+          "size_bytes": 11361920418
+        }
+      ],
+      "file_scope": "413 pinned files, including all runtime assets, are verified at load. The complete inventory is packaged alongside the provider."
+    }
+  ],
+  "resources": {
+    "devices": [
+      "cuda"
+    ],
+    "required_modules": [
+      "torch",
+      "torchvision",
+      "diffusers",
+      "transformers",
+      "flash_attn",
+      "decord",
+      "librosa",
+      "cv2",
+      "imageio",
+      "imageio_ffmpeg",
+      "sam2",
+      "onnxruntime",
+      "moviepy",
+      "loguru"
+    ],
+    "executables": [
+      "ffmpeg",
+      "ffprobe",
+      "bwrap"
+    ],
+    "vram_bytes": null,
+    "memory_basis": "No validated device threshold for these native 14B checkpoints."
+  },
+  "execution": {
+    "cache": "conditional",
+    "retry": "verify_stopped_first",
+    "cancellation": "cooperative",
+    "progress": [
+      "stage"
+    ],
+    "error_contract": "ComponentError",
+    "retry_condition": "Confirm the prior attempt stopped and inspect any published output before requesting another run."
+  }
+}

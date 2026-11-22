@@ -17,11 +17,11 @@ const SCRUB_FRAMES = 8;
 const CAPTURE_WIDTH = 256;
 
 function VideoThumb({ url }: { url: string }) {
-  const frame = useRef<HTMLSpanElement>(null);
+  const frameRef = useRef<HTMLSpanElement>(null);
   // Frames are captured only for thumbnails that have been on screen: a long grid does not decode every video at once
   const [seen, setSeen] = useState(() => typeof IntersectionObserver === "undefined");
   useEffect(() => {
-    const node = frame.current;
+    const node = frameRef.current;
     if (!node || typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver((entries) => {
       if (!entries.some((entry) => entry.isIntersecting)) return;
@@ -29,7 +29,7 @@ function VideoThumb({ url }: { url: string }) {
       observer.disconnect();
     });
     observer.observe(node);
-    return () => observer.disconnect();
+    return () => { observer.disconnect(); };
   }, []);
   const poster = useFilmstrip(seen ? url : null, 1, CAPTURE_WIDTH)[0];
   // The scrub frames are captured the first time the pointer comes over the thumbnail; null = it is elsewhere
@@ -43,9 +43,9 @@ function VideoThumb({ url }: { url: string }) {
   const scrubbed = step === null ? undefined : strip[step];
   const shown = scrubbed ?? poster;
   return (
-    <span ref={frame} className="absolute inset-0 grid place-items-center" onPointerMove={scrub} onPointerLeave={() => setStep(null)}>
-      {shown ? <img src={shown} alt="" draggable={false} className="size-full object-contain" /> : <Film className="size-5 text-fg-disabled" />}
-      {step !== null && scrubbed ? <span className="absolute bottom-0 left-0 h-0.5 bg-playhead" style={{ width: `${((step + 1) / SCRUB_FRAMES) * 100}%` }} /> : null}
+    <span ref={frameRef} className="absolute inset-0 grid place-items-center" onPointerMove={scrub} onPointerLeave={() => { setStep(null); }}>
+      {(shown != null && shown !== "") ? <img src={shown} alt="" draggable={false} className="size-full object-contain" /> : <Film className="size-5 text-fg-disabled" />}
+      {step !== null && (scrubbed != null && scrubbed !== "") ? <span className="absolute bottom-0 left-0 h-0.5 bg-playhead" style={{ width: `${String(((step + 1) / SCRUB_FRAMES) * 100)}%` }} /> : null}
     </span>
   );
 }
@@ -53,15 +53,15 @@ function VideoThumb({ url }: { url: string }) {
 function ImageThumb({ url }: { url: string }) {
   const [failed, setFailed] = useState(false);
   if (failed) return <ImageOff className="size-5 text-fg-disabled" />;
-  return <img src={url} alt="" loading="lazy" decoding="async" draggable={false} onError={() => setFailed(true)} className="size-full object-contain" />;
+  return <img src={url} alt="" loading="lazy" decoding="async" draggable={false} onError={() => { setFailed(true); }} className="size-full object-contain" />;
 }
 
 export function MediaThumb({ item, className }: { item: MediaItem; className?: string }) {
   const file = item.source.file;
   const url = file ? mediaUrl(file.node_id, file.file_id) : null;
   return (
-    <span aria-hidden className={cn("relative grid aspect-video w-full place-items-center overflow-hidden rounded-md bg-stage", !url && HATCH, className)}>
-      {!url ? (
+    <span aria-hidden className={cn("relative grid aspect-video w-full place-items-center overflow-hidden rounded-md bg-stage", !(url != null && url !== "") && HATCH, className)}>
+      {!(url != null && url !== "") ? (
         <span className="grid justify-items-center gap-1 text-fg-tertiary">
           <Clapperboard className="size-5" />
           <span className="text-[11px] leading-none">{t("尚未渲染")}</span>

@@ -137,3 +137,31 @@ pnpm install --frozen-lockfile && pnpm build
 ```
 
 Then restart the services.
+
+## 8. Optional components
+
+Each optional component adds one tool to the Studio. Install only the ones you want:
+
+1. Create its own environment from the lock in its runtime folder, from the repository root. A folder with a
+   `uv.lock` is one command, for example `uv sync --project deploy/runtimes/speech --frozen --python 3.12`. A folder
+   with `requirements*.lock` files adds those hash-pinned packages (`uv pip install --require-hashes -r …`) on top of
+   a new copy of the base environment its `base.sha256` names (when the folder has one); then install the component package from
+   `runtimes/<name>/` into the same environment. Restoration and frame interpolation already run in the video
+   environment; never install the others into it.
+2. Add the folder's `runtime.example.json` to the Node's `runtimes` (adjust the Python path) and restart the Node.
+3. Download the weights from the model page (or with **Model Weights…** on the Components page), then add the
+   component from `examples/components/` and the matching pipeline from `examples/pipelines/`.
+
+| Component | What it adds | Runs on | Runtime folder | Model |
+|---|---|---|---|---|
+| Wan VACE | retake part of a shot, fill a gap, extend a shot, generate from a pose/depth/edge guide | NVIDIA GPU (the publisher states 8.19 GB VRAM for the related 1.3B text-to-video model) | `deploy/runtimes/wan-edit-x86_64` | [Wan2.1-VACE-1.3B](https://huggingface.co/Wan-AI/Wan2.1-VACE-1.3B-diffusers) |
+| Wan speech and performance | a character speaking a recorded line; a character copying a performance clip | large-memory NVIDIA GPU (the publisher states at least 80 GB VRAM for single-GPU speech-to-video with offloading) | `deploy/runtimes/wan-native` | [Wan2.2-S2V-14B](https://huggingface.co/Wan-AI/Wan2.2-S2V-14B), [Wan2.2-Animate-14B](https://huggingface.co/Wan-AI/Wan2.2-Animate-14B) |
+| Object masks | click a person or object and get a mask for every frame | NVIDIA GPU | `deploy/runtimes/segmentation` | [SAM 2.1 hiera-tiny](https://huggingface.co/facebook/sam2.1-hiera-tiny) |
+| Dubbing | speak a line with a built-in voice | CPU or NVIDIA GPU | `deploy/runtimes/speech` | [Qwen3-TTS CustomVoice](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice) |
+| Transcription | turn the dialogue of a clip into captions | CPU or NVIDIA GPU | `deploy/runtimes/transcription` | [faster-whisper-small](https://huggingface.co/Systran/faster-whisper-small) |
+| Pose, depth and performance controls | skeleton, depth and person masks from a clip; move a portrait or a character image | CPU | `deploy/runtimes/performance-cpu` | MediaPipe [pose](https://huggingface.co/litert-community/MediaPipe-PoseLandmarker-Full) and [face](https://huggingface.co/litert-community/MediaPipe-FaceLandmarker) landmarkers, [MiDaS v2.1](https://github.com/isl-org/MiDaS) |
+| Restoration and frame interpolation | restore blurry or noisy takes; smoother motion | NVIDIA GPU | `deploy/runtimes/x86_64` (already installed for video) | [SeedVR2-3B](https://huggingface.co/ByteDance-Seed/SeedVR2-3B), [Practical-RIFE 4.26](https://github.com/hzwer/Practical-RIFE) |
+| Art exchange | hand a frame to Krita or Blender and bring the painted revision back | CPU | `deploy/runtimes/art-exchange` | none; the Krita add-on is in `plugins/krita/` |
+
+The licences of these models are listed in [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md); the weights are not
+included in this repository.

@@ -54,7 +54,7 @@ export function RecordingInspector({
           description={
             notFound ? (
               <p>
-                <T source={"<0>{recordingId}</0> 不在主控的紀錄索引中。已從主控刪除的紀錄可在中欄「從 Node 補抓」補回。"} values={{ recordingId }} slots={[<code className="machine break-all" />]} />
+                <T source={"<0>{recordingId}</0> 不在主控的紀錄索引中。已從主控刪除的紀錄可在中欄「從 Node 補抓」補回。"} values={{ recordingId }} slots={[<code key="slot-0" className="machine break-all" />]} />
               </p>
             ) : (
               <p>{t("錯誤與「重新讀取」在中欄；讀到資料後這裡會顯示事實、ID 與匯出。")}</p>
@@ -76,7 +76,7 @@ export function RecordingInspector({
     <div className="flex min-h-0 min-w-0 flex-1 flex-col animate-rise-in">
       <EntityHeader
         icon={kind.icon}
-        art={kind.art}
+        {...(kind.art === undefined ? {} : { art: kind.art })}
         tone={kind.tone}
         title={<span className="machine">{context.component_id || t("（未知元件）")}</span>}
         status={<RecordingStateChip state={summary.state} />}
@@ -165,7 +165,7 @@ export function RecordingInspector({
               <IdText value={context.recording_id} length={13} />
             </PropertyRow>
             <PropertyRow label={<KeyLabel>run_id</KeyLabel>}>
-              {context.run_id ? (
+              {(context.run_id != null && context.run_id !== "") ? (
                 <span className="inline-flex items-center gap-1">
                   <Link to={runPath(context.run_id)} className="machine">
                     {context.run_id.slice(0, 8)}…
@@ -176,7 +176,7 @@ export function RecordingInspector({
                 <span className="text-fg-tertiary">{t("無（手動啟停或不屬於 run）")}</span>
               )}
             </PropertyRow>
-            <PropertyRow label={<KeyLabel>call_id</KeyLabel>}>{context.call_id ? <IdText value={context.call_id} /> : <span className="text-fg-tertiary">{t("無")}</span>}</PropertyRow>
+            <PropertyRow label={<KeyLabel>call_id</KeyLabel>}>{(context.call_id != null && context.call_id !== "") ? <IdText value={context.call_id} /> : <span className="text-fg-tertiary">{t("無")}</span>}</PropertyRow>
             <PropertyRow label={<KeyLabel>process_instance_id</KeyLabel>}>
               <IdText value={context.process_instance_id} />
             </PropertyRow>

@@ -19,7 +19,7 @@ export function usePopover(): PopoverState {
   const close = useCallback(
     (restoreFocus: boolean) => {
       setOpen(false);
-      if (restoreFocus && anchor?.isConnected) anchor.focus({ preventScroll: true });
+      if (restoreFocus && (anchor?.isConnected === true)) anchor.focus({ preventScroll: true });
     },
     [anchor],
   );

@@ -49,7 +49,7 @@ export function ShotList() {
   const baseId = useId();
   const menuId = useId();
   const hintId = useId();
-  const unplacedLabel = useId();
+  const unplacedLabelId = useId();
   const listRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const placedRef = useRef<HTMLDivElement>(null);
@@ -66,7 +66,7 @@ export function ShotList() {
   // What the last 換參考檔案 changed (with 復原); a new one replaces it. Its id is the session it was applied in (one
   // 套用 per opening), so a new notice never takes over one that is still fading out
   const [replaced, setReplaced] = useState<AppliedReplace | null>(null);
-  const dismissReplaced = useCallback(() => setReplaced(null), []);
+  const dismissReplaced = useCallback(() => { setReplaced(null); }, []);
   const [dragging, setDragging] = useState<string | null>(null);
   const [dropAt, setDropAt] = useState<{ shotId: string; after: boolean } | null>(null);
 
@@ -101,7 +101,7 @@ export function ShotList() {
     else if (box.bottom > view.bottom) scroller.scrollTop += box.bottom - view.bottom;
   }, [focus]);
 
-  const focusList = () => requestAnimationFrame(() => listRef.current?.focus({ preventScroll: true }));
+  const focusList = () => { requestAnimationFrame(() => listRef.current?.focus({ preventScroll: true })); };
   const rowElement = (shotId: string) => listRef.current?.querySelector<HTMLElement>(`[data-shot-option="${CSS.escape(shotId)}"]`) ?? null;
   const showMenu = (shotId: string, anchor: MenuAnchor) => {
     apply(focusShot(selection, shotId));
@@ -220,31 +220,31 @@ export function ShotList() {
       reports={reports}
       activity={rendering.get(shot.shot_id)}
       menuOpen={openMenu?.shotId === shot.shot_id}
-      dropEdge={dragging && dragging !== shot.shot_id && dropAt?.shotId === shot.shot_id ? (dropAt.after ? "after" : "before") : null}
+      dropEdge={(dragging != null && dragging !== "") && dragging !== shot.shot_id && dropAt?.shotId === shot.shot_id ? (dropAt.after ? "after" : "before") : null}
       onPointer={onPointer}
       onMenu={showMenu}
-      onCloseMenu={() => setMenu(null)}
+      onCloseMenu={() => { setMenu(null); }}
       onToggleTimeline={(shotId, on) => void actions.setInTimeline(shotId, on)}
       onDragShot={(shotId) => {
         setDragging(shotId);
-        if (!shotId) setDropAt(null);
+        if (!(shotId != null && shotId !== "")) setDropAt(null);
       }}
-      onDragOverShot={(shotId, after) => setDropAt((current) => (current?.shotId === shotId && current.after === after ? current : { shotId, after }))}
+      onDragOverShot={(shotId, after) => { setDropAt((current) => (current?.shotId === shotId && current.after === after ? current : { shotId, after })); }}
       onDropShot={(targetId, after) => {
         const moving = dragging;
         setDropAt(null);
         setDragging(null);
-        if (moving) actions.moveTo(moving, targetId, after ? "after" : "before");
+        if (moving != null && moving !== "") actions.moveTo(moving, targetId, after ? "after" : "before");
       }}
     />
   );
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      <BatchToolbar scope={scope} renderable={renderable} blocked={blocked} positions={positions} onShowBlocked={(shotId) => apply(focusShot(selection, shotId), { open: true })} />
+      <BatchToolbar scope={scope} renderable={renderable} blocked={blocked} positions={positions} onShowBlocked={(shotId) => { apply(focusShot(selection, shotId), { open: true }); }} />
       <AnimatePresence initial={false}>
         {selected ? (
-          <SelectionBar key="selection" shots={selected} onRenderVariants={renderVariants} onReplaceReferences={replaceReferences} onDuplicate={duplicateSelected} onDelete={requestDelete} onClear={() => apply(keepCurrent(selection))} />
+          <SelectionBar key="selection" shots={selected} onRenderVariants={renderVariants} onReplaceReferences={replaceReferences} onDuplicate={duplicateSelected} onDelete={requestDelete} onClear={() => { apply(keepCurrent(selection)); }} />
         ) : null}
       </AnimatePresence>
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto py-1 [scrollbar-gutter:stable]">
@@ -273,8 +273,8 @@ export function ShotList() {
               {placed.map((shot, index) => row(shot, index, index))}
             </div>
             {unplaced.length > 0 ? (
-              <div role="group" aria-labelledby={unplacedLabel} className="grid">
-                <div id={unplacedLabel} aria-hidden className="mt-1 flex items-center gap-2 px-3 pt-2 pb-1 text-caption text-fg-tertiary">
+              <div role="group" aria-labelledby={unplacedLabelId} className="grid">
+                <div id={unplacedLabelId} aria-hidden className="mt-1 flex items-center gap-2 px-3 pt-2 pb-1 text-caption text-fg-tertiary">
                   <span className="shrink-0">{t("未上時間軸")}</span>
                   <span className="h-px flex-1 bg-line-subtle" />
                 </div>
@@ -289,16 +289,16 @@ export function ShotList() {
       <span id={hintId} className="sr-only">
         {[t("↑↓ 移動、Shift 延伸、空白鍵加選或取消、Ctrl／⌘＋A 全選、Esc 只留目前的鏡頭"), t("Alt+↑／↓ 調整順序、Delete 刪除、右鍵或 Shift+F10 開啟動作選單")].join(t("；"))}
       </span>
-      <ShotActionMenu menuId={menuId} menu={openMenu} onClose={() => setMenu(null)} onRequestDelete={setPendingDelete} />
-      <DeleteShotDialog shotId={pendingDelete} onClose={() => setPendingDelete(null)} onFocusList={focusList} />
-      <BatchDeleteDialog shotIds={batchDelete} onClose={() => setBatchDelete(null)} onRemoved={removed} onFocusList={focusList} />
+      <ShotActionMenu menuId={menuId} menu={openMenu} onClose={() => { setMenu(null); }} onRequestDelete={setPendingDelete} />
+      <DeleteShotDialog shotId={pendingDelete} onClose={() => { setPendingDelete(null); }} onFocusList={focusList} />
+      <BatchDeleteDialog shotIds={batchDelete} onClose={() => { setBatchDelete(null); }} onRemoved={removed} onFocusList={focusList} />
       {batchReplace ? (
         <BatchReplaceDialog
           key={batchReplace.session}
           shotIds={batchReplace.shotIds}
           open={batchReplace.open}
-          onClose={() => setBatchReplace((current) => (current ? { ...current, open: false } : current))}
-          onApplied={(applied) => setReplaced({ ...applied, id: batchReplace.session })}
+          onClose={() => { setBatchReplace((current) => (current ? { ...current, open: false } : current)); }}
+          onApplied={(applied) => { setReplaced({ ...applied, id: batchReplace.session }); }}
         />
       ) : null}
       {batchVariants ? (
@@ -307,7 +307,7 @@ export function ShotList() {
           shotIds={batchVariants.shotIds}
           open={batchVariants.open}
           positions={positions}
-          onClose={() => setBatchVariants((current) => (current ? { ...current, open: false } : current))}
+          onClose={() => { setBatchVariants((current) => (current ? { ...current, open: false } : current)); }}
         />
       ) : null}
       <AnimatePresence>{replaced ? <ReplaceNotice key={replaced.id} notice={replaced} onDismiss={dismissReplaced} returnFocus={focusList} /> : null}</AnimatePresence>

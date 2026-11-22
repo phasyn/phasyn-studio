@@ -8,6 +8,7 @@ from phasyn_components.errors import Cancelled, ComponentError
 
 from ..errors import MediaError
 
+
 if TYPE_CHECKING:
     from phasyn_components.provider import RunContext
 
@@ -31,7 +32,11 @@ def media_failure(ctx: RunContext, exc: MediaError, *, what: str) -> ComponentEr
         ctx.check_cancelled()
         raise Cancelled(exc.message)
     details = {"field_paths": list(exc.field_paths)} if exc.field_paths else None
-    return ComponentError(_CODES.get(exc.code, "MEDIA_TOOL_FAILED"), f"{what}：{exc.message}", details=details)
+    return ComponentError(
+        _CODES.get(exc.code, "MEDIA_TOOL_FAILED"),
+        f"{what}：{exc.message}",
+        details=details,
+    )
 
 
 __all__ = ["media_failure"]

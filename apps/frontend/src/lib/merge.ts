@@ -3,6 +3,8 @@
 import { cloneJson, isRecord, joinPath, valuesEqual, type JsonObject } from "./json";
 
 /** 套用 patch，回傳新物件；原值不被修改。 */
+export function applyMergePatch(target: JsonObject, patch: JsonObject): JsonObject;
+export function applyMergePatch(target: unknown, patch: unknown): unknown;
 export function applyMergePatch(target: unknown, patch: unknown): unknown {
   if (!isRecord(patch) || !isRecord(target)) return cloneJson(patch);
   const out: JsonObject = { ...target };

@@ -111,11 +111,11 @@ export function tickStep(spanMs: number, maxTicks = 8): number {
 /** 刻度文字：「0 s」「1.5 s」「30 s」「1 min」「1 min 30 s」。 */
 export function formatTick(ms: number, stepMs: number): string {
   if (ms === 0) return "0 s";
-  if (ms < 60_000) return stepMs < 1_000 ? `${(ms / 1000).toFixed(1)} s` : `${Math.round(ms / 1000)} s`;
+  if (ms < 60_000) return stepMs < 1_000 ? `${(ms / 1000).toFixed(1)} s` : `${String(Math.round(ms / 1000))} s`;
   const total = Math.round(ms / 1000);
   const minutes = Math.floor(total / 60);
   const seconds = total % 60;
-  return seconds === 0 ? `${minutes} min` : `${minutes} min ${seconds} s`;
+  return seconds === 0 ? `${String(minutes)} min` : `${String(minutes)} min ${String(seconds)} s`;
 }
 
 /** 相對 0 點的位移文字（aria／提示用）：「+14.5 s」「+1 min 05.2 s」。 */
@@ -126,14 +126,14 @@ export function formatOffset(ms: number): string {
   const tenths = Math.round(abs / 100);
   const minutes = Math.floor(tenths / 600);
   const seconds = ((tenths % 600) / 10).toFixed(1).padStart(4, "0");
-  return `${sign}${minutes} min ${seconds} s`;
+  return `${sign}${String(minutes)} min ${seconds} s`;
 }
 
 /** 步驟當時實際的 resource_group：settings.effective.load.device.resource_group。 */
 function effectiveGroup(view: RunStepView): string | null {
-  const load = view.settings && isRecord(view.settings.effective) ? view.settings.effective.load : null;
-  const device = isRecord(load) ? load.device : null;
-  const group = isRecord(device) ? device.resource_group : null;
+  const load = view.settings && isRecord(view.settings.effective) ? view.settings.effective["load"] : null;
+  const device = isRecord(load) ? load["device"] : null;
+  const group = isRecord(device) ? device["resource_group"] : null;
   return typeof group === "string" && group.length > 0 ? group : null;
 }
 
@@ -170,16 +170,16 @@ export function buildGanttModel(run: WireRun, lookup: DescriptorLookup, now: num
   const bars: GanttBar[] = [];
   for (const view of views) {
     const definition = definitions.get(view.step_id);
-    const nodeId = view.node_id ?? (definition?.node_id || null);
-    const componentId = view.component_id ?? (definition?.component_id || null);
-    const descriptor = nodeId && componentId ? lookup(nodeId, componentId) : null;
+    const nodeId = view.node_id ?? ((definition?.node_id ?? "") || null);
+    const componentId = view.component_id ?? ((definition?.component_id ?? "") || null);
+    const descriptor = (nodeId != null && nodeId !== "") && (componentId != null && componentId !== "") ? lookup(nodeId, componentId) : null;
     const state: GanttStepState = Object.hasOwn(run.steps, view.step_id) ? view.state : "unknown";
     const start = isoToMs(view.started_at);
     const end = isoToMs(view.finished_at);
     const skip = (reason: string) => unmeasured.push({ stepId: view.step_id, state, reason, componentId, nodeId });
 
     if (origin === null || start === null) {
-      skip(view.started_at ? t("開始時間無法解析") : (NOT_STARTED_REASON[state] ?? t("沒有 started_at（未量測）")));
+      skip((view.started_at != null && view.started_at !== "") ? t("開始時間無法解析") : (NOT_STARTED_REASON[state] ?? t("沒有 started_at（未量測）")));
       continue;
     }
     let endMs: number;
@@ -194,23 +194,23 @@ export function buildGanttModel(run: WireRun, lookup: DescriptorLookup, now: num
       running = true;
       endMs = (nowKnown ? Math.max(start, now) : start) - origin;
     } else {
-      skip(view.finished_at ? t("結束時間無法解析") : t("{state}：有開始時間但沒有結束時間", { state: stateText(state) }));
+      skip((view.finished_at != null && view.finished_at !== "") ? t("結束時間無法解析") : t("{state}：有開始時間但沒有結束時間", { state: stateText(state) }));
       continue;
     }
 
     const runGroup = effectiveGroup(view);
-    const catalogGroup = descriptor?.device.resource_group || null;
+    const catalogGroup = (descriptor?.device.resource_group ?? "") || null;
     const resourceGroup = runGroup ?? catalogGroup;
-    const nodeLabel = nodeId ? (options.nodeLabel?.(nodeId) ?? shortId(nodeId)) : t("Node 未知");
+    const nodeLabel = (nodeId != null && nodeId !== "") ? (options.nodeLabel?.(nodeId) ?? shortId(nodeId)) : t("Node 未知");
     const laneKey = `${nodeId ?? ""}␟${resourceGroup ?? ""}`;
     let lane = lanes.get(laneKey);
     if (!lane) {
       lane = {
         key: laneKey,
-        label: resourceGroup ? `[${groupTag(resourceGroup) ?? resourceGroup}] ${nodeLabel}` : t("{nodeLabel} · 資源群組未知", { nodeLabel }),
+        label: (resourceGroup != null && resourceGroup !== "") ? `[${groupTag(resourceGroup) ?? resourceGroup}] ${nodeLabel}` : t("{nodeLabel} · 資源群組未知", { nodeLabel }),
         nodeLabel,
         resourceGroup,
-        groupSource: runGroup ? "run" : catalogGroup ? "catalog" : null,
+        groupSource: (runGroup != null && runGroup !== "") ? "run" : (catalogGroup != null && catalogGroup !== "") ? "catalog" : null,
         rows: 1,
         bars: [],
       };
@@ -236,7 +236,7 @@ export function buildGanttModel(run: WireRun, lookup: DescriptorLookup, now: num
       startedAt: view.started_at ?? "",
       finishedAt: view.finished_at,
       errorCode: view.error?.code ?? null,
-      errorMessage: view.error?.message || null,
+      errorMessage: (view.error?.message ?? "") || null,
       remoteOutcomeUnknown: view.remote_outcome_unknown || view.error?.remote_outcome_unknown === true,
     };
     lane.bars.push(bar);
@@ -262,7 +262,7 @@ export function buildGanttModel(run: WireRun, lookup: DescriptorLookup, now: num
 
   const finished = isoToMs(run.finished_at);
   const runEndMs = origin !== null && finished !== null && !runRunning ? finished - origin : null;
-  const nowMs = nowKnown && origin !== null ? now - origin : null;
+  const nowMs = nowKnown ? now - origin : null;
   const spanMs = Math.max(0, ...bars.map((bar) => bar.endMs), runEndMs ?? 0, nowMs ?? 0);
   const step = tickStep(spanMs, options.maxTicks);
   const axisEndMs = Math.max(step, Math.ceil(spanMs / step) * step);
@@ -293,15 +293,15 @@ export function describeBar(bar: GanttBar, lane: GanttLane | undefined, options:
   parts.push(t("開始 {startMs}", { startMs: formatOffset(bar.startMs) }));
   if (bar.elapsedUnknown) parts.push(t("進行中（目前時間未知）"));
   else parts.push(bar.running ? t("進行中，至今 {durationMs}（依瀏覽器時間）", { durationMs: formatDurationShort(bar.durationMs) }) : t("耗時 {durationMs}", { durationMs: formatDurationShort(bar.durationMs) }));
-  if (bar.errorCode) parts.push(t("錯誤 {errorCode}", { errorCode: bar.errorCode }));
+  if (bar.errorCode != null && bar.errorCode !== "") parts.push(t("錯誤 {errorCode}", { errorCode: bar.errorCode }));
   if (bar.remoteOutcomeUnknown) parts.push(t("遠端結果未知"));
   return formatList(parts, { separator: "，" });
 }
 
 /** 條上的時間文字（比 formatMs 精簡，放得進條內）。 */
 export function formatDurationShort(ms: number): string {
-  if (ms < 999.5) return `${Math.round(ms)} ms`;
+  if (ms < 999.5) return `${String(Math.round(ms))} ms`;
   if (ms < 59_950) return `${(ms / 1000).toFixed(ms < 9_995 ? 2 : 1)} s`;
   const total = Math.round(ms / 1000);
-  return `${Math.floor(total / 60)} min ${total % 60} s`;
+  return `${String(Math.floor(total / 60))} min ${String(total % 60)} s`;
 }

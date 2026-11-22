@@ -1,3 +1,4 @@
+import { isNonzeroNumber } from "@/lib/json";
 // 狀態回饋：錯誤（文字＋圖示＋代碼）、過時、載入中、合成示例、載入更多、複製。
 import { ArrowDownToLine, Check, ChevronDown, Copy, FlaskConical, LoaderCircle, RotateCcw, Unplug } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
@@ -27,11 +28,11 @@ export function QueryErrorCallout({
   const info = describeError(error);
   return (
     <Callout tone="danger" title={title ?? info.headline} className={className} role="alert">
-      {title ? <p>{info.headline}</p> : null}
-      {info.serverMessage ? <p className="text-fg-secondary">{info.serverMessage}</p> : null}
+      {(title != null && title !== "") ? <p>{info.headline}</p> : null}
+      {(info.serverMessage != null && info.serverMessage !== "") ? <p className="text-fg-secondary">{info.serverMessage}</p> : null}
       <p className="machine text-caption text-fg-tertiary">
         {info.code}
-        {info.status ? ` · HTTP ${info.status}` : ""}
+        {isNonzeroNumber(info.status) ? ` · HTTP ${String(info.status)}` : ""}
       </p>
       {info.remoteUnknown ? <p className="text-warning">{t("遠端結果未知：請重新讀取狀態後再決定是否重試，不會自動重送。")}</p> : null}
       {onRetry ? (
@@ -51,7 +52,7 @@ export function StaleNotice({ error, onRetry, retrying = false }: { error: unkno
   return (
     <Callout tone="warning" title={t("顯示的是先前讀取的資料，可能已過時")} role="status">
       <p>
-        <T source={"最近一次重新讀取失敗：{headline}<0>（{code}）</0>"} values={{ headline: info.headline, code: info.code }} slots={[<span className="machine ml-1 text-caption text-fg-tertiary" />]} />
+        <T source={"最近一次重新讀取失敗：{headline}<0>（{code}）</0>"} values={{ headline: info.headline, code: info.code }} slots={[<span key="slot-0" className="machine ml-1 text-caption text-fg-tertiary" />]} />
       </p>
       <div className="pt-1">
         <Button size="sm" icon={<RotateCcw aria-hidden />} onClick={onRetry} pending={retrying}>
@@ -83,7 +84,7 @@ export function QueryErrorState({
   if (info.code !== "NETWORK_ERROR") {
     return (
       <div className={cn("p-4", className)}>
-        <QueryErrorCallout error={error} title={title} onRetry={onRetry} retrying={retrying} />
+        <QueryErrorCallout error={error} title={title} {...(onRetry === undefined ? {} : { onRetry })} retrying={retrying} />
       </div>
     );
   }
@@ -150,8 +151,8 @@ export function LoadMoreButton({
   onLoad,
   pending,
   hasMore,
-  label = t("載入更多"),
-  doneLabel = t("已無更多"),
+  label: labelProp,
+  doneLabel: doneLabelProp,
   className,
   describedBy,
 }: {
@@ -163,6 +164,8 @@ export function LoadMoreButton({
   className?: string;
   describedBy?: string;
 }) {
+  const label = labelProp ?? t("載入更多");
+  const doneLabel = doneLabelProp ?? t("已無更多");
   const inactive = pending || !hasMore;
   return (
     <button
@@ -186,18 +189,19 @@ export function LoadMoreButton({
 }
 
 /** 複製完整值；結果以 aria-live 告知，不搶焦點。 */
-export function CopyButton({ text, label = t("複製"), className }: { text: string; label?: string; className?: string }) {
+export function CopyButton({ text, label: labelProp, className }: { text: string; label?: string; className?: string }) {
+  const label = labelProp ?? t("複製");
   const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
   useEffect(() => {
     if (state === "idle") return;
-    const timer = window.setTimeout(() => setState("idle"), 2000);
-    return () => window.clearTimeout(timer);
+    const timer = window.setTimeout(() => { setState("idle"); }, 2000);
+    return () => { window.clearTimeout(timer); };
   }, [state]);
   return (
     <button
       type="button"
       onClick={() => {
-        void writeClipboard(text).then((ok) => setState(ok ? "copied" : "failed"));
+        void writeClipboard(text).then((ok) => { setState(ok ? "copied" : "failed"); });
       }}
       className={cn(
         "pressable inline-flex size-8 shrink-0 items-center justify-center rounded-md text-fg-tertiary hover:bg-raised hover:text-fg active:bg-sunken pointer-coarse:size-11",
@@ -216,7 +220,7 @@ export function CopyButton({ text, label = t("複製"), className }: { text: str
 
 /** 長 ID：縮寫顯示，完整值保留在 title 與複製按鈕。 */
 export function IdText({ value, length = 8, className }: { value: string | null | undefined; length?: number; className?: string }) {
-  if (!value) return <span className="text-fg-tertiary">—</span>;
+  if (!(value != null && value !== "")) return <span className="text-fg-tertiary">—</span>;
   return (
     <span className={cn("inline-flex max-w-full min-w-0 items-center align-middle", className)}>
       <code className="machine truncate text-fg-secondary" title={value}>

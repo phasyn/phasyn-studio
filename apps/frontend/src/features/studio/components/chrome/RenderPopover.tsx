@@ -1,7 +1,7 @@
 // The running render's popover under the toolbar capsule (420 px): what the run produces, what it does now, its time
 // left and completion (estimated from the cost profiles, or why there is none), one row per item (its stage, a thin bar
 // of its pipeline steps and its own time), the switch of the sound that tells when it ends (with a preview), and the two
-// ways on: 在渲染頁查看 and 取消… (the confirmed cancellation, which the capsule opens). A non-modal dialog kept in the React tree with position: fixed under its capsule, like the action
+// ways on: 在工作清單查看 (the Render workspace's 工作 list with this run selected) and 取消… (the confirmed cancellation, which the capsule opens). A non-modal dialog kept in the React tree with position: fixed under its capsule, like the action
 // menus: focus moves into it when it opens, Escape closes it and gives focus back to the capsule, a click elsewhere or
 // focus leaving it closes it. Motion: it springs in from the capsule (snappy) and fades out (Motion presence, inert
 // while it leaves); rows rise in one after another and a row's new stage fades in.
@@ -51,7 +51,7 @@ const SEGMENT: Record<RunStepView["state"], string> = {
 /** The part of one continuous gradient a segment shows, so the finished segments read as one bar. */
 function gradientSlice(index: number, count: number) {
   if (count < 2) return undefined;
-  return { backgroundSize: `${count * 100}% 100%`, backgroundPosition: `${(index / (count - 1)) * 100}% 0` };
+  return { backgroundSize: `${String(count * 100)}% 100%`, backgroundPosition: `${String((index / (count - 1)) * 100)}% 0` };
 }
 
 /** The running step's fill: the measured share of a DiT with step evidence, otherwise only a sweep (in progress). */
@@ -72,7 +72,7 @@ function StepSegments({ steps, ditStepId, fraction }: { steps: readonly RunStepV
             {step.state === "running" ? (
               <span
                 className={cn(RUNNING_FILL, SHIMMER, measured === null && "opacity-45")}
-                style={{ ...slice, clipPath: measured === null ? undefined : `inset(0 ${(1 - measured) * 100}% 0 0)` }}
+                style={{ ...slice, clipPath: measured === null ? undefined : `inset(0 ${String((1 - measured) * 100)}% 0 0)` }}
               />
             ) : null}
           </span>
@@ -107,7 +107,7 @@ function ItemRow({ activity, item, index, completion, lookup }: ItemRowProps) {
       </span>
       <span
         className={cn("machine justify-self-end text-caption whitespace-nowrap", running ? "text-fg" : "text-fg-tertiary")}
-        title={time?.title || undefined}
+        title={(time?.title ?? "") || undefined}
       >
         {time?.text ?? ""}
       </span>
@@ -144,8 +144,8 @@ export function RenderPopover({ id, activity, anchor, href, onClose, onCancel }:
     const box = anchor.getBoundingClientRect();
     const size = { width: panel.offsetWidth, height: panel.offsetHeight };
     const position = placeMenu(box, size, { width: window.innerWidth, height: window.innerHeight }, 6);
-    panel.style.left = `${position.left}px`;
-    panel.style.top = `${position.top}px`;
+    panel.style.left = `${String(position.left)}px`;
+    panel.style.top = `${String(position.top)}px`;
     panel.style.transformOrigin = position.left === box.left ? "top left" : "top right";
   });
 
@@ -155,13 +155,13 @@ export function RenderPopover({ id, activity, anchor, href, onClose, onCancel }:
 
   const onOutsidePointer = useEffectEvent((event: PointerEvent) => {
     const target = event.target;
-    if (!(target instanceof Node) || panelRef.current?.contains(target) || anchor.contains(target)) return;
+    if (!(target instanceof Node) || Boolean(panelRef.current?.contains(target)) || anchor.contains(target)) return;
     onClose(false);
   });
-  const onResize = useEffectEvent(() => onClose(false));
+  const onResize = useEffectEvent(() => { onClose(false); });
   useEffect(() => {
-    const pointer = (event: PointerEvent) => onOutsidePointer(event);
-    const resize = () => onResize();
+    const pointer = (event: PointerEvent) => { onOutsidePointer(event); };
+    const resize = () => { onResize(); };
     document.addEventListener("pointerdown", pointer, true);
     window.addEventListener("resize", resize);
     return () => {
@@ -237,9 +237,9 @@ export function RenderPopover({ id, activity, anchor, href, onClose, onCancel }:
       </ol>
       <RenderSoundToggle />
       <div className="flex shrink-0 items-center gap-2 border-t border-white/8 px-3 py-2.5">
-        <Link to={href} onClick={() => onClose(true)} className={cn(buttonVariants({ variant: "secondary", size: "sm" }), "no-underline")}>
+        <Link to={href} onClick={() => { onClose(true); }} className={cn(buttonVariants({ variant: "secondary", size: "sm" }), "no-underline")}>
           <Clapperboard aria-hidden />
-          {t("在渲染頁查看")}
+          {t("在工作清單查看")}
         </Link>
         <Button size="sm" variant="danger" icon={<Ban aria-hidden />} title={t("取消這個 run（會先確認）")} onClick={onCancel} className="ml-auto">
           {t("取消…")}

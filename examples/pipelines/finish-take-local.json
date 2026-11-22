@@ -1,0 +1,120 @@
+{
+  "pipeline_id": "finish-take-local",
+  "label": "影片修復（來源短邊；未知時 736 像素）、補幀與首尾影格檢查",
+  "inputs": [
+    {
+      "name": "video",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": "要修復的來源影片，例如一個 take 的 MP4。"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "restore",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "restore-seedvr2-gpu0",
+      "inputs": {
+        "video_file": {
+          "from_input": "video"
+        }
+      },
+      "parameters": {
+        "short_side": 736,
+        "seed": 42,
+        "strength": 1
+      },
+      "timeout_seconds": 14400
+    },
+    {
+      "step_id": "interpolate",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "interpolate-rife-gpu1",
+      "inputs": {
+        "video_file": {
+          "from_step": "restore",
+          "output": "video_file"
+        }
+      },
+      "parameters": {
+        "multiplier": 2,
+        "mode": "smooth",
+        "audio_policy": "preserve",
+        "ranges": [],
+        "holds": [],
+        "scene_threshold": 0.3,
+        "crf": 16
+      }
+    },
+    {
+      "step_id": "probe",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "probe",
+      "inputs": {
+        "media": {
+          "from_step": "interpolate",
+          "output": "video_file"
+        }
+      },
+      "parameters": {
+        "scenes": {
+          "threshold": 0.3,
+          "min_gap_seconds": 0.5
+        }
+      }
+    },
+    {
+      "step_id": "first",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "frame",
+      "inputs": {
+        "video_file": {
+          "from_step": "interpolate",
+          "output": "video_file"
+        }
+      },
+      "parameters": {
+        "position": "first",
+        "frame_index": null
+      }
+    },
+    {
+      "step_id": "last",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "frame",
+      "inputs": {
+        "video_file": {
+          "from_step": "interpolate",
+          "output": "video_file"
+        }
+      },
+      "parameters": {
+        "position": "last",
+        "frame_index": null
+      }
+    }
+  ],
+  "outputs": {
+    "restored": {
+      "from_step": "restore",
+      "output": "asset"
+    },
+    "final": {
+      "from_step": "interpolate",
+      "output": "asset"
+    },
+    "report": {
+      "from_step": "probe",
+      "output": "info"
+    },
+    "first_frame": {
+      "from_step": "first",
+      "output": "image"
+    },
+    "last_frame": {
+      "from_step": "last",
+      "output": "image"
+    }
+  }
+}

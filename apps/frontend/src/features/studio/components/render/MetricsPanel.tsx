@@ -28,7 +28,7 @@ const SETTLE_POLL_MS = 2000;
 
 /** The run has ended at most SETTLE_MS ago and some call of it has not fully reported. */
 function settling(run: WireRun | undefined, items: Parameters<typeof callRecordingsIncomplete>[1]): boolean {
-  if (!run || run.state === "running" || !run.finished_at) return false;
+  if (!run || run.state === "running" || !(run.finished_at != null && run.finished_at !== "")) return false;
   const since = Date.now() - Date.parse(run.finished_at);
   return Number.isFinite(since) && since < SETTLE_MS && callRecordingsIncomplete(run, items);
 }
@@ -48,7 +48,7 @@ function MetricLine({ metric, label, kind }: { metric: Metric | undefined; label
   const value = metric.value;
   const measured = typeof value === "number";
   const text = measured ? (kind === "ms" ? formatSpan(value) : formatBytes(value)) : t("未量測");
-  const why = tServer(metric.reason) ?? metric.method ?? null;
+  const why = tServer(metric.reason) ?? metric.method;
   const title = [measured && kind === "ms" ? formatSpanExact(value) : null, why].filter(Boolean).join("\n");
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 text-caption" title={title || undefined}>
@@ -61,7 +61,7 @@ function MetricLine({ metric, label, kind }: { metric: Metric | undefined; label
 /** The card's title: the step's name and, in a run with several branches, which one; null when the step is unknown. */
 function recordingTitle(recording: Recording, run: WireRun | undefined, item: QueueItem, lookup: ProviderLookup): { stage: string; branch: string | null } {
   const stepId = stepIdForRecording(run, recording.context);
-  if (run && stepId) {
+  if (run && (stepId != null && stepId !== "")) {
     const { suffix } = splitRunStepId(run, stepId);
     return { stage: stepLabel(run, stepId, lookup), branch: item.takes.length > 1 ? branchLabel(item, takeForSuffix(item, suffix), "") : null };
   }
@@ -80,10 +80,10 @@ export function RunMetrics({ item, run, lookup }: { item: QueueItem; run: WireRu
   });
   const { refetch } = recordings;
   // The run has just ended: read at once (the interval above then goes on while a call has not fully reported)
-  const wasRunning = useRef(running);
+  const wasRunningRef = useRef(running);
   useEffect(() => {
-    if (wasRunning.current && !running) void refetch();
-    wasRunning.current = running;
+    if (wasRunningRef.current && !running) void refetch();
+    wasRunningRef.current = running;
   }, [running, refetch]);
   const items = [...(recordings.data?.items ?? [])].sort((a, b) => a.context.created_at.localeCompare(b.context.created_at));
   if (recordings.isError && items.length === 0) {
@@ -103,7 +103,7 @@ export function RunMetrics({ item, run, lookup }: { item: QueueItem; run: WireRu
             <header className="flex min-w-0 items-start gap-2">
               <span className="grid min-w-0">
                 <span className="truncate text-data font-medium text-fg">{title.stage}</span>
-                {title.branch ? <span className="truncate text-caption text-fg-secondary">{title.branch}</span> : null}
+                {(title.branch != null && title.branch !== "") ? <span className="truncate text-caption text-fg-secondary">{title.branch}</span> : null}
                 <code className="machine truncate text-[11px] text-fg-tertiary" title={recording.context.component_id}>
                   {recording.context.component_id}
                 </code>

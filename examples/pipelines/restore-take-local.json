@@ -1,0 +1,37 @@
+{
+  "pipeline_id": "restore-take-local",
+  "label": "SeedVR2 整段影片修復（來源短邊；未知時 736 像素）",
+  "inputs": [
+    {
+      "name": "video",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": "要修復的來源影片，例如一個 take 的 MP4。"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "restore",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "restore-seedvr2-gpu0",
+      "inputs": {
+        "video_file": {
+          "from_input": "video"
+        }
+      },
+      "parameters": {
+        "short_side": 736,
+        "seed": 42,
+        "strength": 1
+      },
+      "timeout_seconds": 14400
+    }
+  ],
+  "outputs": {
+    "final": {
+      "from_step": "restore",
+      "output": "asset"
+    }
+  }
+}

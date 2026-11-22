@@ -5,10 +5,12 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime, timedelta
 
+
 _RFC3339 = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
 
 
 def utc_now() -> datetime:
+    """Return the current timezone-aware UTC time."""
     return datetime.now(UTC)
 
 
@@ -24,11 +26,17 @@ def to_rfc3339(moment: datetime) -> str:
 
 
 def now_rfc3339() -> str:
+    """Return the current UTC time as an RFC 3339 timestamp."""
     return to_rfc3339(utc_now())
 
 
+def _valid_utc_string(value: object) -> bool:
+    return isinstance(value, str) and bool(_RFC3339.match(value))
+
+
 def parse_rfc3339(value: str) -> datetime:
-    if not isinstance(value, str) or not _RFC3339.match(value):
+    """Parse a UTC timestamp in the supported RFC 3339 format."""
+    if not _valid_utc_string(value):
         raise ValueError(f"not an RFC3339 UTC timestamp: {value!r}")
     text = value[:-1]
     if "." in text:
@@ -40,4 +48,5 @@ def parse_rfc3339(value: str) -> datetime:
 
 
 def rfc3339_after(seconds: float, *, start: datetime | None = None) -> str:
+    """Format a UTC timestamp offset by the requested number of seconds."""
     return to_rfc3339((start or utc_now()) + timedelta(seconds=seconds))

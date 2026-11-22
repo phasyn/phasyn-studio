@@ -45,13 +45,13 @@ function TransferRowsTable({ rows, label }: { rows: readonly TransferEventRow[];
         </thead>
         <tbody>
           {rows.slice(0, 80).map((row) => (
-            <Tr key={`${row.streamId}:${row.seq}`}>
+            <Tr key={`${row.streamId}:${String(row.seq)}`}>
               <Td className="machine text-caption">
                 <span className="block text-fg">{row.data.transfer_id}</span>
                 <span className="block text-fg-tertiary">
                   {row.data.direction} · {row.data.completion_status} · {row.streamId}#{row.seq}
                 </span>
-                {row.data.part ? <span className="block text-fg-tertiary">{row.data.part}</span> : null}
+                {(row.data.part != null && row.data.part !== "") ? <span className="block text-fg-tertiary">{row.data.part}</span> : null}
               </Td>
               <Td className="machine text-caption whitespace-nowrap">
                 {formatBytes(row.data.submitted_bytes)}
@@ -101,14 +101,14 @@ function PartStreamDetails({ recordingId, streamId, part }: { recordingId: strin
   if (detail.spans === 0 && detail.transfers.length === 0) {
     return (
       <p className="text-caption text-fg-tertiary">
-        <T source={"stream <0>{streamId}</0>：已載入的 {flatCount} 筆事件中沒有此 part 的 span 或 transfer。"} values={{ streamId, flatCount: flat.length.toLocaleString("en-US") }} slots={[<code className="machine" />]} />
+        <T source={"stream <0>{streamId}</0>：已載入的 {flatCount} 筆事件中沒有此 part 的 span 或 transfer。"} values={{ streamId, flatCount: flat.length.toLocaleString("en-US") }} slots={[<code key="slot-0" className="machine" />]} />
       </p>
     );
   }
   return (
     <div className="grid gap-2">
       <p className="text-caption text-fg-secondary">
-        <T source={"stream <0>{streamId}</0>：span {spans} 筆、transfer {transfersCount} 筆（只計已載入事件）"} values={{ streamId, spans: detail.spans, transfersCount: detail.transfers.length }} slots={[<code className="machine" />]} />
+        <T source={"stream <0>{streamId}</0>：span {spans} 筆、transfer {transfersCount} 筆（只計已載入事件）"} values={{ streamId, spans: detail.spans, transfersCount: detail.transfers.length }} slots={[<code key="slot-0" className="machine" />]} />
       </p>
       {detail.steps.length > 0 ? (
         <TableScroll label={t("part {part} 每 step 的 span", { part })}>
@@ -171,12 +171,12 @@ function PartInfo({ recording, part }: { recording: Recording; part: string }) {
               label: "GPU event",
               value:
                 row.gpuEventMs === null
-                  ? t("未量測{value}", { value: row.gpuEventCoverage ? t("（coverage {gpuEventCoverage}）", { gpuEventCoverage: row.gpuEventCoverage }) : "" })
-                  : t("{gpuEventMs} · CUDA event 區間{value}", { gpuEventMs: formatMs(row.gpuEventMs), value: row.gpuEventCoverage ? ` · coverage ${row.gpuEventCoverage}` : "" }),
+                  ? t("未量測{value}", { value: (row.gpuEventCoverage != null && row.gpuEventCoverage !== "") ? t("（coverage {gpuEventCoverage}）", { gpuEventCoverage: row.gpuEventCoverage }) : "" })
+                  : t("{gpuEventMs} · CUDA event 區間{value}", { gpuEventMs: formatMs(row.gpuEventMs), value: (row.gpuEventCoverage != null && row.gpuEventCoverage !== "") ? ` · coverage ${row.gpuEventCoverage}` : "" }),
               mono: true,
-              tone: row.gpuEventMs === null || (row.gpuEventCoverage && row.gpuEventCoverage !== "full") ? "warning" : "default",
+              tone: row.gpuEventMs === null || ((row.gpuEventCoverage != null && row.gpuEventCoverage !== "") && row.gpuEventCoverage !== "full") ? "warning" : "default",
             },
-            ...(row.coverageReason ? [{ key: "reason", label: t("coverage 原因"), value: tServer(row.coverageReason), tone: "warning" as const }] : []),
+            ...((row.coverageReason != null && row.coverageReason !== "") ? [{ key: "reason", label: t("coverage 原因"), value: tServer(row.coverageReason), tone: "warning" as const }] : []),
             ...row.transfers.map((transfer) => ({
               key: `t-${transfer.category}`,
               label: transfer.category,
@@ -229,7 +229,7 @@ function CategoryStreamDetails({ recordingId, streamId, category }: { recordingI
   if (!aggregate) {
     return (
       <p className="text-caption text-fg-tertiary">
-        <T source={"stream <0>{streamId}</0>：已載入事件中沒有 {category} transfer。"} values={{ streamId, category }} slots={[<code className="machine" />]} />
+        <T source={"stream <0>{streamId}</0>：已載入事件中沒有 {category} transfer。"} values={{ streamId, category }} slots={[<code key="slot-0" className="machine" />]} />
       </p>
     );
   }
@@ -238,7 +238,7 @@ function CategoryStreamDetails({ recordingId, streamId, category }: { recordingI
   return (
     <div className="grid gap-2">
       <p className="text-caption text-fg-secondary">
-        <T source={"stream <0>{streamId}</0>：計入 {transfers} 個 transfer（同 transfer_id 取最後狀態）· 提交 {submittedBytes} · 完成 {value} · 每次 host 區間 {range}{value2}"} values={{ streamId, transfers: aggregate.transfers, submittedBytes: formatBytes(aggregate.submittedBytes), value: aggregate.completedBytes === null ? t("未確認（有 transfer 未完成）") : formatBytes(aggregate.completedBytes), range, value2: aggregate.noOpCount > 0 ? t(" · no-op {noOpCount}（不算 copy）", { noOpCount: aggregate.noOpCount }) : "" }} slots={[<code className="machine" />]} />
+        <T source={"stream <0>{streamId}</0>：計入 {transfers} 個 transfer（同 transfer_id 取最後狀態）· 提交 {submittedBytes} · 完成 {value} · 每次 host 區間 {range}{value2}"} values={{ streamId, transfers: aggregate.transfers, submittedBytes: formatBytes(aggregate.submittedBytes), value: aggregate.completedBytes === null ? t("未確認（有 transfer 未完成）") : formatBytes(aggregate.completedBytes), range, value2: aggregate.noOpCount > 0 ? t(" · no-op {noOpCount}（不算 copy）", { noOpCount: aggregate.noOpCount }) : "" }} slots={[<code key="slot-0" className="machine" />]} />
       </p>
       {category === "network" ? (
         <div className="grid gap-1.5">
@@ -357,13 +357,13 @@ function EventInfo({
         </p>
       </div>
       <div className="flex flex-wrap gap-2">
-        {part ? (
-          <Button size="sm" variant="secondary" icon={<Puzzle aria-hidden />} onClick={() => onSelect({ kind: "part", part })}>
+        {(part != null && part !== "") ? (
+          <Button size="sm" variant="secondary" icon={<Puzzle aria-hidden />} onClick={() => { onSelect({ kind: "part", part }); }}>
             {t("檢視 part")}
           </Button>
         ) : null}
         {event.kind === "transfer" ? (
-          <Button size="sm" variant="secondary" icon={<ArrowLeftRight aria-hidden />} onClick={() => onSelect({ kind: "category", category: event.data.category })}>
+          <Button size="sm" variant="secondary" icon={<ArrowLeftRight aria-hidden />} onClick={() => { onSelect({ kind: "category", category: event.data.category }); }}>
             {t("檢視類別 {category}", { category: event.data.category })}
           </Button>
         ) : null}
@@ -383,5 +383,5 @@ function EventInfo({
 export function SelectionDetails({ recording, selection, onSelect }: { recording: Recording; selection: Selection; onSelect: (selection: Selection) => void }) {
   if (selection.kind === "part") return <PartInfo key={selection.part} recording={recording} part={selection.part} />;
   if (selection.kind === "category") return <CategoryInfo key={selection.category} recording={recording} category={selection.category} />;
-  return <EventInfo key={`${selection.streamId}:${selection.seq}`} recording={recording} streamId={selection.streamId} seq={selection.seq} onSelect={onSelect} />;
+  return <EventInfo key={`${selection.streamId}:${String(selection.seq)}`} recording={recording} streamId={selection.streamId} seq={selection.seq} onSelect={onSelect} />;
 }

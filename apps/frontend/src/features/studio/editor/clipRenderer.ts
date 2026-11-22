@@ -4,13 +4,13 @@ import type { TimelineClip } from "@/api/generated/contracts";
 import { titleKey } from "../model/clipEffects";
 import { cameraView, colorFilterParams, videoFadeFactor } from "./previewMath";
 
-// Realm-independent kind checks: the Program monitor can render in its own window (UI #25), where its <video> and
+// Realm-independent kind checks: the Program monitor can render in its own window, where its <video> and
 // <canvas> elements belong to that window, so `instanceof` against this window's classes would be false.
 function isVideo(media: TexImageSource): media is HTMLVideoElement {
-  return (media as Partial<Node>).nodeName === "VIDEO";
+  return "nodeName" in media && media.nodeName === "VIDEO";
 }
 function isCanvas(media: TexImageSource): media is HTMLCanvasElement {
-  return (media as Partial<Node>).nodeName === "CANVAS";
+  return "nodeName" in media && media.nodeName === "CANVAS";
 }
 import { canvasMeasure, drawTitle, layoutTitle } from "../model/titleLayout";
 import { processedDuration } from "./model";
@@ -232,7 +232,7 @@ export function createClipRenderer(
     uniforms.cameraTransform.value.set((cameraViewAt?.xPercent ?? 0) / 100, -(cameraViewAt?.yPercent ?? 0) / 100, cameraViewAt?.scale ?? 1);
     render(0);
     const color = colorFilterParams(fx?.color);
-    if (fx?.color?.invert) { uniforms.params.value.set(0, 0, 0, 0); render(6); }
+    if (fx?.color?.invert === true) { uniforms.params.value.set(0, 0, 0, 0); render(6); }
     if (color) { uniforms.params.value.set(color.intercept, color.slope, color.saturation, 0); render(1); }
     if (fx?.impact && localFrame < fx.impact.frames) {
       uniforms.params.value.set(fx.impact.style === "black" ? 0 : 1, 0, 0, 0);

@@ -78,7 +78,7 @@ function Summary({ plugin }: { plugin: StudioPlugin }) {
 
 export function RemoveDialog({ pluginId, onClose, onRemoved }: { pluginId: StudioPluginId | null; onClose: () => void; onRemoved: (pluginId: StudioPluginId) => void }) {
   const { registry, notify } = useManager();
-  const plugin = pluginId ? (registry.plugins.get(pluginId) ?? null) : null;
+  const plugin = (pluginId != null && pluginId !== "") ? (registry.plugins.get(pluginId) ?? null) : null;
   const query = useRemovalPreview(plugin ? plugin.plugin_id : null);
   const invalidate = useInvalidatePlugins();
   // 結果由 mutation 自己處理：確認框即使已經不在畫面上，移除完成的訊息仍然會送到
@@ -94,9 +94,9 @@ export function RemoveDialog({ pluginId, onClose, onRemoved }: { pluginId: Studi
     onSettled: () => void invalidate(),
   });
   const preview = query.data ?? null;
-  const digest = preview?.can_remove ? preview.digest : null;
+  const digest = (preview?.can_remove === true) ? preview.digest : null;
   const confirm = () => {
-    if (plugin && digest && !remove.isPending) remove.mutate({ plugin, digest });
+    if (plugin && (digest != null && digest !== "") && !remove.isPending) remove.mutate({ plugin, digest });
   };
   const close = () => {
     // 移除的請求送出後不能收回：等它有結果（成功會自己關閉，失敗留在這裡說明原因）
@@ -112,7 +112,7 @@ export function RemoveDialog({ pluginId, onClose, onRemoved }: { pluginId: Studi
       }}
     >
       {plugin ? (
-        <DialogContent onKeyDown={(event) => event.stopPropagation()}>
+        <DialogContent onKeyDown={(event) => { event.stopPropagation(); }}>
           <DialogHeader>
             <DialogTitle>{t("移除「{name}」？", { name: pluginName(plugin) })}</DialogTitle>
             <DialogDescription>{t("從主控刪除這個包的檔案與安裝紀錄；任何專案都不會被修改。")}</DialogDescription>
@@ -131,9 +131,9 @@ export function RemoveDialog({ pluginId, onClose, onRemoved }: { pluginId: Studi
           </DialogBody>
           <DialogFooter>
             <DialogClose asChild>
-              <Button disabled={remove.isPending}>{digest ? t("取消") : t("關閉")}</Button>
+              <Button disabled={remove.isPending}>{(digest != null && digest !== "") ? t("取消") : t("關閉")}</Button>
             </DialogClose>
-            <Button variant="danger-confirm" icon={<Trash2 aria-hidden />} disabled={!digest} pending={remove.isPending} onClick={confirm}>
+            <Button variant="danger-confirm" icon={<Trash2 aria-hidden />} disabled={!(digest != null && digest !== "")} pending={remove.isPending} onClick={confirm}>
               {t("移除")}
             </Button>
           </DialogFooter>

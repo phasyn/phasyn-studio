@@ -7,63 +7,78 @@ the call ends. The Node and the controller share these limits.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import Any
 
 from .errors import ComponentError
+
 
 # 中間預覽（publish_preview）的界限：Node 與主控使用同一組常數
 PREVIEW_MEDIA_TYPES: tuple[str, ...] = ("image/jpeg", "image/png")
 PREVIEW_MAX_BYTES = 2 * 1024 * 1024
 PREVIEW_MAX_SIDE = 8192
 PREVIEW_NOTE_MAX = 500
+_PNG_SIZE_BYTES = 24
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 _JPEG_SOF_EXCLUDED = (0xC4, 0xC8, 0xCC)  # DHT／JPG／DAC 不是 SOF
 
 
 def _png_size(data: bytes) -> tuple[int, int] | None:
-    if len(data) < 24 or not data.startswith(_PNG_SIGNATURE) or data[12:16] != b"IHDR":
+    if (
+        len(data) < _PNG_SIZE_BYTES
+        or not data.startswith(_PNG_SIGNATURE)
+        or data[12:16] != b"IHDR"
+    ):
         return None
     return int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
 
 
-def _jpeg_size(data: bytes) -> tuple[int, int] | None:
-    """走 JPEG marker 直到第一個 SOF（baseline／progressive 都有），取標頭裡的寬高。"""
-    n = len(data)
-    if n < 4 or data[0] != 0xFF or data[1] != 0xD8:
-        return None
-    i = 2
-    while i < n:
-        if data[i] != 0xFF:
-            return None
-        while i < n and data[i] == 0xFF:  # marker 前可有填充的 0xFF
-            i += 1
-        if i >= n:
-            return None
-        marker = data[i]
-        i += 1
-        if marker == 0x01 or 0xD0 <= marker <= 0xD8:  # 沒有長度欄位的獨立 marker
+_JPEG_START = bytes((0xFF, 0xD8))
+_JPEG_PREFIX = 0xFF
+_JPEG_MIN_HEADER = 4
+_JPEG_LENGTH_BYTES = 2
+_JPEG_SOF_SIZE_BYTES = 7
+_JPEG_STANDALONE = frozenset((0x01, *range(0xD0, 0xD9)))
+_JPEG_SOF = frozenset(range(0xC0, 0xD0)).difference(_JPEG_SOF_EXCLUDED)
+
+
+def _jpeg_segments(data: bytes) -> Iterator[tuple[int, int, int]]:
+    """Yield complete length-prefixed segments up to the scan or end marker."""
+    index = len(_JPEG_START)
+    while index < len(data) and data[index] == _JPEG_PREFIX:
+        while index < len(data) and data[index] == _JPEG_PREFIX:
+            index += 1
+        if index == len(data):
+            break
+        marker = data[index]
+        index += 1
+        if marker in _JPEG_STANDALONE:
             continue
-        if marker in (0xD9, 0xDA):  # EOI／SOS 出現在 SOF 之前：沒有可用的尺寸
-            return None
-        if i + 2 > n:
-            return None
-        length = (data[i] << 8) | data[i + 1]
-        if length < 2 or i + length > n:
-            return None
-        if 0xC0 <= marker <= 0xCF and marker not in _JPEG_SOF_EXCLUDED:
-            if length < 7:
+        if marker in (0xD9, 0xDA) or index + _JPEG_LENGTH_BYTES > len(data):
+            break
+        length = int.from_bytes(data[index : index + _JPEG_LENGTH_BYTES], "big")
+        if length < _JPEG_LENGTH_BYTES or index + length > len(data):
+            break
+        yield marker, index, length
+        index += length
+
+
+def _jpeg_size(data: bytes) -> tuple[int, int] | None:
+    if len(data) < _JPEG_MIN_HEADER or not data.startswith(_JPEG_START):
+        return None
+    for marker, index, length in _jpeg_segments(data):
+        if marker in _JPEG_SOF:
+            if length < _JPEG_SOF_SIZE_BYTES:
                 return None
-            height = (data[i + 3] << 8) | data[i + 4]
-            width = (data[i + 5] << 8) | data[i + 6]
+            height = int.from_bytes(data[index + 3 : index + 5], "big")
+            width = int.from_bytes(data[index + 5 : index + 7], "big")
             return width, height
-        i += length
     return None
 
 
 def preview_image_size(data: bytes, media_type: str) -> tuple[int, int] | None:
-    """預覽影像標頭（PNG IHDR／JPEG SOF）記載的 (width, height)；不是該格式或標頭不完整 → None。"""
+    """預覽影像標頭（PNG IHDR／JPEG SOF）記載的 (width, height)；不是該格式或標頭不完整 → None."""
     if media_type == "image/png":
         return _png_size(data)
     if media_type == "image/jpeg":
@@ -73,7 +88,7 @@ def preview_image_size(data: bytes, media_type: str) -> tuple[int, int] | None:
 
 @dataclass(frozen=True)
 class PreviewFrame:
-    """一張中間預覽（非最終結果）。``published_ns`` 是 provider 呼叫 publish_preview 的 monotonic 時間。"""
+    """一張中間預覽（非最終結果）。``published_ns`` 是 provider 呼叫 publish_preview 的 monotonic 時間."""
 
     call_id: str
     step: int
@@ -86,21 +101,26 @@ class PreviewFrame:
     published_ns: int
 
 
-# runtime host 提供的轉送：True＝已接手（之後仍可能被更新的預覽取代），False＝這張被丟棄
+# runtime host 提供的轉送：True=已接手（之後仍可能被更新的預覽取代），False=這張被丟棄
 PreviewSink = Callable[[PreviewFrame], bool]
 
 
 def preview_int(name: str, value: Any, minimum: int, maximum: int) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+    """Validate a bounded integer preview field."""
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not minimum <= value <= maximum
+    ):
         raise ComponentError(
             "RUNTIME_ERROR",
-            f"publish_preview 的 {name} 必須是 {minimum}–{maximum} 的整數（收到 {value!r}）；這是 provider 的程式錯誤",
+            f"publish_preview 的 {name} 必須是 {minimum}\N{EN DASH}{maximum} 的整數（收到 {value!r}）；這是 provider 的程式錯誤",
             details={"field": name},
         )
     return value
 
 
-def checked_preview(
+def checked_preview(  # noqa: PLR0913 - Keep the published positional and keyword API.
     *,
     step: int,
     total: int,
@@ -132,8 +152,14 @@ def checked_preview(
             details={"field": "data"},
         )
     if note is not None and not isinstance(note, str):
-        raise ComponentError("RUNTIME_ERROR", "publish_preview 的 note 必須是字串或 None", details={"field": "note"})
-    payload = bytes(data)  # a bytearray/memoryview is copied: the provider may reuse its own buffer afterwards
+        raise ComponentError(
+            "RUNTIME_ERROR",
+            "publish_preview 的 note 必須是字串或 None",
+            details={"field": "note"},
+        )
+    payload = bytes(
+        data
+    )  # a bytearray/memoryview is copied: the provider may reuse its own buffer afterwards
     size = preview_image_size(payload, media_type)
     if size is None:
         raise ComponentError(
@@ -145,7 +171,11 @@ def checked_preview(
         raise ComponentError(
             "RUNTIME_ERROR",
             f"publish_preview 的 {width}×{height} 與影像標頭記載的 {size[0]}×{size[1]} 不同",
-            details={"field": "width/height", "declared": [width, height], "actual": list(size)},
+            details={
+                "field": "width/height",
+                "declared": [width, height],
+                "actual": list(size),
+            },
         )
     return payload, step, total, width, height
 

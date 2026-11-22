@@ -4,7 +4,9 @@
 // 不變）；第一張圖片加入時它們從所在的邊緣滑入。
 import { useRef } from "react";
 import { usePersistentFlag, usePersistentSize } from "@/lib/usePersistentSize";
+import { NARROW_HIDDEN, NARROW_PANEL_ROW, panelColumns } from "@/components/workbench/narrowPanels";
 import { Splitter } from "@/components/workbench/Splitter";
+import { cn } from "@/lib/cn";
 import { CollapsedRail } from "@/features/studio-shell";
 import { useElementSize } from "@/lib/useElementSize";
 import { useImageStudio } from "../imageStudioContext";
@@ -37,14 +39,17 @@ export function Workspace() {
   // 監看器至少留 200 px；視窗變矮時顯示夾住的值，變回高時還原
   const galleryMax = Math.max(GALLERY_MIN, height - 200);
   const gallery = Math.min(storedGallery, galleryMax);
-  const leftColumn = leftOpen ? `${left}px` : RAIL;
-  const columns = hasImages ? `${leftColumn} auto minmax(0,1fr) auto ${rightOpen ? `${right}px` : RAIL}` : `${leftColumn} auto minmax(0,1fr)`;
-  const rows = !hasImages ? "minmax(0,1fr)" : galleryOpen ? `minmax(0,1fr) auto ${gallery}px` : "minmax(0,1fr) auto auto";
+  const leftColumn = leftOpen ? `${String(left)}px` : RAIL;
+  const columns = hasImages ? `${leftColumn} auto minmax(0,1fr) auto ${rightOpen ? `${String(right)}px` : RAIL}` : `${leftColumn} auto minmax(0,1fr)`;
+  // On a phone every open panel takes the full width and the row scrolls sideways inside itself (narrowPanels.ts)
+  const narrowSide = (open: boolean) => (open ? "100%" : RAIL);
+  const narrowColumns = hasImages ? `${narrowSide(leftOpen)} 0.375rem 100% 0.375rem ${narrowSide(rightOpen)}` : `${narrowSide(leftOpen)} 0.375rem 100%`;
+  const rows = !hasImages ? "minmax(0,1fr)" : galleryOpen ? `minmax(0,1fr) auto ${String(gallery)}px` : "minmax(0,1fr) auto auto";
   return (
-    <div className="grid min-h-0 flex-1 px-1.5 pb-1.5" style={{ gridTemplateColumns: columns }}>
-      {leftOpen ? <ShotsPanel onCollapse={() => setLeftOpen(false)} /> : <CollapsedRail side="left" label={PANEL_NAMES.shots} onExpand={() => setLeftOpen(true)} />}
+    <div className={cn("grid min-h-0 flex-1 px-1.5 pb-1.5", NARROW_PANEL_ROW)} style={panelColumns(columns, narrowColumns)}>
+      {leftOpen ? <ShotsPanel onCollapse={() => { setLeftOpen(false); }} /> : <CollapsedRail side="left" label={PANEL_NAMES.shots} onExpand={() => { setLeftOpen(true); }} />}
       {leftOpen ? (
-        <Splitter grip="always" orientation="vertical" value={left} min={220} max={420} defaultValue={LEFT_DEFAULT} onChange={setLeft} label={t("調整圖片面板寬度")} />
+        <Splitter grip="always" orientation="vertical" value={left} min={220} max={420} defaultValue={LEFT_DEFAULT} onChange={setLeft} label={t("調整圖片面板寬度")} className={NARROW_HIDDEN} />
       ) : (
         <div aria-hidden className="w-1.5" />
       )}
@@ -60,25 +65,25 @@ export function Workspace() {
                 min={GALLERY_MIN}
                 max={galleryMax}
                 defaultValue={GALLERY_DEFAULT}
-                onChange={(next) => setGallery(Math.min(next, galleryMax))}
+                onChange={(next) => { setGallery(Math.min(next, galleryMax)); }}
                 label={t("調整 take 清單高度")}
                 invert
               />
             ) : (
               <div aria-hidden className="h-1.5" />
             )}
-            <TakesGallery collapsed={!galleryOpen} onToggleCollapsed={() => setGalleryOpen(!galleryOpen)} />
+            <TakesGallery collapsed={!galleryOpen} onToggleCollapsed={() => { setGalleryOpen(!galleryOpen); }} />
           </>
         ) : null}
       </div>
       {hasImages ? (
         <>
           {rightOpen ? (
-            <Splitter grip="always" orientation="vertical" value={right} min={320} max={560} defaultValue={RIGHT_DEFAULT} onChange={setRight} label={t("調整設定面板寬度")} invert />
+            <Splitter grip="always" orientation="vertical" value={right} min={320} max={560} defaultValue={RIGHT_DEFAULT} onChange={setRight} label={t("調整設定面板寬度")} invert className={NARROW_HIDDEN} />
           ) : (
             <div aria-hidden className="w-1.5" />
           )}
-          {rightOpen ? <Inspector onCollapse={() => setRightOpen(false)} /> : <CollapsedRail side="right" label={PANEL_NAMES.inspector} onExpand={() => setRightOpen(true)} />}
+          {rightOpen ? <Inspector onCollapse={() => { setRightOpen(false); }} /> : <CollapsedRail side="right" label={PANEL_NAMES.inspector} onExpand={() => { setRightOpen(true); }} />}
         </>
       ) : null}
     </div>

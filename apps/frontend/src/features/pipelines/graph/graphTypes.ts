@@ -9,7 +9,7 @@ import type { DescriptorLookup, PipelineIssue } from "../pipelineModel";
 export type GraphNodeKind = "input" | "step";
 
 /** 選取：輸入節點、步驟節點，或流程輸出（接點上的徽章；id＝輸出名稱）。 */
-export type GraphSelection = { kind: GraphNodeKind | "output"; id: string };
+export interface GraphSelection { kind: GraphNodeKind | "output"; id: string }
 
 /** Node（主機）顯示名稱；不知道時回傳 null（畫面改用縮寫的 node_id）。 */
 export type NodeLabelLookup = (nodeId: string) => string | null;

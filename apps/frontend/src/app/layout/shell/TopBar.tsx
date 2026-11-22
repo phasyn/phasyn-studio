@@ -1,3 +1,4 @@
+import { pageTransition } from "@/lib/dom";
 import { ChevronRight, Menu } from "lucide-react";
 import { Link, useLocation } from "react-router";
 import { areaLink, type StudioMemory } from "@/app/areas";
@@ -32,34 +33,35 @@ export function TopBar({ memory, onOpenNav, navOpen }: { memory: StudioMemory; o
       <nav aria-label={t("目前位置")} className="min-w-0 flex-1">
         <ol className="flex min-w-0 items-center gap-1.5 text-data">
           {crumbs.area ? (
-            <li className="flex min-w-0 shrink-0 items-center">
+            <li className="flex min-w-0 items-center">
               <Link
                 to={areaLink(crumbs.area, memory)}
-                viewTransition
-                aria-current={crumbs.page ? undefined : "page"}
+                {...pageTransition()}
+                aria-current={(crumbs.page != null && crumbs.page !== "") ? undefined : "page"}
                 className={cn(
                   "pressable flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 no-underline hover:bg-raised hover:text-fg",
-                  crumbs.page ? "text-fg-secondary" : "font-medium text-fg",
+                  (crumbs.page != null && crumbs.page !== "") ? "text-fg-secondary" : "font-medium text-fg",
                 )}
               >
                 {AreaIcon ? <AreaIcon aria-hidden className="size-4 shrink-0 text-brand-cyan" /> : null}
-                <span className="truncate">{crumbs.area.label}</span>
+                {/* On a phone the area is its icon when a page follows, so the page name stays readable */}
+                <span className={cn("truncate", (crumbs.page != null && crumbs.page !== "") && "max-sm:sr-only")}>{crumbs.area.label}</span>
               </Link>
             </li>
           ) : (
             <li className="truncate px-1.5 text-fg-secondary">Phasyn Studio</li>
           )}
-          {crumbs.page ? (
+          {(crumbs.page != null && crumbs.page !== "") ? (
             <>
               <li aria-hidden className="shrink-0 text-fg-disabled">
                 <ChevronRight className="size-3.5" />
               </li>
-              <li aria-current={crumbs.detail ? undefined : "page"} className={cn("min-w-0 truncate", crumbs.detail ? "text-fg-secondary" : "font-medium text-fg")}>
+              <li aria-current={(crumbs.detail != null && crumbs.detail !== "") ? undefined : "page"} className={cn("min-w-0 truncate", (crumbs.detail != null && crumbs.detail !== "") ? "text-fg-secondary" : "font-medium text-fg")}>
                 {crumbs.page}
               </li>
             </>
           ) : null}
-          {crumbs.detail ? (
+          {(crumbs.detail != null && crumbs.detail !== "") ? (
             <>
               <li aria-hidden className="shrink-0 text-fg-disabled">
                 <ChevronRight className="size-3.5" />
@@ -71,7 +73,8 @@ export function TopBar({ memory, onOpenNav, navOpen }: { memory: StudioMemory; o
           ) : null}
         </ol>
       </nav>
-      <div className="ml-auto flex min-w-0 shrink-0 items-center gap-1.5">
+      {/* The running run's chip truncates (at most 55 %) instead of sliding over the location on a phone */}
+      <div className="ml-auto flex min-w-0 max-w-[55%] items-center justify-end gap-1.5">
         <ActiveRun />
       </div>
     </header>

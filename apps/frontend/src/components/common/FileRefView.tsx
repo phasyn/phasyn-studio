@@ -36,7 +36,7 @@ export function FileLinks({ file, downloadLabel, className }: { file: FileRef; d
 export function FileRefView({ file, downloadLabel = "file", showLinks = true }: { file: FileRef; downloadLabel?: string; showLinks?: boolean }) {
   const owner = useFileOwnerLabel(file.node_id);
   const metadata = isRecord(file.metadata) ? file.metadata : {};
-  const links = isRecord(metadata.links) ? Object.entries(metadata.links).filter((entry): entry is [string, FileRef] => isFileRef(entry[1])) : [];
+  const links = isRecord(metadata["links"]) ? Object.entries(metadata["links"]).filter((entry): entry is [string, FileRef] => isFileRef(entry[1])) : [];
   const items: KvItem[] = [
     { key: "media", label: t("媒體型別"), value: file.media_type, mono: true },
     { key: "size", label: t("大小"), value: <span title={formatBytesExact(file.size_bytes)}>{formatBytes(file.size_bytes)}</span>, mono: true },

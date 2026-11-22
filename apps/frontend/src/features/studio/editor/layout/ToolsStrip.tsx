@@ -32,7 +32,7 @@ export function ToolsStrip({ className }: { className?: string }) {
           aria-label={tool.label}
           aria-pressed={editor.tool === tool.id}
           title={t("{label}（{shortcut}）", { label: tool.label, shortcut: chordOf(tool.command) })}
-          onClick={() => editor.setTool(tool.id)}
+          onClick={() => { editor.setTool(tool.id); }}
           className={cn(TOOL_BUTTON, "size-9 shrink-0 [&_svg]:size-4", editor.tool === tool.id && cn(TOOL_BUTTON_ON, "shadow-glow-sm"))}
         >
           <tool.icon aria-hidden />

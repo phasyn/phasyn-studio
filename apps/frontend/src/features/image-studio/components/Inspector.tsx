@@ -1,3 +1,4 @@
+import { isListed } from "@/lib/json";
 // 右側屬性面板：選取圖片的設定分成「基本／採樣／圖片」三個分頁（44 px 分頁列）。生成的主動作在工具列（「生成圖片」，
 // 狀態與不能生成的原因也在那裡）；這裡的 Ctrl+Enter 呼叫同一個生成。專案沒有圖片時工作區不顯示這個面板。
 import { Gauge, ImagePlus, SlidersHorizontal } from "lucide-react";
@@ -29,7 +30,7 @@ function ShotInspector({ shot, tab }: { shot: StudioImageShot; tab: InspectorTab
   };
   // 換圖片時整個屬性內容重新掛載（key＝圖片）：短淡入
   return (
-    <div role="tabpanel" id={`image-inspector-panel-${tab}`} aria-labelledby={`image-inspector-tab-${tab}`} className="min-h-0 flex-1 overflow-y-auto animate-fade-in" onKeyDown={onKeyDown}>
+    <div /* eslint-disable-line jsx-a11y-x/no-noninteractive-element-interactions -- Keyboard events from this panel’s focusable controls bubble here so navigation and dismissal share one handler. */  role="tabpanel" id={`image-inspector-panel-${tab}`} aria-labelledby={`image-inspector-tab-${tab}`} className="min-h-0 flex-1 overflow-y-auto animate-fade-in" onKeyDown={onKeyDown}>
       {tab === "basic" ? <BasicTab shot={shot} /> : tab === "sampling" ? <SamplingTab shot={shot} /> : <ImageTab shot={shot} />}
     </div>
   );
@@ -48,11 +49,11 @@ export function Inspector({ onCollapse }: { onCollapse?: () => void }) {
         idPrefix="image-inspector"
         label={t("圖片設定")}
         value={tab}
-        onChange={(next) => setTab((TAB_IDS as readonly string[]).includes(next) ? (next as InspectorTab) : "basic")}
+        onChange={(next) => { setTab(isListed(next, TAB_IDS) ? next : "basic"); }}
         tabs={[
           { id: "basic", label: t("基本"), icon: SlidersHorizontal },
           { id: "sampling", label: t("採樣"), icon: Gauge },
-          { id: "image", label: t("圖片"), icon: ImagePlus, count: shot && shot.mode === "i2i" ? shot.references.length : undefined },
+          { id: "image", label: t("圖片"), icon: ImagePlus, ...(shot?.mode === "i2i" ? { count: shot.references.length } : {}) },
         ]}
         actions={onCollapse ? <PanelCollapseButton side="right" label={PANEL_NAMES.inspector} onCollapse={onCollapse} /> : undefined}
       />

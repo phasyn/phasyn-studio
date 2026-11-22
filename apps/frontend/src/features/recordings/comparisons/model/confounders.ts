@@ -58,7 +58,7 @@ export interface ReadableValue {
   /** 一行摘要（沒有值＝「未記錄」）。 */
   summary: string;
   /** 物件或陣列展開後的「路徑｜值」（只有一個值時為空）。 */
-  entries: Array<[string, string]>;
+  entries: [string, string][];
 }
 
 const SUMMARY_KEYS = ["variant", "identity_strength", "sha256", "model_root", "component_id", "runtime_id", "source_revision"];

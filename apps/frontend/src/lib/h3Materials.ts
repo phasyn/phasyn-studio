@@ -97,14 +97,14 @@ export function labelsInOrder(items: readonly LabelInput[]): OrderedLabel[] {
       else if (input === "none") soundtrack = { state: "none", label: null };
       else if (input === "present") {
         counters.audio += 1;
-        soundtrack = { state: "used", label: audioUncertain ? null : `<Audio ${counters.audio}>` };
+        soundtrack = { state: "used", label: audioUncertain ? null : `<Audio ${String(counters.audio)}>` };
       } else {
         audioUncertain = true;
         soundtrack = { state: "unknown", label: null };
       }
     }
     counters[item.kind] += 1;
-    const label = item.kind === "audio" && audioUncertain ? null : `<${H3_TAG[item.kind]} ${counters[item.kind]}>`;
+    const label = item.kind === "audio" && audioUncertain ? null : `<${H3_TAG[item.kind]} ${String(counters[item.kind])}>`;
     return { label, soundtrack };
   });
 }

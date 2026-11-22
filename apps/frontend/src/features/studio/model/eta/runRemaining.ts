@@ -51,7 +51,7 @@ function branchRemaining(run: WireRun, ids: readonly string[], suffixes: readonl
       left += typical;
       continue;
     }
-    const started = view.started_at ? Date.parse(view.started_at) : Number.NaN;
+    const started = (view.started_at != null && view.started_at !== "") ? Date.parse(view.started_at) : Number.NaN;
     const ran = Number.isFinite(started) ? Math.max(0, nowMs - started) / 1000 : 0;
     left += Math.max(0, typical - ran);
   }

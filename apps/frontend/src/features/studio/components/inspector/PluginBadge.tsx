@@ -54,7 +54,7 @@ export function PluginBadge({ shot, badge, onOpenPlugins }: { shot: StudioShot; 
   const name = badgeName(badge);
   const failing = badge.state === "fail";
   const close = (restoreFocus: boolean) => {
-    if (restoreFocus && anchor?.isConnected) anchor.focus();
+    if (restoreFocus && (anchor?.isConnected === true)) anchor.focus();
     setAnchor(null);
   };
   return (
@@ -68,7 +68,7 @@ export function PluginBadge({ shot, badge, onOpenPlugins }: { shot: StudioShot; 
         aria-haspopup="dialog"
         aria-expanded={anchor !== null}
         aria-controls={anchor ? id : undefined}
-        onClick={(event) => setAnchor(anchor ? null : event.currentTarget)}
+        onClick={(event) => { setAnchor(anchor ? null : event.currentTarget); }}
         className={cn(TOOL, toolPadding(fit), failing && "bg-warning/10 text-warning hover:bg-warning/15 hover:text-warning")}
       >
         <span ref={fade} aria-hidden className="flex items-center gap-1">

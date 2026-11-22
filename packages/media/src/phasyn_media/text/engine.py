@@ -20,7 +20,7 @@ from collections import OrderedDict
 from collections.abc import Callable, Sequence
 from fractions import Fraction
 from types import TracebackType
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, NamedTuple, Self
 
 import numpy as np
 from numpy.typing import NDArray
@@ -31,13 +31,27 @@ from .fonts import FontBook
 from .ft import FreeType
 from .glyphs import GlyphRasterizer
 from .hb import HarfBuzz
-from .model import MAX_REPORTED_CODE_POINTS, CaptionTrackJob, TextFailure, TextRequest, TextSpec
+from .model import (
+    MAX_REPORTED_CODE_POINTS,
+    CaptionTrackJob,
+    TextFailure,
+    TextRequest,
+    TextSpec,
+)
 from .mov import MovieWriter, frame_timing
 from .native import require_supported_platform
 from .png import encode_rgba
 from .raster import Box, Painter, Picture, compose, png_scanlines, union
 
-MAX_OUTPUT_BYTES = 2**31 - 1  # all files of a request together; also keeps every movie offset 32-bit
+
+class _CaptionDestination(NamedTuple):
+    output: OutputDirectory
+    name: str
+
+
+MAX_OUTPUT_BYTES = (
+    2**31 - 1
+)  # all files of a request together; also keeps every movie offset 32-bit
 _PICTURE_CACHE_BYTES = 64 * 1024 * 1024
 
 
@@ -76,18 +90,27 @@ class OutputDirectory:
     """Creates the files of a request inside the caller's directory, never over an existing name."""
 
     def __init__(self, path: str) -> None:
-        self._directory = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        """Open the validated directory for output publication."""
+        self._directory = os.open(
+            path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        )
         self._bytes = 0
 
-    def __enter__(self) -> OutputDirectory:
+    def __enter__(self) -> Self:
+        """Open the managed resource for the duration of the context."""
         return self
 
     def __exit__(
-        self, kind: type[BaseException] | None, error: BaseException | None, trace: TracebackType | None
+        self,
+        kind: type[BaseException] | None,
+        error: BaseException | None,
+        trace: TracebackType | None,
     ) -> None:
+        """Release the managed resource when its context exits."""
         os.close(self._directory)
 
     def create(self, name: str) -> BinaryIO:
+        """Create a render output within the opened directory."""
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
         return os.fdopen(os.open(name, flags, 0o600, dir_fd=self._directory), "wb")
 
@@ -125,6 +148,7 @@ class Engine:
     """The loaded libraries, the fonts and the glyph cache of one worker process."""
 
     def __init__(self) -> None:
+        """Prepare the worker's text layout and rendering resources."""
         require_supported_platform()  # the structure layouts are LP64 Linux ones
         self._closers: list[Callable[[], None]] = []
         try:
@@ -148,14 +172,18 @@ class Engine:
 
     def render(self, request: TextRequest, out_dir: str) -> dict[str, Any]:
         """Render a validated request and return the wire result."""
-        painter = Painter(self._book, self._harfbuzz, self._rasterizer, request.width, request.height)
+        painter = Painter(
+            self._book, self._harfbuzz, self._rasterizer, request.width, request.height
+        )
         missing = _Missing()
         try:
             with OutputDirectory(out_dir) as output:
                 titles = self._titles(request, painter, output, missing)
                 tracks = self._caption_tracks(request, painter, output, missing)
         except OSError as exc:
-            raise TextFailure("text_render_failed", f"cannot write output (errno {exc.errno})") from exc
+            raise TextFailure(
+                "text_render_failed", f"cannot write output (errno {exc.errno})"
+            ) from exc
         return {
             "titles": titles,
             "caption_tracks": tracks,
@@ -171,7 +199,10 @@ class Engine:
 
     @staticmethod
     def _titles(
-        request: TextRequest, painter: Painter, output: OutputDirectory, missing: _Missing
+        request: TextRequest,
+        painter: Painter,
+        output: OutputDirectory,
+        missing: _Missing,
     ) -> dict[str, dict[str, Any]]:
         written: dict[tuple[Any, ...], dict[str, Any]] = {}
         titles: dict[str, dict[str, Any]] = {}
@@ -194,13 +225,23 @@ class Engine:
         return titles
 
     def _caption_tracks(
-        self, request: TextRequest, painter: Painter, output: OutputDirectory, missing: _Missing
+        self,
+        request: TextRequest,
+        painter: Painter,
+        output: OutputDirectory,
+        missing: _Missing,
     ) -> dict[str, dict[str, Any] | None]:
         tracks: dict[str, dict[str, Any] | None] = {}
         files = 0
         for track in request.caption_tracks:
             try:
-                entry = self._caption_track(track, request.fps, painter, output, f"captions-{files}.mov", missing)
+                entry = self._caption_track(
+                    track,
+                    request.fps,
+                    painter,
+                    _CaptionDestination(output, f"captions-{files}.mov"),
+                    missing,
+                )
             except TextFailure as failure:
                 raise failure.for_job(track.job_id) from None
             files += entry is not None
@@ -212,11 +253,11 @@ class Engine:
         track: CaptionTrackJob,
         fps: Fraction,
         painter: Painter,
-        output: OutputDirectory,
-        name: str,
+        destination: _CaptionDestination,
         missing: _Missing,
     ) -> dict[str, Any] | None:
         """Write one track movie; ``None`` (and no file) when no caption of the track shows a pixel."""
+        output, name = destination
         indices: dict[tuple[Any, ...], int] = {}
         specs: list[TextSpec] = []
         spans: list[Span] = []
@@ -231,7 +272,9 @@ class Engine:
                 specs.append(event.spec)
                 boxes.append(plan.box)
             missing.add(track.job_id, item, plan.missing)
-            if boxes[index] is not None:  # a caption that shows no pixel takes no part in the track
+            if (
+                boxes[index] is not None
+            ):  # a caption that shows no pixel takes no part in the track
                 spans.append(Span(event.start_frame, event.end_frame, index))
         frame = union(box for box in boxes if box is not None)
         if frame is None:
@@ -244,11 +287,22 @@ class Engine:
             samples_bytes = 0
             for state in track_states(track.frames, spans):
                 if state.pictures:
-                    sample = _png(compose((pictures.get(index) for index in state.pictures), frame))
+                    sample = _png(
+                        compose(
+                            (pictures.get(index) for index in state.pictures), frame
+                        )
+                    )
                 else:
-                    blank = sample = blank or _png(np.zeros((frame.height, frame.width, 4), dtype=np.uint8))
+                    blank = sample = blank or _png(
+                        np.zeros((frame.height, frame.width, 4), dtype=np.uint8)
+                    )
                 output.charge(len(sample))
                 samples_bytes += len(sample)
                 movie.add_sample(sample, (state.end - state.start) * frame_ticks)
             output.charge(movie.finish() - samples_bytes)
-        return {"file": name, **_geometry(frame), "frames": track.frames, "samples": movie.samples}
+        return {
+            "file": name,
+            **_geometry(frame),
+            "frames": track.frames,
+            "samples": movie.samples,
+        }

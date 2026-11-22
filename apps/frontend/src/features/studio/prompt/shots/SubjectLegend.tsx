@@ -14,7 +14,7 @@ import { ReferenceThumb } from "../../references/ReferenceThumb";
 import type { SubjectDefinition } from "./layout";
 
 function pictureOf(alias: string | null, references: readonly StudioReference[], library: readonly StudioLibraryItem[]): StudioLibraryItem | null {
-  const reference = alias ? references.find((ref) => ref.kind === "image" && ref.alias === alias) : undefined;
+  const reference = (alias != null && alias !== "") ? references.find((ref) => ref.kind === "image" && ref.alias === alias) : undefined;
   return (reference && library.find((item) => item.item_id === reference.item_id)) ?? null;
 }
 
@@ -49,7 +49,7 @@ export function SubjectLegend({
       <ul className="grid gap-1.5">
         {subjects.map((subject, index) => {
           const item = pictureOf(subject.image, references, library);
-          const tag = `<Subject ${subject.number}>`;
+          const tag = `<Subject ${String(subject.number)}>`;
           const phrase = phrases[index] ?? "";
           return (
             <li key={subject.number} className="grid grid-cols-[auto_minmax(6rem,10rem)_minmax(0,1fr)] items-center gap-x-2 gap-y-0.5">
@@ -65,7 +65,7 @@ export function SubjectLegend({
                 spellCheck={false}
                 aria-label={t("{subject} 的特徵（英文）", { subject: tag })}
                 placeholder="with long silver hair and a red ribbon"
-                onChange={(event) => onPhrase(index, event.target.value)}
+                onChange={(event) => { onPhrase(index, event.target.value); }}
               />
               {phrase.trim() === "" ? <p className="col-start-3 text-caption text-warning animate-reveal">{t("寫一段髮色和配件，角色按鈕才會一起插入，檢查才知道要找什麼")}</p> : null}
               {unnamed.includes(subject.number) ? (

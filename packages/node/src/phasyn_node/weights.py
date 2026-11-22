@@ -1,4 +1,4 @@
-"""模型權重下載（x-phasyn-extension）。
+"""模型權重下載（x-phasyn-extension）.
 
 只在使用者明確要求時下載（``POST /api/components/{id}/weights/download``，本文 ``accept_licenses: true``）：
 
@@ -29,17 +29,31 @@ import shutil
 import time
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
+from http import HTTPStatus
 from pathlib import Path
 from typing import IO, TYPE_CHECKING, Any
 from urllib.parse import quote, urlsplit, urlunsplit
 
 import httpx
-from phasyn_components.errors import ComponentError, exception_message, to_component_error
+from phasyn_components.errors import (
+    ComponentError,
+    exception_message,
+    to_component_error,
+)
 from phasyn_components.ids import new_id
 from phasyn_components.timeutil import utc_now
-from phasyn_components.weights import WeightFile, WeightPlan, WeightSet, expected_digest, file_matches, new_digest
+from phasyn_components.weights import (
+    Digest,
+    WeightFile,
+    WeightPlan,
+    WeightSet,
+    expected_digest,
+    file_matches,
+    new_digest,
+)
 
 from . import __version__
+
 
 if TYPE_CHECKING:
     from .service import NodeService
@@ -71,7 +85,7 @@ def public_endpoint(endpoint: str) -> str:
 
 
 def part_path(path: Path) -> Path:
-    """下載中的暫存檔：同目錄的隱藏檔（不會被 ``*.safetensors`` 之類的樣式選到）。"""
+    """下載中的暫存檔：同目錄的隱藏檔（不會被 ``*.safetensors`` 之類的樣式選到）."""
     return path.with_name(f".{path.name}.phasyn-part")
 
 
@@ -83,7 +97,7 @@ def _size(path: Path) -> int | None:
 
 
 def free_bytes(root: Path | None) -> int | None:
-    """root（還不存在時用最近的上層目錄）所在磁碟的剩餘空間；讀不到 → None。"""
+    """root（還不存在時用最近的上層目錄）所在磁碟的剩餘空間；讀不到 → None."""
     if root is None:
         return None
     probe = root
@@ -97,7 +111,7 @@ def free_bytes(root: Path | None) -> int | None:
 
 @dataclass(frozen=True)
 class Target:
-    """計畫裡的一個檔案在這台 Node 上的位置（rel 相對於模型根目錄）。"""
+    """計畫裡的一個檔案在這台 Node 上的位置（rel 相對於模型根目錄）."""
 
     rel: str
     file: WeightFile
@@ -107,8 +121,10 @@ class Target:
     links: tuple[str, ...]
 
 
-def plan_targets(plan: WeightPlan, set_ids: Iterable[str] | None = None) -> list[Target]:
-    """計畫（或其中幾組）的檔案，依計畫順序；兩組放到同一個位置的同一個檔案只算一次（例如 repo 的 LICENSE）。"""
+def plan_targets(
+    plan: WeightPlan, set_ids: Iterable[str] | None = None
+) -> list[Target]:
+    """計畫（或其中幾組）的檔案，依計畫順序；兩組放到同一個位置的同一個檔案只算一次（例如 repo 的 LICENSE）."""
     wanted = None if set_ids is None else set(set_ids)
     targets: dict[str, Target] = {}
     for weight_set in plan.sets:
@@ -119,7 +135,10 @@ def plan_targets(plan: WeightPlan, set_ids: Iterable[str] | None = None) -> list
             known = targets.get(rel)
             if known is not None:
                 if known.file.identity != item.identity:
-                    raise ComponentError("RUNTIME_ERROR", f"權重計畫把兩個不同的檔案放到同一個位置：{rel}")
+                    raise ComponentError(
+                        "RUNTIME_ERROR",
+                        f"權重計畫把兩個不同的檔案放到同一個位置：{rel}",
+                    )
                 continue
             targets[rel] = Target(
                 rel,
@@ -133,8 +152,7 @@ def plan_targets(plan: WeightPlan, set_ids: Iterable[str] | None = None) -> list
 
 
 def file_status(root: Path, target: Target) -> dict[str, Any]:
-    """present（大小相同）／mismatch（大小不同）／partial（有暫存檔）／missing；缺的檔案若有內容相同的檔案在磁碟上，
-    link_from 是它（相對於根目錄）。"""
+    """present（大小相同）/mismatch（大小不同）/partial（有暫存檔）/missing；缺的檔案若有內容相同的檔案在磁碟上， link_from 是它（相對於根目錄）."""
     size = _size(root / target.rel)
     partial: int | None = None
     if size is not None:
@@ -144,7 +162,10 @@ def file_status(root: Path, target: Target) -> dict[str, Any]:
         status = "partial" if partial else "missing"
     link_from = None
     if status in ("missing", "partial"):
-        link_from = next((cand for cand in target.links if _size(root / cand) == target.file.size), None)
+        link_from = next(
+            (cand for cand in target.links if _size(root / cand) == target.file.size),
+            None,
+        )
     return {
         "path": target.rel,
         "size": target.file.size,
@@ -154,9 +175,12 @@ def file_status(root: Path, target: Target) -> dict[str, Any]:
     }
 
 
-def set_status(weight_set: WeightSet, statuses: Mapping[str, dict[str, Any]]) -> dict[str, Any]:
+def set_status(
+    weight_set: WeightSet, statuses: Mapping[str, dict[str, Any]]
+) -> dict[str, Any]:
+    """Summarize the download status of a group of files."""
     files: list[dict[str, Any]] = []
-    counts = {key: 0 for key in ("present", "missing", "mismatch", "linkable")}
+    counts = dict.fromkeys(("present", "missing", "mismatch", "linkable"), 0)
     sizes = dict.fromkeys(counts, 0)
     partial_bytes = 0
     for item in weight_set.files:
@@ -188,7 +212,7 @@ def set_status(weight_set: WeightSet, statuses: Mapping[str, dict[str, Any]]) ->
 
 @dataclass
 class _Work:
-    """下載工作裡的一個檔案。planned：開始時算進 bytes_total 的位元組數（預計共用的檔案是 0）。"""
+    """下載工作裡的一個檔案。planned：開始時算進 bytes_total 的位元組數（預計共用的檔案是 0）."""
 
     target: Target
     replace: bool
@@ -197,6 +221,8 @@ class _Work:
 
 @dataclass
 class DownloadJob:
+    """Track a model weight download and its verified byte counts."""
+
     job_id: str
     component_id: str
     sets: list[str]
@@ -213,6 +239,7 @@ class DownloadJob:
     task: asyncio.Task[None] | None = field(default=None, repr=False)
 
     def to_dict(self) -> dict[str, Any]:
+        """Return the wire representation of these settings."""
         return {
             "job_id": self.job_id,
             "component_id": self.component_id,
@@ -247,7 +274,7 @@ def _commit(part: Path, path: Path) -> None:
         os.fsync(fd)
     finally:
         os.close(fd)
-    os.replace(part, path)
+    part.replace(path)
     with contextlib.suppress(OSError):
         dir_fd = os.open(path.parent, os.O_RDONLY)
         try:
@@ -257,22 +284,22 @@ def _commit(part: Path, path: Path) -> None:
 
 
 def _link(source: Path, path: Path) -> bool:
-    """以 hard link 把 source 放到 path（先連到暫存名稱再改名，不會留下一半的狀態）；不同磁碟或不支援 → False。"""
+    """以 hard link 把 source 放到 path（先連到暫存名稱再改名，不會留下一半的狀態）；不同磁碟或不支援 → False."""
     tmp = path.with_name(f".{path.name}.phasyn-link")
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
         with contextlib.suppress(FileNotFoundError):
             tmp.unlink()
         os.link(source, tmp)
-        os.replace(tmp, path)
-        return True
+        tmp.replace(path)
     except OSError:
         with contextlib.suppress(OSError):
             tmp.unlink()
         return False
+    return True
 
 
-def _open_part(part: Path, append: bool) -> IO[bytes]:
+def _open_part(part: Path, *, append: bool) -> IO[bytes]:
     part.parent.mkdir(parents=True, exist_ok=True)
     return part.open("ab" if append else "wb")
 
@@ -280,13 +307,25 @@ def _open_part(part: Path, append: bool) -> IO[bytes]:
 def _disk_error(exc: OSError, rel: str) -> ComponentError:
     if exc.errno == errno.ENOSPC:
         return ComponentError(
-            "DISK_FULL", f"寫入 {rel} 時磁碟已滿；暫存檔保留，清出空間後可以接著下載", details={"path": rel}
+            "DISK_FULL",
+            f"寫入 {rel} 時磁碟已滿；暫存檔保留，清出空間後可以接著下載",
+            details={"path": rel},
         )
-    return ComponentError("RUNTIME_ERROR", f"寫入 {rel} 失敗：{exception_message(exc)}", details={"path": rel})
+    return ComponentError(
+        "RUNTIME_ERROR",
+        f"寫入 {rel} 失敗：{exception_message(exc)}",
+        details={"path": rel},
+    )
+
+
+@dataclass
+class _PartialFile:
+    offset: int
+    digest: Digest
 
 
 class WeightsManager:
-    """一個 Node 的權重下載：計畫快取、目前的下載工作與每個元件最後一次的工作（Node 重啟後不保留）。"""
+    """一個 Node 的權重下載：計畫快取、目前的下載工作與每個元件最後一次的工作（Node 重啟後不保留）."""
 
     def __init__(
         self,
@@ -296,6 +335,7 @@ class WeightsManager:
         transport: httpx.AsyncBaseTransport | None = None,
         env: Mapping[str, str] | None = None,
     ) -> None:
+        """Prepare the weight-plan cache and download job registry."""
         source = os.environ if env is None else env
         self.service = service
         self.transport = transport
@@ -303,29 +343,43 @@ class WeightsManager:
         self.endpoint = (source.get("HF_ENDPOINT") or DEFAULT_ENDPOINT).rstrip("/")
         self.source = public_endpoint(self.endpoint)
         self.source_host = urlsplit(self.source).netloc
-        self._token = source.get("HF_TOKEN") or source.get("HUGGING_FACE_HUB_TOKEN") or None
+        self._token = (
+            source.get("HF_TOKEN") or source.get("HUGGING_FACE_HUB_TOKEN") or None
+        )
         self._jobs: dict[str, DownloadJob] = {}
         self._plans: dict[str, tuple[float, int, WeightPlan]] = {}
         self._lock = asyncio.Lock()
 
     # ------------------------------------------------------------------ plan / view
-    async def _plan(self, inst: ComponentInstance, *, fresh: bool = False) -> WeightPlan:
+    async def _plan(
+        self, inst: ComponentInstance, *, fresh: bool = False
+    ) -> WeightPlan:
         settings, revision = inst.settings.snapshot()
         cached = self._plans.get(inst.component_id)
-        if not fresh and cached is not None and cached[1] == revision and time.monotonic() - cached[0] <= PLAN_TTL_S:
+        if (
+            not fresh
+            and cached is not None
+            and cached[1] == revision
+            and time.monotonic() - cached[0] <= PLAN_TTL_S
+        ):
             return cached[2]
-        doc = await self.service.commands.weights(inst.runtime_entry(), inst.provider_id, settings)
+        doc = await self.service.commands.weights(
+            inst.runtime_entry(), inst.provider_id, settings
+        )
         try:
             plan = WeightPlan.from_dict(doc)
         except (ComponentError, KeyError, TypeError, ValueError) as exc:
             raise ComponentError(
-                "RUNTIME_ERROR", f"provider {inst.provider_id} 的權重清單格式錯誤：{exception_message(exc)}"
+                "RUNTIME_ERROR",
+                f"provider {inst.provider_id} 的權重清單格式錯誤：{exception_message(exc)}",
             ) from exc
         self._plans[inst.component_id] = (time.monotonic(), revision, plan)
         return plan
 
     def _running(self) -> DownloadJob | None:
-        return next((job for job in self._jobs.values() if job.state == "running"), None)
+        return next(
+            (job for job in self._jobs.values() if job.state == "running"), None
+        )
 
     def _allowed(self, root: Path) -> bool:
         """Whether ``root`` (symlinks resolved) is one of the configured model directories or lies below one."""
@@ -333,7 +387,7 @@ class WeightsManager:
         return any(resolved == base or base in resolved.parents for base in self.roots)
 
     async def view(self, inst: ComponentInstance) -> dict[str, Any]:
-        """計畫與每個檔案目前的狀態、剩餘空間、來源設定，以及這個元件最近一次的下載工作（下載中時每次都會讀）。"""
+        """計畫與每個檔案目前的狀態、剩餘空間、來源設定，以及這個元件最近一次的下載工作（下載中時每次都會讀）."""
         job = self._jobs.get(inst.component_id)
         plan = await self._plan(inst)
         root = Path(plan.root) if plan.root else None
@@ -353,8 +407,14 @@ class WeightsManager:
         def inspect() -> tuple[list[dict[str, Any]], bool, int | None]:
             if root is None:
                 return [], False, None
-            statuses = {target.rel: file_status(root, target) for target in plan_targets(plan)}
-            return [set_status(item, statuses) for item in plan.sets], root.is_dir(), free_bytes(root)
+            statuses = {
+                target.rel: file_status(root, target) for target in plan_targets(plan)
+            }
+            return (
+                [set_status(item, statuses) for item in plan.sets],
+                root.is_dir(),
+                free_bytes(root),
+            )
 
         sets, root_exists, free = await asyncio.to_thread(inspect)
         return {
@@ -369,18 +429,75 @@ class WeightsManager:
         }
 
     # ------------------------------------------------------------------ download
-    async def start(self, inst: ComponentInstance, body: Mapping[str, Any]) -> dict[str, Any]:
+    @staticmethod
+    async def _plan_space(
+        root: Path, targets: list[Target], *, replace: bool
+    ) -> tuple[list[_Work], int]:
+        statuses = await asyncio.to_thread(
+            lambda: [file_status(root, target) for target in targets]
+        )
+        conflicts = [
+            status["path"] for status in statuses if status["status"] == "mismatch"
+        ]
+        if conflicts and not replace:
+            raise ComponentError(
+                "WEIGHTS_DESTINATION_CONFLICT",
+                f"目的地有 {len(conflicts)} 個檔案與固定版本的大小不同，不會覆蓋；要取代請勾選「取代大小不同的檔案」",
+                details={
+                    "files": conflicts[:CONFLICT_LIST_MAX],
+                    "count": len(conflicts),
+                },
+            )
+        work: list[_Work] = []
+        needed = 0
+        for target, status in zip(targets, statuses, strict=True):
+            if status["status"] == "present":
+                continue
+            if status["status"] == "mismatch":
+                planned = target.file.size
+            elif status["link_from"]:
+                planned = 0
+            else:
+                planned = target.file.size - (status["partial_bytes"] or 0)
+            needed += planned
+            work.append(_Work(target, status["status"] == "mismatch", planned))
+        free = await asyncio.to_thread(free_bytes, root)
+        if free is not None and needed + RESERVE_BYTES > free:
+            raise ComponentError(
+                "DISK_FULL",
+                f"模型目錄所在的磁碟剩 {free} bytes，這次下載需要 {needed} bytes（另外保留 {RESERVE_BYTES} bytes）",
+                details={
+                    "needed_bytes": needed,
+                    "free_bytes": free,
+                    "reserve_bytes": RESERVE_BYTES,
+                },
+            )
+
+        return work, needed
+
+    async def start(
+        self, inst: ComponentInstance, body: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Start the requested weight download after checking its plan."""
         if body.get("accept_licenses") is not True:
-            raise ComponentError("INVALID_ARGUMENT", "下載前必須同意這些權重的授權條款（accept_licenses: true）")
+            raise ComponentError(
+                "INVALID_ARGUMENT",
+                "下載前必須同意這些權重的授權條款（accept_licenses: true）",
+            )
         async with self._lock:
             if self.service.shutting_down:
-                raise ComponentError("NODE_SHUTTING_DOWN", "Node 正在關閉，不開始新的下載")
+                raise ComponentError(
+                    "NODE_SHUTTING_DOWN", "Node 正在關閉，不開始新的下載"
+                )
             running = self._running()
             if running is not None:
                 raise ComponentError(
                     "STATE_CONFLICT",
                     f"這個 Node 正在下載元件 {running.component_id} 的權重；完成或取消後再開始",
-                    details={"job_id": running.job_id, "component_id": running.component_id},
+                    details={
+                        "job_id": running.job_id,
+                        "component_id": running.component_id,
+                    },
                 )
             if inst.state not in DOWNLOADABLE_STATES:
                 raise ComponentError(
@@ -390,7 +507,11 @@ class WeightsManager:
                 )
             plan = await self._plan(inst, fresh=True)
             if plan.root is None:
-                reason = plan.notes[0] if plan.notes else "未設定 load.model_path（模型根目錄）"
+                reason = (
+                    plan.notes[0]
+                    if plan.notes
+                    else "未設定 load.model_path（模型根目錄）"
+                )
                 raise ComponentError("COMPONENT_NOT_CONFIGURED", reason)
             known = [item.set_id for item in plan.sets]
             wanted = [str(item) for item in body.get("sets") or known]
@@ -405,37 +526,12 @@ class WeightsManager:
                 raise ComponentError("INVALID_ARGUMENT", "這個元件沒有可以下載的權重")
             root = Path(plan.root)
             if not self._allowed(root):
-                raise ComponentError("COMPONENT_NOT_CONFIGURED", ROOT_NOT_ALLOWED_REASON)
+                raise ComponentError(
+                    "COMPONENT_NOT_CONFIGURED", ROOT_NOT_ALLOWED_REASON
+                )
             replace = bool(body.get("replace_mismatched", False))
             targets = plan_targets(plan, wanted)
-            statuses = await asyncio.to_thread(lambda: [file_status(root, target) for target in targets])
-            conflicts = [status["path"] for status in statuses if status["status"] == "mismatch"]
-            if conflicts and not replace:
-                raise ComponentError(
-                    "WEIGHTS_DESTINATION_CONFLICT",
-                    f"目的地有 {len(conflicts)} 個檔案與固定版本的大小不同，不會覆蓋；要取代請勾選「取代大小不同的檔案」",
-                    details={"files": conflicts[:CONFLICT_LIST_MAX], "count": len(conflicts)},
-                )
-            work: list[_Work] = []
-            needed = 0
-            for target, status in zip(targets, statuses, strict=True):
-                if status["status"] == "present":
-                    continue
-                if status["status"] == "mismatch":
-                    planned = target.file.size
-                elif status["link_from"]:
-                    planned = 0
-                else:
-                    planned = target.file.size - (status["partial_bytes"] or 0)
-                needed += planned
-                work.append(_Work(target, status["status"] == "mismatch", planned))
-            free = await asyncio.to_thread(free_bytes, root)
-            if free is not None and needed + RESERVE_BYTES > free:
-                raise ComponentError(
-                    "DISK_FULL",
-                    f"模型目錄所在的磁碟剩 {free} bytes，這次下載需要 {needed} bytes（另外保留 {RESERVE_BYTES} bytes）",
-                    details={"needed_bytes": needed, "free_bytes": free, "reserve_bytes": RESERVE_BYTES},
-                )
+            work, needed = await self._plan_space(root, targets, replace=replace)
             job = DownloadJob(
                 job_id=new_id(),
                 component_id=inst.component_id,
@@ -445,11 +541,19 @@ class WeightsManager:
                 started_at=utc_now(),
             )
             self._jobs[inst.component_id] = job
-            job.task = self.service.spawn_task(self._run(job, inst, root, work), name=f"weights-{inst.component_id}")
-            log.info("開始下載元件 %s 的權重：%d 個檔案、%d bytes", inst.component_id, len(work), needed)
+            job.task = self.service.spawn_task(
+                self._run(job, inst, root, work), name=f"weights-{inst.component_id}"
+            )
+            log.info(
+                "開始下載元件 %s 的權重：%d 個檔案、%d bytes",
+                inst.component_id,
+                len(work),
+                needed,
+            )
             return job.to_dict()
 
     async def cancel(self, inst: ComponentInstance) -> dict[str, Any]:
+        """Signal the current weight download to stop."""
         job = self._jobs.get(inst.component_id)
         if job is None:
             raise ComponentError("NOT_FOUND", "這個元件沒有下載工作")
@@ -461,13 +565,16 @@ class WeightsManager:
         return job.to_dict()
 
     async def close(self) -> None:
+        """Stop outstanding downloads and close their resources."""
         job = self._running()
         if job is not None and job.task is not None:
             job.task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
                 await asyncio.wait_for(asyncio.shield(job.task), timeout=10)
 
-    async def _run(self, job: DownloadJob, inst: ComponentInstance, root: Path, work: list[_Work]) -> None:
+    async def _run(
+        self, job: DownloadJob, inst: ComponentInstance, root: Path, work: list[_Work]
+    ) -> None:
         try:
             async with httpx.AsyncClient(
                 transport=self.transport,
@@ -488,6 +595,7 @@ class WeightsManager:
             job.error = exc.to_dict()
         except Exception as exc:  # reported on the job, never retried
             job.state = "failed"
+            log.exception("Unexpected weight download failure")
             job.error = to_component_error(exc).to_dict()
         finally:
             job.current = None
@@ -502,12 +610,24 @@ class WeightsManager:
             log.info("元件 %s 的權重下載結束：%s", inst.component_id, job.state)
             self.service.notify_change()
 
-    async def _fetch(self, client: httpx.AsyncClient, job: DownloadJob, root: Path, item: _Work) -> None:
+    async def _fetch(
+        self, client: httpx.AsyncClient, job: DownloadJob, root: Path, item: _Work
+    ) -> None:
         target = item.target
         path = root / target.rel
-        job.current = {"path": target.rel, "phase": "download", "bytes_done": 0, "bytes_total": target.file.size}
-        if not item.replace and await asyncio.to_thread(_size, path) == target.file.size:
-            job.bytes_total -= item.planned  # written meanwhile (for example by a link to the same file)
+        job.current = {
+            "path": target.rel,
+            "phase": "download",
+            "bytes_done": 0,
+            "bytes_total": target.file.size,
+        }
+        if (
+            not item.replace
+            and await asyncio.to_thread(_size, path) == target.file.size
+        ):
+            job.bytes_total -= (
+                item.planned
+            )  # written meanwhile (for example by a link to the same file)
             return
         if not item.replace:
             for cand in target.links:
@@ -515,19 +635,62 @@ class WeightsManager:
                 if await asyncio.to_thread(_size, source) != target.file.size:
                     continue
                 job.current["phase"] = "verify"
-                if await asyncio.to_thread(file_matches, source, target.file) and await asyncio.to_thread(
-                    _link, source, path
-                ):
+                if await asyncio.to_thread(
+                    file_matches, source, target.file
+                ) and await asyncio.to_thread(_link, source, path):
                     job.files_linked += 1
                     job.bytes_total -= item.planned
                     return
         job.current["phase"] = "download"
         await self._download(client, job, path, item)
 
+    async def _receive_body(
+        self,
+        resp: httpx.Response,
+        job: DownloadJob,
+        target: Target,
+        part: Path,
+        progress: _PartialFile,
+    ) -> None:
+        current = job.current
+        if current is None:
+            raise RuntimeError("No active weight download")
+        size = target.file.size
+        if (
+            progress.offset
+            and resp.status_code == HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE
+            and progress.offset == size
+        ):
+            return
+        if resp.status_code not in (HTTPStatus.OK, HTTPStatus.PARTIAL_CONTENT):
+            raise self._source_error(resp, target)
+        if progress.offset and resp.status_code == HTTPStatus.OK:
+            job.bytes_total += progress.offset
+            progress.offset = 0
+            progress.digest = new_digest(target.file)
+            current["bytes_done"] = 0
+        fh = await asyncio.to_thread(_open_part, part, append=progress.offset > 0)
+        try:
+            async for chunk in resp.aiter_bytes(CHUNK_BYTES):
+                if progress.offset + len(chunk) > size:
+                    raise ComponentError(
+                        "FILE_HASH_MISMATCH",
+                        f"{target.rel} 收到的內容比固定版本的 {size} bytes 長；已刪除暫存檔",
+                        details={"path": target.rel},
+                    )
+                await asyncio.to_thread(_write, fh, progress.digest, chunk)
+                progress.offset += len(chunk)
+                job.bytes_done += len(chunk)
+                current["bytes_done"] = progress.offset
+        finally:
+            await asyncio.to_thread(fh.close)
+
     def _url(self, target: Target) -> str:
         return f"{self.endpoint}/{target.repo}/resolve/{target.revision}/{quote(target.file.repo_path, safe='/')}"
 
-    async def _download(self, client: httpx.AsyncClient, job: DownloadJob, path: Path, item: _Work) -> None:
+    async def _download(
+        self, client: httpx.AsyncClient, job: DownloadJob, path: Path, item: _Work
+    ) -> None:
         target = item.target
         size = target.file.size
         part = part_path(path)
@@ -538,48 +701,31 @@ class WeightsManager:
         digest = new_digest(target.file)
         if offset:
             await asyncio.to_thread(_hash_into, part, digest)
-        job.bytes_total += (size - offset) - item.planned  # the plan assumed a link or a different partial size
-        assert job.current is not None
+        job.bytes_total += (
+            size - offset
+        ) - item.planned  # the plan assumed a link or a different partial size
+        if job.current is None:
+            raise RuntimeError("No active weight download")
         job.current["bytes_done"] = offset
         headers: dict[str, str] = {}
         if offset:
             headers["Range"] = f"bytes={offset}-"
         if self._token:
             headers["Authorization"] = f"Bearer {self._token}"
+        progress = _PartialFile(offset=offset, digest=digest)
         url = self._url(target)
         try:
             async with client.stream("GET", url, headers=headers) as resp:
-                if offset and resp.status_code == 416 and offset == size:
-                    pass  # the partial file is already complete: verify it below
-                elif resp.status_code not in (200, 206):
-                    raise self._source_error(resp, target)
-                else:
-                    if offset and resp.status_code == 200:
-                        # the source ignored the range: start over (count the bytes again)
-                        job.bytes_total += offset
-                        offset = 0
-                        digest = new_digest(target.file)
-                        job.current["bytes_done"] = 0
-                    fh = await asyncio.to_thread(_open_part, part, offset > 0)
-                    try:
-                        async for chunk in resp.aiter_bytes(CHUNK_BYTES):
-                            if offset + len(chunk) > size:
-                                raise ComponentError(
-                                    "FILE_HASH_MISMATCH",
-                                    f"{target.rel} 收到的內容比固定版本的 {size} bytes 長；已刪除暫存檔",
-                                    details={"path": target.rel},
-                                )
-                            await asyncio.to_thread(_write, fh, digest, chunk)
-                            offset += len(chunk)
-                            job.bytes_done += len(chunk)
-                            job.current["bytes_done"] = offset
-                    finally:
-                        await asyncio.to_thread(fh.close)
+                await self._receive_body(resp, job, target, part, progress)
         except httpx.HTTPError as exc:
             raise ComponentError(
                 "WEIGHTS_SOURCE_UNAVAILABLE",
                 f"從 {self.source_host} 下載 {target.rel} 時連線失敗：{exception_message(exc)}；暫存檔保留，下次下載會接著下載",
-                details={"path": target.rel, "repo": target.repo, "revision": target.revision},
+                details={
+                    "path": target.rel,
+                    "repo": target.repo,
+                    "revision": target.revision,
+                },
             ) from exc
         except OSError as exc:
             raise _disk_error(exc, target.rel) from exc
@@ -588,19 +734,30 @@ class WeightsManager:
                 with contextlib.suppress(OSError):
                     await asyncio.to_thread(part.unlink)
             raise
+        return await self._commit_verified_weight(target, path, part, progress)
+
+    async def _commit_verified_weight(
+        self, target: Target, path: Path, part: Path, progress: _PartialFile
+    ) -> None:
+        size = target.file.size
+        offset = progress.offset
         if offset != size:
             raise ComponentError(
                 "FILE_TRUNCATED",
-                f"{target.rel} 只收到 {offset}／{size} bytes；暫存檔保留，下次下載會接著下載",
+                f"{target.rel} 只收到 {offset}/{size} bytes；暫存檔保留，下次下載會接著下載",
                 details={"path": target.rel, "received_bytes": offset, "size": size},
             )
-        if digest.hexdigest() != expected_digest(target.file):
+        if progress.digest.hexdigest() != expected_digest(target.file):
             with contextlib.suppress(OSError):
                 await asyncio.to_thread(part.unlink)
             raise ComponentError(
                 "FILE_HASH_MISMATCH",
                 f"{target.rel} 的雜湊與固定版本不同；已刪除暫存檔",
-                details={"path": target.rel, "repo": target.repo, "revision": target.revision},
+                details={
+                    "path": target.rel,
+                    "repo": target.repo,
+                    "revision": target.revision,
+                },
             )
         try:
             await asyncio.to_thread(_commit, part, path)
@@ -610,22 +767,33 @@ class WeightsManager:
     def _source_error(self, resp: httpx.Response, target: Target) -> ComponentError:
         status = resp.status_code
         host = self.source_host
-        details = {"path": target.rel, "repo": target.repo, "revision": target.revision, "status": status}
+        details = {
+            "path": target.rel,
+            "repo": target.repo,
+            "revision": target.revision,
+            "status": status,
+        }
         if status in (401, 403):
             hint = (
-                "token 沒有這個 repo 的權限" if self._token else "需要授權：在 Node 的環境變數設定 HF_TOKEN 後重啟 Node"
+                "token 沒有這個 repo 的權限"
+                if self._token
+                else "需要授權：在 Node 的環境變數設定 HF_TOKEN 後重啟 Node"
             )
             return ComponentError(
-                "WEIGHTS_SOURCE_UNAVAILABLE", f"{host} 拒絕下載 {target.repo}（HTTP {status}）：{hint}", details=details
+                "WEIGHTS_SOURCE_UNAVAILABLE",
+                f"{host} 拒絕下載 {target.repo}（HTTP {status}）：{hint}",
+                details=details,
             )
-        if status == 404:
+        if status == HTTPStatus.NOT_FOUND:
             return ComponentError(
                 "WEIGHTS_SOURCE_UNAVAILABLE",
                 f"{host} 找不到 {target.repo}@{target.revision[:12]} 的 {target.file.repo_path}（HTTP 404）",
                 details=details,
             )
         return ComponentError(
-            "WEIGHTS_SOURCE_UNAVAILABLE", f"{host} 回應 HTTP {status}，無法下載 {target.rel}", details=details
+            "WEIGHTS_SOURCE_UNAVAILABLE",
+            f"{host} 回應 HTTP {status}，無法下載 {target.rel}",
+            details=details,
         )
 
 

@@ -1,0 +1,25 @@
+{
+  "component_id": "restore-seedvr2-gpu0",
+  "label": "影片修復 SeedVR2-3B（GPU 0）",
+  "provider_id": "media.restore",
+  "runtime_id": "x86_64",
+  "autostart": false,
+  "folder": "生成/影片/修復",
+  "settings": {
+    "load": {
+      "model_path": "/path/to/models/SeedVR2-3B",
+      "device": {
+        "kind": "cuda",
+        "id": "GPU-REPLACE-0",
+        "resource_group": "gpu-0"
+      },
+      "provider_options": {
+        "engine_archive": "/path/to/engines/SeedVR2_VideoUpscaler-4490bd1.tar.gz"
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "mode": "detailed"
+    }
+  }
+}

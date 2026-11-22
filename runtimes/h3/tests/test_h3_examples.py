@@ -18,6 +18,7 @@ from h3_examples import (
     h3_components,
 )
 
+
 pytestmark = pytest.mark.static
 
 
@@ -35,7 +36,9 @@ def test_committed_templates_are_the_generator_output() -> None:
         _dit, variant, precision, accel = cid.split("-")
         expected = gen.definition(variant, precision, accel)
         assert doc == expected, cid
-        assert (COMPONENTS / f"{cid}.json").read_text(encoding="utf-8") == gen.dumps(expected), cid
+        assert (COMPONENTS / f"{cid}.json").read_text(encoding="utf-8") == gen.dumps(
+            expected
+        ), cid
 
 
 # ---------------------------------------------------------------------------- pipelines

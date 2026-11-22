@@ -10,7 +10,9 @@ import re
 
 import pytest
 from h3_examples import REPO
+
 from phasyn_h3.recipe.runtime import pins
+
 
 pytestmark = pytest.mark.static
 
@@ -21,7 +23,7 @@ RECIPE = REPO / "runtimes/h3/src/phasyn_h3/recipe"
 
 def test_pin_table_is_complete_and_well_formed() -> None:
     labels = [label for group in pins.SOURCES.values() for label in group]
-    assert len(labels) == 58 == len(set(labels)) == len(pins.all_pins())
+    assert len(labels) == 68 == len(set(labels)) == len(pins.all_pins())
     for group in pins.SOURCES.values():
         for module, qualname, digest in group.values():
             assert module.startswith("sglang.multimodal_gen.runtime.") and qualname
@@ -41,12 +43,17 @@ def test_only_the_pin_table_hashes_upstream_sources() -> None:
 @pytest.mark.gpu
 def test_pins_match_the_installed_sglang() -> None:
     """Run inside a runtime tuple (``CUDA_VISIBLE_DEVICES=`` is enough): every pinned source matches."""
-    pytest.importorskip("sglang", reason="需要 runtime tuple 環境（deploy/runtimes/*）；未驗證，不算通過")
-    from phasyn_h3.recipe.runtime.importcheck import pin_report
+    pytest.importorskip(
+        "sglang",
+        reason="需要 runtime tuple 環境（deploy/runtimes/*）；未驗證，不算通過",
+    )
+    from phasyn_h3.recipe.runtime.importcheck import pin_report  # noqa: PLC0415 - Keep this optional experiment dependency behind its runtime check.
 
     report = pin_report()
     assert report["mismatches"] == []
-    assert int(report["checked"]) + len(report["requires_gpu"]) == 58  # type: ignore[arg-type]
+    checked, pending = report["checked"], report["requires_gpu"]
+    assert isinstance(checked, int) and isinstance(pending, list)
+    assert checked + len(pending) == len(pins.all_pins())
 
 
 # ---------------------------------------------------------------------------------------------- stage work

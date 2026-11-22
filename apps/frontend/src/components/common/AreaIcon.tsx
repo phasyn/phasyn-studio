@@ -38,6 +38,6 @@ export function AreaIcon({ area, size = 32, className }: { area: AreaIconName; s
     );
   }
   return (
-    <BrandImage src={`/brand/areas/${area}.webp`} srcSet={`/brand/areas/${area}@2x.webp 2x`} width={size} fallback={tile} className={className} />
+    <BrandImage src={`/brand/areas/${area}.webp`} srcSet={`/brand/areas/${area}@2x.webp 2x`} width={size} fallback={tile} {...(className === undefined ? {} : { className })} />
   );
 }

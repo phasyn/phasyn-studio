@@ -46,12 +46,12 @@ export interface ActiveNodeInput {
 
 /** 目前的 Node：網址 node → component 所在 Node → 上次看的 → 目錄第一個。 */
 export function resolveActiveNode(input: ActiveNodeInput): string | null {
-  if (input.node) return input.node;
-  if (input.component) {
+  if (input.node != null && input.node !== "") return input.node;
+  if (input.component != null && input.component !== "") {
     const owner = input.entries.find((entry) => entry.descriptor.component_id === input.component);
     if (owner) return owner.node.node_id;
   }
-  if (input.remembered && input.nodeIds.includes(input.remembered)) return input.remembered;
+  if ((input.remembered != null && input.remembered !== "") && input.nodeIds.includes(input.remembered)) return input.remembered;
   return input.nodeIds[0] ?? null;
 }
 
@@ -60,8 +60,8 @@ export const COMPONENTS_PATH = "/admin/components";
 /** 元件頁網址：?node=＆component=。 */
 export function componentsHref(nodeId: string | null, componentId?: string | null): string {
   const params = new URLSearchParams();
-  if (nodeId) params.set("node", nodeId);
-  if (componentId) params.set("component", componentId);
+  if (nodeId != null && nodeId !== "") params.set("node", nodeId);
+  if (componentId != null && componentId !== "") params.set("component", componentId);
   const search = params.toString();
   return search ? `${COMPONENTS_PATH}?${search}` : COMPONENTS_PATH;
 }

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 from collections.abc import Mapping
+from importlib.resources import files
 from typing import Any
 
 from phasyn_components.errors import ComponentError
@@ -26,11 +28,15 @@ from .options import (
 )
 from .preview import PACKAGED_COEFFICIENTS
 
-LABEL = "Qwen-Image 2.1 DiT（文生圖／圖生圖去噪；完整迴圈在單次呼叫內，輸出正規化 latent）"
+
+LABEL = (
+    "Qwen-Image 2.1 DiT（文生圖／圖生圖去噪；完整迴圈在單次呼叫內，輸出正規化 latent）"
+)
 REQUIRED_MODULES = ("torch", "diffusers", "safetensors", "numpy")
 
 
 def missing_modules(opts: DitOptions | None) -> list[str]:
+    """List unavailable modules without importing the model."""
     needed = list(REQUIRED_MODULES)
     if opts is not None and opts.variant == "gguf_q4km":
         needed.append("gguf")
@@ -42,6 +48,7 @@ def missing_modules(opts: DitOptions | None) -> list[str]:
 
 
 def dit_parts(layers: int) -> list[Part]:
+    """List the independently configurable denoiser parts."""
     empty = {"type": "object", "properties": {}}
     observe = ["forward_count", "host_ms", "gpu_event_ms"]
     parts = [
@@ -63,7 +70,9 @@ def dit_parts(layers: int) -> list[Part]:
         ("transformer.norm_out", "output_norm"),
         ("transformer.proj_out", "output_head"),
     ):
-        parts.append(Part(name, kind, empty, [], "none", "未單獨計時；時間計入整次 forward"))
+        parts.append(
+            Part(name, kind, empty, [], "none", "未單獨計時；時間計入整次 forward")
+        )
     parts.append(
         Part(
             "transformer",
@@ -75,7 +84,11 @@ def dit_parts(layers: int) -> list[Part]:
         )
     )
     parts.append(Part("scheduler", "scheduler", empty, ["sigma"], "full", None))
-    parts.append(Part("preview", "preview", empty, ["host_ms"], "partial", "背景執行緒；只記彙總"))
+    parts.append(
+        Part(
+            "preview", "preview", empty, ["host_ms"], "partial", "背景執行緒；只記彙總"
+        )
+    )
     return parts
 
 
@@ -107,32 +120,56 @@ def describe_dit(settings: Mapping[str, Any] | None) -> Description:
         problem = configuration_problem(opts)
         if problem is not None:
             code, reason = problem
-    coefficient_path = opts.coefficients_path(PACKAGED_COEFFICIENTS) if opts else PACKAGED_COEFFICIENTS
+    coefficient_path = (
+        opts.coefficients_path(PACKAGED_COEFFICIENTS) if opts else PACKAGED_COEFFICIENTS
+    )
     if not coefficient_path.is_file():
-        notes.append("preview.mode=linear_fit 尚不可用：還沒有以我們自己的輸出擬合的係數檔")
+        notes.append(
+            "preview.mode=linear_fit 尚不可用：還沒有以我們自己的輸出擬合的係數檔"
+        )
     return Description(
         provider_id=PROVIDER_ID,
         kind=KIND,
         label=LABEL,
         inputs=[
-            Port("conditioning", CONDITIONING_TYPE, True, "file", "qimg.conditioning 的 bundle（正向；CFG 時含負向）"),
+            Port(
+                "conditioning",
+                CONDITIONING_TYPE,
+                required=True,
+                transport="file",
+                description="qimg.conditioning 的 bundle（正向；CFG 時含負向）",
+            ),
             Port(
                 "ref_latents",
                 REF_LATENTS_TYPE,
-                False,
-                "file",
-                "圖生圖：qimg.vae_encode 的參考圖 latent（順序與 conditioning 的影像槽一致）",
+                required=False,
+                transport="file",
+                description="圖生圖：qimg.vae_encode 的參考圖 latent（順序與 conditioning 的影像槽一致）",
             ),
         ],
-        outputs=[Port("latent", LATENT_TYPE, True, "file", "最後一次 Euler 更新後的打包 latent（BF16，正規化空間）")],
+        outputs=[
+            Port(
+                "latent",
+                LATENT_TYPE,
+                required=True,
+                transport="file",
+                description="最後一次 Euler 更新後的打包 latent（BF16，正規化空間）",
+            )
+        ],
         parts=dit_parts(num_layers(opts)),
         settings_schema=build_settings_schema(),
         parameters_schema=parameters_schema(),
         default_settings=default_settings(),
-        available=reason is None or (settings is None and code != "PROVIDER_NOT_INSTALLED"),
+        available=reason is None
+        or (settings is None and code != "PROVIDER_NOT_INSTALLED"),
         unavailable_code=code,
         unavailable_reason=reason,
         notes=notes,
+        facts=json.loads(
+            files("phasyn_qimg.dit")
+            .joinpath("lora_compatibility.json")
+            .read_text(encoding="utf-8")
+        ),
     )
 
 

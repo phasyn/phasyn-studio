@@ -14,10 +14,10 @@ import { EntityHeader, InspectorFooter, PropertySection } from "@/components/wor
 import { providerKind } from "@/components/workbench/kinds";
 import { PanelTabs } from "@/components/workbench/PanelTabs";
 import { ToolStrip } from "@/components/workbench/ToolStrip";
-import { isRecord, type JsonObject } from "@/lib/json";
+import { isListed, isRecord, type JsonObject } from "@/lib/json";
 import { objectProperties, requiredKeys } from "@/lib/schema";
 import { sectionSchemas } from "@/features/components";
-import { draftPatch, issueFieldKeys, MODE_INFO, RECORDER_MODES, RECORDER_SAVE_ID, recordingIssues, type RecorderMode, type RowDraft, type RowResult, type TrackingRow } from "./model";
+import { draftPatch, issueFieldKeys, MODE_INFO, RECORDER_MODES, RECORDER_SAVE_ID, recordingIssues, type RowDraft, type RowResult, type TrackingRow } from "./model";
 import { RECORDER_FIELD_GROUPS, recorderFieldMeta } from "./recorderFields";
 import { ResultChip } from "./TrackingTable";
 import { componentPath, recordingsPath } from "@/app/paths";
@@ -65,16 +65,15 @@ function RecorderSections({ row, value, onChange, disabled }: { row: TrackingRow
   const extras = Object.keys(value).filter((key) => value[key] !== undefined && !properties.has(key));
   const otherKeys = [...leftover, ...extras];
 
-  const toggle = (id: string, open: boolean) =>
-    setClosed((previous) => {
+  const toggle = (id: string, open: boolean) => { setClosed((previous) => {
       const next = new Set(previous);
       if (open) next.delete(id);
       else next.add(id);
       return next;
-    });
+    }); };
 
   return (
-    <SchemaDensityContext.Provider value="compact">
+    <SchemaDensityContext value="compact">
       {RECORDER_FIELD_GROUPS.map((group) => {
         const keys = group.keys.filter((key) => properties.has(key));
         if (keys.length === 0) return null;
@@ -90,12 +89,12 @@ function RecorderSections({ row, value, onChange, disabled }: { row: TrackingRow
             title={<SectionTitle title={group.title} issues={keys.filter((key) => issueKeys.has(key)).length} />}
             icon={<Icon aria-hidden />}
             open={!closed.has(group.id)}
-            onOpenChange={(open) => toggle(group.id, open)}
+            onOpenChange={(open) => { toggle(group.id, open); }}
           >
-            {group.note ? <p className="pb-1 text-caption text-fg-tertiary">{group.note}</p> : null}
+            {(group.note != null && group.note !== "") ? <p className="pb-1 text-caption text-fg-tertiary">{group.note}</p> : null}
             <SchemaForm
               schema={schema}
-              rootSchema={section.root}
+              {...(section.root === undefined ? {} : { rootSchema: section.root })}
               value={value}
               onChange={onChange}
               idPrefix={idPrefix}
@@ -113,11 +112,11 @@ function RecorderSections({ row, value, onChange, disabled }: { row: TrackingRow
           title={<SectionTitle title={t("其他欄位")} issues={otherKeys.filter((key) => issueKeys.has(key)).length} />}
           icon={<Braces aria-hidden />}
           open={!closed.has("other")}
-          onOpenChange={(open) => toggle("other", open)}
+          onOpenChange={(open) => { toggle("other", open); }}
         >
           <SchemaForm
             schema={section.schema}
-            rootSchema={section.root}
+            {...(section.root === undefined ? {} : { rootSchema: section.root })}
             value={value}
             onChange={onChange}
             idPrefix={idPrefix}
@@ -129,21 +128,19 @@ function RecorderSections({ row, value, onChange, disabled }: { row: TrackingRow
           />
         </PropertySection>
       ) : null}
-    </SchemaDensityContext.Provider>
+    </SchemaDensityContext>
   );
 }
 
 function ModeNote({ value }: { value: JsonObject }) {
-  const currentMode = typeof value.mode === "string" ? value.mode : "detailed";
-  const modeInfo = (RECORDER_MODES as readonly string[]).includes(currentMode) ? MODE_INFO[currentMode as RecorderMode] : null;
+  const currentMode = typeof value["mode"] === "string" ? value["mode"] : "detailed";
+  const modeInfo = isListed(currentMode, RECORDER_MODES) ? MODE_INFO[currentMode] : null;
   return (
     <p className="flex items-start gap-2 px-3 pt-2.5 pb-1 text-caption text-fg-tertiary">
       <Info aria-hidden className="mt-0.5 size-3.5 shrink-0" />
       <span>
         <T source={"{value}下一次呼叫生效，不需重新載入。"} values={{ value: modeInfo ? (
-          <>
-            <T source={"<0>{currentMode}</0>：{hint}。"} values={{ currentMode, hint: modeInfo.hint }} slots={[<span className="machine text-fg-secondary" />]} />
-          </>
+          <T source={"<0>{currentMode}</0>：{hint}。"} values={{ currentMode, hint: modeInfo.hint }} slots={[<span key="slot-0" className="machine text-fg-secondary" />]} />
         ) : null }} />
       </span>
     </p>
@@ -171,10 +168,10 @@ function ResultMessage({ result, label, hasDraft, reloadBlock, onReload }: { res
     detail = (
       <>
         <p className="text-fg-secondary [overflow-wrap:anywhere]">
-          <T source={"<0>{code}</0>：{message}"} values={{ code: result.code, message: tServer(result.message) }} slots={[<code className="machine text-fg-tertiary" />]} />
+          <T source={"<0>{code}</0>：{message}"} values={{ code: result.code, message: tServer(result.message) }} slots={[<code key="slot-0" className="machine text-fg-tertiary" />]} />
         </p>
         {result.outcomeUnknown ? <p className="text-warning">{t("Node 可能已套用：請重新讀取確認，不會自動重送。")}</p> : null}
-        {!result.outcomeUnknown && result.hint ? <p className="text-fg-tertiary">{result.hint}</p> : null}
+        {!result.outcomeUnknown && (result.hint != null && result.hint !== "") ? <p className="text-fg-tertiary">{result.hint}</p> : null}
       </>
     );
   }
@@ -244,7 +241,7 @@ export function RecorderInspector({
     <div className="flex min-h-0 min-w-0 flex-1 flex-col animate-rise-in">
       <EntityHeader
         icon={kind.icon}
-        art={kind.art}
+        {...(kind.art === undefined ? {} : { art: kind.art })}
         tone={kind.tone}
         title={row.label}
         status={<StatusBadge kind="component" value={row.state} />}
@@ -278,7 +275,7 @@ export function RecorderInspector({
           { id: "json", label: "JSON" },
         ]}
         value={mode}
-        onChange={(id) => setMode(id === "json" ? "json" : "form")}
+        onChange={(id) => { setMode(id === "json" ? "json" : "form"); }}
         idPrefix={TAB_PREFIX}
         label={t("編輯方式")}
         variant="underline"
@@ -286,7 +283,7 @@ export function RecorderInspector({
       <DockBody role="tabpanel" id={`${TAB_PREFIX}-panel-${mode}`} aria-labelledby={`${TAB_PREFIX}-tab-${mode}`}>
         <ModeNote value={value} />
         {mode === "form" ? (
-          <RecorderSections row={row} value={value} onChange={(next) => onChange(row, next)} disabled={locked} />
+          <RecorderSections row={row} value={value} onChange={(next) => { onChange(row, next); }} disabled={locked} />
         ) : (
           <div className="px-3 pt-1 pb-3">
             <JsonEditor
@@ -294,7 +291,7 @@ export function RecorderInspector({
               label="recording JSON"
               value={value}
               accept={(next) => (isRecord(next) ? null : t("recording 必須是 JSON object"))}
-              onChange={(next) => onChange(row, next as JsonObject)}
+              onChange={(next) => { if (isRecord(next)) onChange(row, next); }}
               issues={issues}
               rows={18}
               disabled={locked}
@@ -326,14 +323,14 @@ export function RecorderInspector({
           {outdated ? (
             <Callout tone="warning" title={t("伺服器已有 revision #{revision}（草稿基於 #{baseRevision}）", { revision: row.revision, baseRevision: draft.baseRevision })}>
               <p>{t("儲存時以 expected_revision 檢查，會回報「已被更新」；重新讀取會把你的修改套到最新版上。")}</p>
-              <ActionButton size="sm" icon={<RotateCcw aria-hidden />} onClick={() => onReload(row)} disabledReason={reloadBlock}>
+              <ActionButton size="sm" icon={<RotateCcw aria-hidden />} onClick={() => { onReload(row); }} disabledReason={reloadBlock}>
                 {t("重新讀取")}
               </ActionButton>
             </Callout>
           ) : null}
           {diff.removedPaths.length > 0 ? <p className="text-caption text-warning">{t("移除了 {removedPaths}：PATCH 不會刪除欄位（伺服器保留原值）。", { removedPaths: formatList(diff.removedPaths) })}</p> : null}
           {draft && issues.length > 0 ? <p className="text-caption text-danger">{t("{issuesCount} 個問題阻擋儲存（伺服器會以 422 拒絕）。", { issuesCount: issues.length })}</p> : null}
-          <ResultMessage result={result} label={row.label} hasDraft={draft !== undefined} reloadBlock={reloadBlock} onReload={() => onReload(row)} />
+          <ResultMessage result={result} label={row.label} hasDraft={draft !== undefined} reloadBlock={reloadBlock} onReload={() => { onReload(row); }} />
           <div className="flex flex-wrap items-center gap-2">
             <ActionButton
               id={RECORDER_SAVE_ID}
@@ -342,7 +339,7 @@ export function RecorderInspector({
               icon={<Save aria-hidden />}
               pending={result?.status === "pending"}
               disabledReason={result?.status === "pending" ? null : saveReason}
-              onClick={() => onSave(row)}
+              onClick={() => { onSave(row); }}
             >
               {t("儲存")}
             </ActionButton>
@@ -351,7 +348,7 @@ export function RecorderInspector({
               variant="secondary"
               icon={<Undo2 aria-hidden />}
               disabledReason={running ? t("儲存進行中，請稍候") : !draft ? t("沒有變更") : null}
-              onClick={() => onRevert(row)}
+              onClick={() => { onRevert(row); }}
             >
               {t("捨棄修改")}
             </ActionButton>

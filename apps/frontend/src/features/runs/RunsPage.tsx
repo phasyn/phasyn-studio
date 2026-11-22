@@ -1,5 +1,5 @@
 import { Activity, Archive, ArchiveRestore, ListPlus, ListVideo, Search, Trash2 } from "lucide-react";
-import { useContext, useState } from "react";
+import { use, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { invalidateAfterRunChange, setRunArchived, useRunList } from "@/api/runs";
@@ -40,7 +40,7 @@ export function RunsPage() {
   const archivedView = params.get("archived") === "only";
   const runs = useRunList(50, archivedView ? "only" : "exclude");
   const client = useQueryClient();
-  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
   const [deleting, setDeleting] = useState<string[] | null>(null);
   const [archiving, setArchiving] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
@@ -48,7 +48,7 @@ export function RunsPage() {
   const anyRunning = items.some((run) => run.state === "running");
   const stateFilter = params.get("state") ?? "";
   // The state outline lives in the left column; when that is collapsed the tool strip carries the same filter.
-  const outlineShown = useContext(OutlinerSlotContext) !== null;
+  const outlineShown = use(OutlinerSlotContext) !== null;
   // The search box shows local text (fast typing keeps every character); the URL follows when typing pauses
   const [query, setQuery] = useSearchParamText("q");
   const counts: Partial<Record<RunState, number>> = {};
@@ -62,8 +62,7 @@ export function RunsPage() {
           text.toLowerCase().includes(needle),
         )),
   );
-  const update = (key: string, value: string) =>
-    setParams(
+  const update = (key: string, value: string) => { setParams(
       (previous) => {
         const next = new URLSearchParams(previous);
         if (value) next.set(key, value);
@@ -71,18 +70,17 @@ export function RunsPage() {
         return next;
       },
       { replace: true },
-    );
+    ); };
   // 選取只保留目前畫面上、可以處理（非執行中）的 run
   const selectable = shown.filter((run) => run.state !== "running");
   const chosen = selectable.filter((run) => selected.has(run.run_id));
   const allChosen = selectable.length > 0 && chosen.length === selectable.length;
-  const toggle = (runId: string, on: boolean) =>
-    setSelected((previous) => {
+  const toggle = (runId: string, on: boolean) => { setSelected((previous) => {
       const next = new Set(previous);
       if (on) next.add(runId);
       else next.delete(runId);
       return next;
-    });
+    }); };
   // Bulk results and the delete confirmation name each run with its short id: many runs share a label or a pipeline
   const labelOf = (runId: string) => {
     const run = items.find((item) => item.run_id === runId);
@@ -92,8 +90,8 @@ export function RunsPage() {
     counts,
     total: items.length,
     selected: stateFilter,
-    onSelect: (state) => update("state", state),
-    partial: Boolean(runs.hasNextPage),
+    onSelect: (state) => { update("state", state); },
+    partial: runs.hasNextPage,
     archivedView,
     onArchivedView: (archived) => {
       setSelected(new Set());
@@ -144,7 +142,7 @@ export function RunsPage() {
             placeholder={t("搜尋名稱、run_id、流程、錯誤碼")}
             aria-label={t("搜尋 run（名稱、run_id、流程、錯誤碼）")}
             autoComplete="off"
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => { setQuery(event.target.value); }}
             className="pl-8"
           />
         </div>
@@ -152,7 +150,7 @@ export function RunsPage() {
         {chosen.length > 0 ? (
           <div className="flex items-center gap-1.5 rounded-md border border-brand-blue/30 bg-brand-soft py-0.5 pr-0.5 pl-2.5 animate-rise-in">
             <span className="text-caption text-fg-secondary" aria-live="polite">
-              <T source={"已選 <0>{chosenCount}</0> 個"} values={{ chosenCount: chosen.length }} slots={[<span className="machine text-fg" />]} />
+              <T source={"已選 <0>{chosenCount}</0> 個"} values={{ chosenCount: chosen.length }} slots={[<span key="slot-0" className="machine text-fg" />]} />
             </span>
             <Button
               size="sm"
@@ -164,13 +162,13 @@ export function RunsPage() {
             >
               {archivedView ? t("取消封存") : t("封存")}
             </Button>
-            <Button size="sm" variant="danger" icon={<Trash2 aria-hidden />} disabled={archiving} onClick={() => setDeleting(chosen.map((run) => run.run_id))}>
+            <Button size="sm" variant="danger" icon={<Trash2 aria-hidden />} disabled={archiving} onClick={() => { setDeleting(chosen.map((run) => run.run_id)); }}>
               {t("永久刪除")}
             </Button>
           </div>
         ) : null}
         <p className="ml-auto text-caption text-fg-tertiary" aria-live="polite">
-          <T source={"{value}顯示 <0>{shownCount}</0>／已載入 <1>{itemsCount}</1> 個 run"} values={{ value: archivedView ? t("已封存・") : "", shownCount: shown.length, itemsCount: items.length }} slots={[<span className="machine text-fg-secondary" />, <span className="machine" />]} />
+          <T source={"{value}顯示 <0>{shownCount}</0>／已載入 <1>{itemsCount}</1> 個 run"} values={{ value: archivedView ? t("已封存・") : "", shownCount: shown.length, itemsCount: items.length }} slots={[<span key="slot-0" className="machine text-fg-secondary" />, <span key="slot-1" className="machine" />]} />
         </p>
         {runs.hasNextPage ? (
           <Button size="sm" variant="secondary" onClick={() => void runs.fetchNextPage()} pending={runs.isFetchingNextPage}>
@@ -180,10 +178,10 @@ export function RunsPage() {
           <span className="pr-1 text-caption text-fg-tertiary">{t("已載入全部")}</span>
         ) : null}
       </ToolStrip>
-      {(runs.isError && items.length > 0) || bulkError ? (
+      {(runs.isError && items.length > 0) || (bulkError != null && bulkError !== "") ? (
         <div className="grid shrink-0 gap-2 border-b border-line-subtle px-4 py-2">
           {runs.isError && items.length > 0 ? <ErrorCallout error={runs.error} title={t("更新失敗：顯示上一次的資料")} onRetry={() => void runs.refetch()} /> : null}
-          {bulkError ? (
+          {(bulkError != null && bulkError !== "") ? (
             <p role="alert" className="text-data text-danger">
               {bulkError}
             </p>
@@ -239,7 +237,7 @@ export function RunsPage() {
                       className="size-3.5 accent-action"
                       checked={allChosen}
                       disabled={selectable.length === 0}
-                      onChange={(event) => setSelected(event.target.checked ? new Set(selectable.map((run) => run.run_id)) : new Set())}
+                      onChange={(event) => { setSelected(event.target.checked ? new Set(selectable.map((run) => run.run_id)) : new Set()); }}
                       aria-label={t("選取畫面上所有可以處理的 run")}
                       title={t("選取畫面上所有可以處理的 run（執行中的 run 不能封存或刪除）")}
                     />
@@ -271,7 +269,7 @@ export function RunsPage() {
                           className="size-3.5 accent-action disabled:cursor-not-allowed"
                           checked={selected.has(run.run_id)}
                           disabled={running}
-                          onChange={(event) => toggle(run.run_id, event.target.checked)}
+                          onChange={(event) => { toggle(run.run_id, event.target.checked); }}
                           aria-label={t("選取 {value}", { value: runDisplayNameWithId(run) })}
                           title={running ? t("執行中的 run 不能封存或刪除：先取消或等它結束") : undefined}
                         />
@@ -314,7 +312,7 @@ export function RunsPage() {
                         ) : (
                           <span className="text-fg-tertiary">—</span>
                         )}
-                        {run.request.origin?.source_run_id ? (
+                        {(run.request.origin?.source_run_id != null && run.request.origin.source_run_id !== "") ? (
                           <span className="block truncate text-caption text-fg-tertiary">
                             {t("來源")} <IdText value={run.request.origin.source_run_id} copy={false} />
                           </span>
@@ -344,10 +342,10 @@ export function RunsPage() {
       <RunDeleteDialog
         runIds={deleting ?? []}
         open={deleting !== null}
-        onOpenChange={(open) => (open ? undefined : setDeleting(null))}
+        onOpenChange={(open) => { if (!(open)) { setDeleting(null); } }}
         labelOf={labelOf}
-        outputKind={runOutputKind(items.filter((run) => deleting?.includes(run.run_id)))}
-        onDone={(deleted) => setSelected((previous) => new Set([...previous].filter((id) => !deleted.includes(id))))}
+        outputKind={runOutputKind(items.filter((run) => Boolean(deleting?.includes(run.run_id))))}
+        onDone={(deleted) => { setSelected((previous) => new Set([...previous].filter((id) => !deleted.includes(id)))); }}
       />
     </>
   );

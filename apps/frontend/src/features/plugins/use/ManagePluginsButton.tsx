@@ -12,7 +12,7 @@ export function ManagePluginsButton({ registry, className }: { registry: PluginR
   return (
     <Button
       variant="secondary"
-      onClick={() => openPluginManager({ tab: "installed" })}
+      onClick={() => { openPluginManager({ tab: "installed" }); }}
       title={t("安裝、檢視、匯出與移除插件")}
       className={cn("h-10 w-full justify-start gap-2.5 rounded-lg px-2.5 text-left", className)}
     >

@@ -1,3 +1,4 @@
+import { hasSlotContent } from "@/lib/dom";
 import type { LucideIcon } from "lucide-react";
 import { useRef, type ReactNode } from "react";
 import { ActiveIndicator } from "@/components/ui/active-indicator";
@@ -5,8 +6,8 @@ import { StableLabel } from "@/components/ui/stable-label";
 import { cn } from "@/lib/cn";
 import { useFitLevel } from "@/lib/useFitLevel";
 
-export interface PanelTabItem {
-  id: string;
+export interface PanelTabItem<Id extends string = string> {
+  id: Id;
   label: string;
   icon?: LucideIcon;
   count?: number | null;
@@ -90,7 +91,7 @@ function countClass(variant: PanelTabsVariant, tab: PanelTabItem, selected: bool
 
 /** What the strip shows, for useFitLevel: a change (label, count, language) measures again from level 0. */
 function fitContent(tabs: readonly PanelTabItem[]): string {
-  return tabs.map((tab) => `${tab.id}\u0000${tab.label}\u0000${tab.icon ? 1 : 0}\u0000${tab.count ?? ""}\u0000${tab.countTone ?? ""}`).join("\u0001");
+  return tabs.map((tab) => `${tab.id}\u0000${tab.label}\u0000${String(tab.icon ? 1 : 0)}\u0000${String(tab.count ?? "")}\u0000${tab.countTone ?? ""}`).join("\u0001");
 }
 
 /**
@@ -106,7 +107,7 @@ function fitContent(tabs: readonly PanelTabItem[]): string {
  * gives it its width (a column stretches it; in a row give it `flex-1`), and a parent with a fixed height uses
  * `min-h-9` so a wrapped strip can grow.
  */
-export function PanelTabs({
+export function PanelTabs<Id extends string>({
   tabs,
   value,
   onChange,
@@ -116,16 +117,16 @@ export function PanelTabs({
   actions,
   className,
 }: {
-  tabs: readonly PanelTabItem[];
+  tabs: readonly PanelTabItem<Id>[];
   value: string;
-  onChange: (id: string) => void;
+  onChange: (id: Id) => void;
   idPrefix: string;
   label: string;
   variant?: PanelTabsVariant;
   actions?: ReactNode;
   className?: string;
 }) {
-  const refs = useRef(new Map<string, HTMLButtonElement>());
+  const refsRef = useRef(new Map<string, HTMLButtonElement>());
   const listRef = useRef<HTMLDivElement>(null);
   const studio = variant === "studio";
   const framed = studio || actions !== undefined;
@@ -135,7 +136,7 @@ export function PanelTabs({
     const tab = tabs[(index + tabs.length) % tabs.length];
     if (!tab) return;
     onChange(tab.id);
-    refs.current.get(tab.id)?.focus();
+    refsRef.current.get(tab.id)?.focus();
   };
   const list = (
     <div
@@ -157,8 +158,8 @@ export function PanelTabs({
           <button
             key={tab.id}
             ref={(node) => {
-              if (node) refs.current.set(tab.id, node);
-              else refs.current.delete(tab.id);
+              if (node) refsRef.current.set(tab.id, node);
+              else refsRef.current.delete(tab.id);
             }}
             type="button"
             role="tab"
@@ -166,7 +167,7 @@ export function PanelTabs({
             aria-selected={selected}
             aria-controls={`${idPrefix}-panel-${tab.id}`}
             tabIndex={selected ? 0 : -1}
-            onClick={() => onChange(tab.id)}
+            onClick={() => { onChange(tab.id); }}
             onKeyDown={(event) => {
               if (event.key === "ArrowRight") focusAt(index + 1);
               else if (event.key === "ArrowLeft") focusAt(index - 1);
@@ -189,7 +190,7 @@ export function PanelTabs({
       {studio ? (
         <ActiveIndicator container={listRef} edge="bottom" inset={10} className={cn("bg-brand-gradient forced-colors:bg-none", wrapped && "hidden")} />
       ) : (
-        <ActiveIndicator container={listRef} edge="bottom" className={wrapped ? "hidden" : undefined} />
+        <ActiveIndicator container={listRef} edge="bottom" {...(wrapped ? { className: "hidden" } : {})} />
       )}
     </div>
   );
@@ -197,7 +198,7 @@ export function PanelTabs({
   return (
     <div className={cn("flex min-w-0 items-stretch", FRAME_CLASS[variant], className, wrapped && "h-auto min-h-11")}>
       {list}
-      {actions ? <div className={cn("ml-auto flex shrink-0 items-center gap-1 pr-1.5 pl-1", wrapped && "h-11 self-start")}>{actions}</div> : null}
+      {hasSlotContent(actions) ? <div className={cn("ml-auto flex shrink-0 items-center gap-1 pr-1.5 pl-1", wrapped && "h-11 self-start")}>{actions}</div> : null}
     </div>
   );
 }

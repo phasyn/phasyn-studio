@@ -1,4 +1,4 @@
-"""``POST /api/telemetry/batches``：收下 Node 上報的紀錄副本。
+"""``POST /api/telemetry/batches``：收下 Node 上報的紀錄副本.
 
 驗證 EventBatch → RecordingStore.ingest_batch（在 thread 執行）→ BatchAck。以
 (recording_id, stream_id, seq) 去重；相同鍵不同內容記 CORRUPT_RECORD，不覆蓋。這只是 log 防重，
@@ -15,6 +15,7 @@ from phasyn_components import contracts
 from phasyn_server.http import json_response, read_json
 from starlette.responses import JSONResponse
 
+
 if TYPE_CHECKING:
     from .state import Controller
 
@@ -22,6 +23,7 @@ BATCH_BODY_LIMIT = 32 * 1024 * 1024
 
 
 def routes(ctl: Controller) -> APIRouter:
+    """Build the Controller routes for telemetry."""
     router = APIRouter()
 
     def ingest(batch: Any) -> dict[str, Any]:

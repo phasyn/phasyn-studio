@@ -10,6 +10,7 @@ from __future__ import annotations
 import copy
 import os
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -17,17 +18,21 @@ from typing import Any
 import jsonschema
 import pytest
 from phasyn_components.errors import ComponentError
+
 from phasyn_h3 import config
 from phasyn_h3.plan import build_plan, make_job
 from phasyn_h3.providers import LOAD_PLAN_PLACEHOLDER
 from phasyn_h3.recipe.abi.canonical import canonical_digest
-from phasyn_h3.recipe.adapter import local_manifest
-from phasyn_h3.recipe.adapter import ref_kv_rules as rules
-from phasyn_h3.recipe.adapter.profile_rules import PROFILE_EXTENSION_SCHEMAS, validate_profile
+from phasyn_h3.recipe.adapter import local_manifest, ref_kv_rules as rules
+from phasyn_h3.recipe.adapter.profile_rules import (
+    PROFILE_EXTENSION_SCHEMAS,
+    validate_profile,
+)
 from phasyn_h3.recipe.runtime.errors import UnsupportedCombination
 from phasyn_h3.recipe.runtime.measure import dit_flop, dit_skip_step_flop, dit_step_flop
 from phasyn_h3.recipe.runtime.policy import resolve_stage_policy
 from phasyn_h3.recipe.runtime.stages import denoise_av
+
 
 GIB = 1 << 30
 SKIP = {"mode": "skip", "start_step": 1, "cache_dtype": "fp8", "refresh_steps": []}
@@ -39,8 +44,15 @@ def dit_settings(**options: Any) -> dict[str, Any]:
         "variant": "ref2va",
         "shared_from": None,
         "mode": "approximate",
-        "attention": {"provider": "auto_exact", "reject_quadratic_materialization": True},
-        "adaln": {"mode": "fixed", "host_cache_bytes": 8 * GIB, "cache_ref": "h3-ref2va-pdd8"},
+        "attention": {
+            "provider": "auto_exact",
+            "reject_quadratic_materialization": True,
+        },
+        "adaln": {
+            "mode": "fixed",
+            "host_cache_bytes": 8 * GIB,
+            "cache_ref": "h3-ref2va-pdd8",
+        },
         "lora": None,
         "bounded_fp8_load": False,
     }
@@ -48,11 +60,18 @@ def dit_settings(**options: Any) -> dict[str, Any]:
     return {
         "load": {
             "model_path": "/models",
-            "device": {"kind": "cuda", "id": "GPU-00000000-0000-0000-0000-000000000000", "resource_group": "gpu-uma"},
+            "device": {
+                "kind": "cuda",
+                "id": "GPU-00000000-0000-0000-0000-000000000000",
+                "resource_group": "gpu-uma",
+            },
             "part_overrides": [],
             "precision": {
                 "compute_dtype": "native",
-                "quantization": {"scheme": "int8_convrot", "excluded_modules": ["adaln_proj"]},
+                "quantization": {
+                    "scheme": "int8_convrot",
+                    "excluded_modules": ["adaln_proj"],
+                },
             },
             "offload": {"mode": "none", "after_use": "device"},
             "provider_options": provider_options,
@@ -76,7 +95,9 @@ def ref2va_plan(profile: dict[str, Any], steps: int = 8) -> dict[str, Any]:
         variant="ref2va",
         materials=[LOAD_PLAN_PLACEHOLDER],
     )
-    plan, _ = build_plan(job, profile, model=local_manifest("ref2va"), sampling={"steps": steps})
+    plan, _ = build_plan(
+        job, profile, model=local_manifest("ref2va"), sampling={"steps": steps}
+    )
     return plan
 
 
@@ -90,8 +111,18 @@ def ref2va_plan(profile: dict[str, Any], steps: int = 8) -> dict[str, Any]:
         ({"mode": "off"}, None),
         ({"mode": "skip"}, rules.RefKvCachePolicy(1, "fp8", (), None)),
         (
-            {"mode": "skip", "start_step": 2, "cache_dtype": "bf16", "refresh_steps": [5, 3], "max_cache_bytes": 0},
+            {
+                "mode": "skip",
+                "start_step": 2,
+                "cache_dtype": "bf16",
+                "refresh_steps": [5, 3],
+                "max_cache_bytes": 0,
+            },
             rules.RefKvCachePolicy(2, "bf16", (3, 5), 0),
+        ),
+        (
+            {"mode": "skip", "cache_device": "host"},
+            rules.RefKvCachePolicy(1, "fp8", (), None, "host"),
         ),
     ],
 )
@@ -105,14 +136,25 @@ def test_option_values(raw: Any, expected: rules.RefKvCachePolicy | None) -> Non
         ([], ""),
         ({"mode": "on"}, "mode"),
         ({"mode": "skip", "layers": [1]}, "layers"),
-        ({"mode": "off", "cache_dtype": "fp8"}, "cache_dtype"),  # off with settings it would ignore
-        ({"mode": "skip", "start_step": 0}, "start_step"),  # step 0 always fills the cache
+        (
+            {"mode": "off", "cache_dtype": "fp8"},
+            "cache_dtype",
+        ),  # off with settings it would ignore
+        (
+            {"mode": "skip", "start_step": 0},
+            "start_step",
+        ),  # step 0 always fills the cache
         ({"mode": "skip", "start_step": True}, "start_step"),
         ({"mode": "skip", "cache_dtype": "fp16"}, "cache_dtype"),
-        ({"mode": "skip", "start_step": 3, "refresh_steps": [2]}, "refresh_steps"),  # already a full step
+        (
+            {"mode": "skip", "start_step": 3, "refresh_steps": [2]},
+            "refresh_steps",
+        ),  # already a full step
         ({"mode": "skip", "refresh_steps": [4, 4]}, "refresh_steps"),
         ({"mode": "skip", "refresh_steps": "4"}, "refresh_steps"),
         ({"mode": "skip", "max_cache_bytes": -1}, "max_cache_bytes"),
+        ({"mode": "skip", "cache_device": "cuda"}, "cache_device"),
+        ({"mode": "off", "cache_device": "host"}, "cache_device"),
     ],
 )
 def test_option_rejections(raw: Any, field: str) -> None:
@@ -123,9 +165,18 @@ def test_option_rejections(raw: Any, field: str) -> None:
 
 def test_the_settings_schema_takes_the_option_and_refuses_unknown_values() -> None:
     validator = jsonschema.Draft202012Validator(config.build_settings_schema("dit"))
-    for value in (None, {"mode": "off"}, SKIP, {**SKIP, "refresh_steps": [4], "max_cache_bytes": 12 * GIB}):
+    for value in (
+        None,
+        {"mode": "off"},
+        SKIP,
+        {**SKIP, "refresh_steps": [4], "max_cache_bytes": 12 * GIB},
+    ):
         assert validator.is_valid(dit_settings(ref_kv_cache=value)), value
-    for value in ({"mode": "skip", "layers": "all"}, {"mode": "skip", "start_step": 0}, {"cache_dtype": "fp8"}):
+    for value in (
+        {"mode": "skip", "layers": "all"},
+        {"mode": "skip", "start_step": 0},
+        {"cache_dtype": "fp8"},
+    ):
         assert not validator.is_valid(dit_settings(ref_kv_cache=value)), value
     for role in ("conditioning", "video_decode"):
         assert "ref_kv_cache" not in config.provider_options_schema(role)
@@ -148,9 +199,13 @@ def test_load_rules() -> None:
             settings["load"]["precision"]["quantization"] = {"scheme": "none"}
         with pytest.raises(ComponentError) as err:
             config.check_supported("dit", settings, {})
-        assert err.value.code == "UNSUPPORTED_SETTING" and words in err.value.message, err.value.message
+        assert err.value.code == "UNSUPPORTED_SETTING" and words in err.value.message, (
+            err.value.message
+        )
     with pytest.raises(ComponentError) as err:
-        config.check_supported("dit", dit_settings(ref_kv_cache={"mode": "skip", "start_step": 0}), {})
+        config.check_supported(
+            "dit", dit_settings(ref_kv_cache={"mode": "skip", "start_step": 0}), {}
+        )
     assert err.value.details == {"field": "ref_kv_cache.start_step"}
 
 
@@ -162,16 +217,18 @@ def test_off_is_the_profile_of_today() -> None:
     for value in (None, {"mode": "off"}):
         off = profile_of(dit_settings(ref_kv_cache=value))
         assert off == today and canonical_digest(off) == canonical_digest(today)
-    assert ref2va_plan(profile_of(dit_settings(ref_kv_cache={"mode": "off"}))) == ref2va_plan(today)
+    assert ref2va_plan(
+        profile_of(dit_settings(ref_kv_cache={"mode": "off"}))
+    ) == ref2va_plan(today)
 
 
 def test_skip_adds_one_explicit_extension() -> None:
     today = profile_of(dit_settings())
     skip = profile_of(dit_settings(ref_kv_cache={"mode": "skip", "refresh_steps": [4]}))
     ext = skip["extensions"][-1]
-    assert skip["extensions"][:-1] == today["extensions"] and {k: v for k, v in skip.items() if k != "extensions"} == {
-        k: v for k, v in today.items() if k != "extensions"
-    }
+    assert skip["extensions"][:-1] == today["extensions"] and {
+        k: v for k, v in skip.items() if k != "extensions"
+    } == {k: v for k, v in today.items() if k != "extensions"}
     assert ext == {
         "namespace": rules.EXTENSION,
         "schema_digest": config.EXTENSION_DIGESTS[rules.EXTENSION],
@@ -181,6 +238,7 @@ def test_skip_adds_one_explicit_extension() -> None:
             "cache_dtype": "fp8",
             "refresh_steps": [4],
             "max_cache_bytes": None,
+            "cache_device": "gpu",
         },
     }
     assert config.EXTENSION_DIGESTS[rules.EXTENSION] == canonical_digest(
@@ -192,43 +250,81 @@ def test_skip_adds_one_explicit_extension() -> None:
 def test_plan_time_diagnostics() -> None:
     skip = profile_of(dit_settings(ref_kv_cache=SKIP))
     model = local_manifest("ref2va")
-    assert [d for d in validate_profile(skip, model=model) if rules.EXTENSION in " ".join(d["field_paths"])] == []
-    for edit, words in (
+    assert [
+        d
+        for d in validate_profile(skip, model=model)
+        if rules.EXTENSION in " ".join(d["field_paths"])
+    ] == []
+    edits: tuple[tuple[Callable[[dict[str, Any]], object], str], ...] = (
         (lambda p: p.update(mode="exact"), "mode=exact"),
         (lambda p: p["attention"].update(provider="fp8_fa_sm120"), "fp8_fa_sm120"),
-        (lambda p: p["extensions"][-1]["values"].pop("max_cache_bytes"), "max_cache_bytes"),
+        (
+            lambda p: p["extensions"][-1]["values"].pop("max_cache_bytes"),
+            "max_cache_bytes",
+        ),
+        (lambda p: p["extensions"][-1]["values"].pop("cache_device"), "cache_device"),
         (lambda p: p["extensions"][-1]["values"].update(mode="off"), "skip"),
-    ):
+    )
+    for edit, words in edits:
         profile = copy.deepcopy(skip)
         edit(profile)
-        diags = [d for d in validate_profile(profile, model=model) if d["severity"] == "error"]
+        diags = [
+            d
+            for d in validate_profile(profile, model=model)
+            if d["severity"] == "error"
+        ]
         assert any(words in d["message"] for d in diags), diags
-    fl2va = [d for d in validate_profile(skip, model=local_manifest("fl2va")) if d["severity"] == "error"]
+    fl2va = [
+        d
+        for d in validate_profile(skip, model=local_manifest("fl2va"))
+        if d["severity"] == "error"
+    ]
     assert any("Ref2VA" in d["message"] for d in fl2va)
 
 
 def test_the_stage_policy_carries_the_cache() -> None:
-    plan = ref2va_plan(profile_of(dit_settings(ref_kv_cache={**SKIP, "refresh_steps": [4]})))
+    plan = ref2va_plan(
+        profile_of(dit_settings(ref_kv_cache={**SKIP, "refresh_steps": [4]}))
+    )
     for stage in ("load_dit", "assemble_inputs", "denoise_av"):
         policy = resolve_stage_policy(plan, stage, sm=(12, 1))
         assert policy.ref_kv_cache == rules.RefKvCachePolicy(1, "fp8", (4,), None)
-    assert resolve_stage_policy(ref2va_plan(profile_of(dit_settings())), "denoise_av", sm=(12, 1)).ref_kv_cache is None
-    for edit, reason in (
-        (lambda p: p["attention"].update(provider="fp8_fa_sm120"), "REF_KV_CACHE_ATTENTION_UNSUPPORTED"),
+    assert (
+        resolve_stage_policy(
+            ref2va_plan(profile_of(dit_settings())), "denoise_av", sm=(12, 1)
+        ).ref_kv_cache
+        is None
+    )
+    edits: tuple[tuple[Callable[[dict[str, Any]], object], str], ...] = (
+        (
+            lambda p: p["attention"].update(provider="fp8_fa_sm120"),
+            "REF_KV_CACHE_ATTENTION_UNSUPPORTED",
+        ),
         (lambda p: p.update(mode="exact"), "REF_KV_CACHE_NOT_EXACT"),
-        (lambda p: p["extensions"][-1]["values"].update(start_step=0), "EXTENSION_VALUE_INVALID"),
-        (lambda p: p["extensions"].append(copy.deepcopy(p["extensions"][-1])), "EXTENSION_VALUE_INVALID"),
-    ):
+        (
+            lambda p: p["extensions"][-1]["values"].update(start_step=0),
+            "EXTENSION_VALUE_INVALID",
+        ),
+        (
+            lambda p: p["extensions"].append(copy.deepcopy(p["extensions"][-1])),
+            "EXTENSION_VALUE_INVALID",
+        ),
+    )
+    for edit, reason in edits:
         bad = copy.deepcopy(plan)
         edit(bad["effective_profile"])
-        if bad["effective_profile"]["mode"] == "exact":  # the online INT8 rule refuses exact first otherwise
+        if (
+            bad["effective_profile"]["mode"] == "exact"
+        ):  # the online INT8 rule refuses exact first otherwise
             bad["effective_profile"]["components"]["transformer"]["quantization"] = {
                 "scheme": "none",
                 "provider": "native",
             }
             bad["effective_profile"]["adaln"]["mode"] = "off"
         with pytest.raises(UnsupportedCombination) as err:
-            resolve_stage_policy(bad, "denoise_av", sm=(12, 0))  # 12.0: fp8_fa_sm120 itself is allowed there
+            resolve_stage_policy(
+                bad, "denoise_av", sm=(12, 0)
+            )  # 12.0: fp8_fa_sm120 itself is allowed there
         assert err.value.reason_code == reason, err.value.message
 
 
@@ -244,14 +340,32 @@ def test_denoise_av_takes_the_path_of_today_when_off() -> None:
 def test_step_plan() -> None:
     plan = rules.step_plan
     assert plan(8, start_step=1) == ("fill",) + ("skip",) * 7
-    assert plan(8, start_step=1, refresh_steps=[4]) == ("fill", "skip", "skip", "skip", "fill", "skip", "skip", "skip")
-    assert plan(8, start_step=3) == ("full", "full", "fill") + ("skip",) * 5  # the cache holds the last full step
-    assert plan(4, start_step=1, refresh_steps=[2, 3]) == ("fill", "skip", "full", "full")
+    assert plan(8, start_step=1, refresh_steps=[4]) == (
+        "fill",
+        "skip",
+        "skip",
+        "skip",
+        "fill",
+        "skip",
+        "skip",
+        "skip",
+    )
+    assert (
+        plan(8, start_step=3) == ("full", "full", "fill") + ("skip",) * 5
+    )  # the cache holds the last full step
+    assert plan(4, start_step=1, refresh_steps=[2, 3]) == (
+        "fill",
+        "skip",
+        "full",
+        "full",
+    )
     assert plan(1, start_step=1) == ("full",) and plan(4, start_step=4) == ("full",) * 4
     for steps in range(1, 12):
         for start in range(1, 6):
             p = plan(steps, start_step=start, refresh_steps=[5, 7])
-            assert p[0] != "skip" and all(p[s - 1] in ("fill", "skip") for s in range(1, steps) if p[s] == "skip")
+            assert p[0] != "skip" and all(
+                p[s - 1] in ("fill", "skip") for s in range(1, steps) if p[s] == "skip"
+            )
 
 
 # reference rows R and live rows N of a swap segment by reference-video short edge:
@@ -261,20 +375,34 @@ REAL = {448: (14_628, 50_896), 576: (21_860, 59_258), 768: (35_686, 75_229)}
 
 def test_cache_bytes_at_the_real_sizes() -> None:
     def gib(edge: int, dtype: str) -> float:
-        return rules.cache_bytes(layers=50, ref_rows=REAL[edge][0], heads=56, head_dim=128, cache_dtype=dtype) / GIB
+        return (
+            rules.cache_bytes(
+                layers=50,
+                ref_rows=REAL[edge][0],
+                heads=56,
+                head_dim=128,
+                cache_dtype=dtype,
+            )
+            / GIB
+        )
 
-    assert rules.cache_bytes(layers=50, ref_rows=14_628, heads=56, head_dim=128, cache_dtype="fp8") == (
-        50 * 2 * 14_628 * 56 * 128 + 50 * 2 * 56 * 4
-    )
+    assert rules.cache_bytes(
+        layers=50, ref_rows=14_628, heads=56, head_dim=128, cache_dtype="fp8"
+    ) == (50 * 2 * 14_628 * 56 * 128 + 50 * 2 * 56 * 4)
     assert round(gib(448, "fp8"), 2) == 9.77 and round(gib(448, "bf16"), 2) == 19.53
     assert round(gib(576, "fp8"), 2) == 14.59 and round(gib(768, "fp8"), 2) == 23.82
     assert round(gib(768, "bf16"), 2) == 47.65
-    assert round(rules.kv_buffer_bytes(used_rows=75_229, heads=56, head_dim=128) / GIB, 2) == 2.01
+    assert (
+        round(rules.kv_buffer_bytes(used_rows=75_229, heads=56, head_dim=128) / GIB, 2)
+        == 2.01
+    )
 
 
 def test_flop_model() -> None:
     assert (
-        dit_flop(50_944, 8).total == dit_flop(50_944, 8, ref_skip=None).total == dit_step_flop(50_944)["total_flop"] * 8
+        dit_flop(50_944, 8).total
+        == dit_flop(50_944, 8, ref_skip=None).total
+        == dit_step_flop(50_944)["total_flop"] * 8
     )
     for edge, (refs, live) in REAL.items():
         n = (live + 63) // 64 * 64
@@ -284,7 +412,12 @@ def test_flop_model() -> None:
         run = dit_flop(n, 8, ref_skip=(m, 7))
         assert abs(run.total / dit_flop(n, 8).total - (1 + 7 * m / n) / 8) < 1e-12
         assert run.detail["ref_kv_cache"]["skipped_evaluations"] == 7
-    assert dit_flop(1024, 2, ref_skip=(512, 9)).detail["ref_kv_cache"]["skipped_evaluations"] == 2
+    assert (
+        dit_flop(1024, 2, ref_skip=(512, 9)).detail["ref_kv_cache"][
+            "skipped_evaluations"
+        ]
+        == 2
+    )
 
 
 # ------------------------------------------------------------------------------------------------ CPU numerics
@@ -296,12 +429,12 @@ def test_cpu_equivalence(tmp_path: Path) -> None:
     python = os.environ.get("PHASYN_H3_RUNTIME_PYTHON")
     if not python:
         pytest.skip(
-            "PHASYN_H3_RUNTIME_PYTHON 未指向 runtime tuple 的 python（需要 torch＋釘版 SGLang）；未驗證，不算通過"
+            "PHASYN_H3_RUNTIME_PYTHON 未指向 runtime tuple 的 python（需要 torch\N{FULLWIDTH PLUS SIGN}釘版 SGLang）；未驗證，不算通過"
         )
     script = Path(__file__).resolve().parent / "ref_kv_cache_cpu.py"
     env = dict(os.environ)
     env.update(CUDA_VISIBLE_DEVICES="")
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603 - Run the designated Python test worker using an argument vector.
         [python, "-I", "-B", str(script), "--work", str(tmp_path)],
         capture_output=True,
         text=True,

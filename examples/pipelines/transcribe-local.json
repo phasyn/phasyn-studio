@@ -1,0 +1,46 @@
+{
+  "pipeline_id": "transcribe-local",
+  "label": "辨識音軌並產生來源字幕",
+  "inputs": [
+    {
+      "name": "audio_file",
+      "type_id": "media.audio.v1",
+      "description": "音訊來源（與影片擇一）",
+      "transport": "file",
+      "required": false
+    },
+    {
+      "name": "video_file",
+      "type_id": "media.video.v1",
+      "description": "影片中的音軌（與音訊擇一）",
+      "transport": "file",
+      "required": false
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "transcribe",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "transcribe-local",
+      "inputs": {
+        "audio_file": {
+          "from_input": "audio_file"
+        },
+        "video_file": {
+          "from_input": "video_file"
+        }
+      },
+      "parameters": {}
+    }
+  ],
+  "outputs": {
+    "srt_file": {
+      "from_step": "transcribe",
+      "output": "srt_file"
+    },
+    "transcript_file": {
+      "from_step": "transcribe",
+      "output": "transcript_file"
+    }
+  }
+}

@@ -7,6 +7,7 @@ from typing import Any
 
 from phasyn_components.ids import is_uuid
 
+
 RUN_ID_KEYS = frozenset({"run_id", "render_run_id"})
 
 
@@ -22,7 +23,7 @@ def _walk(obj: Any) -> Iterator[tuple[str | None, Any]]:
 
 
 def deep_run_ids(obj: Any) -> set[str]:
-    """任意 JSON 中 run_id／render_run_id／run_ids 欄位的 UUID（小寫）。"""
+    """任意 JSON 中 run_id/render_run_id/run_ids 欄位的 UUID（小寫）."""
     out: set[str] = set()
     for key, value in _walk(obj):
         if key in RUN_ID_KEYS and is_uuid(value):
@@ -33,7 +34,7 @@ def deep_run_ids(obj: Any) -> set[str]:
 
 
 def study_run_ids(doc: Mapping[str, Any]) -> list[str]:
-    """研究引用的 run：只看明確欄位（任務 run_ids、結果參照、版本 provenance、acceptance），不深度猜測 settings。"""
+    """研究引用的 run：只看明確欄位（任務 run_ids、結果參照、版本 provenance、acceptance），不深度猜測 settings."""
     ordered: list[str] = []
     seen: set[str] = set()
 

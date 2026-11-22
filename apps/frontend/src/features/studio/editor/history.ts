@@ -48,7 +48,7 @@ function restore(snapshot: StudioTimeline, live: StudioTimeline): StudioTimeline
 function rebound(before: StudioTimeline, after: StudioTimeline): boolean {
   return before.sources.some((source) => {
     const current = after.sources.find((item) => item.source_id === source.source_id);
-    return current && (source.kind !== current.kind || source.library_id !== current.library_id || source.shot_id !== current.shot_id || (source.take_id && source.take_id !== current.take_id) || (source.file && source.file.sha256 !== current.file?.sha256));
+    return current !== undefined && (source.kind !== current.kind || source.library_id !== current.library_id || source.shot_id !== current.shot_id || (source.take_id != null && source.take_id !== "" && source.take_id !== current.take_id) || (source.file != null && source.file.sha256 !== current.file?.sha256));
   });
 }
 /** What of a document is the edit: not the media facts of its sources and not the Controller's bookkeeping. */
@@ -99,7 +99,7 @@ export function createEditHistory() {
     if (!step) return null;
     const next = restore(step.timeline, current);
     const error = timelineProblem(next);
-    if (error) return { ok: false, error };
+    if (error != null && error !== "") return { ok: false, error };
     past = past.slice(0, -1);
     future = [...future, { ...step, timeline: current }];
     owned = next;
@@ -111,7 +111,7 @@ export function createEditHistory() {
     if (!step) return null;
     const next = restore(step.timeline, current);
     const error = timelineProblem(next);
-    if (error) return { ok: false, error };
+    if (error != null && error !== "") return { ok: false, error };
     future = future.slice(0, -1);
     past = [...past, { ...step, timeline: current }];
     owned = next;
@@ -119,7 +119,7 @@ export function createEditHistory() {
     return { ok: true, value: next };
   };
   return {
-    subscribe(this: void, listener: () => void) {
+    subscribe: (listener: () => void) => {
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
@@ -164,7 +164,7 @@ export function createEditHistory() {
     undo(current: StudioTimeline): TimelineResult<StudioTimeline> | null {
       const label = past.at(-1)?.label;
       const result = undo(current);
-      if (result?.ok && label !== undefined) {
+      if ((result?.ok === true) && label !== undefined) {
         announce(t("復原：{label}", { label }));
         emit();
       }
@@ -173,7 +173,7 @@ export function createEditHistory() {
     redo(current: StudioTimeline): TimelineResult<StudioTimeline> | null {
       const label = future.at(-1)?.label;
       const result = redo(current);
-      if (result?.ok && label !== undefined) {
+      if ((result?.ok === true) && label !== undefined) {
         announce(t("重做：{label}", { label }));
         emit();
       }

@@ -1,20 +1,21 @@
-// One field of the generation row: a small label over its value, opening the field's popover (36 px; the row is 40 px).
-// The row is the container `genrow` (GenerationRow.tsx): under 22.5rem of width a field shows its compact value and no
-// chevron, so the row stays one line. The value truncates; the accessible name and the tooltip carry all of it. A
-// warning dot marks a value that cannot render as it is, with the reason in the tooltip and the accessible description
-// (and in the popover). Motion: press is pressable; open tints the field and turns the chevron over (snappy spring).
-import { ChevronDown, type LucideIcon } from "lucide-react";
-import { useId, type MouseEvent, type ReactNode, type Ref } from "react";
+// One field of the shot's generation settings (GenerationRow.tsx, a 2×2 grid): a framed 40 px field with its label on
+// top and its value below, opening the field's popover. The value truncates; the accessible name and the tooltip carry
+// all of it. A value that cannot render as it is gets the warning frame and icon; the reason is said once, in the
+// settings' status line, which the field names as its description (`describedBy`).
+// Motion: press is pressable; hover and open change the frame on the shared fast transition; open tints the field and turns the
+// chevron over (snappy spring).
+import { ChevronDown, TriangleAlert, type LucideIcon } from "lucide-react";
+import type { MouseEvent, ReactNode, Ref } from "react";
 import { cn } from "@/lib/cn";
 import { t } from "@/i18n";
 
 export function SegmentButton({
   label,
   value,
-  compactValue,
   valueText,
   icon: Icon,
-  warning = null,
+  warning = false,
+  describedBy,
   open,
   popoverId,
   title,
@@ -24,13 +25,13 @@ export function SegmentButton({
 }: {
   label: string;
   value: ReactNode;
-  /** What a narrow row shows instead of `value`; omitted = the same. */
-  compactValue?: ReactNode;
   /** The value as words (accessible name). */
   valueText: string;
   icon?: LucideIcon;
-  /** Why the value cannot render as it is; null = it can. */
-  warning?: string | null;
+  /** The value cannot render as it is (the reason is in the element `describedBy` names). */
+  warning?: boolean;
+  /** Id of the element that says why (the settings' status line). */
+  describedBy?: string;
   open: boolean;
   popoverId: string;
   /** Tooltip; defaults to the value. */
@@ -39,8 +40,7 @@ export function SegmentButton({
   className?: string;
   ref?: Ref<HTMLButtonElement>;
 }) {
-  const warningId = useId();
-  const tip = title ?? valueText;
+  const ValueIcon = warning ? TriangleAlert : Icon;
   return (
     <button
       ref={ref}
@@ -49,39 +49,26 @@ export function SegmentButton({
       aria-expanded={open}
       aria-controls={open ? popoverId : undefined}
       aria-label={t("{label}：{value}", { label, value: valueText })}
-      aria-describedby={warning ? warningId : undefined}
-      title={warning ? `${tip}\n${warning}` : tip}
+      aria-describedby={describedBy}
+      title={title ?? valueText}
       onClick={onClick}
       className={cn(
-        "pressable group/seg relative grid h-9 min-w-0 content-center rounded-md px-2 text-left hover:bg-raised/70 active:bg-sunken",
-        "aria-expanded:bg-brand-gradient-soft aria-expanded:ring-1 aria-expanded:ring-brand-blue/45 aria-expanded:ring-inset",
+        "pressable group/seg grid h-10 min-w-0 content-center rounded-lg border bg-sunken/40 px-3 text-left",
+        "hover:bg-raised/70 active:bg-sunken",
+        warning ? "border-warning/45 hover:border-warning/70" : "border-line-subtle hover:border-line",
+        "aria-expanded:border-brand-blue/55 aria-expanded:bg-brand-gradient-soft",
         className,
       )}
     >
-      <span className="truncate text-[11px] leading-3.5 text-fg-tertiary">{label}</span>
-      <span className="flex min-w-0 items-center gap-1 text-data leading-[18px] text-fg">
-        {Icon ? <Icon aria-hidden className="size-3.5 shrink-0 text-brand-cyan/80" /> : null}
-        {compactValue === undefined ? (
-          <span className="min-w-0 truncate">{value}</span>
-        ) : (
-          <>
-            <span className="min-w-0 truncate @max-[22.5rem]/genrow:hidden">{value}</span>
-            <span className="hidden min-w-0 truncate @max-[22.5rem]/genrow:block">{compactValue}</span>
-          </>
-        )}
+      <span className="truncate text-caption leading-4 text-fg-tertiary">{label}</span>
+      <span className="flex min-w-0 items-center gap-1.5 text-data leading-5 text-fg">
+        {ValueIcon ? <ValueIcon aria-hidden className={cn("size-3.5 shrink-0", warning ? "text-warning" : "text-brand-cyan/80")} /> : null}
+        <span className="min-w-0 truncate">{value}</span>
         <ChevronDown
           aria-hidden
-          className="ml-auto size-3 shrink-0 text-fg-tertiary transition-transform duration-(--duration-spring-snappy) ease-(--ease-spring-snappy) group-aria-expanded/seg:rotate-180 @max-[22.5rem]/genrow:hidden"
+          className="ml-auto size-3.5 shrink-0 text-fg-tertiary transition-transform duration-(--duration-spring-snappy) ease-(--ease-spring-snappy) group-aria-expanded/seg:rotate-180"
         />
       </span>
-      {warning ? (
-        <>
-          <span aria-hidden className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-warning ring-2 ring-warning/20 animate-fade-in" />
-          <span id={warningId} className="sr-only">
-            {warning}
-          </span>
-        </>
-      ) : null}
     </button>
   );
 }

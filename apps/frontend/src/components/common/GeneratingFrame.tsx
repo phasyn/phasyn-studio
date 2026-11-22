@@ -29,7 +29,7 @@ export function GeneratingFrame({ active, progress, children, className, ...prop
         <span aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 z-[2] h-0.5 overflow-hidden rounded-b-[inherit] bg-line-subtle/60">
           <span
             className="absolute inset-y-0 left-0 bg-brand-gradient transition-[width] duration-(--duration-base) ease-standard animate-shimmer"
-            style={{ width: `${fraction * 100}%` }}
+            style={{ width: `${String(fraction * 100)}%` }}
           />
         </span>
       ) : null}

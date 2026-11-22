@@ -36,7 +36,7 @@ import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from fractions import Fraction
-from typing import Any
+from typing import Any, NamedTuple
 
 from phasyn_components.timeline import curve_value
 
@@ -53,8 +53,31 @@ from .composition import (
     title_in_slice,
 )
 from .composition_curves import command_filter, eased, expression, number
-from .composition_effects import GAUSS_STEPS, Canvas, append_blend, append_effect_stack, append_mask, clock
+from .composition_effects import (
+    GAUSS_STEPS,
+    Canvas,
+    append_blend,
+    append_effect_stack,
+    append_mask,
+    clock,
+)
 from .effects import ClipEffects, Transition, camera_chain, impact_chain
+
+
+class _TitleOverlay(NamedTuple):
+    raster: RasterInput | None
+    label: str
+    size: tuple[int, int]
+
+
+class _VideoGraph(NamedTuple):
+    graph: list[str]
+    plan: CompositionPlan
+
+
+_NORMAL_SPEED_PERCENT = 100
+_TRANSITION_INPUTS = 2
+
 
 # Conversions round correctly and interpolate chroma at full resolution: the default fast paths darken the
 # picture by about half a code value per RGB round trip.
@@ -81,7 +104,9 @@ class MediaInput:
     index: int
     time_base: Fraction | None = None
     start_pts: int = 0
-    declare: str = ""  # ``setparams`` options for colour properties the file does not state
+    declare: str = (
+        ""  # ``setparams`` options for colour properties the file does not state
+    )
     opaque_cover: bool = False  # the file's picture has no alpha and fills the canvas under the sequence fit
     resize: bool = True  # the file's frames are not canvas sized
 
@@ -98,9 +123,17 @@ class RasterInput:
 
 @dataclass(frozen=True)
 class SegmentInputs:
-    media: Mapping[int, MediaInput] = field(default_factory=dict)  # by position in Segment.slices
-    titles: Mapping[int, RasterInput] = field(default_factory=dict)  # by position in Segment.slices
-    caption_images: Mapping[int, RasterInput] = field(default_factory=dict)  # by caption index
+    """Inputs assigned to one rendered video segment."""
+
+    media: Mapping[int, MediaInput] = field(
+        default_factory=dict
+    )  # by position in Segment.slices
+    titles: Mapping[int, RasterInput] = field(
+        default_factory=dict
+    )  # by position in Segment.slices
+    caption_images: Mapping[int, RasterInput] = field(
+        default_factory=dict
+    )  # by caption index
     caption_track: RasterInput | None = None
     direct: bool = False  # every clip is plain, opaque and canvas filling: compose without RGB (``direct_segment``)
 
@@ -111,7 +144,9 @@ class _Piece:
 
     start: int  # segment-local frames
     end: int
-    members: tuple[int | None, ...]  # positions in Segment.slices; ``None`` is a disabled clip
+    members: tuple[
+        int | None, ...
+    ]  # positions in Segment.slices; ``None`` is a disabled clip
     mode: str
     transition: Transition | None = None  # the transition of a mix
     progress: int = 0  # transition frame shown at ``start``
@@ -119,8 +154,10 @@ class _Piece:
 
 @dataclass(frozen=True)
 class _Place:
-    """Where one picture of a moving transition is drawn: moved by (``dx``, ``dy``) pixels and scaled by ``scale``
-    about the centre, as expressions of the eased progress."""
+    """Where one picture of a moving transition is drawn: moved by (``dx``, ``dy``) pixels and scaled by ``scale``.
+
+    about the centre, as expressions of the eased progress.
+    """
 
     dx: str = "0"
     dy: str = "0"
@@ -151,7 +188,9 @@ def source_range(clip: CompositionClip, item: ClipSlice) -> tuple[int, int]:
 # --------------------------------------------------------------------------- one clip
 
 
-def _timing(clip: CompositionClip, item: ClipSlice, media: MediaInput, fps: Fraction) -> list[str]:
+def _timing(
+    clip: CompositionClip, item: ClipSlice, media: MediaInput, fps: Fraction
+) -> list[str]:
     """Exactly ``item.frames`` frames of a video source with PTS = processed frame number (time base 1/fps)."""
     if media.time_base is None:
         raise ValueError("a video clip needs the clock of its source")
@@ -160,7 +199,10 @@ def _timing(clip: CompositionClip, item: ClipSlice, media: MediaInput, fps: Frac
     step = effects.frame_step if effects else 1
     head = effects.hold.start if effects else 0
     rate = _rate(fps)
-    shown_first, shown_last = retimed_index(clip, item.first), retimed_index(clip, item.end - 1)
+    shown_first, shown_last = (
+        retimed_index(clip, item.first),
+        retimed_index(clip, item.end - 1),
+    )
     first, last = stepped_index(clip, shown_first), stepped_index(clip, shown_last)
     low, high = source_range(clip, item)
     parts = [
@@ -170,7 +212,7 @@ def _timing(clip: CompositionClip, item: ClipSlice, media: MediaInput, fps: Frac
         f"trim=start_pts={low}:end_pts={high + 1}",
         f"setpts=PTS-{clip.document['in_frame']}",
     ]
-    if speed != 100:
+    if speed != _NORMAL_SPEED_PERCENT:
         # Retimed frame r shows source frame floor(r*speed/100): put source frame k at ceil(100*k/speed) by
         # nearest rounding on a grid of half output frames per speed step (exact integers, no time fudge).
         last_source = last * speed // 100
@@ -224,7 +266,9 @@ def _fit(width: int, height: int, fit: str | None) -> list[str]:
     ]
 
 
-def _legacy_color(graph: list[str], current: str, effects: ClipEffects | None, label: str, offset: int) -> str:
+def _legacy_color(
+    graph: list[str], current: str, effects: ClipEffects | None, label: str, offset: int
+) -> str:
     """Invert, eq and impact frames keep their YUV meaning; coverage travels beside them."""
     if effects is None:
         return current
@@ -270,7 +314,9 @@ def _fades(clip: CompositionClip, item: ClipSlice, fps: Fraction) -> list[str]:
         out.append(f"fade=t=in:st=0:d={_seconds(fade_in, fps)}{coverage}")
     start = clip.plan.frames - fade_out - 1
     if fade_out and item.end > start:
-        out.append(f"fade=t=out:st={_seconds(start, fps)}:d={_seconds(fade_out, fps)}{coverage}")
+        out.append(
+            f"fade=t=out:st={_seconds(start, fps)}:d={_seconds(fade_out, fps)}{coverage}"
+        )
     return ["format=gbrap", *out] if out else []
 
 
@@ -294,14 +340,28 @@ def _corners(motion: Sequence[float], size: tuple[int, int]) -> list[float]:
     angle = math.radians(degrees)
     out: list[float] = []
     for du, dv in _corner_offsets(width, height):
-        out.append(width / 2 + TRANSFORM_PAD + x * width + scale * (math.cos(angle) * du - math.sin(angle) * dv))
-        out.append(height / 2 + TRANSFORM_PAD + y * height + scale * (math.sin(angle) * du + math.cos(angle) * dv))
+        out.append(
+            width / 2
+            + TRANSFORM_PAD
+            + x * width
+            + scale * (math.cos(angle) * du - math.sin(angle) * dv)
+        )
+        out.append(
+            height / 2
+            + TRANSFORM_PAD
+            + y * height
+            + scale * (math.sin(angle) * du + math.cos(angle) * dv)
+        )
     return out
 
 
-def _corner_expressions(motion: Mapping[str, Any], size: tuple[int, int], frame: str) -> list[str]:
+def _corner_expressions(
+    motion: Mapping[str, Any], size: tuple[int, int], frame: str
+) -> list[str]:
     width, height = size
-    x, y, scale, rotation = (expression(motion, name, frame) for name in ("x", "y", "scale", "rotation"))
+    x, y, scale, rotation = (
+        expression(motion, name, frame) for name in ("x", "y", "scale", "rotation")
+    )
     angle = f"(({rotation})*PI/180)"
     out: list[str] = []
     for du, dv in _corner_offsets(width, height):
@@ -319,23 +379,34 @@ def _table(values: Sequence[float], frame: str, first: int = 0) -> str:
     if len(values) == 1:
         return number(values[0])
     middle = len(values) // 2
-    left, right = _table(values[:middle], frame, first), _table(values[middle:], frame, first + middle)
+    left, right = (
+        _table(values[:middle], frame, first),
+        _table(values[middle:], frame, first + middle),
+    )
     return f"if(lt({frame},{first + middle}),{left},{right})"
 
 
-def _corner_tables(motion: Mapping[str, Any], size: tuple[int, int], item: ClipSlice) -> list[str]:
+def _corner_tables(
+    motion: Mapping[str, Any], size: tuple[int, int], item: ClipSlice
+) -> list[str]:
     """Per-frame corners evaluated here with the document's own curve arithmetic (many or heavy keys)."""
     keys = motion["keyframes"]
     rows = [
         _corners(
-            [curve_value(keys.get(name, []), frame, motion[name]) for name in ("x", "y", "scale", "rotation")], size
+            [
+                curve_value(keys.get(name, []), frame, motion[name])
+                for name in ("x", "y", "scale", "rotation")
+            ],
+            size,
         )
         for frame in range(item.first, item.end)
     ]
     return [_table([row[column] for row in rows], "(in-1)") for column in range(8)]
 
 
-def _transform(motion: Mapping[str, Any], size: tuple[int, int], item: ClipSlice) -> list[str]:
+def _transform(
+    motion: Mapping[str, Any], size: tuple[int, int], item: ClipSlice
+) -> list[str]:
     """Scale, rotate and move in one resampling of premultiplied RGBA (bilinear, sub-pixel, antialiased edges)."""
     fixed = [_constant(motion, name) for name in ("x", "y", "scale", "rotation")]
     if fixed == [0, 0, 1, 0]:
@@ -343,14 +414,19 @@ def _transform(motion: Mapping[str, Any], size: tuple[int, int], item: ClipSlice
     width, height = size
     names = ("x0", "y0", "x1", "y1", "x2", "y2", "x3", "y3")
     if all(value is not None for value in fixed):
-        values = [number(value) for value in _corners([float(value or 0) for value in fixed], size)]
+        values = [
+            number(value)
+            for value in _corners([float(value or 0) for value in fixed], size)
+        ]
         evaluation = "init"
     else:
         values = _corner_expressions(motion, size, clock("(in-1)", item.first))
         if sum(len(value) for value in values) > TRANSFORM_EXPRESSION_BYTES:
             values = _corner_tables(motion, size, item)
         evaluation = "frame"
-    corners = ":".join(f"{name}='{value}'" for name, value in zip(names, values, strict=True))
+    corners = ":".join(
+        f"{name}='{value}'" for name, value in zip(names, values, strict=True)
+    )
     padded = f"{width + 2 * TRANSFORM_PAD}:{height + 2 * TRANSFORM_PAD}:{TRANSFORM_PAD}:{TRANSFORM_PAD}"
     return [
         "format=gbrap",
@@ -369,7 +445,9 @@ def _opacity(motion: Mapping[str, Any], label: str, offset: int) -> list[str]:
     if fixed is not None:
         return ["format=gbrap", f"colorchannelmixer=aa={number(fixed)}"]
     target = f"colorchannelmixer@{label}opacity"
-    automation = command_filter(target, {"aa": expression(motion, "opacity", clock("(N-1)", offset))})
+    automation = command_filter(
+        target, {"aa": expression(motion, "opacity", clock("(N-1)", offset))}
+    )
     return ["format=gbrap", automation, f"{target}=aa=1"]
 
 
@@ -385,13 +463,16 @@ def _title(
     current: str,
     clip: CompositionClip,
     item: ClipSlice,
-    raster: RasterInput | None,
-    label: str,
-    size: tuple[int, int],
+    overlay: _TitleOverlay,
 ) -> str:
     """Draw the clip title over the fitted picture for its frames (a text layer is its title already)."""
+    raster, label, size = overlay
     title = clip.title
-    if title is None or clip.generated or not title_in_slice(clip, item.first, item.end):
+    if (
+        title is None
+        or clip.generated
+        or not title_in_slice(clip, item.first, item.end)
+    ):
         return current
     if raster is None:
         raise ValueError("a titled clip needs its title picture")
@@ -410,37 +491,58 @@ def _raster(raster: RasterInput, size: tuple[int, int]) -> str:
 
 
 def _picture(
-    graph: list[str],
-    plan: CompositionPlan,
+    render: _VideoGraph,
     clip: CompositionClip,
     item: ClipSlice,
     position: int,
     inputs: SegmentInputs,
 ) -> str:
     """The fitted RGBA picture of a clip for the slice's frames."""
+    graph, plan = render
     width, height, fps = plan.width, plan.height, plan.fps
     label = f"fit{position}"
     if clip.generated:
         raster = inputs.titles[position]
         place = (
-            f"scale={width}:{height}" if raster.fitted else f"pad={width}:{height}:{raster.x}:{raster.y}:color=black@0"
+            f"scale={width}:{height}"
+            if raster.fitted
+            else f"pad={width}:{height}:{raster.x}:{raster.y}:color=black@0"
         )
-        graph.append(f"[{raster.index}:v:0]format=gbrap,{place},setsar=1,{','.join(_still(item, fps))}[{label}]")
+        graph.append(
+            f"[{raster.index}:v:0]format=gbrap,{place},setsar=1,{','.join(_still(item, fps))}[{label}]"
+        )
         return label
     media = inputs.media[position]
     declare = [f"setparams={media.declare}"] if media.declare else []
     timing = _still(item, fps) if clip.still else _timing(clip, item, media, fps)
     chain = [*declare, *timing, *_fit(width, height, plan.fit)]
-    graph.append(f"[{media.index}:V:0]{','.join(chain)}[{label}]")  # V: never an attached cover picture
+    graph.append(
+        f"[{media.index}:V:0]{','.join(chain)}[{label}]"
+    )  # V: never an attached cover picture
     return label
 
 
-def _look(graph: list[str], plan: CompositionPlan, item: ClipSlice, position: int, current: str) -> str:
+def _look(
+    graph: list[str],
+    plan: CompositionPlan,
+    item: ClipSlice,
+    position: int,
+    current: str,
+) -> str:
     """The effect stack and the mask of a clip's picture (an adjustment layer's too), from the slice's first frame."""
     clip = plan.clips[item.clip]
     canvas = Canvas(plan.width, plan.height, _rate(plan.fps), item.frames)
-    current = append_effect_stack(graph, current, clip.document.get("effect_stack", []), position, item.first, canvas)
-    return append_mask(graph, current, clip.document.get("mask"), f"mask{position}", item.first, canvas)
+    current = append_effect_stack(
+        graph,
+        current,
+        clip.document.get("effect_stack", []),
+        position,
+        item.first,
+        canvas,
+    )
+    return append_mask(
+        graph, current, clip.document.get("mask"), f"mask{position}", item.first, canvas
+    )
 
 
 def _finish(plan: CompositionPlan, item: ClipSlice, position: int) -> list[str]:
@@ -456,34 +558,48 @@ def _finish(plan: CompositionPlan, item: ClipSlice, position: int) -> list[str]:
 
 
 def _clip_stream(
-    graph: list[str],
-    plan: CompositionPlan,
+    render: _VideoGraph,
     segment: Segment,
     position: int,
     inputs: SegmentInputs,
     consumers: Sequence[str],
 ) -> None:
     """Emit the processed frames of one slice (segment-local PTS) to each consumer label."""
+    graph, plan = render
     item = segment.slices[position]
     clip = plan.clips[item.clip]
     size = (plan.width, plan.height)
     effects, offset = clip.plan.effects, item.first
-    current = _picture(graph, plan, clip, item, position, inputs)
+    current = _picture(render, clip, item, position, inputs)
     if effects is not None and not clip.generated:
         camera = camera_chain(
-            effects.camera, width=plan.width, height=plan.height, clock=clock("n", offset), flags=f"lanczos+{ACCURATE}"
+            effects.camera,
+            width=plan.width,
+            height=plan.height,
+            clock=clock("n", offset),
+            flags=f"lanczos+{ACCURATE}",
         )
         current = _step(graph, current, camera, f"camera{position}")
         current = _legacy_color(graph, current, effects, f"legacy{position}", offset)
-    current = _title(graph, current, clip, item, inputs.titles.get(position), f"titled{position}", size)
+    current = _title(
+        graph,
+        current,
+        clip,
+        item,
+        _TitleOverlay(inputs.titles.get(position), f"titled{position}", size),
+    )
     current = _look(graph, plan, item, position, current)
     tail = [*_finish(plan, item, position), f"setpts=N+{item.at}"]
     if len(consumers) > 1:
         tail.append(f"split={len(consumers)}")
-    graph.append(f"[{current}]{','.join(tail)}{''.join(f'[{name}]' for name in consumers)}")
+    graph.append(
+        f"[{current}]{','.join(tail)}{''.join(f'[{name}]' for name in consumers)}"
+    )
 
 
-def _adjusted(graph: list[str], plan: CompositionPlan, segment: Segment, position: int, base: int) -> tuple[str, str]:
+def _adjusted(
+    graph: list[str], plan: CompositionPlan, segment: Segment, position: int, base: int
+) -> tuple[str, str]:
     """An adjustment layer over the canvas so far (``base{base}``): (the canvas, the layer to blend back over it).
 
     The canvas is split: its frames in the clip's range are the clip's picture, on its processed clock, and go
@@ -498,10 +614,14 @@ def _adjusted(graph: list[str], plan: CompositionPlan, segment: Segment, positio
         f"[{label}source]trim=start_frame={item.at}:end_frame={item.at + item.frames},setpts=N+{item.first},"
         f"format=gbrap[{label}picture]"
     )
-    current = _legacy_color(graph, f"{label}picture", clip.plan.effects, f"legacy{position}", item.first)
+    current = _legacy_color(
+        graph, f"{label}picture", clip.plan.effects, f"legacy{position}", item.first
+    )
     current = _look(graph, plan, item, position, current)
     lead = [f"tpad=start_mode=add:start={item.at}:color=black@0"] if item.at else []
-    graph.append(f"[{current}]{','.join([*_finish(plan, item, position), 'setpts=N', *lead])}[{label}]")
+    graph.append(
+        f"[{current}]{','.join([*_finish(plan, item, position), 'setpts=N', *lead])}[{label}]"
+    )
     return f"{label}under", label
 
 
@@ -535,19 +655,25 @@ def _pieces(plan: CompositionPlan, segment: Segment) -> list[_Piece]:
             alone = local(clip.start + incoming, clip.end - overlap)
             if alone and clip.enabled:
                 pieces.append(_Piece(alone[0], alone[1], (positions[index],), mode))
-            mixed = local(clip.end - overlap, clip.end) if outgoing and following else None
+            mixed = (
+                local(clip.end - overlap, clip.end) if outgoing and following else None
+            )
             if mixed and outgoing and following and (clip.enabled or following.enabled):
                 members = (
                     positions[index] if clip.enabled else None,
                     positions[group[order + 1]] if following.enabled else None,
                 )
                 progress = mixed[0] + segment.start - following.start
-                pieces.append(_Piece(mixed[0], mixed[1], members, mode, outgoing, progress))
+                pieces.append(
+                    _Piece(mixed[0], mixed[1], members, mode, outgoing, progress)
+                )
             incoming = overlap
     return pieces
 
 
-def _weights(kind: str, frame: str, length: int) -> tuple[dict[str, str], dict[str, str]]:
+def _weights(
+    kind: str, frame: str, length: int
+) -> tuple[dict[str, str], dict[str, str]]:
     """Gains of the outgoing and the incoming clip (premultiplied colour, coverage, white from coverage).
 
     ``P`` falls from 1 to ``1/length``. A cross-fade is linear. A dip lets the outgoing picture go in the
@@ -572,20 +698,28 @@ def _weights(kind: str, frame: str, length: int) -> tuple[dict[str, str], dict[s
 def _summed(graph: list[str], weighted: Sequence[str], label: str) -> str:
     """The premultiplied sum of the weighted sides of a transition, back in straight 8-bit alpha."""
     source = weighted[0]
-    if len(weighted) == 2:
-        graph.append(f"[{weighted[0]}][{weighted[1]}]blend=all_mode=addition[{label}sum]")
+    if len(weighted) == _TRANSITION_INPUTS:
+        graph.append(
+            f"[{weighted[0]}][{weighted[1]}]blend=all_mode=addition[{label}sum]"
+        )
         source = f"{label}sum"
     graph.append(f"[{source}]unpremultiply=inplace=1:planes=7,format=gbrap[{label}]")
     return label
 
 
-def _mix(graph: list[str], plan: CompositionPlan, piece: _Piece, sides: Sequence[str | None], label: str) -> str:
+def _mix(
+    graph: list[str],
+    plan: CompositionPlan,
+    piece: _Piece,
+    sides: Sequence[str | None],
+    label: str,
+) -> str:
     """The overlap of a transition: weighted premultiplied sum of the sides that exist."""
     transition = piece.transition
     if transition is None:
         raise ValueError("a mixed piece needs its transition")
     if transition.direction is not None:
-        return _moving_mix(graph, plan, piece, transition, sides, label)
+        return _moving_mix(_VideoGraph(graph, plan), piece, transition, sides, label)
     frame = clock("(N-1)", piece.progress)
     weighted: list[str] = []
     gains_of = _weights(transition.kind, frame, transition.frames)
@@ -613,13 +747,19 @@ def _progress(transition: Transition, counter: str, first: int) -> str:
     return eased(transition.easing, f"({clock(counter, first)}/{transition.frames})")
 
 
-def _places(transition: Transition, progress: str, width: int, height: int) -> tuple[_Place, _Place]:
+def _places(
+    transition: Transition, progress: str, width: int, height: int
+) -> tuple[_Place, _Place]:
     """Where the outgoing and the incoming picture are at eased progress ``progress``."""
     if transition.kind == "zoom":
         zoom = number(ZOOM_FACTOR)
         if transition.direction == "in":
-            return _Place(scale=f"pow({zoom},{progress})"), _Place(scale=f"pow({zoom},{progress}-1)")
-        return _Place(scale=f"pow({zoom},-{progress})"), _Place(scale=f"pow({zoom},1-{progress})")
+            return _Place(scale=f"pow({zoom},{progress})"), _Place(
+                scale=f"pow({zoom},{progress}-1)"
+            )
+        return _Place(scale=f"pow({zoom},-{progress})"), _Place(
+            scale=f"pow({zoom},1-{progress})"
+        )
     x, y = EDGES[str(transition.direction)]
 
     def moved(at: str) -> _Place:
@@ -633,16 +773,24 @@ def _places(transition: Transition, progress: str, width: int, height: int) -> t
 
 
 def _moved(place: _Place, width: int, height: int) -> list[str]:
-    """Filters that draw premultiplied 16-bit RGBA at ``place`` (sub-pixel, bilinear; ``perspective`` itself works on
-    8 bits); transparent where nothing lands."""
+    """Filters that draw premultiplied 16-bit RGBA at ``place`` (sub-pixel, bilinear; ``perspective`` itself works on.
+
+    8 bits); transparent where nothing lands.
+    """
     if place.still:
         return []
     values: list[str] = []
     for du, dv in _corner_offsets(width, height):
-        values.append(f"{number(width / 2 + TRANSFORM_PAD)}+({place.scale})*({number(du)})+({place.dx})")
-        values.append(f"{number(height / 2 + TRANSFORM_PAD)}+({place.scale})*({number(dv)})+({place.dy})")
+        values.append(
+            f"{number(width / 2 + TRANSFORM_PAD)}+({place.scale})*({number(du)})+({place.dx})"
+        )
+        values.append(
+            f"{number(height / 2 + TRANSFORM_PAD)}+({place.scale})*({number(dv)})+({place.dy})"
+        )
     names = ("x0", "y0", "x1", "y1", "x2", "y2", "x3", "y3")
-    corners = ":".join(f"{name}='{value}'" for name, value in zip(names, values, strict=True))
+    corners = ":".join(
+        f"{name}='{value}'" for name, value in zip(names, values, strict=True)
+    )
     return [
         "format=gbrap",
         f"pad={width + 2 * TRANSFORM_PAD}:{height + 2 * TRANSFORM_PAD}:{TRANSFORM_PAD}:{TRANSFORM_PAD}:color=black@0",
@@ -654,12 +802,24 @@ def _moved(place: _Place, width: int, height: int) -> list[str]:
 
 def _gain(target: str, gain: str) -> list[str]:
     """Every plane of premultiplied RGBA times a per-frame ``gain``."""
-    return [command_filter(target, dict.fromkeys(("rr", "gg", "bb", "aa"), gain)), f"{target}=rr=1"]
+    return [
+        command_filter(target, dict.fromkeys(("rr", "gg", "bb", "aa"), gain)),
+        f"{target}=rr=1",
+    ]
 
 
-def _cover(graph: list[str], plan: CompositionPlan, piece: _Piece, place: _Place, gain: str | None, label: str) -> str:
-    """A stream whose four planes are 1 - gain x (the canvas rectangle of a picture drawn at ``place``): the share
-    of the picture behind it. The rectangle is drawn by the same map as that picture, so their edges meet exactly."""
+def _cover(
+    render: _VideoGraph,
+    piece: _Piece,
+    place: _Place,
+    gain: str | None,
+    label: str,
+) -> str:
+    """A stream whose four planes are 1 - gain x (the canvas rectangle of a picture drawn at ``place``): the share.
+
+    of the picture behind it. The rectangle is drawn by the same map as that picture, so their edges meet exactly.
+    """
+    graph, plan = render
     chain = [
         f"color=c=white:s={plan.width}x{plan.height}:r={_rate(plan.fps)}",
         "format=gbrap16le",
@@ -674,18 +834,25 @@ def _cover(graph: list[str], plan: CompositionPlan, piece: _Piece, place: _Place
 
 
 def _wipe_shares(
-    graph: list[str],
-    plan: CompositionPlan,
+    render: _VideoGraph,
     piece: _Piece,
     transition: Transition,
     sides: Sequence[str | None],
     label: str,
 ) -> list[str | None]:
-    """Streams whose four planes are the shares of a wipe's pictures (None for a picture that is not shown): the
+    """Streams whose four planes are the shares of a wipe's pictures (None for a picture that is not shown): the.
+
     incoming one behind the moving edge (a smooth step ``softness`` of the travel wide), the outgoing one the rest.
-    The edge is drawn once; the outgoing share is its negation."""
+    The edge is drawn once; the outgoing share is its negation.
+    """
+    graph, plan = render
     direction = str(transition.direction)
-    along = {"left": "(1-(X+0.5)/W)", "right": "((X+0.5)/W)", "up": "(1-(Y+0.5)/H)", "down": "((Y+0.5)/H)"}[direction]
+    along = {
+        "left": "(1-(X+0.5)/W)",
+        "right": "((X+0.5)/W)",
+        "up": "(1-(Y+0.5)/H)",
+        "down": "((Y+0.5)/H)",
+    }[direction]
     travel = plan.width if EDGES[direction][0] else plan.height
     soft = max(transition.softness, 1 / travel)
     edge = f"({_progress(transition, 'N', piece.progress)}*{number(1 + soft)}-{number(soft / 2)})"
@@ -701,7 +868,8 @@ def _wipe_shares(
         ]
     )
     out, into = (
-        None if source is None else f"{label}{side}share" for side, source in zip(("out", "in"), sides, strict=True)
+        None if source is None else f"{label}{side}share"
+        for side, source in zip(("out", "in"), sides, strict=True)
     )
     if out is not None and into is not None:
         graph.append(f"{drawn},split=2[{into}][{label}edge]")
@@ -713,7 +881,9 @@ def _wipe_shares(
     return [out, into]
 
 
-def _whip(transition: Transition, progress: str, plan: CompositionPlan, target: str) -> list[str]:
+def _whip(
+    transition: Transition, progress: str, plan: CompositionPlan, target: str
+) -> list[str]:
     """The whip's blur along its movement: sigma WHIP_BLUR x the travel at the middle, nothing at either end."""
     horizontal = EDGES[str(transition.direction)][0] != 0
     travel = plan.width if horizontal else plan.height
@@ -725,14 +895,14 @@ def _whip(transition: Transition, progress: str, plan: CompositionPlan, target: 
 
 
 def _moving_mix(
-    graph: list[str],
-    plan: CompositionPlan,
+    render: _VideoGraph,
     piece: _Piece,
     transition: Transition,
     sides: Sequence[str | None],
     label: str,
 ) -> str:
-    """Push, slide, whip, wipe and zoom as a premultiplied 16-bit sum of the two pictures, each moved and weighted
+    """Push, slide, whip, wipe and zoom as a premultiplied 16-bit sum of the two pictures, each moved and weighted.
+
     (8-bit premultiplying would darken white by a code value for the whole transition):
 
     - push, whip: both pictures travel by the frame (whip: blurred along the way); nothing overlaps;
@@ -741,8 +911,11 @@ def _moving_mix(
     - zoom in: the outgoing picture grows to ZOOM_FACTOR, the incoming one grows from 1/ZOOM_FACTOR in front of it,
       fading in (and hiding it under its rectangle as it does); zoom out: the reverse.
     """
+    graph, plan = render
     width, height = plan.width, plan.height
-    places = _places(transition, _progress(transition, "(in-1)", piece.progress), width, height)
+    places = _places(
+        transition, _progress(transition, "(in-1)", piece.progress), width, height
+    )
     progress = _progress(transition, "(N-1)", piece.progress)
     gains: list[str | None] = [None, None]
     # What weights each picture: the rectangle (place, fade) of the picture in front of it, or a wipe's share
@@ -751,7 +924,7 @@ def _moving_mix(
     if transition.kind == "slide":
         covers[0] = (places[1], None)
     elif transition.kind == "wipe":
-        shares = _wipe_shares(graph, plan, piece, transition, sides, label)
+        shares = _wipe_shares(render, piece, transition, sides, label)
     elif transition.kind == "zoom":
         front = 1 if transition.direction == "in" else 0
         fade = progress if front else f"(1-{progress})"
@@ -762,7 +935,10 @@ def _moving_mix(
         if source is None:
             continue
         tag = f"{label}{side}"
-        chain = [f"[{source}]format=gbrap16le,premultiply=inplace=1:planes=7", *_moved(places[index], width, height)]
+        chain = [
+            f"[{source}]format=gbrap16le,premultiply=inplace=1:planes=7",
+            *_moved(places[index], width, height),
+        ]
         if transition.kind == "whip":
             chain += _whip(transition, progress, plan, f"gblur@{tag}whip")
         gain = gains[index]
@@ -770,7 +946,11 @@ def _moving_mix(
             chain += _gain(f"colorchannelmixer@{tag}", gain)
         graph.append(",".join(chain) + f"[{tag}]")
         cover = covers[index]
-        share = shares[index] if cover is None else _cover(graph, plan, piece, *cover, f"{tag}share")
+        share = (
+            shares[index]
+            if cover is None
+            else _cover(render, piece, *cover, f"{tag}share")
+        )
         if share is not None:
             graph.append(f"[{tag}][{share}]blend=all_mode=multiply[{tag}weighted]")
             tag = f"{tag}weighted"
@@ -778,10 +958,14 @@ def _moving_mix(
     return _summed(graph, weighted, label)
 
 
-def _layers(graph: list[str], plan: CompositionPlan, segment: Segment, inputs: SegmentInputs) -> list[_Piece]:
+def _layers(
+    graph: list[str], plan: CompositionPlan, segment: Segment, inputs: SegmentInputs
+) -> list[_Piece]:
     """Emit every clip stream once, cut into the pieces that use it and one probe; return the pieces."""
     pieces = _pieces(plan, segment)
-    uses: dict[int, list[str]] = {position: [] for position in range(len(segment.slices))}
+    uses: dict[int, list[str]] = {
+        position: [] for position in range(len(segment.slices))
+    }
     for number_, piece in enumerate(pieces):
         for side, member in enumerate(piece.members):
             if member is not None:
@@ -790,33 +974,65 @@ def _layers(graph: list[str], plan: CompositionPlan, segment: Segment, inputs: S
         clip = plan.clips[item.clip]
         # An adjustment layer's picture is the canvas under it: it is made where it is placed (_place)
         if clip.enabled and not clip.adjustment:
-            _clip_stream(graph, plan, segment, position, inputs, [*uses[position], f"probe{position}"])
+            _clip_stream(
+                _VideoGraph(graph, plan),
+                segment,
+                position,
+                inputs,
+                [*uses[position], f"probe{position}"],
+            )
     return pieces
 
 
-def _place(graph: list[str], plan: CompositionPlan, segment: Segment, pieces: Sequence[_Piece]) -> int:
+def _place(
+    graph: list[str], plan: CompositionPlan, segment: Segment, pieces: Sequence[_Piece]
+) -> int:
     base = 0
     for number_, piece in enumerate(pieces):
         member = piece.members[0]
-        if piece.transition is None and member is not None and plan.clips[segment.slices[member].clip].adjustment:
+        if (
+            piece.transition is None
+            and member is not None
+            and plan.clips[segment.slices[member].clip].adjustment
+        ):
             under, layer = _adjusted(graph, plan, segment, member, base)
-            append_blend(graph, base, layer, piece.mode, piece.start, piece.end, background=under, padded=True)
+            append_blend(
+                graph,
+                base,
+                layer,
+                piece.mode,
+                piece.start,
+                piece.end,
+                background=under,
+                padded=True,
+            )
             base += 1
             continue
         cut = f"trim=start_pts={piece.start}:end_pts={piece.end}"
-        sides = [None if member is None else f"cut{number_}_{side}" for side, member in enumerate(piece.members)]
+        sides = [
+            None if member is None else f"cut{number_}_{side}"
+            for side, member in enumerate(piece.members)
+        ]
         for side, member in enumerate(piece.members):
             if member is not None:
                 graph.append(f"[part{number_}_{side}]{cut}[cut{number_}_{side}]")
-        layer = _mix(graph, plan, piece, sides, f"mix{number_}") if piece.transition else str(sides[0])
+        layer = (
+            _mix(graph, plan, piece, sides, f"mix{number_}")
+            if piece.transition
+            else str(sides[0])
+        )
         append_blend(graph, base, layer, piece.mode, piece.start, piece.end)
         base += 1
     return base
 
 
-def _probes(graph: list[str], plan: CompositionPlan, segment: Segment, base: int) -> int:
-    """A clip that ends early ends the segment: the exporter then refuses the short output (an adjustment layer is
-    made from the canvas itself and reads nothing)."""
+def _probes(
+    graph: list[str], plan: CompositionPlan, segment: Segment, base: int
+) -> int:
+    """A clip that ends early ends the segment: the exporter then refuses the short output (an adjustment layer is.
+
+    made from the canvas itself and reads nothing).
+    """
     for position, item in enumerate(segment.slices):
         clip = plan.clips[item.clip]
         if not clip.enabled or clip.adjustment:
@@ -824,19 +1040,32 @@ def _probes(graph: list[str], plan: CompositionPlan, segment: Segment, base: int
         rest = segment.frames - item.at - item.frames
         pad = f",tpad=stop_mode=add:stop={rest}:color=black@0" if rest else ""
         graph.append(f"[probe{position}]crop=2:2:0:0{pad}[watch{position}]")
-        graph.append(f"[base{base}][watch{position}]overlay=x=-2:y=-2:eof_action=endall:format=auto[base{base + 1}]")
+        graph.append(
+            f"[base{base}][watch{position}]overlay=x=-2:y=-2:eof_action=endall:format=auto[base{base + 1}]"
+        )
         base += 1
     return base
 
 
-def _captions(graph: list[str], plan: CompositionPlan, segment: Segment, inputs: SegmentInputs, base: int) -> int:
+def _captions(
+    graph: list[str],
+    plan: CompositionPlan,
+    segment: Segment,
+    inputs: SegmentInputs,
+    base: int,
+) -> int:
     for index in segment.captions:
         caption = plan.captions[index]
         raster = inputs.caption_images.get(index)
         if raster is None:
             continue
-        start, end = max(caption.start, segment.start) - segment.start, min(caption.end, segment.end) - segment.start
-        graph.append(f"[{raster.index}:v:0]scale={plan.width}:{plan.height},format=rgba[caption{index}]")
+        start, end = (
+            max(caption.start, segment.start) - segment.start,
+            min(caption.end, segment.end) - segment.start,
+        )
+        graph.append(
+            f"[{raster.index}:v:0]scale={plan.width}:{plan.height},format=rgba[caption{index}]"
+        )
         graph.append(
             f"[base{base}][caption{index}]overlay=x=0:y=0:eof_action=repeat:format=auto:"
             f"enable='between(n,{start},{end - 1})'[base{base + 1}]"
@@ -852,17 +1081,28 @@ def _captions(graph: list[str], plan: CompositionPlan, segment: Segment, inputs:
     return base
 
 
-def direct_segment(plan: CompositionPlan, segment: Segment, media: Mapping[int, MediaInput]) -> bool:
+def direct_segment(
+    plan: CompositionPlan, segment: Segment, media: Mapping[int, MediaInput]
+) -> bool:
     """True when a segment shows only plain clips whose files are opaque and fill the canvas, and no caption."""
-    shown = [(position, item) for position, item in enumerate(segment.slices) if plan.clips[item.clip].enabled]
+    shown = [
+        (position, item)
+        for position, item in enumerate(segment.slices)
+        if plan.clips[item.clip].enabled
+    ]
     return (
         not segment.captions
         and len(shown) == len(segment.slices)
-        and all(plain_clip(plan, item.clip) and media[position].opaque_cover for position, item in shown)
+        and all(
+            plain_clip(plan, item.clip) and media[position].opaque_cover
+            for position, item in shown
+        )
     )
 
 
-def _direct_graph(plan: CompositionPlan, segment: Segment, inputs: SegmentInputs) -> str:
+def _direct_graph(
+    plan: CompositionPlan, segment: Segment, inputs: SegmentInputs
+) -> str:
     """Plain clips stay in 4:2:0: frames of a canvas-sized BT.709 source reach the encoder unchanged."""
     width, height, fps = plan.width, plan.height, plan.fps
     graph = BoundedGraph()
@@ -872,7 +1112,10 @@ def _direct_graph(plan: CompositionPlan, segment: Segment, inputs: SegmentInputs
     flags = f"{'lanczos' if plan.fit else 'bicubic'}+{ACCURATE}"
     for position, item in enumerate(segment.slices):
         clip, media = plan.clips[item.clip], inputs.media[position]
-        chain = [*([f"setparams={media.declare}"] if media.declare else []), *_timing(clip, item, media, fps)]
+        chain = [
+            *([f"setparams={media.declare}"] if media.declare else []),
+            *_timing(clip, item, media, fps),
+        ]
         if media.resize and plan.fit == "cover":
             chain += [
                 f"scale={width}:{height}:force_original_aspect_ratio=increase:flags={flags}",
@@ -881,14 +1124,20 @@ def _direct_graph(plan: CompositionPlan, segment: Segment, inputs: SegmentInputs
         elif media.resize:
             chain.append(f"scale={width}:{height}:flags={flags}")
         chain += ["setsar=1", OUTPUT_FORMAT, f"setpts=N+{item.at}", "split=2"]
-        graph.append(f"[{media.index}:V:0]{','.join(chain)}[part{position}][probe{position}]")
-        append_blend(graph, position, f"part{position}", "normal", item.at, item.at + item.frames)
+        graph.append(
+            f"[{media.index}:V:0]{','.join(chain)}[part{position}][probe{position}]"
+        )
+        append_blend(
+            graph, position, f"part{position}", "normal", item.at, item.at + item.frames
+        )
     base = _probes(graph, plan, segment, len(segment.slices))
     graph.append(f"[base{base}]{OUTPUT_FORMAT}[v]")
     return f"sws_flags={SWS_FLAGS};" + ";".join(graph)
 
 
-def segment_graph(plan: CompositionPlan, segment: Segment, inputs: SegmentInputs) -> str:
+def segment_graph(
+    plan: CompositionPlan, segment: Segment, inputs: SegmentInputs
+) -> str:
     """The complete filter graph of one segment; its only output ``[v]`` has exactly ``segment.frames`` frames."""
     if inputs.direct:
         return _direct_graph(plan, segment, inputs)

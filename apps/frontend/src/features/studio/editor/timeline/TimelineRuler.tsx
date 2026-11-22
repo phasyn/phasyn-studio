@@ -96,7 +96,7 @@ export function TimelineRuler({ timeline, playhead, fps, zoom, width, scrollLeft
         <span
           aria-hidden
           className="pointer-events-none absolute inset-x-0 bottom-0 h-1.5 opacity-70"
-          style={{ backgroundImage: "linear-gradient(to right, var(--color-line-strong) 1px, transparent 1px)", backgroundSize: `${minor * zoom}px 100%` }}
+          style={{ backgroundImage: "linear-gradient(to right, var(--color-line-strong) 1px, transparent 1px)", backgroundSize: `${String(minor * zoom)}px 100%` }}
         />
       ) : null}
       {timeline.markers.map((marker) => (
@@ -105,7 +105,7 @@ export function TimelineRuler({ timeline, playhead, fps, zoom, width, scrollLeft
           role="img"
           aria-label={t("標記 {name}，{time}", { name: marker.name, time: formatTimecode(marker.frame, fps) })}
           title={t("標記 {name}，{time}", { name: marker.name, time: formatTimecode(marker.frame, fps) })}
-          onPointerDown={(event) => dragMarker(event, marker)}
+          onPointerDown={(event) => { dragMarker(event, marker); }}
           className={cn("absolute bottom-0 h-3 w-2.5 -translate-x-1/2 rounded-t-[3px]", onMarkerMove ? "cursor-ew-resize" : "pointer-events-none", MARKER_COLOR[marker.color])}
           style={{ left: marker.frame * zoom }}
         />
@@ -130,15 +130,15 @@ export function Playhead({ playhead, zoom, offset, scrollerRef }: { playhead: Pl
   const frame = usePlayheadFrame(playhead);
   const playing = usePlaying(playhead);
   const x = offset + frame * zoom;
-  const latest = useRef({ offset });
+  const latestRef = useRef({ offset });
   useEffect(() => {
-    latest.current = { offset };
+    latestRef.current = { offset };
   });
   useEffect(() => {
     const node = scrollerRef.current;
     if (!playing || !node) return;
     const right = node.scrollLeft + node.clientWidth;
-    if (x > right - 24 || x < node.scrollLeft + latest.current.offset) node.scrollTo({ left: Math.max(0, x - latest.current.offset - 48) });
+    if (x > right - 24 || x < node.scrollLeft + latestRef.current.offset) node.scrollTo({ left: Math.max(0, x - latestRef.current.offset - 48) });
   }, [playing, scrollerRef, x]);
   return <div aria-hidden className="pointer-events-none absolute bottom-0 z-[15] w-px bg-playhead" style={{ left: x, top: RULER_HEIGHT }} />;
 }

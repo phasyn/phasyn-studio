@@ -1,0 +1,23 @@
+{
+  "component_id": "lora-clips",
+  "label": "LoRA 訓練片段切割（CPU）",
+  "provider_id": "media.lora_clips",
+  "runtime_id": "cpu",
+  "autostart": false,
+  "folder": "訓練",
+  "settings": {
+    "load": {
+      "device": {
+        "kind": "cpu",
+        "id": "cpu",
+        "resource_group": "cpu-dataset"
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "mode": "summary"
+    }
+  },
+  "load_policy": "on_demand",
+  "idle_unload_seconds": 600
+}

@@ -23,7 +23,7 @@ export function ShotThumb({ take, render, checked, dimmed }: { take: StudioTake 
   return (
     <GeneratingFrame active={render !== null} className="h-9 w-16 shrink-0 rounded-md">
       <span className={cn("relative grid size-full place-items-center overflow-hidden rounded-md border border-line-subtle bg-stage", dimmed && "opacity-60")}>
-        {frame ? (
+        {(frame != null && frame !== "") ? (
           <img src={frame} alt="" draggable={false} className={cn("size-full object-cover", THUMB_ZOOM, render && "opacity-45")} />
         ) : render ? (
           <span aria-hidden className={cn("absolute inset-0 bg-brand-gradient-soft", SHIMMER)} />

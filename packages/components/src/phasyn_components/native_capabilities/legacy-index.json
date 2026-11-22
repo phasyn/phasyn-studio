@@ -1,0 +1,195 @@
+{
+  "providers": {
+    "caption.compile": {
+      "default_settings": {
+        "invoke": {
+          "include_uncertain": false,
+          "language": "en"
+        },
+        "load": {
+          "device": {
+            "id": "cpu",
+            "kind": "cpu",
+            "resource_group": "cpu-text"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_components.providers.caption:CaptionCompileProvider",
+      "kind": "caption.compile",
+      "label": "Caption 組裝（固定規則；觀測事實與創作修改分開）",
+      "required_modules": [],
+      "source_pins": [],
+      "synthetic": false
+    },
+    "dataset.export": {
+      "default_settings": {
+        "invoke": {},
+        "load": {
+          "device": {
+            "id": "cpu",
+            "kind": "cpu",
+            "resource_group": "cpu-dataset"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_components.providers.dataset:DatasetExportProvider",
+      "kind": "dataset.export",
+      "label": "訓練資料匯出（影片＋觀測 caption＋來源對映）",
+      "required_modules": [],
+      "source_pins": [],
+      "synthetic": false
+    },
+    "test.echo": {
+      "default_settings": {
+        "invoke": {
+          "step_ms": 0,
+          "steps": 0
+        },
+        "load": {
+          "device": {
+            "id": "cpu",
+            "kind": "cpu",
+            "resource_group": "cpu-echo"
+          },
+          "precision": {
+            "compute_dtype": "native"
+          },
+          "provider_options": {}
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_components.testing.echo:EchoProvider",
+      "kind": "test.echo",
+      "label": "CPU 契約測試元件（test fixture，不是生成模型）",
+      "required_modules": [],
+      "source_pins": [],
+      "synthetic": true
+    },
+    "test.synthetic_latent": {
+      "default_settings": {
+        "invoke": {},
+        "load": {
+          "device": {
+            "id": "cpu",
+            "kind": "cpu",
+            "resource_group": "cpu-fixture"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_components.testing.synthetic:SyntheticLatentProvider",
+      "kind": "test.synthetic_latent",
+      "label": "合成 final latent（test fixture；不是 DiT）",
+      "required_modules": [],
+      "source_pins": [],
+      "synthetic": true
+    }
+  },
+  "schema_version": "1.0"
+}

@@ -37,5 +37,5 @@ export function formatLeft(seconds: number): string {
  */
 export function estimatedPercent(share: number): string {
   if (!Number.isFinite(share) || share < 0.01) return "<1%";
-  return `${Math.min(99, Math.floor(share * 100))}%`;
+  return `${String(Math.min(99, Math.floor(share * 100)))}%`;
 }

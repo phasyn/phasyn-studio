@@ -78,9 +78,9 @@ export function MentionTextarea({
   const containerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const layerRef = useRef<HTMLDivElement>(null);
-  const pendingCaret = useRef<{ text: string; caret: number } | null>(null);
+  const pendingCaretRef = useRef<{ text: string; caret: number } | null>(null);
   // 使用者從沒把游標放進來時，「插入到游標」改成插在文末（textarea 預設游標在開頭）
-  const everFocused = useRef(false);
+  const everFocusedRef = useRef(false);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [dismissedAt, setDismissedAt] = useState<number | null>(null);
   const filtered = menu ? filterMentions(options, menu.query) : [];
@@ -97,10 +97,10 @@ export function MentionTextarea({
 
   // 程式插入後把游標放到插入點後面（等新的 value 已經寫進 textarea）
   useLayoutEffect(() => {
-    const pending = pendingCaret.current;
+    const pending = pendingCaretRef.current;
     const node = textareaRef.current;
     if (!pending || !node) return;
-    pendingCaret.current = null;
+    pendingCaretRef.current = null;
     if (node.value !== pending.text) return;
     node.focus();
     node.setSelectionRange(pending.caret, pending.caret);
@@ -115,7 +115,7 @@ export function MentionTextarea({
 
   const commit = (result: { text: string; caret: number }): boolean => {
     if (maxLength !== undefined && result.text.length > maxLength) return false;
-    pendingCaret.current = result;
+    pendingCaretRef.current = result;
     onChange(result.text);
     return true;
   };
@@ -142,7 +142,7 @@ export function MentionTextarea({
     const above = visibleTop + point.height + listHeight > node.clientHeight + 16 && visibleTop > listHeight;
     const top = node.offsetTop + (above ? visibleTop - listHeight - 4 : visibleTop + point.height + 4);
     const left = Math.max(0, node.offsetLeft + Math.min(point.left - node.scrollLeft, Math.max(0, node.clientWidth - MENU_WIDTH)));
-    setMenu((current) => ({ ...query, active: current && current.start === query.start ? current.active : 0, top, left }));
+    setMenu((current) => ({ ...query, active: current?.start === query.start ? current.active : 0, top, left }));
   };
 
   const choose = (option: MentionOption) => {
@@ -159,14 +159,14 @@ export function MentionTextarea({
     const current = () => {
       const node = textareaRef.current;
       const text = node?.value ?? value;
-      if (!node || !everFocused.current) return { text, start: text.length, end: text.length };
+      if (!node || !everFocusedRef.current) return { text, start: text.length, end: text.length };
       return { text, start: node.selectionStart, end: node.selectionEnd };
     };
     return {
       focus: () => {
         const node = textareaRef.current;
         if (!node) return;
-        if (!everFocused.current) node.setSelectionRange(node.value.length, node.value.length);
+        if (!everFocusedRef.current) node.setSelectionRange(node.value.length, node.value.length);
         node.focus();
       },
       insertText: (text) => {
@@ -225,7 +225,7 @@ export function MentionTextarea({
     ? filtered.length > 0
       ? t("{filteredCount} 個參考可插入，上下鍵選擇、Enter 插入、Esc 關閉", { filteredCount: filtered.length })
       : t("沒有符合的參考")
-    : cardOption && card.target?.fromCaret
+    : cardOption && (card.target?.fromCaret === true)
       ? t("@{alias}：{name}", { alias: cardOption.alias, name: cardOption.name ?? t("檔案已不在素材庫") })
       : "";
   return (
@@ -249,7 +249,7 @@ export function MentionTextarea({
           onChange(event.target.value);
           refresh(event.target);
         }}
-        onSelect={(event) => refresh(event.currentTarget)}
+        onSelect={(event) => { refresh(event.currentTarget); }}
         onKeyDown={onKeyDown}
         onScroll={() => {
           setMenu(null);
@@ -258,7 +258,7 @@ export function MentionTextarea({
         onPointerMove={card.onPointerMove}
         onPointerLeave={card.onPointerLeave}
         onFocus={(event) => {
-          everFocused.current = true;
+          everFocusedRef.current = true;
           onFocus?.(event);
         }}
         onBlur={(event) => {
@@ -287,7 +287,7 @@ export function MentionTextarea({
           active={active}
           hasOptions={options.length > 0}
           onChoose={choose}
-          onHover={(index) => setMenu({ ...menu, active: index })}
+          onHover={(index) => { setMenu({ ...menu, active: index }); }}
         />
       ) : null}
       <span className="sr-only" aria-live="polite">

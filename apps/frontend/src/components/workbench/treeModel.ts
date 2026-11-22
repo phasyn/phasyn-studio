@@ -53,7 +53,7 @@ export function visibleRows(items: readonly TreeItem[], expanded: ReadonlySet<st
 
 function matches(item: TreeItem, needle: string): boolean {
   if (item.label.toLowerCase().includes(needle)) return true;
-  if (item.detail?.toLowerCase().includes(needle)) return true;
+  if (item.detail?.toLowerCase().includes(needle) === true) return true;
   return (item.keywords ?? []).some((keyword) => keyword.toLowerCase().includes(needle));
 }
 
@@ -145,8 +145,7 @@ export function passedDragThreshold(dx: number, dy: number, threshold = 4): bool
  */
 export function rowAtY(rects: readonly VerticalRect[], y: number): { index: number; fraction: number } | null {
   if (rects.length === 0) return null;
-  for (let index = 0; index < rects.length; index += 1) {
-    const rect = rects[index] as VerticalRect;
+  for (const [index, rect] of rects.entries()) {
     if (y < rect.bottom) {
       const height = rect.bottom - rect.top;
       const fraction = height > 0 ? (y - rect.top) / height : 0;

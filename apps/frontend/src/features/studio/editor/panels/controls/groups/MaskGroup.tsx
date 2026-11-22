@@ -49,10 +49,10 @@ export function MaskGroup({ clip, properties }: MaskGroupProps) {
     } else panel.perform({ ...clip, mask: mask ? { ...mask, kind: shape } : defaultMask(shape) });
   };
   // Putting a mask back keeps its shape and returns its rectangle, feather and animation to the shape's defaults
-  const reset = mask ? () => panel.perform({ ...clip, mask: defaultMask(mask.kind) }) : undefined;
-  const keys = Object.values(mask?.keyframes ?? {}).reduce((count, list) => count + (list?.length ?? 0), 0);
+  const reset = mask ? () => { panel.perform({ ...clip, mask: defaultMask(mask.kind) }); } : undefined;
+  const keys = Object.values(mask?.keyframes ?? {}).reduce((count, list) => count + list.length, 0);
   return (
-    <Group id="mask" title={t("遮罩")} changed={mask !== undefined} onReset={reset} resetKeys={keys}>
+    <Group id="mask" title={t("遮罩")} changed={mask !== undefined} {...(reset === undefined ? {} : { onReset: reset })} resetKeys={keys}>
       <Row label={t("形狀")}>
         <SelectField label={t("遮罩形狀")} value={mask?.kind ?? "none"} options={SHAPES} onChange={setShape} className="max-w-56 flex-1" />
       </Row>
@@ -60,14 +60,14 @@ export function MaskGroup({ clip, properties }: MaskGroupProps) {
         <>
           {MASK_PARAMETER_NAMES.map((param) => {
             const property = properties.get(maskKey(param));
-            return property ? <PropertyRow key={param} property={property} owner={clip} fixedRange={ranges[param]} /> : null;
+            return property ? <PropertyRow key={param} property={property} owner={clip} {...(ranges[param] === undefined ? {} : { fixedRange: ranges[param] })} /> : null;
           })}
           <Row label={t("反轉")} hint={t("遮罩裡面變透明，外面保留")}>
             <SwitchField
               label={t("反轉遮罩")}
               checked={mask.invert}
               hint={t("遮罩裡面變透明，外面保留")}
-              onChange={(invert) => panel.perform({ ...clip, mask: { ...mask, invert } })}
+              onChange={(invert) => void panel.perform({ ...clip, mask: { ...mask, invert } })}
             />
           </Row>
         </>

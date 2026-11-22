@@ -20,7 +20,7 @@ export function ExclusiveConfirmDialog({ request, onSettle }: { request: Pending
   const id = useId();
   const holders = request ? formatList(request.conflict.holders.map((holder) => holder.component_id)) : "";
   return (
-    <Dialog open={request !== null} onOpenChange={(open) => (open ? undefined : onSettle(false))}>
+    <Dialog open={request !== null} onOpenChange={(open) => { if (!(open)) { onSettle(false); } }}>
       <DialogContent>
         {request ? (
           <>
@@ -58,10 +58,10 @@ export function ExclusiveConfirmDialog({ request, onSettle }: { request: Pending
               </div>
             </DialogBody>
             <DialogFooter>
-              <Button variant="quiet" onClick={() => onSettle(false)}>
+              <Button variant="quiet" onClick={() => { onSettle(false); }}>
                 {t("取消")}
               </Button>
-              <Button variant="danger" icon={<Repeat2 aria-hidden />} onClick={() => onSettle(true)}>
+              <Button variant="danger" icon={<Repeat2 aria-hidden />} onClick={() => { onSettle(true); }}>
                 {t("停止並啟動")}
               </Button>
             </DialogFooter>

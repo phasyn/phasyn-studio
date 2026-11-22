@@ -6,10 +6,11 @@ from typing import Any, NoReturn
 
 from ..errors import ComponentError
 
+
 REJECTED_CODE = "STUDIO_TIMELINE_REJECTED"
 
 
-class TimelineRejected(Exception):
+class TimelineRejected(Exception):  # noqa: N818 - Public exception name is part of the SDK.
     """An edit that would break the document or that its own rules refuse. Nothing was changed.
 
     ``reason`` is one of ``StudioTimelineRejection.reason`` in the contract; ``message`` is Traditional
@@ -17,6 +18,7 @@ class TimelineRejected(Exception):
     """
 
     def __init__(self, reason: str, message: str, **details: Any) -> None:
+        """Initialize timeline rejected with its configuration."""
         super().__init__(f"{reason}: {message}")
         self.reason = reason
         self.message = message
@@ -31,13 +33,16 @@ class TimelineRejected(Exception):
 
 
 def reject(reason: str, message: str, **details: Any) -> NoReturn:
+    """Reject the timeline operation with the given reason."""
     raise TimelineRejected(reason, message, **details)
 
 
 def rejection_of(error: ComponentError) -> TimelineRejected:
     """A validator refusal (``INVALID_ARGUMENT`` with ``details.reason``) as a typed rejection."""
     details = {key: value for key, value in error.details.items() if key != "reason"}
-    return TimelineRejected(str(error.details.get("reason") or "invalid_document"), error.message, **details)
+    return TimelineRejected(
+        str(error.details.get("reason") or "invalid_document"), error.message, **details
+    )
 
 
 __all__ = ["REJECTED_CODE", "TimelineRejected", "reject", "rejection_of"]

@@ -2,7 +2,7 @@
 // 三個頁面的中欄頂端都放這一列；左側是區域圖示（AreaIcon）與「推理 Studio」，右側是三個子品牌連結（一般連結，
 // aria-current="page"），和左欄的資源樹指向同樣的網址，所以未儲存內容的離開確認照常運作。
 // 目前的子品牌：品牌淡漸層底＋亮漸層光邊、漸層圖示磚＋柔和光暈；其他：中性磚，滑過時亮一階；按下有 pressable 回饋。
-import { Play, ScanSearch, ScanText, type LucideIcon } from "lucide-react";
+import { GraduationCap, Play, ScanSearch, ScanText, type LucideIcon } from "lucide-react";
 import { Link } from "react-router";
 import { PATHS } from "@/app/paths";
 import { AreaIcon } from "@/components/common/AreaIcon";
@@ -10,7 +10,7 @@ import { cn } from "@/lib/cn";
 import { EN_LABEL, ICON_TILE, ICON_TILE_BRAND } from "@/components/ui/look";
 import { t } from "@/i18n";
 
-export type SubBrandId = "semantics" | "prompt-studies" | "run";
+export type SubBrandId = "semantics" | "prompt-studies" | "training" | "run";
 
 interface SubBrand {
   id: SubBrandId;
@@ -26,6 +26,7 @@ interface SubBrand {
 const SUB_BRANDS: readonly SubBrand[] = [
   { id: "semantics", to: PATHS.semantics, label: t("反推"), en: "Semantics", hint: t("影片反推：原片 → Scene → caption → 資料集匯出"), icon: ScanText },
   { id: "prompt-studies", to: PATHS.promptStudies, label: t("圖片反推"), en: "Prompt Lab", hint: t("從一張圖反推 8 區段場景與 core／detailed prompt；生成比對與有界搜尋"), icon: ScanSearch },
+  { id: "training", to: PATHS.training, label: t("LoRA 訓練"), en: "Training", hint: t("丟進影片、寫下方向：自動切片、反推、訓練，並比較不同強度的結果"), icon: GraduationCap },
   { id: "run", to: PATHS.inferenceRun, label: t("手動執行"), en: "Engine", hint: t("選一個元件組合，上傳輸入後建立 run"), icon: Play },
 ];
 

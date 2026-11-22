@@ -9,11 +9,14 @@ import stat
 from pathlib import Path
 
 import pytest
+
 from phasyn_h3.recipe.runtime import toolchain
 from phasyn_h3.recipe.runtime.errors import UnsupportedCombination
 
 
-def test_a_jit_cache_other_accounts_can_write_to_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_jit_cache_other_accounts_can_write_to_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     tmp_path.chmod(0o700)
     private = tmp_path / "private" / "jit"
     private.mkdir(parents=True)
@@ -22,7 +25,11 @@ def test_a_jit_cache_other_accounts_can_write_to_is_refused(tmp_path: Path, monk
     assert toolchain.untrusted_directory(private) is None
     assert toolchain.untrusted_directory(private / "not" / "made" / "yet") is None
     usable = {"PATH": "", toolchain.JIT_CACHE_ENV: str(private)}
-    assert toolchain.apply_jit_environment(usable).cache_dir == str(private) == usable["SGLANG_JIT_CACHE_DIR"]
+    assert (
+        toolchain.apply_jit_environment(usable).cache_dir
+        == str(private)
+        == usable["SGLANG_JIT_CACHE_DIR"]
+    )
 
     shared = tmp_path / "shared"
     shared.mkdir()
@@ -32,7 +39,9 @@ def test_a_jit_cache_other_accounts_can_write_to_is_refused(tmp_path: Path, monk
     link.symlink_to(shared / "jit", target_is_directory=True)
     open_cache = tmp_path / "open"
     open_cache.mkdir()
-    open_cache.chmod(0o777 | stat.S_ISVTX)  # the sticky bit protects entries, not the directory itself
+    open_cache.chmod(
+        0o777 | stat.S_ISVTX
+    )  # the sticky bit protects entries, not the directory itself
     for unsafe in (shared / "jit", link, open_cache):
         assert toolchain.untrusted_directory(unsafe) is not None, unsafe
 
@@ -40,7 +49,9 @@ def test_a_jit_cache_other_accounts_can_write_to_is_refused(tmp_path: Path, monk
     grouped.mkdir()
     grouped.chmod(0o770)
     monkeypatch.setattr(toolchain, "_private_group", lambda gid: gid == os.getgid())
-    assert toolchain.untrusted_directory(grouped) is None  # a user-private group may write
+    assert (
+        toolchain.untrusted_directory(grouped) is None
+    )  # a user-private group may write
     monkeypatch.setattr(toolchain, "_private_group", lambda _gid: False)
     assert toolchain.untrusted_directory(grouped) is not None
 
@@ -59,5 +70,10 @@ def test_a_jit_cache_other_accounts_can_write_to_is_refused(tmp_path: Path, monk
     env = {"PATH": "", toolchain.JIT_CACHE_ENV: str(shared / "jit")}
     with pytest.raises(UnsupportedCombination) as refused:
         toolchain.apply_jit_environment(env)
-    assert refused.value.reason_code == "JIT_CACHE_NOT_PRIVATE" and "SGLANG_JIT_CACHE_DIR" not in env
-    assert str(tmp_path) not in refused.value.message  # the diagnostic names the directory, not its path
+    assert (
+        refused.value.reason_code == "JIT_CACHE_NOT_PRIVATE"
+        and "SGLANG_JIT_CACHE_DIR" not in env
+    )
+    assert (
+        str(tmp_path) not in refused.value.message
+    )  # the diagnostic names the directory, not its path

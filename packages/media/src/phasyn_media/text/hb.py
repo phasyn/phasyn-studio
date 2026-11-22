@@ -17,12 +17,23 @@ font's reference to its FreeType face.
 
 from __future__ import annotations
 
-from ctypes import POINTER, byref, c_char_p, c_float, c_int, c_int32, c_uint, c_uint32, c_void_p
+from ctypes import (
+    POINTER,
+    byref,
+    c_char_p,
+    c_float,
+    c_int,
+    c_int32,
+    c_uint,
+    c_uint32,
+    c_void_p,
+)
 from typing import Any, NamedTuple
 
 from .ft import LOAD_FLAGS
 from .model import TextFailure
 from .native import bind, load
+
 
 SONAME = "libharfbuzz.so.0"
 LANGUAGE = "zh-Hant-TW"
@@ -44,6 +55,8 @@ _FIELDS = 5
 
 
 class ShapedGlyph(NamedTuple):
+    """A glyph identifier, offset, and advance from HarfBuzz."""
+
     glyph: int  # glyph index in the font, 0 for a missing glyph
     cluster: int  # index of the first code point it came from
     x_advance: int
@@ -60,30 +73,58 @@ class HarfBuzz:
     """The HarfBuzz library and one reusable shaping buffer."""
 
     def __init__(self) -> None:
+        """Load and bind the native shaping functions."""
         lib = load(SONAME)
         self._version_string = bind(lib, "hb_version_string", c_char_p)
         self._font_destroy = bind(lib, "hb_font_destroy", None, c_void_p)
         self._buffer_destroy = bind(lib, "hb_buffer_destroy", None, c_void_p)
-        self._unicode_script = bind(lib, "hb_unicode_script", c_uint32, c_void_p, c_uint32)
-        self._font_create = bind(lib, "hb_ft_font_create_referenced", c_void_p, c_void_p)
-        self._font_set_load_flags = bind(lib, "hb_ft_font_set_load_flags", None, c_void_p, c_int)
+        self._unicode_script = bind(
+            lib, "hb_unicode_script", c_uint32, c_void_p, c_uint32
+        )
+        self._font_create = bind(
+            lib, "hb_ft_font_create_referenced", c_void_p, c_void_p
+        )
+        self._font_set_load_flags = bind(
+            lib, "hb_ft_font_set_load_flags", None, c_void_p, c_int
+        )
         self._font_changed = bind(lib, "hb_ft_font_changed", None, c_void_p)
-        self._font_set_synthetic_bold = bind(lib, "hb_font_set_synthetic_bold", None, c_void_p, c_float, c_float, c_int)
+        self._font_set_synthetic_bold = bind(
+            lib, "hb_font_set_synthetic_bold", None, c_void_p, c_float, c_float, c_int
+        )
         self._buffer_clear = bind(lib, "hb_buffer_clear_contents", None, c_void_p)
         self._buffer_add = bind(
-            lib, "hb_buffer_add_codepoints", None, c_void_p, POINTER(c_uint32), c_int, c_uint, c_int
+            lib,
+            "hb_buffer_add_codepoints",
+            None,
+            c_void_p,
+            POINTER(c_uint32),
+            c_int,
+            c_uint,
+            c_int,
         )
-        self._buffer_set_direction = bind(lib, "hb_buffer_set_direction", None, c_void_p, c_int)
-        self._buffer_set_script = bind(lib, "hb_buffer_set_script", None, c_void_p, c_uint32)
-        self._buffer_set_language = bind(lib, "hb_buffer_set_language", None, c_void_p, c_void_p)
+        self._buffer_set_direction = bind(
+            lib, "hb_buffer_set_direction", None, c_void_p, c_int
+        )
+        self._buffer_set_script = bind(
+            lib, "hb_buffer_set_script", None, c_void_p, c_uint32
+        )
+        self._buffer_set_language = bind(
+            lib, "hb_buffer_set_language", None, c_void_p, c_void_p
+        )
         self._buffer_ok = bind(lib, "hb_buffer_allocation_successful", c_int, c_void_p)
         self._shape = bind(lib, "hb_shape", None, c_void_p, c_void_p, c_void_p, c_uint)
-        self._glyph_infos = bind(lib, "hb_buffer_get_glyph_infos", c_void_p, c_void_p, POINTER(c_uint))
-        self._glyph_positions = bind(lib, "hb_buffer_get_glyph_positions", c_void_p, c_void_p, POINTER(c_uint))
+        self._glyph_infos = bind(
+            lib, "hb_buffer_get_glyph_infos", c_void_p, c_void_p, POINTER(c_uint)
+        )
+        self._glyph_positions = bind(
+            lib, "hb_buffer_get_glyph_positions", c_void_p, c_void_p, POINTER(c_uint)
+        )
         self._empty_font = bind(lib, "hb_font_get_empty", c_void_p)()
         self._unicode = bind(lib, "hb_unicode_funcs_get_default", c_void_p)()
         set_flags = bind(lib, "hb_buffer_set_flags", None, c_void_p, c_int)
-        self._language = bind(lib, "hb_language_from_string", c_void_p, c_char_p, c_int)(LANGUAGE.encode("ascii"), -1)
+        self._language = bind(
+            lib, "hb_language_from_string", c_void_p, c_char_p, c_int
+        )(LANGUAGE.encode("ascii"), -1)
         self._buffer: int | None = bind(lib, "hb_buffer_create", c_void_p)()
         set_flags(self._buffer, _REMOVE_DEFAULT_IGNORABLES)
         if not self._language or not self._buffer_ok(self._buffer):
@@ -98,13 +139,16 @@ class HarfBuzz:
             self._buffer = None
 
     def version(self) -> str:
+        """Return the loaded native library version."""
         return str(self._version_string().decode("ascii", "replace"))
 
     def script(self, char: str) -> int:
         """The ISO 15924 tag of a character's script as HarfBuzz's own Unicode tables give it."""
         script = self._scripts.get(char)
         if script is None:
-            script = self._scripts[char] = int(self._unicode_script(self._unicode, ord(char)))
+            script = self._scripts[char] = int(
+                self._unicode_script(self._unicode, ord(char))
+            )
         return script
 
     def font(self, face: Any, *, embolden: bool) -> int:
@@ -130,7 +174,9 @@ class HarfBuzz:
         """The UTF-32 array ``shape`` takes."""
         return (c_uint32 * len(text))(*map(ord, text))
 
-    def _shape_run(self, font: int, text: Any, start: int, length: int, script: int) -> tuple[int, int, int]:
+    def _shape_run(
+        self, font: int, text: Any, start: int, length: int, script: int
+    ) -> tuple[int, int, int]:
         """Shape into the buffer; returns the glyph count and the addresses of the info and position arrays."""
         buffer = self._buffer
         if not buffer:
@@ -147,17 +193,23 @@ class HarfBuzz:
         infos = self._glyph_infos(buffer, byref(count))
         positions = self._glyph_positions(buffer, byref(placed))
         if count.value and (not infos or not positions or placed.value != count.value):
-            raise TextFailure("text_render_failed", "HarfBuzz returned no glyph positions")
+            raise TextFailure(
+                "text_render_failed", "HarfBuzz returned no glyph positions"
+            )
         return count.value, infos or 0, positions or 0
 
-    def advance(self, font: int, text: Any, start: int, length: int, script: int) -> int:
+    def advance(
+        self, font: int, text: Any, start: int, length: int, script: int
+    ) -> int:
         """The summed advance (26.6) of ``length`` code points of ``text`` from ``start``."""
         count, _, positions = self._shape_run(font, text, start, length, script)
         if count == 0:
             return 0
         return sum((c_int32 * (count * _FIELDS)).from_address(positions)[::_FIELDS])
 
-    def shape(self, font: int, text: Any, start: int, length: int, script: int) -> list[ShapedGlyph]:
+    def shape(
+        self, font: int, text: Any, start: int, length: int, script: int
+    ) -> list[ShapedGlyph]:
         """Shape ``length`` code points of ``text`` from ``start``; the rest of the line is context only."""
         count, infos, positions = self._shape_run(font, text, start, length, script)
         if count == 0:
@@ -166,6 +218,8 @@ class HarfBuzz:
         info = (c_uint32 * values).from_address(infos)[:]
         position = (c_int32 * values).from_address(positions)[:]
         return [
-            ShapedGlyph(info[at], info[at + 2], position[at], position[at + 2], position[at + 3])
+            ShapedGlyph(
+                info[at], info[at + 2], position[at], position[at + 2], position[at + 3]
+            )
             for at in range(0, values, _FIELDS)
         ]

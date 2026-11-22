@@ -1,4 +1,5 @@
 // 格式化：先選規則、看前後差異，按「套用」才改 prompt（不會默默改字）。
+import { withOccurrenceKeys } from "@/lib/occurrenceKeys";
 import { RemoveFormatting } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -47,7 +48,7 @@ function Row({ row }: { row: PreviewRow }) {
       </span>
       <span className={cn("min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]", row.kind === "same" ? "text-fg-tertiary" : "text-fg")}>
         {row.kind === "changed" ? (
-          row.parts.map((part, index) => <Part key={index} part={part} />)
+          withOccurrenceKeys(row.parts, (part) => JSON.stringify(part)).map(({ item: part, key }) => <Part key={key} part={part} />)
         ) : row.kind === "removed" ? (
           <del className="text-danger">{row.text.length > 0 ? row.text : t("（空行）")}</del>
         ) : row.kind === "added" ? (
@@ -76,7 +77,7 @@ export function FormatDialog({
   const result = useMemo(() => formatPrompt(value, options), [value, options]);
   const rows = useMemo(() => collapseRows(previewRows(value, result.text)), [value, result.text]);
   const changed = result.text !== value;
-  const toggle = (key: "markdown" | "whitespace" | "cjk") => setOptions((current) => ({ ...current, [key]: !current[key] }));
+  const toggle = (key: "markdown" | "whitespace" | "cjk") => { setOptions((current) => ({ ...current, [key]: !current[key] })); };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent wide aria-describedby={`${id}-description`}>
@@ -93,15 +94,15 @@ export function FormatDialog({
               <Checkbox
                 id={`${id}-markdown`}
                 checked={options.markdown}
-                onChange={() => toggle("markdown")}
+                onChange={() => { toggle("markdown"); }}
                 label={t("移除 Markdown 標記")}
                 description={t("**粗體**、__粗體__、*斜體*、`程式碼`、``` 與行首 #：H3 會把這些符號當成文字。")}
               />
-              <Checkbox id={`${id}-whitespace`} checked={options.whitespace} onChange={() => toggle("whitespace")} label={t("整理空白與空行")} description={t("去掉行尾空白、連續空行只留一行、去掉頭尾空行。")} />
+              <Checkbox id={`${id}-whitespace`} checked={options.whitespace} onChange={() => { toggle("whitespace"); }} label={t("整理空白與空行")} description={t("去掉行尾空白、連續空行只留一行、去掉頭尾空行。")} />
               <Checkbox
                 id={`${id}-cjk`}
                 checked={options.cjk}
-                onChange={() => toggle("cjk")}
+                onChange={() => { toggle("cjk"); }}
                 label={t("全形空白與標點旁空白")}
                 description={t("行內全形空白改半形、連續空白合併、全形標點旁的空白移除；行首縮排與中英文之間的空白不變。")}
               />
@@ -109,12 +110,12 @@ export function FormatDialog({
             <fieldset className="grid content-start gap-1.5">
               <legend className="pb-1 text-body text-fg">{t("時間標題（例如 **0.0–1.5 秒：**）")}</legend>
               {TIMELINE_CHOICES.map((choice) => (
-                <label key={choice.value} className={cn(OPTION_CARD, "flex cursor-pointer items-start gap-3 px-3 py-2 text-body", options.timeline === choice.value ? OPTION_SELECTED : OPTION_IDLE)}>
+                <label aria-label={[choice.label, choice.description].join(" ")} key={choice.value} className={cn(OPTION_CARD, "flex cursor-pointer items-start gap-3 px-3 py-2 text-body", options.timeline === choice.value ? OPTION_SELECTED : OPTION_IDLE)}>
                   <input
                     type="radio"
                     name={`${id}-timeline`}
                     checked={options.timeline === choice.value}
-                    onChange={() => setOptions((current) => ({ ...current, timeline: choice.value }))}
+                    onChange={() => { setOptions((current) => ({ ...current, timeline: choice.value })); }}
                     className="mt-1 size-4 shrink-0 accent-action"
                   />
                   <span className="min-w-0">
@@ -132,15 +133,15 @@ export function FormatDialog({
               </h3>
               <p className="text-caption text-fg-tertiary">{formatSummary(result.counts)}</p>
             </div>
-            <div tabIndex={0} role="region" aria-label={t("格式化前後差異")} className="max-h-[45vh] min-w-0 overflow-y-auto rounded-lg border border-line-subtle bg-sunken py-1 text-data leading-6">
+            <div  /* eslint-disable-line jsx-a11y-x/no-noninteractive-tabindex -- Keyboard users can focus this scrollable region and scroll its overflow. */ tabIndex={0} role="region" aria-label={t("格式化前後差異")} className="max-h-[45vh] min-w-0 overflow-y-auto rounded-lg border border-line-subtle bg-sunken py-1 text-data leading-6">
               {changed ? (
-                rows.map((item, index) =>
+                withOccurrenceKeys(rows, (item) => JSON.stringify(item)).map(({ item: item, key }) =>
                   item.type === "skip" ? (
-                    <p key={index} className="px-2 py-0.5 text-caption text-fg-tertiary">
+                    <p key={key} className="px-2 py-0.5 text-caption text-fg-tertiary">
                       {t("… 未變更 {count} 行 …", { count: item.count })}
                     </p>
                   ) : (
-                    <Row key={index} row={item.row} />
+                    <Row key={key} row={item.row} />
                   ),
                 )
               ) : (

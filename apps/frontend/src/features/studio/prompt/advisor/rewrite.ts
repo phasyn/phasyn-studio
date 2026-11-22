@@ -57,7 +57,7 @@ export function buildRewriteRequest(input: AnalyzeInput): string {
     );
     for (const entry of plan.entries) {
       const clip = clipText(entry.ref);
-      lines.push(`  @${entry.ref.alias} → ${entry.label}：${KIND_LABEL[entry.ref.kind]}「${entry.item?.name ?? "素材庫找不到這個檔案"}」${clip ? `，片段 ${clip}` : ""}${soundtrackText(entry)}`);
+      lines.push(`  @${entry.ref.alias} → ${entry.label}：${KIND_LABEL[entry.ref.kind]}「${entry.item?.name ?? "素材庫找不到這個檔案"}」${(clip != null && clip !== "") ? `，片段 ${clip}` : ""}${soundtrackText(entry)}`);
     }
   }
   lines.push(

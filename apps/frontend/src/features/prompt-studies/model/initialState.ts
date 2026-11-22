@@ -30,7 +30,7 @@ export function initialSettings(study: PromptStudy): GenerationSettings {
 
 export function initialComponents(study: PromptStudy): TaskComponents {
   const saved = studySettings(study).components;
-  if (saved.vision || saved.compile || saved.score) return saved;
+  if ((saved.vision ?? "") || (saved.compile != null && saved.compile !== "") || (saved.score != null && saved.score !== "")) return saved;
   for (let index = study.tasks.length - 1; index >= 0; index -= 1) {
     const request = study.tasks[index]?.request;
     if (request?.kind === "render" || request?.kind === "reconstruct") {

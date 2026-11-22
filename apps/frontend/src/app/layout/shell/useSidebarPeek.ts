@@ -29,8 +29,8 @@ export interface SidebarPeek {
  */
 export function useSidebarPeek(enabled: boolean, panelRef: RefObject<HTMLElement | null>, handleRef: RefObject<HTMLElement | null>): SidebarPeek {
   const [revealed, setRevealed] = useState(false);
-  const dwell = useRef<number | null>(null);
-  const grace = useRef<number | null>(null);
+  const dwellRef = useRef<number | null>(null);
+  const graceRef = useRef<number | null>(null);
 
   const clearTimer = useCallback((timer: { current: number | null }) => {
     if (timer.current !== null) window.clearTimeout(timer.current);
@@ -38,14 +38,14 @@ export function useSidebarPeek(enabled: boolean, panelRef: RefObject<HTMLElement
   }, []);
 
   const reveal = useCallback(() => {
-    clearTimer(dwell);
-    clearTimer(grace);
+    clearTimer(dwellRef);
+    clearTimer(graceRef);
     setRevealed(true);
   }, [clearTimer]);
 
   const conceal = useCallback(() => {
-    clearTimer(dwell);
-    clearTimer(grace);
+    clearTimer(dwellRef);
+    clearTimer(graceRef);
     setRevealed(false);
   }, [clearTimer]);
 
@@ -58,27 +58,27 @@ export function useSidebarPeek(enabled: boolean, panelRef: RefObject<HTMLElement
   useEffect(() => {
     if (!enabled) return undefined;
     return () => {
-      clearTimer(dwell);
-      clearTimer(grace);
+      clearTimer(dwellRef);
+      clearTimer(graceRef);
     };
   }, [enabled, clearTimer]);
 
   const edgeHandlers = {
     onPointerEnter: () => {
       if (!enabled) return;
-      clearTimer(grace);
-      if (dwell.current === null) dwell.current = window.setTimeout(reveal, DWELL_MS);
+      clearTimer(graceRef);
+      dwellRef.current ??= window.setTimeout(reveal, DWELL_MS);
     },
-    onPointerLeave: () => clearTimer(dwell),
+    onPointerLeave: () => { clearTimer(dwellRef); },
   };
 
   const panelHandlers = {
-    onPointerEnter: () => clearTimer(grace),
+    onPointerEnter: () => { clearTimer(graceRef); },
     onPointerLeave: () => {
       if (!enabled) return;
-      clearTimer(grace);
-      grace.current = window.setTimeout(() => {
-        grace.current = null;
+      clearTimer(graceRef);
+      graceRef.current = window.setTimeout(() => {
+        graceRef.current = null;
         const panel = panelRef.current;
         const active = document.activeElement;
         // 原生下拉選單（介面語言）開著時，指標會落在瀏覽器的選單上：不收回

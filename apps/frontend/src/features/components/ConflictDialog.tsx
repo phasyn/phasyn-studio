@@ -40,7 +40,7 @@ export function ConflictDialog({
   const myChanges = state ? diffDocuments(state.base.stored, state.mine) : [];
   const both = conflicts(serverChanges, myChanges);
   return (
-    <Dialog open={state !== null} onOpenChange={(open) => (open ? undefined : onClose())}>
+    <Dialog open={state !== null} onOpenChange={(open) => { if (!(open)) { onClose(); } }}>
       <DialogContent wide>
         <DialogHeader>
           <DialogTitle>{t("設定已被更新（REVISION_CONFLICT）")}</DialogTitle>

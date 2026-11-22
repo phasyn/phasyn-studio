@@ -16,7 +16,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from phasyn_components.model_identity import display_path
 
@@ -25,7 +25,15 @@ from phasyn_h3.recipe.abi.tensors import SafetensorsHeader, read_header_from_fil
 
 from .errors import IntegrityMismatch, ModelFilesMissing, UnsupportedCombination
 
-_BNB_STATE_RE = re.compile(r"^(?P<prefix>.+)\.weight\.quant_state\.bitsandbytes__(?P<qtype>nf4|fp4)$")
+
+_MATRIX_RANK = 2
+_MIN_CURVE_POINTS = 2
+_INTERVAL_ENDPOINTS = 2
+
+
+_BNB_STATE_RE = re.compile(
+    r"^(?P<prefix>.+)\.weight\.quant_state\.bitsandbytes__(?P<qtype>nf4|fp4)$"
+)
 # SGLang builds these MiniMaxH3DiTModel linears with quant_config (may be NF4) …
 _QUANT_CAPABLE_RE = re.compile(
     r"^(blocks\.\d+\.(attn\.(qkv_proj|out_proj)|mlp\.(fc1|fc2)|adaln_proj\.linear)"
@@ -87,7 +95,7 @@ def reference_json(name: str, *, model_root: Path) -> dict[str, Any]:
                 expected=expected,
                 actual=actual,
             )
-        return json.loads(raw.decode("utf-8"))
+        return cast("dict[str, Any]", json.loads(raw.decode("utf-8")))
     wanted = "、".join(display_path(path, model_root) for path in paths)
     raise ModelFilesMissing(
         "REFERENCE_CONFIG_MISSING",
@@ -98,6 +106,8 @@ def reference_json(name: str, *, model_root: Path) -> dict[str, Any]:
 
 @dataclass(frozen=True)
 class Nf4TransformerFacts:
+    """Describe the inspected NF4 checkpoint and its transformer layout."""
+
     quantized_prefixes: tuple[str, ...]
     plain_quant_capable_prefixes: tuple[str, ...]
     quant_type: str
@@ -111,10 +121,12 @@ class Nf4TransformerFacts:
 
     @property
     def pruned_curve(self) -> bool:
+        """Return the sampling curve associated with the pruned transformer."""
         return self.adaln_curve_shape is not None
 
 
 def inspect_nf4_transformer(header: SafetensorsHeader) -> Nf4TransformerFacts:
+    """Inspect the NF4 transformer checkpoint and its layout."""
     names = set(header.tensors)
     quantized: dict[str, str] = {}
     for name in names:
@@ -126,38 +138,29 @@ def inspect_nf4_transformer(header: SafetensorsHeader) -> Nf4TransformerFacts:
     if len(qtypes) > 1:
         problems.append(f"混用 bitsandbytes 量化型別 {sorted(qtypes)}")
     quant_type = next(iter(qtypes)) if qtypes else "none"
-    double_quant = bool(quantized) and all(f"{p}.weight.nested_absmax" in names for p in quantized)
-    if quantized and not double_quant and any(f"{p}.weight.nested_absmax" in names for p in quantized):
+    double_quant = bool(quantized) and all(
+        f"{p}.weight.nested_absmax" in names for p in quantized
+    )
+    if (
+        quantized
+        and not double_quant
+        and any(f"{p}.weight.nested_absmax" in names for p in quantized)
+    ):
         problems.append("部分 linear 有 nested_absmax、部分沒有（double quant 不一致）")
-    for prefix in quantized:
-        weight = header.tensors.get(f"{prefix}.weight")
-        if weight is None or weight.dtype != "U8" or len(weight.shape) != 2 or weight.shape[1] != 1:
-            problems.append(f"{prefix}.weight 不是 bnb 4-bit 打包的 U8 [n,1]")
-        if _NEVER_QUANTIZED_RE.match(prefix):
-            problems.append(f"{prefix} 在釘版 SGLang 以 quant_config=None 建立，不能載入 NF4 權重")
-        elif not _QUANT_CAPABLE_RE.match(prefix):
-            problems.append(f"{prefix} 不是釘版 MiniMaxH3DiTModel 的已知 linear")
-    plain: list[str] = []
-    for name in names:
-        if not name.endswith(".weight"):
-            continue
-        prefix = name[: -len(".weight")]
-        if prefix in quantized:
-            continue
-        if _QUANT_CAPABLE_RE.match(prefix):
-            plain.append(prefix)
-    curve = header.tensors.get("adaln_t_table") or header.tensors.get("time_embedder.table")
-    curve_shape = None
-    if curve is not None:
-        if len(curve.shape) != 2 or curve.shape[0] < 2:
-            problems.append(f"adaln_t_table 形狀不合法 {curve.shape}")
-        else:
-            curve_shape = (int(curve.shape[0]), int(curve.shape[1]))
+    _check_nf4_matrices(header, quantized, problems)
+    plain = _plain_matrix_prefixes(names, quantized)
+    curve_shape = _curve_shape(header, problems)
     blocks = {int(m.group(1)) for n in names if (m := re.match(r"^blocks\.(\d+)\.", n))}
-    refiner = {int(m.group(1)) for n in names if (m := re.match(r"^token_refiner\.blocks\.(\d+)\.", n))}
+    refiner = {
+        int(m.group(1))
+        for n in names
+        if (m := re.match(r"^token_refiner\.blocks\.(\d+)\.", n))
+    }
     has_time_embedder = any(n.startswith("time_embedder.proj_") for n in names)
     if curve_shape is None and not has_time_embedder:
-        problems.append("既沒有 adaln_t_table 也沒有 time_embedder：無法判定 AdaLN 架構")
+        problems.append(
+            "既沒有 adaln_t_table 也沒有 time_embedder：無法判定 AdaLN 架構"
+        )
     if curve_shape is not None and has_time_embedder:
         problems.append("同時含 adaln_t_table 與 time_embedder，架構矛盾")
     if blocks and blocks != set(range(len(blocks))):
@@ -192,10 +195,13 @@ def build_nf4_transformer_config(
     """
     if facts.problems:
         raise UnsupportedCombination(
-            "NF4_LAYOUT_MISMATCH", "NF4 DiT 標頭與釘版模型不相容：" + "；".join(facts.problems)
+            "NF4_LAYOUT_MISMATCH",
+            "NF4 DiT 標頭與釘版模型不相容：" + "；".join(facts.problems),
         )
     if facts.quant_type != "nf4":
-        raise UnsupportedCombination("NF4_QUANT_TYPE", f"檔案量化型別為 {facts.quant_type}，不是 nf4")
+        raise UnsupportedCombination(
+            "NF4_QUANT_TYPE", f"檔案量化型別為 {facts.quant_type}，不是 nf4"
+        )
     if declared_architecture is not None:
         actual = "pruned_curve" if facts.pruned_curve else "dense"
         if actual != declared_architecture:
@@ -220,10 +226,13 @@ def build_nf4_transformer_config(
     config = reference_json("transformer_config.json", model_root=model_root)
     if facts.num_blocks != int(config.get("num_layers", 50)):
         raise UnsupportedCombination(
-            "NF4_LAYER_COUNT", f"檔案有 {facts.num_blocks} 個 blocks，參考設定為 {config.get('num_layers')}"
+            "NF4_LAYER_COUNT",
+            f"檔案有 {facts.num_blocks} 個 blocks，參考設定為 {config.get('num_layers')}",
         )
     if facts.num_refiner_blocks != int(config.get("token_refiner_num_layers", 2)):
-        raise UnsupportedCombination("NF4_REFINER_COUNT", f"token_refiner blocks={facts.num_refiner_blocks}")
+        raise UnsupportedCombination(
+            "NF4_REFINER_COUNT", f"token_refiner blocks={facts.num_refiner_blocks}"
+        )
     config["checkpoint_qkv_layout"] = "native"
     config["quantization_config"] = {
         "quant_method": "bitsandbytes",
@@ -239,6 +248,7 @@ def build_nf4_transformer_config(
 
 
 def inspect_file(path: Path) -> Nf4TransformerFacts:
+    """Inspect the checkpoint file and return its detected properties."""
     return inspect_nf4_transformer(read_header_from_file(path))
 
 
@@ -260,11 +270,20 @@ def write_overlay(
     """
     transformer_dir = overlay_dir / "transformer"
     transformer_dir.mkdir(parents=True, exist_ok=True)
-    (overlay_dir / "model_index.json").write_text(json.dumps(model_index, indent=2, sort_keys=True), encoding="utf-8")
-    (transformer_dir / "config.json").write_text(json.dumps(dict(config), indent=2, sort_keys=True), encoding="utf-8")
+    (overlay_dir / "model_index.json").write_text(
+        json.dumps(model_index, indent=2, sort_keys=True), encoding="utf-8"
+    )
+    (transformer_dir / "config.json").write_text(
+        json.dumps(dict(config), indent=2, sort_keys=True), encoding="utf-8"
+    )
     (overlay_dir / "WEIGHTS_SOURCE").write_text(str(weights_file), encoding="utf-8")
     for key, value in model_index.items():
-        if key.startswith("_") or key == "transformer" or not isinstance(value, (list, tuple)) or len(value) != 2:
+        if (
+            key.startswith("_")
+            or key == "transformer"
+            or not isinstance(value, (list, tuple))
+            or len(value) != _INTERVAL_ENDPOINTS
+        ):
             continue
         link = overlay_dir / key
         if link.exists() or link.is_symlink():
@@ -288,3 +307,49 @@ __all__ = [
     "reference_json",
     "write_overlay",
 ]
+
+
+def _check_nf4_matrices(
+    header: SafetensorsHeader, quantized: Mapping[str, str], problems: list[str]
+) -> None:
+    for prefix in quantized:
+        weight = header.tensors.get(f"{prefix}.weight")
+        if (
+            weight is None
+            or weight.dtype != "U8"
+            or len(weight.shape) != _MATRIX_RANK
+            or weight.shape[1] != 1
+        ):
+            problems.append(f"{prefix}.weight 不是 bnb 4-bit 打包的 U8 [n,1]")
+        if _NEVER_QUANTIZED_RE.match(prefix):
+            problems.append(
+                f"{prefix} 在釘版 SGLang 以 quant_config=None 建立，不能載入 NF4 權重"
+            )
+        elif not _QUANT_CAPABLE_RE.match(prefix):
+            problems.append(f"{prefix} 不是釘版 MiniMaxH3DiTModel 的已知 linear")
+
+
+def _plain_matrix_prefixes(names: Any, quantized: dict[str, str]) -> list[str]:
+    plain: list[str] = []
+    for name in names:
+        if not name.endswith(".weight"):
+            continue
+        prefix = name[: -len(".weight")]
+        if prefix in quantized:
+            continue
+        if _QUANT_CAPABLE_RE.match(prefix):
+            plain.append(prefix)
+    return plain
+
+
+def _curve_shape(header: SafetensorsHeader, problems: list[str]) -> Any:
+    curve = header.tensors.get("adaln_t_table") or header.tensors.get(
+        "time_embedder.table"
+    )
+    curve_shape = None
+    if curve is not None:
+        if len(curve.shape) != _MATRIX_RANK or curve.shape[0] < _MIN_CURVE_POINTS:
+            problems.append(f"adaln_t_table 形狀不合法 {curve.shape}")
+        else:
+            curve_shape = (int(curve.shape[0]), int(curve.shape[1]))
+    return curve_shape

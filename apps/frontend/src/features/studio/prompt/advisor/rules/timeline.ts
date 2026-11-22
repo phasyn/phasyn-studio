@@ -73,7 +73,7 @@ function headingRules(ctx: RuleContext): Finding[] {
       );
     }
   }
-  const withCuts = scan.segments.filter((segment) => segment.kind === "time" && segment.heading && CUT_WORDS.test(text.slice(segment.heading.end, segment.end)));
+  const withCuts = scan.segments.filter((segment) => Boolean(segment.kind === "time" && segment.heading && CUT_WORDS.test(text.slice(segment.heading.end, segment.end))));
   const firstCut = withCuts[0];
   if (firstCut?.heading) {
     out.push(
@@ -111,7 +111,7 @@ function markerRules(ctx: RuleContext): Finding[] {
     out.push(
       finding("timeline.shot-number", {
         title: t("分鏡編號沒有照 1、2、3… 排"),
-        detail: t("依出現順序重新編號；目前的順序是 {listSome}。", { listSome: listSome(cuts.map((shot) => `[Shot ${shot.shot}]`), 8) }),
+        detail: t("依出現順序重新編號；目前的順序是 {listSome}。", { listSome: listSome(cuts.map((shot) => `[Shot ${String(shot.shot)}]`), 8) }),
         range: misnumbered,
         fix: { label: t("依出現順序重新編號"), apply: renumberShots },
       }),
@@ -128,10 +128,10 @@ function markerRules(ctx: RuleContext): Finding[] {
       }),
     );
   }
-  const nonCanonical = shots.filter((shot) => (shot.at && !isCanonicalCueTime(shot.at.text)) || (shot.range && (!isCanonicalCueTime(shot.range.startText) || !isCanonicalCueTime(shot.range.endText))));
+  const nonCanonical = shots.filter((shot) => (shot.at !== null && !isCanonicalCueTime(shot.at.text)) || (shot.range !== null && (!isCanonicalCueTime(shot.range.startText) || !isCanonicalCueTime(shot.range.endText))));
   const firstOdd = nonCanonical[0];
   if (firstOdd) {
-    const fixable = nonCanonical.some((shot) => (shot.at && shot.at.seconds !== null) || (shot.range && (shot.range.start !== null || shot.range.end !== null)));
+    const fixable = nonCanonical.some((shot) => shot.at?.seconds != null || shot.range?.start != null || shot.range?.end != null);
     out.push(
       finding("timeline.time-format", {
         title: t("時間不是 00:03.500 這種寫法"),

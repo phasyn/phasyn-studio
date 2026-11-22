@@ -11,7 +11,7 @@ export function CircularProgress({
   value,
   size = 20,
   strokeWidth = 2.5,
-  label = t("進度"),
+  label: labelProp,
   showValue = false,
   className,
 }: {
@@ -26,6 +26,7 @@ export function CircularProgress({
   showValue?: boolean;
   className?: string;
 }) {
+  const label = labelProp ?? t("進度");
   const id = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const fraction = Number.isFinite(value) ? Math.min(1, Math.max(0, value)) : 0;
   const percent = Math.round(fraction * 100);
@@ -38,7 +39,7 @@ export function CircularProgress({
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={percent}
-      aria-valuetext={`${percent}%`}
+      aria-valuetext={`${String(percent)}%`}
       className={cn("relative inline-grid shrink-0 place-items-center", className)}
       style={{ width: size, height: size }}
     >

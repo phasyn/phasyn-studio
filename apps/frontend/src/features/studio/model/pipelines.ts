@@ -4,6 +4,7 @@
 import type { ApiErrorBody, Asset, FileRef, StudioTake } from "@/api/generated/contracts";
 import { asAsset, parseRunStep, typedFile, type RunStepView, type WireRun } from "@/api/types";
 import { t } from "@/i18n";
+import { equalRate, validClock } from "./studioGenerationBinding";
 
 const FINAL_KEY = /^final(_\d+)?$/;
 
@@ -53,8 +54,15 @@ export interface ExportOptions {
   crf?: number;
   preset?: "ultrafast" | "veryfast" | "faster" | "fast" | "medium" | "slow";
   audioBitrate?: number;
+  /** Integrated loudness target in LUFS (-18, -16 or -14); absent: the mix is exported as it is. */
+  loudnessLufs?: number;
   /** proxy: the run is a proxy rendition and takes no run slot. */
   purpose?: "proxy";
+  /**
+   * gap: clips whose shot is not rendered yet are left out (their time stays silent and empty) instead of blocking the
+   * request; the mix audition uses it so the sound can be heard before every shot exists.
+   */
+  unrendered?: "block" | "gap";
 }
 
 export interface ExportTarget {
@@ -65,7 +73,7 @@ export interface ExportTarget {
 }
 
 function elapsedMs(start: string | null, end: string | null): number | null {
-  if (!start || !end) return null;
+  if (!(start != null && start !== "") || !(end != null && end !== "")) return null;
   const ms = Date.parse(end) - Date.parse(start);
   return Number.isFinite(ms) && ms >= 0 ? ms : null;
 }
@@ -83,11 +91,27 @@ export interface TakeOutcome {
   timings_ms: Record<string, number | null>;
 }
 
+type OutcomeTake = Pick<StudioTake, "output_key"> & Partial<Pick<StudioTake, "frames" | "expected_fps">>;
+
+function deliveryError(take: OutcomeTake, asset: Asset, typeId: string | undefined): ApiErrorBody | null {
+  const expected = take.expected_fps;
+  if (!expected) return null;
+  if (typeId === "media.asset.v1" && asset.complete && (asset.kind === "final" || asset.kind === "video") &&
+    asset.file.media_type.startsWith("video/") && asset.file.size_bytes > 0 && asset.width > 0 && asset.height > 0 && Number.isSafeInteger(asset.frame_count) &&
+    asset.frame_count === take.frames && asset.fps && validClock(asset.fps.num, asset.fps.den) && equalRate(asset.fps, expected)) return null;
+  return {
+    code: "STUDIO_OUTPUT_MISMATCH",
+    message: t("交付的影片未符合鏡頭要求的片長或影格率"),
+    details: { expected_frames: take.frames, expected_fps: expected, actual_frames: asset.frame_count,
+      actual_fps: asset.fps, kind: asset.kind, complete: asset.complete },
+  };
+}
+
 /**
  * 從 run 讀回某個分支（take.output_key）的結果：成片取自 run 請求中這個輸出鍵指向的步驟輸出；
  * 分支成功即算成功（即使整個 run 之後因別的分支失敗）。失敗原因是分支中依 pipeline 順序第一個失敗的步驟。
  */
-export function takeOutcome(run: WireRun, take: Pick<StudioTake, "output_key">): TakeOutcome {
+export function takeOutcome(run: WireRun, take: OutcomeTake): TakeOutcome {
   const ids = branchStepIds(run, take.output_key);
   const suffixes = runBranchSuffixes(run);
   const views: RunStepView[] = ids.map((id) => parseRunStep(id, run.steps[id]));
@@ -95,10 +119,14 @@ export function takeOutcome(run: WireRun, take: Pick<StudioTake, "output_key">):
   const finalStep = ref ? parseRunStep(ref.from_step, run.steps[ref.from_step]) : null;
   const value = ref ? finalStep?.outputs[ref.output] : undefined;
   const asset = finalStep?.state === "succeeded" && value && "value" in value ? asAsset(value.value) : null;
-  const latentValue = views.map((view) => view.outputs.video_latent).find((item) => item !== undefined);
+  const latentValue = views.map((view) => view.outputs["video_latent"]).find((item) => item !== undefined);
   const timings: Record<string, number | null> = {};
   for (const view of views) timings[splitRunStepId(run, view.step_id, suffixes).base] = elapsedMs(view.started_at, view.finished_at);
-  if (asset) return { state: "succeeded", asset, video_latent: latentValue ? typedFile(latentValue) : null, error: null, timings_ms: timings };
+  if (asset) {
+    const error = deliveryError(take, asset, value?.type_id);
+    if (error) return { state: "failed", asset: null, video_latent: null, error, timings_ms: timings };
+    return { state: "succeeded", asset, video_latent: latentValue ? typedFile(latentValue) : null, error: null, timings_ms: timings };
+  }
   if (run.state === "running") return { state: "rendering", asset: null, video_latent: null, error: null, timings_ms: timings };
   const state: StudioTake["state"] = run.state === "cancelled" ? "cancelled" : run.state === "interrupted" ? "interrupted" : "failed";
   const failed = views.find((view) => view.error);
@@ -107,8 +135,8 @@ export function takeOutcome(run: WireRun, take: Pick<StudioTake, "output_key">):
 }
 
 export function exportOutcome(run: WireRun): { state: StudioTake["state"]; asset: Asset | null; error: ApiErrorBody | null; frames: number | null } {
-  const concat = parseRunStep("concat", run.steps.concat);
-  const value = concat.outputs.asset;
+  const concat = parseRunStep("concat", run.steps["concat"]);
+  const value = concat.outputs["asset"];
   const asset = concat.state === "succeeded" && value && "value" in value ? asAsset(value.value) : null;
   if (asset) return { state: "succeeded", asset, error: null, frames: asset.frame_count };
   if (run.state === "running") return { state: "rendering", asset: null, error: null, frames: null };

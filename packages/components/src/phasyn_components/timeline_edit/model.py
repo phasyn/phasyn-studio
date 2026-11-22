@@ -12,12 +12,15 @@ from typing import Any
 from ..timeline import clip_duration, clip_output_window, processed_clip_duration
 from ..timeline_limits import EFFECT_BOUNDS
 
+
 Doc = dict[str, Any]
 AllocateId = Callable[[str], str]
 
 MOTION_CHANNELS = ("x", "y", "scale", "rotation", "opacity", "gain_db", "pan")
 # Every numeric parameter of an effect kind has a keyframe channel (the contract's bounds name them all).
-EFFECT_CHANNELS: Mapping[str, tuple[str, ...]] = {kind: tuple(bounds) for kind, bounds in EFFECT_BOUNDS.items()}
+EFFECT_CHANNELS: Mapping[str, tuple[str, ...]] = {
+    kind: tuple(bounds) for kind, bounds in EFFECT_BOUNDS.items()
+}
 MASK_CHANNELS = ("x", "y", "width", "height", "feather")
 # Transitions that move or uncover the pictures: where they go, how the movement eases, how soft a wipe's edge is.
 EDGE_DIRECTIONS = ("left", "right", "up", "down")
@@ -40,10 +43,21 @@ DEFAULT_TRACKS = (
 
 
 def default_motion() -> Doc:
-    return {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+    """Return the default clip motion."""
+    return {
+        "x": 0,
+        "y": 0,
+        "scale": 1,
+        "rotation": 0,
+        "opacity": 1,
+        "gain_db": 0,
+        "pan": 0,
+        "keyframes": {},
+    }
 
 
 def new_track(track_id: str, kind: str, name: str) -> Doc:
+    """Build a timeline track."""
     return {
         "track_id": track_id,
         "kind": kind,
@@ -63,7 +77,9 @@ def empty_timeline(fps: Mapping[str, Any]) -> Doc:
         "version": 2,
         "fps": {"num": fps["num"], "den": fps["den"]},
         "sources": [],
-        "tracks": [new_track(track_id, kind, name) for track_id, kind, name in DEFAULT_TRACKS],
+        "tracks": [
+            new_track(track_id, kind, name) for track_id, kind, name in DEFAULT_TRACKS
+        ],
         "clips": [],
         "captions": [],
         "markers": [],
@@ -73,14 +89,17 @@ def empty_timeline(fps: Mapping[str, Any]) -> Doc:
 
 
 def clip_end(clip: Mapping[str, Any]) -> int:
+    """Return the exclusive end frame of a clip."""
     return int(clip["start_frame"]) + clip_duration(clip)
 
 
 def to_processing_frame(clip: Mapping[str, Any], local_frame: int) -> int:
+    """Convert a frame to the processing timebase."""
     return clip_output_window(clip)[0] + local_frame
 
 
 def timeline_duration(timeline: Mapping[str, Any]) -> int:
+    """Return the sequence duration in frames."""
     ends = [clip_end(clip) for clip in timeline["clips"]]
     ends += [int(caption["end_frame"]) for caption in timeline["captions"]]
     return max(ends, default=0)
@@ -91,12 +110,18 @@ def retimed_frames(frames: int, speed_percent: int = 100) -> int:
     return 0 if frames <= 0 else max(1, frames * 100 // speed_percent)
 
 
-def clip_source_frame(effects: Mapping[str, Any] | None, source_frames: int, processed_frame: int) -> int:
+def clip_source_frame(
+    effects: Mapping[str, Any] | None, source_frames: int, processed_frame: int
+) -> int:
     """The trimmed-source frame a processed frame shows (holds repeat an end, frame_step repeats a drawing)."""
     fx = effects or {}
     speed = int(fx.get("speed_percent", 100))
     local = max(
-        0, min(retimed_frames(source_frames, speed) - 1, processed_frame - int((fx.get("hold") or {}).get("start", 0)))
+        0,
+        min(
+            retimed_frames(source_frames, speed) - 1,
+            processed_frame - int((fx.get("hold") or {}).get("start", 0)),
+        ),
     )
     step = int(fx.get("frame_step", 1))
     return local // step * step * speed // 100
@@ -113,18 +138,28 @@ def source_frame_at(clip: Mapping[str, Any], timeline_frame: int) -> int:
 def track_clips(timeline: Mapping[str, Any], track_id: str) -> list[Doc]:
     """The clips of one track by start; equal starts keep document order."""
     return sorted(
-        (clip for clip in timeline["clips"] if clip["track_id"] == track_id), key=lambda clip: clip["start_frame"]
+        (clip for clip in timeline["clips"] if clip["track_id"] == track_id),
+        key=lambda clip: clip["start_frame"],
     )
 
 
-def select_clips(timeline: Mapping[str, Any], ids: Iterable[str], linked: bool = True) -> list[Doc]:
+def select_clips(
+    timeline: Mapping[str, Any],
+    ids: Iterable[str],
+    linked: bool = True,  # noqa: FBT001, FBT002 - Keep the published positional and keyword API.
+) -> list[Doc]:
     """The named clips and, with ``linked``, every clip that shares a link with one of them (document order)."""
     selected = set(ids)
-    links = {clip["linked_id"] for clip in timeline["clips"] if clip["clip_id"] in selected and clip.get("linked_id")}
+    links = {
+        clip["linked_id"]
+        for clip in timeline["clips"]
+        if clip["clip_id"] in selected and clip.get("linked_id")
+    }
     return [
         clip
         for clip in timeline["clips"]
-        if clip["clip_id"] in selected or (linked and clip.get("linked_id") is not None and clip["linked_id"] in links)
+        if clip["clip_id"] in selected
+        or (linked and clip.get("linked_id") is not None and clip["linked_id"] in links)
     ]
 
 
@@ -135,11 +170,14 @@ def active_transition(effects: Mapping[str, Any] | None) -> Doc | None:
 
 
 def transition_frames(clip: Mapping[str, Any]) -> int:
+    """Return the transition duration in frames."""
     transition = active_transition(clip.get("effects"))
     return int(transition["frames"]) if transition else 0
 
 
-def transition_value(kind: str, frames: int, hints: Mapping[str, Any] | None = None) -> Doc:
+def transition_value(
+    kind: str, frames: int, hints: Mapping[str, Any] | None = None
+) -> Doc:
     """A complete ``transition_out`` of ``kind`` (not cut) and ``frames``.
 
     A kind that moves the pictures takes its direction, easing and (a wipe) softness from ``hints`` where a hint is one
@@ -151,7 +189,9 @@ def transition_value(kind: str, frames: int, hints: Mapping[str, Any] | None = N
     if directions is None:
         return value
     given = hints or {}
-    value["direction"] = given["direction"] if given.get("direction") in directions else directions[0]
+    value["direction"] = (
+        given["direction"] if given.get("direction") in directions else directions[0]
+    )
     if given.get("easing") in TRANSITION_EASINGS:
         value["easing"] = given["easing"]
     softness = given.get("softness")
@@ -166,14 +206,22 @@ def transition_value(kind: str, frames: int, hints: Mapping[str, Any] | None = N
 
 
 def find_track(timeline: Mapping[str, Any], track_id: str) -> Doc | None:
-    return next((track for track in timeline["tracks"] if track["track_id"] == track_id), None)
+    """Locate a track by ID."""
+    return next(
+        (track for track in timeline["tracks"] if track["track_id"] == track_id), None
+    )
 
 
 def find_source(timeline: Mapping[str, Any], source_id: str) -> Doc | None:
-    return next((source for source in timeline["sources"] if source["source_id"] == source_id), None)
+    """Locate a media source by ID."""
+    return next(
+        (source for source in timeline["sources"] if source["source_id"] == source_id),
+        None,
+    )
 
 
 def first_track(timeline: Mapping[str, Any], kind: str) -> Doc | None:
+    """Locate the first matching track."""
     return next((track for track in timeline["tracks"] if track["kind"] == kind), None)
 
 
@@ -183,23 +231,34 @@ def is_adjustment(timeline: Mapping[str, Any], clip: Mapping[str, Any]) -> bool:
     return source is not None and source["kind"] == "adjustment"
 
 
-def track_shows(timeline: Mapping[str, Any], track_id: str, start: int, end: int) -> bool:
+def track_shows(
+    timeline: Mapping[str, Any], track_id: str, start: int, end: int
+) -> bool:
     """A clip of the track lies in [start, end) (a switched-off clip too: it keeps its place)."""
     return any(
-        clip["track_id"] == track_id and clip["start_frame"] < end and clip_end(clip) > start
+        clip["track_id"] == track_id
+        and clip["start_frame"] < end
+        and clip_end(clip) > start
         for clip in timeline["clips"]
     )
 
 
-def track_free(timeline: Mapping[str, Any], track: Mapping[str, Any], start: int, end: int) -> bool:
+def track_free(
+    timeline: Mapping[str, Any], track: Mapping[str, Any], start: int, end: int
+) -> bool:
     """The track is unlocked and shows nothing in [start, end)."""
-    return not track["locked"] and not track_shows(timeline, track["track_id"], start, end)
+    return not track["locked"] and not track_shows(
+        timeline, track["track_id"], start, end
+    )
 
 
 def tracks_end(timeline: Mapping[str, Any], track_ids: Sequence[str]) -> int:
     """The end of the last clip on the given tracks (0 when they are empty)."""
     wanted = set(track_ids)
-    return max((clip_end(clip) for clip in timeline["clips"] if clip["track_id"] in wanted), default=0)
+    return max(
+        (clip_end(clip) for clip in timeline["clips"] if clip["track_id"] in wanted),
+        default=0,
+    )
 
 
 def used_ids(timeline: Mapping[str, Any]) -> set[str]:

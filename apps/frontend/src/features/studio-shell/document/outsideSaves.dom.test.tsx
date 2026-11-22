@@ -1,3 +1,4 @@
+import { fixtureProject } from "@/test/fixtures";
 // A version of the open project saved elsewhere (another tab, an API client) replaces the page's version
 // while nothing is unsaved, with a notice; with an unsaved edit the page keeps its version and nothing is read.
 import { screen, waitFor } from "@testing-library/react";
@@ -21,17 +22,17 @@ const INITIAL: ToyDoc = { project_id: "p-1", title: "Toy", revision: 2, created_
 const LATEST: ToyDoc = { ...INITIAL, revision: 4, value: 40 };
 
 function Harness({ fetchLatest, autosaveMs = 5 }: { fetchLatest: () => Promise<ToyDoc>; autosaveMs?: number }) {
-  const document = useAutosaveDocument({ initial: INITIAL, reducer, save: (doc) => Promise.resolve({ ...doc, revision: doc.revision + 1 }), fetchLatest, publish: () => undefined, autosaveMs });
+  const document = useAutosaveDocument({ initial: INITIAL, parseMerged: fixtureProject, reducer, save: (doc) => Promise.resolve({ ...doc, revision: doc.revision + 1 }), fetchLatest, publish: () => undefined, autosaveMs });
   const shell = useStudioShellValue(document, { offerRebase: false });
   useOutsideSaves(document, shell.notify, 20);
   return (
-    <StudioShellContext.Provider value={shell}>
-      <button type="button" onClick={() => document.dispatch({ type: "add" })}>
+    <StudioShellContext value={shell}>
+      <button type="button" onClick={() => { document.dispatch({ type: "add" }); }}>
         add
       </button>
       <span aria-label="value">{document.state.draft.value}</span>
       <StudioNotices />
-    </StudioShellContext.Provider>
+    </StudioShellContext>
   );
 }
 
@@ -53,7 +54,7 @@ describe("versions saved elsewhere", () => {
     await user.click(screen.getByRole("button", { name: "add" }));
     server = 4;
     const seen = calls.length;
-    await waitFor(() => expect(calls.length).toBeGreaterThan(seen + 1));
+    await waitFor(() => { expect(calls.length).toBeGreaterThan(seen + 1); });
     expect(screen.getByLabelText("value")).toHaveTextContent("2");
     expect(fetchLatest).not.toHaveBeenCalled();
     expect(screen.queryByText("已載入在其他地方保存的新版本")).toBeNull();

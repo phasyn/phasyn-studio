@@ -70,7 +70,7 @@ export function PipelinePicker({ pipelines, catalog, catalogStatus }: { pipeline
                 </Td>
                 <Td className="machine text-fg-secondary">{pipeline.steps.length}</Td>
                 <Td>
-                  {unknownText ? (
+                  {(unknownText != null && unknownText !== "") ? (
                     <span className="text-caption text-fg-tertiary">{t("{total} 個・{unknownText}{value}", { total: summary.total, unknownText, value: catalogStatus === "loading" ? "…" : "" })}</span>
                   ) : (
                     <div className="grid min-w-36 gap-1">

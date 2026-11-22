@@ -1,11 +1,12 @@
 // The words and icons of a 方式 (model/generationMode.ts) and of a route as people see it: the route's name (the part
 // before 「：」 of its label) with derived badges — task, the DiT's machine, ready — while the full label and the wiring
 // stay in tooltips and the engine sheet's detail.
-import { ImagePlay, Images, Link2, Type, type LucideIcon } from "lucide-react";
+import { AudioLines, Brush, FlaskConical, ImagePlay, Images, Link2, MoveHorizontal, PersonStanding, SlidersHorizontal, Type, type LucideIcon } from "lucide-react";
 import type { Catalog, StudioProject, StudioShot } from "@/api/generated/contracts";
 import { indexCatalog } from "@/api/catalog";
 import { firstFrameCandidates, firstFrameImageProblem, predecessor } from "../../model/continuity";
 import type { GenerationMode, ModeReading } from "../../model/generationMode";
+import type { RoutePurpose } from "../../model/providerTraits";
 import { nodeShortName, routeName, type StudioRoute } from "../../model/routes";
 import { t } from "@/i18n";
 
@@ -14,15 +15,44 @@ export const MODE_LABEL: Readonly<Record<GenerationMode, string>> = {
   continue: t("接續上一鏡"),
   image: t("首幀圖片"),
   text: t("只用文字"),
+  performance: t("表演影片"),
+  audio: t("音訊驅動"),
 };
 
-export const MODE_ICON: Readonly<Record<GenerationMode, LucideIcon>> = { references: Images, continue: Link2, image: ImagePlay, text: Type };
+export const MODE_ICON: Readonly<Record<GenerationMode, LucideIcon>> = { references: Images, continue: Link2, image: ImagePlay, text: Type, performance: PersonStanding, audio: AudioLines };
+
+/** What a route does, as the route picker's groups and badges name it. */
+export const PURPOSE_LABEL: Readonly<Record<RoutePurpose, string>> = {
+  reference: t("參考生成"),
+  "first-frame": t("首幀"),
+  text: t("文字"),
+  extend: t("延展"),
+  retouch: t("重繪"),
+  control: t("控制"),
+  performance: t("表演驅動"),
+  audio: t("音訊驅動"),
+};
+
+export const PURPOSE_ICON: Readonly<Record<RoutePurpose, LucideIcon>> = {
+  reference: Images,
+  "first-frame": ImagePlay,
+  text: Type,
+  extend: MoveHorizontal,
+  retouch: Brush,
+  control: SlidersHorizontal,
+  performance: PersonStanding,
+  audio: AudioLines,
+};
+
+export const EXPERIMENT_ICON = FlaskConical;
 
 /** One plain line of what a 方式 uses. */
 export function modeHint(mode: GenerationMode, project: StudioProject, shot: StudioShot): string {
   if (mode === "references") return t("用 @ 參考的圖片、影片與聲音");
   if (mode === "image") return t("從素材庫選一張圖片當第一格");
   if (mode === "text") return t("只用 prompt，不送出參考素材或首幀");
+  if (mode === "performance") return t("用表演影片帶動角色圖片");
+  if (mode === "audio") return t("用聲音帶動角色圖片說話或唱歌");
   const previous = predecessor(project, shot.shot_id).previous?.shot;
   return previous ? t("用「{title}」的最後一格當首幀", { title: previous.title || t("未命名鏡頭") }) : t("用前一個鏡頭的最後一格當首幀");
 }
@@ -50,10 +80,11 @@ export function readingText(reading: ModeReading): { value: string; problem: str
   }
   if (reading.issue === "loading") return { value: t("讀取中…"), problem: null };
   if (reading.issue === "needs-first-frame") return { value: t("需要首幀"), problem: t("這條路線需要首幀：選「接續上一鏡」或「首幀圖片」") };
+  if (reading.issue === "edit-route") return { value: t("剪輯工具路線"), problem: t("這條路線用在剪輯的延展、重繪或控制工具，不能直接渲染鏡頭：在「方式」選一種生成方式") };
   return { value: t("未設定"), problem: t("這個鏡頭的路線已不存在：在「方式」選一個方式") };
 }
 
-/** A route as lists show it: its name, the machine its DiT runs on (Node label without the hardware note), the full label. */
+/** A route as lists show it: its name, the machine its main generation step (the DiT) runs on (Node label without the hardware note), the full label. */
 export interface RouteFace {
   name: string;
   /** The wiring part of the label (after 「：」); null when the label has none. */
@@ -65,6 +96,6 @@ export interface RouteFace {
 
 export function routeFace(route: StudioRoute, catalog: Catalog | undefined): RouteFace {
   const { name, description } = routeName(route.label);
-  const node = route.ditNodeId ? indexCatalog(catalog).nodeLabel(route.ditNodeId) : null;
-  return { name, wiring: description, machine: node ? nodeShortName(node) : null, title: route.label };
+  const node = (route.mainNodeId != null && route.mainNodeId !== "") ? indexCatalog(catalog).nodeLabel(route.mainNodeId) : null;
+  return { name, wiring: description, machine: (node != null && node !== "") ? nodeShortName(node) : null, title: route.label };
 }

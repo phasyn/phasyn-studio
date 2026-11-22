@@ -11,7 +11,7 @@ import { useRecordingHref } from "../hooks";
 import { flattenPages } from "../model/events";
 import { buildMemoryModel, MEMORY_PANELS, type MemoryPanelId, type MemorySeries } from "../model/memory";
 import { groupMetricNames, METRIC_GROUPS, missingMetric } from "../model/metrics";
-import { LineChart, type LineSeries, type SeriesTone } from "./LineChart";
+import { LineChart, type LineSeries } from "./LineChart";
 import { LoadingBlock, LoadMoreButton, QueryErrorCallout } from "./Feedback";
 import { MetricTable } from "./MetricValue";
 import { tServer, t as tr } from "@/i18n";
@@ -28,7 +28,7 @@ function LoadRunNote({ recording }: { recording: Recording }) {
   if (!load.data) return null;
   return (
     <p className="text-caption text-fg-tertiary">
-      <T source={"載入與運行是不同 recording：同一程序的載入紀錄{text}<0>{recording_id}</0>（{created_at}）。載入峰值不計入本次呼叫。"} values={{ text: " ", recording_id: load.data.context.recording_id.slice(0, 8), created_at: formatTimestamp(load.data.context.created_at) }} slots={[<Link to={hrefFor(load.data.context.recording_id)} className="machine" />]} />
+      <T source={"載入與運行是不同 recording：同一程序的載入紀錄{text}<0>{recording_id}</0>（{created_at}）。載入峰值不計入本次呼叫。"} values={{ text: " ", recording_id: load.data.context.recording_id.slice(0, 8), created_at: formatTimestamp(load.data.context.created_at) }} slots={[<Link key="slot-0" to={hrefFor(load.data.context.recording_id)} className="machine" />]} />
     </p>
   );
 }
@@ -43,7 +43,7 @@ interface Panel {
 function panelsOf(series: readonly MemorySeries[]): Panel[] {
   const panels = new Map<string, Panel>();
   for (const s of series) {
-    const key = `${s.panel}|${s.deviceId ?? "-"}|${s.processId ?? "-"}`;
+    const key = `${s.panel}|${s.deviceId ?? "-"}|${String(s.processId ?? "-")}`;
     const panel = panels.get(key) ?? { key, panel: s.panel, deviceId: s.deviceId, series: [] };
     panel.series.push(s);
     panels.set(key, panel);
@@ -65,7 +65,7 @@ function SamplesTable({ series, times }: { series: readonly MemorySeries[]; time
               {series.map((s) => (
                 <Th key={s.key} scope="col">
                   {MEMORY_PANELS[s.panel].title} · {s.label}
-                  {s.deviceId ? <span className="machine block font-normal">{s.deviceId}</span> : null}
+                  {(s.deviceId != null && s.deviceId !== "") ? <span className="machine block font-normal">{s.deviceId}</span> : null}
                 </Th>
               ))}
             </tr>
@@ -90,7 +90,7 @@ function SamplesTable({ series, times }: { series: readonly MemorySeries[]; time
       {times.length > 200 ? (
         <LoadMoreButton
           className="justify-self-start"
-          onLoad={() => setLimit((current) => current + 200)}
+          onLoad={() => { setLimit((current) => current + 200); }}
           pending={false}
           hasMore={times.length > limit}
           label={tr("再顯示 200 個取樣（共 {timesCount}）", { timesCount: times.length.toLocaleString("en-US") })}
@@ -111,10 +111,10 @@ function StreamMemory({ recording, streamId, enabled }: { recording: Recording; 
 
   if (!events.data) {
     if (events.isFetching) return <LoadingBlock label={tr("讀取 stream {streamId} 的事件…", { streamId })} rows={3} />;
-    if (events.error) return <QueryErrorCallout error={events.error} title={tr("stream {streamId} 讀取失敗", { streamId })} onRetry={() => void events.refetch()} />;
+    if (events.error != null) return <QueryErrorCallout error={events.error} title={tr("stream {streamId} 讀取失敗", { streamId })} onRetry={() => void events.refetch()} />;
     return (
       <p className="text-caption text-fg-tertiary">
-        <T source={"stream <0>{streamId}</0>：事件尚未載入。"} values={{ streamId }} slots={[<code className="machine" />]} />
+        <T source={"stream <0>{streamId}</0>：事件尚未載入。"} values={{ streamId }} slots={[<code key="slot-0" className="machine" />]} />
       </p>
     );
   }
@@ -122,7 +122,7 @@ function StreamMemory({ recording, streamId, enabled }: { recording: Recording; 
   if (model.sampleCount === 0) {
     return (
       <p className="text-caption text-fg-tertiary">
-        <T source={"stream <0>{streamId}</0>：已載入 {flatCount} 筆事件，其中沒有取樣事件{more}。"} values={{ streamId, flatCount: flat.length.toLocaleString("en-US"), more }} slots={[<code className="machine" />]} />
+        <T source={"stream <0>{streamId}</0>：已載入 {flatCount} 筆事件，其中沒有取樣事件{more}。"} values={{ streamId, flatCount: flat.length.toLocaleString("en-US"), more }} slots={[<code key="slot-0" className="machine" />]} />
       </p>
     );
   }
@@ -132,14 +132,14 @@ function StreamMemory({ recording, streamId, enabled }: { recording: Recording; 
     <div className="grid gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-caption text-fg-tertiary">
-          <T source={"stream <0>{streamId}</0> · {sampleCount} 個取樣 · 預期間隔{text}{value}{value2}{more}"} values={{ streamId, sampleCount: model.sampleCount.toLocaleString("en-US"), text: " ", value: model.expectedIntervalMs !== null ? formatMs(model.expectedIntervalMs) : tr("未知"), value2: model.gapThresholdMs !== null ? tr("；間隔超過 {gapThresholdMs} 或缺值即斷線", { gapThresholdMs: formatMs(model.gapThresholdMs) }) : tr("；缺值即斷線"), more }} slots={[<code className="machine" />]} />
+          <T source={"stream <0>{streamId}</0> · {sampleCount} 個取樣 · 預期間隔{text}{value}{value2}{more}"} values={{ streamId, sampleCount: model.sampleCount.toLocaleString("en-US"), text: " ", value: model.expectedIntervalMs !== null ? formatMs(model.expectedIntervalMs) : tr("未知"), value2: model.gapThresholdMs !== null ? tr("；間隔超過 {gapThresholdMs} 或缺值即斷線", { gapThresholdMs: formatMs(model.gapThresholdMs) }) : tr("；缺值即斷線"), more }} slots={[<code key="slot-0" className="machine" />]} />
         </p>
         <Button
           size="sm"
           variant="quiet"
           aria-pressed={asTable}
           icon={asTable ? <ChartLine aria-hidden /> : <Table2 aria-hidden />}
-          onClick={() => setAsTable((current) => !current)}
+          onClick={() => { setAsTable((current) => !current); }}
           className="pointer-coarse:min-h-11"
         >
           {asTable ? tr("以圖表檢視") : tr("以表格檢視")}
@@ -157,7 +157,7 @@ function StreamMemory({ recording, streamId, enabled }: { recording: Recording; 
               .map((s, index) => ({
                 key: s.key,
                 label: s.label,
-                tone: String(Math.min(3, index + 1)) as SeriesTone,
+                tone: index === 0 ? "1" : index === 1 ? "2" : "3",
                 segments: s.segments,
                 samples: s.samples,
               }));
@@ -165,13 +165,13 @@ function StreamMemory({ recording, streamId, enabled }: { recording: Recording; 
               <div key={panel.key} className="grid min-w-0 content-start gap-1 rounded-lg border border-line-subtle bg-sunken p-3">
                 <p className="text-data font-semibold text-fg">
                   {info.title}
-                  {panel.deviceId ? <code className="machine ml-2 text-caption font-normal text-fg-tertiary">{panel.deviceId}</code> : null}
+                  {(panel.deviceId != null && panel.deviceId !== "") ? <code className="machine ml-2 text-caption font-normal text-fg-tertiary">{panel.deviceId}</code> : null}
                 </p>
                 <p className="text-caption text-fg-tertiary">
                   {tr("scope：{scope}。{note}", { scope: info.scope, note: info.note })}
                 </p>
                 <LineChart
-                  label={tr("{title}{value} 記憶體取樣", { title: info.title, value: panel.deviceId ? ` ${panel.deviceId}` : "" })}
+                  label={tr("{title}{value} 記憶體取樣", { title: info.title, value: (panel.deviceId != null && panel.deviceId !== "") ? ` ${panel.deviceId}` : "" })}
                   series={lines}
                   times={model.times}
                   xMax={model.durationMs}
@@ -186,7 +186,7 @@ function StreamMemory({ recording, streamId, enabled }: { recording: Recording; 
         <ul className="grid gap-1 text-caption text-fg-tertiary">
           {empty.map((panel) => (
             <li key={panel.key}>
-              {tr("{title}：所有取樣皆為 null（{value}），不以其他口徑代替。", { title: MEMORY_PANELS[panel.panel].title, value: tServer(panel.series.find((s) => s.nullReason)?.nullReason) ?? tr("未提供原因") })}
+              {tr("{title}：所有取樣皆為 null（{value}），不以其他口徑代替。", { title: MEMORY_PANELS[panel.panel].title, value: tServer(panel.series.find((s) => Boolean(s.nullReason))?.nullReason) ?? tr("未提供原因") })}
             </li>
           ))}
         </ul>
@@ -210,14 +210,14 @@ export function MemorySection({ recording }: { recording: Recording }) {
         <MemoryStick aria-hidden className="size-4 text-fg-tertiary" />
         {tr("記憶體")}
       </h3>
-      {MEMORY_GROUP?.note ? <p className="text-caption text-fg-tertiary">{MEMORY_GROUP.note}</p> : null}
+      {(MEMORY_GROUP?.note != null && MEMORY_GROUP.note !== "") ? <p className="text-caption text-fg-tertiary">{MEMORY_GROUP.note}</p> : null}
       <MetricTable label={tr("記憶體峰值（各口徑分列）")} rows={rows} />
       <LoadRunNote recording={recording} />
       <div className="grid gap-3">
         <h4 className="text-data font-semibold text-fg-secondary">{tr("取樣曲線")}</h4>
         {!requested ? (
           <div className="flex flex-wrap items-center gap-3">
-            <Button size="sm" icon={<ChartLine aria-hidden />} onClick={() => setRequested(true)}>
+            <Button size="sm" icon={<ChartLine aria-hidden />} onClick={() => { setRequested(true); }}>
               {tr("讀取事件並繪製取樣曲線")}
             </Button>
             <span className="text-caption text-fg-tertiary">{tr("需要讀取此 recording 的事件（每個 stream 一頁）；已在其他分頁載入的事件會直接使用。")}</span>
@@ -229,7 +229,7 @@ export function MemorySection({ recording }: { recording: Recording }) {
           ) : (
             streams.data.streams.map((stream) => <StreamMemory key={stream.stream_id} recording={recording} streamId={stream.stream_id} enabled={requested} />)
           )
-        ) : streams.error ? (
+        ) : (streams.error != null) ? (
           <QueryErrorCallout error={streams.error} title={tr("無法列出事件 stream")} onRetry={() => void streams.refetch()} />
         ) : (
           <LoadingBlock label={tr("列出事件 stream…")} />

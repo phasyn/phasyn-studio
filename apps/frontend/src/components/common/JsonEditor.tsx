@@ -1,9 +1,10 @@
+import { hasSlotContent } from "@/lib/dom";
 import { RotateCcw } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/controls";
 import { cn } from "@/lib/cn";
-import { parseJson, type JsonParseError } from "@/lib/json";
+import { stringifyJson, parseJson, type JsonParseError } from "@/lib/json";
 import { validateValue, type JsonSchema, type SchemaIssue } from "@/lib/schema";
 import { t } from "@/i18n";
 import { T } from "@/i18n/T";
@@ -16,7 +17,7 @@ interface Draft {
 }
 
 function format(value: unknown): string {
-  return value === undefined ? "" : (JSON.stringify(value, null, 2) ?? "");
+  return value === undefined ? "" : (stringifyJson(value, 2) ?? "");
 }
 
 /**
@@ -68,7 +69,7 @@ export function JsonEditor({
 
   return (
     <div className={cn("grid min-w-0 gap-2", className)}>
-      {labelledBy ? null : (
+      {(labelledBy != null && labelledBy !== "") ? null : (
         <label htmlFor={id} className={cn("text-data font-medium text-fg-secondary", hideLabel && "sr-only")}>
           {label}
         </label>
@@ -82,12 +83,12 @@ export function JsonEditor({
         value={text}
         disabled={disabled}
         aria-invalid={parseError || schemaIssues.length > 0 ? true : undefined}
-        aria-describedby={[parseError || schemaIssues.length > 0 ? errorId : null, description ? helpId : null].filter(Boolean).join(" ") || undefined}
+        aria-describedby={[parseError || schemaIssues.length > 0 ? errorId : null, hasSlotContent(description) ? helpId : null].filter(Boolean).join(" ") || undefined}
         onChange={(event) => {
           const next = event.target.value;
           const parsed = parseJson(next);
           const rejection = parsed.ok && accept ? accept(parsed.value) : null;
-          if (parsed.ok && rejection) {
+          if (parsed.ok && (rejection != null && rejection !== "")) {
             setDraft({ base: external, text: next, error: { message: rejection, line: null, column: null } });
           } else if (parsed.ok) {
             setDraft({ base: format(parsed.value), text: next, error: null });
@@ -105,21 +106,21 @@ export function JsonEditor({
             </p>
           ) : null}
           {schemaIssues.slice(0, 12).map((issue, index) => (
-            <p key={`${issue.path}-${index}`} className="text-danger">
+            <p key={`${issue.path}-${String(index)}`} className="text-danger">
               <T source={"{span}：{message}"} values={{ span: <span className="machine">{issue.path || t("（根）")}</span>, message: issue.message }} />
             </p>
           ))}
           {schemaIssues.length > 12 ? <p className="text-fg-tertiary">{t("另有 {schemaIssuesCount} 個問題", { schemaIssuesCount: schemaIssues.length - 12 })}</p> : null}
         </div>
       ) : null}
-      {description ? (
+      {hasSlotContent(description) ? (
         <p id={helpId} className="text-caption text-fg-tertiary">
           {description}
         </p>
       ) : null}
       {parseError ? (
         <div>
-          <Button size="sm" variant="quiet" icon={<RotateCcw aria-hidden />} onClick={() => setDraft(null)}>
+          <Button size="sm" variant="quiet" icon={<RotateCcw aria-hidden />} onClick={() => { setDraft(null); }}>
             {t("放棄未套用的文字")}
           </Button>
         </div>

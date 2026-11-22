@@ -48,7 +48,7 @@ export function sameName(a: string, b: string): boolean {
 function labelled(lines: readonly string[], labels: readonly string[]): string | null {
   for (const line of lines) {
     const label = labels.find((prefix) => line.startsWith(prefix));
-    if (label) return line.slice(label.length).trim();
+    if (label != null && label !== "") return line.slice(label.length).trim();
   }
   return null;
 }
@@ -57,11 +57,11 @@ function labelled(lines: readonly string[], labels: readonly string[]): string |
 export function swapCast(library: readonly StudioLibraryItem[]): SwapCastEntry[] {
   const found: { index: number; itemId: string; who: string; appearance: string }[] = [];
   for (const item of library) {
-    if (item.kind !== "image" || !item.note) continue;
+    if (item.kind !== "image" || !(item.note != null && item.note !== "")) continue;
     const lines = item.note.split("\n").map((line: string) => line.trim());
     const who = labelled(lines, WHO_LABELS);
     const appearance = labelled(lines, APPEARANCE_LABELS);
-    if (!who || !appearance) continue;
+    if (!(who != null && who !== "") || !(appearance != null && appearance !== "")) continue;
     const index = INDEX_LABEL.exec(lines[0] ?? "");
     found.push({ index: index ? Number(index[1]) : found.length + 1, itemId: item.item_id, who: norm(who), appearance: norm(appearance).slice(0, APPEARANCE_PREFIX) });
   }

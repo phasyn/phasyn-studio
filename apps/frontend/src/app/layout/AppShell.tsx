@@ -62,13 +62,13 @@ function ShellBackdrop() {
  *   右＝頂欄（目前位置、進行中的 run）＋主區（各工作區的頁面）。
  * 窄於 840 px：側欄改成左側抽屜（頂欄的「開啟導覽」），版面上下堆疊、由主區捲動。
  * 外殼固定為視窗大小、本身不捲動（relative＋overflow-clip：任何 absolute 子孫都以外殼為準、被裁切，不會撐出文件捲軸）。
- * 動作：換頁由 react-router 的 viewTransition 交叉淡化、主要內容上升（View Transition；不支援時由頁面的 WAAPI 淡入）；
+ * 動作：換頁由 react-router 的導覽交叉淡化、主要內容上升（View Transition；不支援時由頁面的 WAAPI 淡入）；
  * 側欄展開／收合以 View Transition（type＝sidebar）變形；進出全收與滑出／收回由 Motion 彈簧呈現；狀態都立即提交、不等動畫。
  * 命令面板只用鍵盤開啟（Ctrl／⌘＋K，或每一頁都能用的 Ctrl／⌘＋Shift＋P；Video Studio「編輯」的 Ctrl／⌘＋K 是新增編輯點）。
  */
 export function AppShell() {
   const location = useLocation();
-  const previousPath = useRef(location.pathname);
+  const previousPathRef = useRef(location.pathname);
   const mainSwap = useContentSwapMotion<HTMLElement>();
   const memory = useStudioMemory();
   const [mode, setMode] = useSidebarMode();
@@ -80,8 +80,8 @@ export function AppShell() {
   const collapsed = mode === "collapsed";
 
   useLayoutEffect(() => {
-    if (previousPath.current !== location.pathname) {
-      previousPath.current = location.pathname;
+    if (previousPathRef.current !== location.pathname) {
+      previousPathRef.current = location.pathname;
       markRouteFocusPending();
     }
   }, [location.pathname]);
@@ -90,7 +90,7 @@ export function AppShell() {
   const changeMode = (next: SidebarMode) => {
     if (next === mode) return;
     if (next === "hidden" || hidden) setMode(next);
-    else runViewTransition("sidebar", () => setMode(next));
+    else runViewTransition("sidebar", () => { setMode(next); });
     // 剛按下「全收」：焦點不留在滑出畫面的側欄裡，改到左緣把手（下一格才掛上）
     if (next === "hidden") requestAnimationFrame(() => handleRef.current?.focus({ preventScroll: true }));
   };
@@ -130,9 +130,11 @@ export function AppShell() {
         <SidebarContent memory={memory} collapsed={collapsed} mode={mode} onModeChange={changeMode} />
       </motion.aside>
       {/* 頂欄（麵包屑）只在窄螢幕：開導覽抽屜用；寬螢幕省下這一列，進行中的 run 在側欄底部 */}
-      <div className="relative grid min-h-0 min-w-0 grid-rows-[2.75rem_minmax(0,1fr)] bg-canvas md:grid-rows-[minmax(0,1fr)]">
+      {/* One column the width of the viewport: an implicit auto column would grow to the content's min-content width and
+          push wide toolbars off the right edge of a phone */}
+      <div className="relative grid min-h-0 min-w-0 grid-cols-[minmax(0,1fr)] grid-rows-[2.75rem_minmax(0,1fr)] bg-canvas md:grid-rows-[minmax(0,1fr)]">
         <div className="[view-transition-name:shell-topbar] md:hidden">
-          <TopBar memory={memory} navOpen={drawerOpen} onOpenNav={() => setDrawerOpen(true)} />
+          <TopBar memory={memory} navOpen={drawerOpen} onOpenNav={() => { setDrawerOpen(true); }} />
         </div>
         <main
           ref={mainSwap}
@@ -151,7 +153,7 @@ export function AppShell() {
           <DialogDescription id="shell-drawer-description" className="sr-only">
             {t("選擇工作區；點選後抽屜會關閉。")}
           </DialogDescription>
-          <SidebarContent memory={memory} collapsed={false} onNavigate={() => setDrawerOpen(false)} />
+          <SidebarContent memory={memory} collapsed={false} onNavigate={() => { setDrawerOpen(false); }} />
         </SheetContent>
       </Dialog>
       <CommandPalette />

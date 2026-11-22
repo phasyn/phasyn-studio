@@ -11,7 +11,7 @@ interface ParsedVersion {
 function parseVersion(text: string): ParsedVersion | null {
   const match = VERSION.exec(text);
   if (!match) return null;
-  return { core: [Number(match[1]), Number(match[2]), Number(match[3])], pre: match[4] ? match[4].split(".") : [] };
+  return { core: [Number(match[1]), Number(match[2]), Number(match[3])], pre: (match[4] != null && match[4] !== "") ? match[4].split(".") : [] };
 }
 
 function compareIdentifiers(a: string, b: string): number {

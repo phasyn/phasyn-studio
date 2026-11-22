@@ -3,7 +3,7 @@
 // it; a drag moves the key in whole frames inside the part of the clip that plays and is committed once, on release.
 // With the keyboard: the left and right arrows move the focused key by a frame (Shift: ten), Delete removes it. A key
 // that moved keeps the keyboard focus at its new frame.
-import { useContext, useState } from "react";
+import { use, useState } from "react";
 import type { TimelineClip, TimelineKeyframe } from "@/api/generated/contracts";
 import { t } from "@/i18n";
 import { cn } from "@/lib/cn";
@@ -42,7 +42,7 @@ export interface KeyLaneProps {
 
 export function KeyLane({ property, owner }: KeyLaneProps) {
   const panel = useClipPanel();
-  const locked = useContext(FieldLockContext);
+  const locked = use(FieldLockContext);
   const [drag, setDrag] = useState<LaneDrag | null>(null);
   // The frame a key was just moved to: its new diamond takes the focus the old one had
   const [moved, setMoved] = useState<number | null>(null);
@@ -90,7 +90,7 @@ export function KeyLane({ property, owner }: KeyLaneProps) {
             aria-pressed={selected}
             title={label}
             style={{ left: laneLeft(fraction) }}
-            className={cn(KEY, selected ? "z-[2]" : "z-[1]", !locked && "cursor-ew-resize")}
+            className={cn(KEY, selected ? "z-[2]" : "z-[1]", !(locked != null && locked !== "") && "cursor-ew-resize")}
             onPointerDown={(event) => {
               if (event.button !== 0) return;
               const cell = event.currentTarget.parentElement?.getBoundingClientRect();
@@ -100,18 +100,18 @@ export function KeyLane({ property, owner }: KeyLaneProps) {
               setDrag({ from: key.frame, to: key.frame, x: event.clientX, framesPerPixel: cell ? laneFramesPerPixel(panel.clip, cell) : 0 });
             }}
             onPointerMove={(event) => {
-              if (!drag || drag.from !== key.frame || locked || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+              if (drag?.from !== key.frame || (locked != null && locked !== "") || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
               const to = inRange(drag.from + Math.round((event.clientX - drag.x) * drag.framesPerPixel));
               if (to !== drag.to) setDrag({ ...drag, to });
             }}
             onPointerUp={(event) => {
-              if (!drag || drag.from !== key.frame) return;
+              if (drag?.from !== key.frame) return;
               if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
               setDrag(null);
               if (drag.to === drag.from) activate(key);
               else move(drag.from, drag.to);
             }}
-            onPointerCancel={() => setDrag(null)}
+            onPointerCancel={() => { setDrag(null); }}
             onFocus={() => {
               if (moved !== null) setMoved(null);
             }}
@@ -123,10 +123,10 @@ export function KeyLane({ property, owner }: KeyLaneProps) {
               // One press, one step: a held key would fill the history with a step per repeat
               if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
                 event.preventDefault();
-                if (!locked && !event.repeat) move(key.frame, inRange(key.frame + (event.key === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 10 : 1)));
+                if (!(locked != null && locked !== "") && !event.repeat) move(key.frame, inRange(key.frame + (event.key === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 10 : 1)));
               } else if (event.key === "Delete" || event.key === "Backspace") {
                 event.preventDefault();
-                if (!locked && !event.repeat) remove(key);
+                if (!(locked != null && locked !== "") && !event.repeat) remove(key);
               }
             }}
           >

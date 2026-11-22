@@ -3,7 +3,7 @@
 // panel's fixed width (--ec-props), so they cannot drift apart, even when a refused value puts its reason on a line
 // under the row. Controls are direct children of the row: it wraps instead of clipping when a panel is dragged very
 // narrow. IconButton and TextButton are the 28 px and the labelled button of rows and headers.
-import { useContext, useLayoutEffect, useRef, type ReactNode } from "react";
+import { use, useLayoutEffect, useRef, type ReactNode } from "react";
 import { LIST_ROW, LIST_ROW_SELECTED, TOOL_BUTTON, TOOL_BUTTON_ON } from "@/components/ui/look";
 import { t } from "@/i18n";
 import { cn } from "@/lib/cn";
@@ -32,12 +32,12 @@ export function IconButton({ label, title, disabledReason, pressed, plain = fals
       type="button"
       aria-label={label}
       aria-pressed={pressed}
-      aria-disabled={disabledReason ? true : undefined}
+      aria-disabled={(disabledReason != null && disabledReason !== "") ? true : undefined}
       title={disabledReason ?? title ?? label}
       onClick={() => {
-        if (!disabledReason) onClick();
+        if (!(disabledReason != null && disabledReason !== "")) onClick();
       }}
-      className={cn(TOOL_BUTTON, "text-fg-tertiary", pressed && !plain && TOOL_BUTTON_ON, disabledReason && UNAVAILABLE, className)}
+      className={cn(TOOL_BUTTON, "text-fg-tertiary", pressed === true && !plain && TOOL_BUTTON_ON, ((disabledReason != null && disabledReason !== "") ? UNAVAILABLE : disabledReason), className)}
     >
       {children}
     </button>
@@ -65,16 +65,16 @@ export interface TextButtonProps {
 
 /** A labelled button that fits a row: 24 px in Effect Controls, 32 px in the docks. */
 export function TextButton({ tone = "neutral", icon, title, disabledReason, onClick, children }: TextButtonProps) {
-  const density = useContext(DensityContext);
+  const density = use(DensityContext);
   return (
     <button
       type="button"
-      aria-disabled={disabledReason ? true : undefined}
+      aria-disabled={(disabledReason != null && disabledReason !== "") ? true : undefined}
       title={disabledReason ?? title}
       onClick={() => {
-        if (!disabledReason) onClick();
+        if (!(disabledReason != null && disabledReason !== "")) onClick();
       }}
-      className={cn(TEXT_BUTTON, TEXT_BUTTON_SIZE[density], TEXT_BUTTON_TONE[tone], disabledReason && TEXT_BUTTON_UNAVAILABLE)}
+      className={cn(TEXT_BUTTON, TEXT_BUTTON_SIZE[density], TEXT_BUTTON_TONE[tone], ((disabledReason != null && disabledReason !== "") ? TEXT_BUTTON_UNAVAILABLE : disabledReason))}
     >
       {icon}
       <span className="truncate">{children}</span>
@@ -114,17 +114,17 @@ export interface RowFrameProps {
 }
 
 export function RowFrame({ lane, selected = false, variant = "row", children }: RowFrameProps) {
-  const density = useContext(DensityContext);
-  const { lanes } = useContext(RowLayoutContext);
-  const frame = useRef<HTMLDivElement>(null);
+  const density = use(DensityContext);
+  const { lanes } = use(RowLayoutContext);
+  const frameRef = useRef<HTMLDivElement>(null);
   // Selecting a key opens the key strip, which takes room from the rows: the row of that key stays in view
   const follows = selected && variant === "row";
   useLayoutEffect(() => {
-    if (follows) frame.current?.scrollIntoView({ block: "nearest" });
+    if (follows) frameRef.current?.scrollIntoView({ block: "nearest" });
   }, [follows]);
   return (
     <div
-      ref={frame}
+      ref={frameRef}
       className={cn(
         LIST_ROW,
         // Room for the ruler that sticks to the top of the lanes, when the row is scrolled into view
@@ -160,11 +160,11 @@ export interface RowProps {
 
 /** A property that is not animated: its label and its controls. */
 export function Row({ label, hint, tall = false, children }: RowProps) {
-  const { lead } = useContext(RowLayoutContext);
+  const { lead } = use(RowLayoutContext);
   return (
     <RowFrame>
       {lead ? <span aria-hidden className={ROW_LEAD} /> : null}
-      <span className={cn(ROW_LABEL, tall && "self-start pt-[11px]")} title={hint ? t("{label}：{hint}", { label, hint }) : label}>
+      <span className={cn(ROW_LABEL, tall && "self-start pt-[11px]")} title={(hint != null && hint !== "") ? t("{label}：{hint}", { label, hint }) : label}>
         {label}
       </span>
       {children}
@@ -174,7 +174,7 @@ export function Row({ label, hint, tall = false, children }: RowProps) {
 
 /** A row without a label: buttons that act on the group (add, remove, restore). */
 export function ActionRow({ children }: { children: ReactNode }) {
-  const { lead } = useContext(RowLayoutContext);
+  const { lead } = use(RowLayoutContext);
   return (
     <RowFrame>
       {lead ? <span aria-hidden className={ROW_LEAD} /> : null}

@@ -36,12 +36,15 @@ def _component_config(plan: Mapping[str, Any], kind: str) -> tuple[dict[str, Any
         if entry.get("kind") == kind:
             path = root / str(entry["relative_path"]) / "config.json"
             if path.is_file():
-                return json.loads(path.read_text(encoding="utf-8")), f"model_root:{entry['relative_path']}/config.json"
+                return json.loads(
+                    path.read_text(encoding="utf-8")
+                ), f"model_root:{entry['relative_path']}/config.json"
     name = "video_vae_config.json" if kind == "video_vae" else "audio_vae_config.json"
     return reference_json(name, model_root=root), f"reference:{name}"
 
 
 def normalization_config(plan: Mapping[str, Any]) -> dict[str, Any]:
+    """Read the normalization parameters from the checkpoint."""
     video, video_src = _component_config(plan, "video_vae")
     audio, audio_src = _component_config(plan, "audio_vae")
     return {
@@ -52,13 +55,15 @@ def normalization_config(plan: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def normalization_digest(plan: Mapping[str, Any]) -> str:
+    """Identify the normalization configuration used for the latents."""
     config = normalization_config(plan)
     return canonical_digest({"video": config["video"], "audio": config["audio"]})
 
 
 def _same(have: Sequence[float], want: Sequence[float]) -> bool:
     return len(have) == len(want) and all(
-        math.isclose(float(h), float(w), rel_tol=1e-6, abs_tol=1e-7) for h, w in zip(have, want, strict=True)
+        math.isclose(float(h), float(w), rel_tol=1e-6, abs_tol=1e-7)
+        for h, w in zip(have, want, strict=True)
     )
 
 
@@ -73,7 +78,10 @@ def ensure_vae_arch(plan: Mapping[str, Any], kind: str, vae_config: Any) -> Any:
     against the plan's ``normalization_config`` either way.
     """
     arch = vae_config.arch_config
-    if getattr(arch, "latents_mean", None) is None or getattr(arch, "latents_std", None) is None:
+    if (
+        getattr(arch, "latents_mean", None) is None
+        or getattr(arch, "latents_std", None) is None
+    ):
         config, _source = _component_config(plan, kind)
         vae_config.update_model_arch(dict(config))
         post_init = getattr(vae_config, "post_init", None)
@@ -84,8 +92,14 @@ def ensure_vae_arch(plan: Mapping[str, Any], kind: str, vae_config: Any) -> Any:
     want = normalization_config(plan)[side]
     mean, std = getattr(arch, "latents_mean", None), getattr(arch, "latents_std", None)
     if not mean or not std:
-        raise ShimError("LATENT_STATS_MISSING", f"{kind} 的 latents_mean／latents_std 無法從 checkpoint 設定取得")
-    if not (_same(list(mean), want["latents_mean"]) and _same(list(std), want["latents_std"])):
+        raise ShimError(
+            "LATENT_STATS_MISSING",
+            f"{kind} 的 latents_mean／latents_std 無法從 checkpoint 設定取得",
+        )
+    if not (
+        _same(list(mean), want["latents_mean"])
+        and _same(list(std), want["latents_std"])
+    ):
         raise IntegrityMismatch(
             "LATENT_NORMALIZATION_RUNTIME",
             f"{kind} 的 latent 統計與 plan 綁定的 normalization 設定（{normalization_config(plan)['sources'][side]}）不符",

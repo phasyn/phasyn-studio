@@ -35,7 +35,7 @@ export function SearchCenter({ ws, search }: { ws: Workspace; search: SearchCont
         <label htmlFor="prompt-search-task" className="text-caption text-fg-secondary">
           {t("任務")}
         </label>
-        <Select id="prompt-search-task" compact className="w-auto max-w-full min-w-64" value={task.task_id} onChange={(event) => search.setTaskId(event.target.value)}>
+        <Select id="prompt-search-task" compact className="w-auto max-w-full min-w-64" value={task.task_id} onChange={(event) => { search.setTaskId(event.target.value); }}>
           {tasks.map((item) => (
             <option key={item.task_id} value={item.task_id}>
               {t("{versionLabel} 起 · {created_at}", { versionLabel: versionLabel(ws.study, item.base_version_id), created_at: formatDateTime(item.created_at) })}

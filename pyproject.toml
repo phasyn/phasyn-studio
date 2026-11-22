@@ -23,6 +23,7 @@ dev = [
     "pytest>=9.2",
     "ruff>=0.17.4",
     "mypy>=2.4.1",
+    "types-jsonschema==4.26.0.20261006",
 ]
 
 [tool.ruff]
@@ -55,6 +56,8 @@ testpaths = [
     "runtimes/h3/tests",
     "runtimes/captioner/tests",
     "runtimes/qimg/tests",
+    "runtimes/transcription/tests",
+    "runtimes/wan-edit/tests",
     "tools/i18n",
     "tools/arch",
     "tools/contracts",
@@ -65,6 +68,8 @@ pythonpath = [
     "runtimes/h3/src",
     "runtimes/captioner/src",
     "runtimes/qimg/src",
+    "runtimes/transcription/src",
+    "runtimes/wan-edit/src",
 ]
 addopts = "-q -p no:cacheprovider -m 'not gpu'"
 markers = [

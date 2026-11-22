@@ -44,8 +44,17 @@ from .model import (
     retimed_frames,
     transition_value,
 )
-from .shots import H3_FPS, active_take, library_source, rate, shot_name, shot_source, unique_id
+from .shots import (
+    H3_FPS,
+    active_take,
+    library_source,
+    rate,
+    shot_name,
+    shot_source,
+    unique_id,
+)
 from .text import round_half_up
+
 
 FADE_KEYS = ("video_in", "video_out", "audio_in", "audio_out")
 IMPACT_STYLES = ("negative", "white", "black")
@@ -57,8 +66,15 @@ MAX_SHAKE_FRAMES = 1000
 ORIGINAL_AUDIO_UNUSABLE = "原影片音軌資料不完整，時間軸改用各鏡頭自己的聲音。"
 
 
+_NORMAL_PERCENT = 100
+
+
 def _clamp_int(value: Any, low: int, high: int) -> int:
-    if not isinstance(value, int | float) or isinstance(value, bool) or not math.isfinite(value):
+    if (
+        not isinstance(value, int | float)
+        or isinstance(value, bool)
+        or not math.isfinite(value)
+    ):
         return low
     return min(high, max(low, round_half_up(value)))
 
@@ -77,7 +93,9 @@ def _normalized_color(color: Mapping[str, Any]) -> Doc | None:
     }
     if color.get("invert"):
         value["invert"] = True
-    plain = value["brightness"] == 0 and value["contrast"] == 1 and value["saturation"] == 1
+    plain = (
+        value["brightness"] == 0 and value["contrast"] == 1 and value["saturation"] == 1
+    )
     return None if plain and "invert" not in value else value
 
 
@@ -99,7 +117,12 @@ def _normalized_title(title: Mapping[str, Any]) -> Doc:
     end = title["end_frame"]
     if end is not None:
         end = max(start + 1, _clamp_int(end, 1, MAX_SEQUENCE_FRAMES))
-    return {**title, "text": title["text"][:MAX_TEXT_CHARS], "start_frame": start, "end_frame": end}
+    return {
+        **title,
+        "text": title["text"][:MAX_TEXT_CHARS],
+        "start_frame": start,
+        "end_frame": end,
+    }
 
 
 def normalize_effects(effects: Mapping[str, Any] | None) -> Doc | None:
@@ -107,10 +130,14 @@ def normalize_effects(effects: Mapping[str, Any] | None) -> Doc | None:
     if not effects:
         return None
     out: Doc = {}
-    speed = _clamp_int(effects.get("speed_percent", 100), MIN_SPEED_PERCENT, MAX_SPEED_PERCENT)
-    if speed != 100:
+    speed = _clamp_int(
+        effects.get("speed_percent", 100), MIN_SPEED_PERCENT, MAX_SPEED_PERCENT
+    )
+    if speed != _NORMAL_PERCENT:
         out["speed_percent"] = speed
-    volume = _round_to(min(MAX_VOLUME_DB, max(MIN_VOLUME_DB, effects.get("volume_db", 0))), 2)
+    volume = _round_to(
+        min(MAX_VOLUME_DB, max(MIN_VOLUME_DB, effects.get("volume_db", 0))), 2
+    )
     if volume != 0:
         out["volume_db"] = volume
     if effects.get("mute"):
@@ -122,8 +149,16 @@ def normalize_effects(effects: Mapping[str, Any] | None) -> Doc | None:
     color = _normalized_color(effects.get("color") or {})
     if color is not None:
         out["color"] = color
+    _finish_clip_effects(out, effects)
+    return out or None
+
+
+def _finish_clip_effects(out: Doc, effects: Mapping[str, Any]) -> None:
     held = effects.get("hold") or {}
-    hold = {edge: _clamp_int(held.get(edge, 0), 0, MAX_HOLD_FRAMES) for edge in ("start", "end")}
+    hold = {
+        edge: _clamp_int(held.get(edge, 0), 0, MAX_HOLD_FRAMES)
+        for edge in ("start", "end")
+    }
     if any(hold.values()):
         out["hold"] = {edge: value for edge, value in hold.items() if value > 0}
     step = _clamp_int(effects.get("frame_step", 1), 1, MAX_FRAME_STEP)
@@ -134,7 +169,10 @@ def normalize_effects(effects: Mapping[str, Any] | None) -> Doc | None:
         out["camera"] = camera
     impact = effects.get("impact")
     if impact and impact.get("style") in IMPACT_STYLES:
-        out["impact"] = {"frames": _clamp_int(impact.get("frames"), 1, MAX_IMPACT_FRAMES), "style": impact["style"]}
+        out["impact"] = {
+            "frames": _clamp_int(impact.get("frames"), 1, MAX_IMPACT_FRAMES),
+            "style": impact["style"],
+        }
     title = effects.get("title")
     if title and title["text"].strip():
         out["title"] = _normalized_title(title)
@@ -143,21 +181,37 @@ def normalize_effects(effects: Mapping[str, Any] | None) -> Doc | None:
         frames = _clamp_int(transition.get("frames"), 1, MAX_TRANSITION_FRAMES)
         hints = dict(transition)
         softness = hints.get("softness")
-        if isinstance(softness, int | float) and not isinstance(softness, bool) and math.isfinite(softness):
+        if (
+            isinstance(softness, int | float)
+            and not isinstance(softness, bool)
+            and math.isfinite(softness)
+        ):
             hints["softness"] = min(WIPE_SOFTNESS_MAX, max(0, softness))
         out["transition_out"] = transition_value(str(transition["kind"]), frames, hints)
-    return out or None
 
 
 def has_legacy_edit(shot: Mapping[str, Any]) -> bool:
     """The shot still carries a trim or effects of its own."""
-    return bool(shot.get("in_frame") or shot.get("out_frame") is not None or shot.get("effects"))
+    return bool(
+        shot.get("in_frame") or shot.get("out_frame") is not None or shot.get("effects")
+    )
 
 
-def legacy_range(shot: Mapping[str, Any], take: Mapping[str, Any] | None) -> tuple[int, int]:
+def legacy_range(
+    shot: Mapping[str, Any], take: Mapping[str, Any] | None
+) -> tuple[int, int]:
     """A shot's trim on its take, in the take's own frames: in (inclusive) and out (exclusive)."""
-    usable = take if take is not None and take["state"] == "succeeded" and take.get("asset") else None
-    total = max(1, (usable["asset"]["frame_count"] or usable["frames"]) if usable else shot["frames"])
+    usable = (
+        take
+        if take is not None and take["state"] == "succeeded" and take.get("asset")
+        else None
+    )
+    total = max(
+        1,
+        (usable["asset"]["frame_count"] or usable["frames"])
+        if usable
+        else shot["frames"],
+    )
     first = min(max(0, shot["in_frame"]), total - 1)
     out = shot["out_frame"] if shot["out_frame"] is not None else total
     return first, min(max(first + 1, out), total)
@@ -171,7 +225,9 @@ def too_long(frames: int, fps: Mapping[str, Any]) -> bool:
 
 def bounded_notes(notes: Sequence[str]) -> list[str]:
     """Notes as the document stores them: no repeats, short, and a last line that counts what did not fit."""
-    unique = list(dict.fromkeys(note[:MAX_MIGRATION_NOTE_CHARS] for note in notes if note))
+    unique = list(
+        dict.fromkeys(note[:MAX_MIGRATION_NOTE_CHARS] for note in notes if note)
+    )
     if len(unique) <= MAX_MIGRATION_NOTES:
         return unique
     kept = unique[: MAX_MIGRATION_NOTES - 1]
@@ -191,30 +247,41 @@ class PlacedShot:
 
     @property
     def clips(self) -> list[Doc]:
+        """List the clips in this legacy timeline."""
         return [self.video] if self.audio is None else [self.video, self.audio]
 
     @property
     def frames(self) -> int:
+        """Return the range length in frames."""
         return clip_duration(self.video)
 
     def move_to(self, start: int) -> None:
+        """Move the clip to its new position."""
         for clip in self.clips:
             clip["start_frame"] = start
 
     def set_transition(self, transition: Mapping[str, Any], frames: int) -> None:
         """The shot's outgoing transition (direction, easing and softness kept) with an overlap of ``frames``."""
         for clip in self.clips:
-            clip["effects"] = {**(clip.get("effects") or {}), "transition_out": {**transition, "frames": frames}}
+            clip["effects"] = {
+                **(clip.get("effects") or {}),
+                "transition_out": {**transition, "frames": frames},
+            }
 
 
 def _source_range(
-    shot: Mapping[str, Any], fps: Mapping[str, Any], source: Mapping[str, Any], notes: list[str]
+    shot: Mapping[str, Any],
+    fps: Mapping[str, Any],
+    source: Mapping[str, Any],
+    notes: list[str],
 ) -> tuple[int, int]:
     """The shot's trim as a range of its source, in frames of the timeline's rate."""
     take = active_take(shot)
     asset_fps = (take.get("asset") or {}).get("fps") if take else None
     if asset_fps:
-        ratio = (int(fps["num"]) * int(asset_fps["den"])) / (int(fps["den"]) * int(asset_fps["num"]))
+        ratio = (int(fps["num"]) * int(asset_fps["den"])) / (
+            int(fps["den"]) * int(asset_fps["num"])
+        )
     else:
         ratio = rate(fps) / H3_FPS
     first, out = legacy_range(shot, take)
@@ -223,11 +290,15 @@ def _source_range(
     fitted_end = max(1, min(end, length))
     fitted_start = max(0, min(start, fitted_end - 1))
     if (fitted_start, fitted_end) != (start, end):
-        notes.append(f"「{shot_name(shot)}」的裁切範圍超出素材長度，已調整為素材範圍內。")
+        notes.append(
+            f"「{shot_name(shot)}」的裁切範圍超出素材長度，已調整為素材範圍內。"
+        )
     return fitted_start, fitted_end
 
 
-def fitted_fades(name: str, fade: Mapping[str, int], frames: int, notes: list[str]) -> Doc:
+def fitted_fades(
+    name: str, fade: Mapping[str, int], frames: int, notes: list[str]
+) -> Doc:
     """Fades that fit a clip of ``frames``: each pair is scaled down together, and the picture never ends black."""
     fitted = dict(fade)
     for kind, label in (("video", "影像"), ("audio", "聲音")):
@@ -251,7 +322,9 @@ def fitted_fades(name: str, fade: Mapping[str, int], frames: int, notes: list[st
     return fitted
 
 
-def _fitted_title(name: str, title: Mapping[str, Any], frames: int, notes: list[str]) -> Doc:
+def _fitted_title(
+    name: str, title: Mapping[str, Any], frames: int, notes: list[str]
+) -> Doc:
     """A title inside a clip of ``frames``; one that ran past the clip ended with it, which the timeline calls None."""
     fitted = dict(title)
     if fitted["start_frame"] >= frames:
@@ -263,9 +336,13 @@ def _fitted_title(name: str, title: Mapping[str, Any], frames: int, notes: list[
     return fitted
 
 
-def _clip_effects(name: str, effects: Mapping[str, Any], frames: int, notes: list[str]) -> tuple[Doc, Doc]:
+def _clip_effects(
+    name: str, effects: Mapping[str, Any], frames: int, notes: list[str]
+) -> tuple[Doc, Doc]:
     """(video clip effects, audio clip effects) of normalized shot effects, fitted to a clip of ``frames``."""
-    video: Doc = {key: copy.deepcopy(effects[key]) for key in TIMING_EFFECTS if key in effects}
+    video: Doc = {
+        key: copy.deepcopy(effects[key]) for key in TIMING_EFFECTS if key in effects
+    }
     audio: Doc = copy.deepcopy(video)
     if effects.get("mute"):
         audio["mute"] = True
@@ -286,7 +363,7 @@ def _clip_effects(name: str, effects: Mapping[str, Any], frames: int, notes: lis
     return video, audio
 
 
-def shot_clips(
+def shot_clips(  # noqa: PLR0913, PLR0917 - Keep the published positional and keyword API.
     project: Mapping[str, Any],
     shot: Mapping[str, Any],
     fps: Mapping[str, Any],
@@ -313,11 +390,19 @@ def shot_clips(
     effects = normalize_effects(shot.get("effects")) or {}
     hold = effects.get("hold") or {}
     speed = effects.get("speed_percent", 100)
-    frames = retimed_frames(out - first, speed) + hold.get("start", 0) + hold.get("end", 0)
+    frames = (
+        retimed_frames(out - first, speed) + hold.get("start", 0) + hold.get("end", 0)
+    )
     legacy_first, legacy_out = legacy_range(shot, active_take(shot))
-    planned = retimed_frames(legacy_out - legacy_first, speed) + hold.get("start", 0) + hold.get("end", 0)
+    planned = (
+        retimed_frames(legacy_out - legacy_first, speed)
+        + hold.get("start", 0)
+        + hold.get("end", 0)
+    )
     if planned != frames:
-        notes.append(f"「{name}」的素材影格率與序列不同，片段長度由 {planned} 影格換算為 {frames} 影格。")
+        notes.append(
+            f"「{name}」的素材影格率與序列不同，片段長度由 {planned} 影格換算為 {frames} 影格。"
+        )
     video_effects, audio_effects = _clip_effects(name, effects, frames, notes)
     base: Doc = {
         "clip_id": unique_id(f"v-{identity}", taken),
@@ -345,14 +430,20 @@ def shot_clips(
         or effects.get("mute")
         or any(key.startswith("audio") for key in effects.get("fade") or {})
     ):
-        notes.append(f"這個專案使用原影片音軌，「{name}」的音量、靜音與聲音淡入淡出沒有作用，未帶入時間軸。")
+        notes.append(
+            f"這個專案使用原影片音軌，「{name}」的音量、靜音與聲音淡入淡出沒有作用，未帶入時間軸。"
+        )
     video: Doc = {**base, "motion": default_motion()}
     if video_effects:
         video["effects"] = video_effects
-    return PlacedShot(str(shot["shot_id"]), name, source, video, audio, active_transition(effects))
+    return PlacedShot(
+        str(shot["shot_id"]), name, source, video, audio, active_transition(effects)
+    )
 
 
-def _overlap(previous: PlacedShot | None, incoming: int, item: PlacedShot) -> tuple[int, str | None]:
+def _overlap(
+    previous: PlacedShot | None, incoming: int, item: PlacedShot
+) -> tuple[int, str | None]:
     """The frames ``item`` overlaps ``previous`` by for its outgoing transition, and a note when that was changed."""
     transition = previous.transition if previous is not None else None
     if previous is None or transition is None:
@@ -360,14 +451,19 @@ def _overlap(previous: PlacedShot | None, incoming: int, item: PlacedShot) -> tu
     wanted = int(transition["frames"])
     allowed = min(wanted, previous.frames - incoming, item.frames)
     if allowed < 1:
-        return 0, f"「{previous.name}」的出場轉場無法保留（相鄰片段太短），已改為直接切換。"
+        return (
+            0,
+            f"「{previous.name}」的出場轉場無法保留（相鄰片段太短），已改為直接切換。",
+        )
     if allowed != wanted:
         note = f"「{previous.name}」的出場轉場超過相鄰片段可重疊的長度，已由 {wanted} 影格縮短為 {allowed} 影格。"
         return allowed, note
     return allowed, None
 
 
-def lay_out(items: Sequence[PlacedShot], fps: Mapping[str, Any], start: int, notes: list[str]) -> list[PlacedShot]:
+def lay_out(
+    items: Sequence[PlacedShot], fps: Mapping[str, Any], start: int, notes: list[str]
+) -> list[PlacedShot]:
     """Give the shots their places back to back from ``start``, a transition as an overlap with the next shot.
 
     Shots that would run past the sequence limit are left out; the ones that got a place are returned.
@@ -393,7 +489,11 @@ def lay_out(items: Sequence[PlacedShot], fps: Mapping[str, Any], start: int, not
 
 
 def original_audio_clip(
-    job: Mapping[str, Any], item: Mapping[str, Any], timeline: Mapping[str, Any], track_id: str, notes: list[str]
+    job: Mapping[str, Any],
+    item: Mapping[str, Any],
+    timeline: Mapping[str, Any],
+    track_id: str,
+    notes: list[str],
 ) -> tuple[Doc, Doc] | None:
     """(source, clip) playing a character-swap project's source video sound under the whole sequence."""
     fps = timeline["fps"]
@@ -401,7 +501,9 @@ def original_audio_clip(
     duration = max((clip_end(clip) for clip in timeline["clips"]), default=0)
     if source is None or duration <= 0:
         return None
-    exact = (int(job["start_frame"]) * int(fps["num"])) / (int(job["fps"]) * int(fps["den"]))
+    exact = (int(job["start_frame"]) * int(fps["num"])) / (
+        int(job["fps"]) * int(fps["den"])
+    )
     start = round_half_up(exact)
     if start != exact:
         notes.append(f"原影片音訊起點無法對齊序列影格率，已取最接近的第 {start} 影格。")

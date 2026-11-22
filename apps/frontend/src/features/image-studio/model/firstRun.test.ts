@@ -10,7 +10,7 @@ import { decodeWarning, sizePatch } from "./size";
 /** The BF16 DiT of the fixtures, with or without provider_options.preview_vae. */
 function routesWith(previewVae: boolean | undefined) {
   const options: Record<string, unknown> = { variant: "bf16" };
-  if (previewVae !== undefined) options.preview_vae = previewVae;
+  if (previewVae !== undefined) options["preview_vae"] = previewVae;
   return deriveImageRoutes([t2iPipeline()], catalog(qimgComponents({ [BF16_DIT]: { options, offload: { mode: "group_stream" }, exclusiveGroup: "dit" } })));
 }
 
@@ -24,24 +24,24 @@ describe("預覽預設（#31）", () => {
   it("DiT 沒寫 preview_vae：視為沒有預覽 VAE，生成照常送出、預覽關閉並附註", () => {
     const routes = routesWith(undefined);
     expect(routes[0]?.previewVae).toBe(false);
-    const doc = project([{ image_shot_id: "s1", route: routes[0]?.id }]);
+    const doc = project([{ image_shot_id: "s1", ...(routes[0]?.id === undefined ? {} : { route: routes[0].id }) }]);
     const shot = doc.image_shots?.[0];
     if (!shot) throw new Error("fixture");
     expect(shot.preview.mode).toBe("vae_thumbnail");
     const result = planImageRender(doc, shot, ["t0"], { routes, randomSeed: () => 1 });
     expect(result.problem).toBeNull();
-    expect(ditStep(result.plan?.body.pipeline.steps ?? []).parameters.preview).toEqual({ mode: "off", every: shot.preview.every });
+    expect(ditStep(result.plan?.body.pipeline.steps ?? []).parameters["preview"]).toEqual({ mode: "off", every: shot.preview.every });
     expect(result.plan?.notes.some((note) => note.includes("preview_vae"))).toBe(true);
   });
 
   it("DiT 以 preview_vae 載入：照設定送 VAE 縮圖預覽", () => {
     const routes = routesWith(true);
-    const doc = project([{ image_shot_id: "s1", route: routes[0]?.id }]);
+    const doc = project([{ image_shot_id: "s1", ...(routes[0]?.id === undefined ? {} : { route: routes[0].id }) }]);
     const shot = doc.image_shots?.[0];
     if (!shot) throw new Error("fixture");
     const result = planImageRender(doc, shot, ["t0"], { routes, randomSeed: () => 1 });
     expect(result.problem).toBeNull();
-    expect(ditStep(result.plan?.body.pipeline.steps ?? []).parameters.preview).toEqual({ mode: "vae_thumbnail", every: shot.preview.every });
+    expect(ditStep(result.plan?.body.pipeline.steps ?? []).parameters["preview"]).toEqual({ mode: "vae_thumbnail", every: shot.preview.every });
     expect(result.plan?.notes ?? []).toEqual([]);
   });
 });

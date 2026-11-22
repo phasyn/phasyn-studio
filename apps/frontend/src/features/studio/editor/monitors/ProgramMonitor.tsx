@@ -32,32 +32,32 @@ function ProgramBody({ zoom, setZoom }: { zoom: ViewerZoom; setZoom: (zoom: View
         <ZoomMenu zoom={zoom} onZoom={setZoom} />
       </TimecodeRow>
       <TransportRow label={t("節目播放控制")}>
-        <MonitorButton label={t("標記入點")} shortcut={chordOf("markIn")} onClick={() => editor.markRange("in")}>
+        <MonitorButton label={t("標記入點")} shortcut={chordOf("markIn")} onClick={() => { editor.markRange("in"); }}>
           <MarkGlyph edge="in" />
         </MonitorButton>
-        <MonitorButton label={t("標記出點")} shortcut={chordOf("markOut")} onClick={() => editor.markRange("out")}>
+        <MonitorButton label={t("標記出點")} shortcut={chordOf("markOut")} onClick={() => { editor.markRange("out"); }}>
           <MarkGlyph edge="out" />
         </MonitorButton>
-        <MonitorButton label={t("到入點")} shortcut={chordOf("goIn")} disabledReason={noRange} onClick={() => transport.seek(area?.start_frame ?? 0)}>
+        <MonitorButton label={t("到入點")} shortcut={chordOf("goIn")} disabledReason={noRange} onClick={() => { transport.seek(area?.start_frame ?? 0); }}>
           <ArrowLeftToLine aria-hidden />
         </MonitorButton>
-        <MonitorButton label={t("上一影格")} shortcut={chordOf("stepBack")} onClick={() => transport.step(-1)}>
+        <MonitorButton label={t("上一影格")} shortcut={chordOf("stepBack")} onClick={() => { transport.step(-1); }}>
           <StepBack aria-hidden />
         </MonitorButton>
         <MonitorButton label={playing ? t("停止") : t("播放")} shortcut={chordOf("playToggle")} onClick={transport.toggle} primary disabledReason={totalFrames === 0 ? t("時間軸是空的") : null}>
           {playing ? <Pause aria-hidden /> : <Play aria-hidden />}
         </MonitorButton>
-        <MonitorButton label={t("下一影格")} shortcut={chordOf("stepForward")} onClick={() => transport.step(1)}>
+        <MonitorButton label={t("下一影格")} shortcut={chordOf("stepForward")} onClick={() => { transport.step(1); }}>
           <StepForward aria-hidden />
         </MonitorButton>
-        <MonitorButton label={t("到出點")} shortcut={chordOf("goOut")} disabledReason={noRange} onClick={() => transport.seek((area?.end_frame ?? 1) - 1)}>
+        <MonitorButton label={t("到出點")} shortcut={chordOf("goOut")} disabledReason={noRange} onClick={() => { transport.seek((area?.end_frame ?? 1) - 1); }}>
           <ArrowRightToLine aria-hidden />
         </MonitorButton>
         <span aria-hidden className="mx-1.5 h-5 w-px bg-line-subtle" />
-        <MonitorButton label={t("提升")} text={t("提升")} shortcut={chordOf("lift")} disabledReason={noRange} onClick={() => editor.removeRange(false)}>
+        <MonitorButton label={t("提升")} text={t("提升")} shortcut={chordOf("lift")} disabledReason={noRange} onClick={() => { editor.removeRange(false); }}>
           <CornerDownLeft aria-hidden className="rotate-90" />
         </MonitorButton>
-        <MonitorButton label={t("擷取")} text={t("擷取")} shortcut={chordOf("extract")} disabledReason={noRange} onClick={() => editor.removeRange(true)}>
+        <MonitorButton label={t("擷取")} text={t("擷取")} shortcut={chordOf("extract")} disabledReason={noRange} onClick={() => { editor.removeRange(true); }}>
           <CornerDownRight aria-hidden className="-rotate-90" />
         </MonitorButton>
         <MonitorButton label={t("新增標記")} shortcut={chordOf("addMarker")} onClick={() => void editor.addMarker()}>
@@ -77,15 +77,15 @@ export function ProgramMonitor({ className }: { className?: string }) {
   const [zoom, setZoom] = useState<ViewerZoom>("fit");
   const [blocked, setBlocked] = useState(false);
   const popout = useProgramPopout(`${t("節目")} — ${editor.project.title}`);
-  const rate = playing && transport.rate !== 1 ? `${transport.rate}×` : null;
-  const proxies = timeline.sources.some((source) => source.proxy?.complete);
-  const openWindow = () => void popout.open().then((opened) => setBlocked(!opened));
+  const rate = playing && transport.rate !== 1 ? `${String(transport.rate)}×` : null;
+  const proxies = timeline.sources.some((source) => Boolean(source.proxy?.complete));
+  const openWindow = () => void popout.open().then((opened) => { setBlocked(!opened); });
   const fullscreen = () => void popout.popup?.document.documentElement.requestFullscreen().catch(() => undefined);
   return (
     <section
       data-editor-panel="program"
       aria-label={t("節目監看器")}
-      onPointerDownCapture={() => focus.setPanel("program")}
+      onPointerDownCapture={() => { focus.setPanel("program"); }}
       className={cn(PANEL_RAISED, focus.panel === "program" && "border-brand-cyan/70", className)}
     >
       <header data-keep-focus="" className="flex h-11 shrink-0 items-center gap-2 border-b border-line-subtle px-3">
@@ -94,13 +94,13 @@ export function ProgramMonitor({ className }: { className?: string }) {
         <span className="min-w-0 flex-1 truncate text-data text-fg-tertiary" title={editor.project.title}>
           {editor.project.title}
         </span>
-        {rate ? <span className="machine shrink-0 rounded-md bg-raised px-1.5 text-caption text-brand-cyan">{rate}</span> : null}
+        {(rate != null && rate !== "") ? <span className="machine shrink-0 rounded-md bg-raised px-1.5 text-caption text-brand-cyan">{rate}</span> : null}
         <button
           type="button"
           className={cn(TOOL_BUTTON, "h-8 w-auto gap-1.5 px-2 text-caption [&_svg]:size-4", editor.proxy && TOOL_BUTTON_ON)}
           aria-pressed={editor.proxy}
           title={proxies ? t("以代理檔播放（匯出一律使用原始媒體）") : t("以代理檔播放；還沒有素材建立代理（在「專案」面板的項目選單建立）")}
-          onClick={() => editor.setProxy(!editor.proxy)}
+          onClick={() => { editor.setProxy(!editor.proxy); }}
         >
           <Gauge aria-hidden />
           {t("代理")}
@@ -111,7 +111,7 @@ export function ProgramMonitor({ className }: { className?: string }) {
           aria-pressed={ui.transform}
           aria-label={t("變形控制框")}
           title={t("在畫面上移動、縮放、旋轉選取的圖層")}
-          onClick={() => ui.setTransform(!ui.transform)}
+          onClick={() => { ui.setTransform(!ui.transform); }}
         >
           <Move aria-hidden />
         </button>
@@ -148,7 +148,7 @@ export function ProgramMonitor({ className }: { className?: string }) {
                 <MonitorPlay aria-hidden className="size-4 shrink-0 text-brand-cyan" />
                 <h2 className="shrink-0 text-body font-semibold text-fg">{t("節目")}</h2>
                 <span className="min-w-0 flex-1 truncate text-data text-fg-tertiary">{editor.project.title}</span>
-                {rate ? <span className="machine shrink-0 rounded-md bg-raised px-1.5 text-caption text-brand-cyan">{rate}</span> : null}
+                {(rate != null && rate !== "") ? <span className="machine shrink-0 rounded-md bg-raised px-1.5 text-caption text-brand-cyan">{rate}</span> : null}
                 <button type="button" className={cn(TOOL_BUTTON, WIDE_TOOL)} title={t("全螢幕顯示（Esc 離開）")} onClick={fullscreen}>
                   <Maximize aria-hidden />
                   {t("全螢幕")}

@@ -14,8 +14,16 @@ from typing import Any
 from phasyn_components import contracts
 from phasyn_components.canonical import digest
 from phasyn_components.errors import ComponentError
-from phasyn_components.pipeline import binding_kind, dependencies, validate_pipeline, validate_run_inputs
+from phasyn_components.pipeline import (
+    binding_kind,
+    dependencies,
+    validate_pipeline,
+    validate_run_inputs,
+)
 from phasyn_components.settings import deep_overlay, normalize_recording
+
+from .lora_compatibility import check_lora_compatibility
+
 
 DEFAULT_TIMEOUT_SECONDS = int(contracts.defaults_of("Step")["timeout_seconds"])
 
@@ -24,12 +32,16 @@ DescriptorKey = tuple[str, str]
 
 @dataclass(frozen=True)
 class StepPlan:
+    """Frozen component, inputs and dependencies for one run step."""
+
     step_id: str
     node_id: str
     component_id: str
     inputs: dict[str, Any]
     deps: frozenset[str]
-    resource_key: tuple[str, str]  # (node_id, resource_group): steps sharing it run one after another
+    resource_key: tuple[
+        str, str
+    ]  # (node_id, resource_group): steps sharing it run one after another
     timeout_seconds: int
 
 
@@ -41,10 +53,22 @@ def input_summary(inputs: Mapping[str, Any]) -> dict[str, Any]:
             ref = value["file"]
             out[name] = {
                 "type_id": value.get("type_id"),
-                "file": {k: ref.get(k) for k in ("node_id", "file_id", "size_bytes", "sha256", "media_type")},
+                "file": {
+                    k: ref.get(k)
+                    for k in (
+                        "node_id",
+                        "file_id",
+                        "size_bytes",
+                        "sha256",
+                        "media_type",
+                    )
+                },
             }
         elif isinstance(value, dict):
-            out[name] = {"type_id": value.get("type_id"), "value_digest": digest(value.get("value"))}
+            out[name] = {
+                "type_id": value.get("type_id"),
+                "value_digest": digest(value.get("value")),
+            }
     return out
 
 
@@ -73,12 +97,20 @@ def plan_run(
         desc = descriptors[(node_id, cid)]
         settings = desc.get("settings") or {}
         stored = settings.get("stored") or {}
-        invoke_snapshot = deep_overlay(stored.get("invoke") or {}, step.get("parameters") or {})
-        recording_snapshot = normalize_recording(
-            deep_overlay(stored.get("recording") or {}, step.get("recording_override") or {})
+        invoke_snapshot = deep_overlay(
+            stored.get("invoke") or {}, step.get("parameters") or {}
         )
-        contracts.validate("RecorderConfig", recording_snapshot, what=f"步驟 {sid} 的 recording 設定")
-        loaded = settings.get("loaded") if isinstance(settings.get("loaded"), dict) else None
+        recording_snapshot = normalize_recording(
+            deep_overlay(
+                stored.get("recording") or {}, step.get("recording_override") or {}
+            )
+        )
+        contracts.validate(
+            "RecorderConfig", recording_snapshot, what=f"步驟 {sid} 的 recording 設定"
+        )
+        loaded = (
+            settings.get("loaded") if isinstance(settings.get("loaded"), dict) else None
+        )
         device = (loaded or {}).get("device") or desc.get("device") or {}
         group = str(device.get("resource_group") or f"component:{cid}")
         plans[sid] = StepPlan(
@@ -92,6 +124,9 @@ def plan_run(
         )
         steps[sid] = {
             "state": "pending",
+            "resource_group": group,
+            "attempts": [],
+            "retry_after_verified_stop": desc.get("retry_after_verified_stop") is True,
             "node_id": node_id,
             "component_id": cid,
             "call_id": None,
@@ -106,11 +141,33 @@ def plan_run(
             "invoke_snapshot": invoke_snapshot,
             "recording_snapshot": recording_snapshot,
         }
+    check_lora_compatibility(body, descriptors, steps)
     return order, plans, steps
 
 
+def restore_plans(run: Mapping[str, Any]) -> tuple[list[str], dict[str, StepPlan]]:
+    pipeline = run["request"]["pipeline"]
+    order = validate_pipeline(pipeline)
+    plans = {}
+    for step in pipeline["steps"]:
+        sid = str(step["step_id"])
+        node = str(step["node_id"])
+        plans[sid] = StepPlan(
+            sid,
+            node,
+            str(step["component_id"]),
+            step.get("inputs") or {},
+            frozenset(dependencies(step)),
+            (node, run["steps"][sid]["resource_group"]),
+            int(step.get("timeout_seconds") or DEFAULT_TIMEOUT_SECONDS),
+        )
+    return order, plans
+
+
 def resolve_inputs(
-    plan: StepPlan, request_inputs: Mapping[str, Any], steps: Mapping[str, Mapping[str, Any]]
+    plan: StepPlan,
+    request_inputs: Mapping[str, Any],
+    steps: Mapping[str, Mapping[str, Any]],
 ) -> dict[str, Any]:
     """The step's input values: run inputs, upstream outputs (which must exist) or literals."""
     out: dict[str, Any] = {}
@@ -127,7 +184,11 @@ def resolve_inputs(
                 raise ComponentError(
                     "PORT_MISMATCH",
                     f"上游步驟 {src_id} 沒有產生輸出 {binding['output']}；不送出步驟 {plan.step_id} 的呼叫",
-                    details={"step": plan.step_id, "from_step": src_id, "output": binding["output"]},
+                    details={
+                        "step": plan.step_id,
+                        "from_step": src_id,
+                        "output": binding["output"],
+                    },
                 )
             out[port] = copy.deepcopy(value)
         else:
@@ -135,7 +196,9 @@ def resolve_inputs(
     return out
 
 
-def invoke_request(run_id: str, plan: StepPlan, entry: Mapping[str, Any], inputs: Mapping[str, Any]) -> dict[str, Any]:
+def invoke_request(
+    run_id: str, plan: StepPlan, entry: Mapping[str, Any], inputs: Mapping[str, Any]
+) -> dict[str, Any]:
     """The InvokeRequest of one step from its frozen snapshots (validated against the contract)."""
     body = {
         "call_id": entry["call_id"],
@@ -147,8 +210,30 @@ def invoke_request(run_id: str, plan: StepPlan, entry: Mapping[str, Any], inputs
         "recording": copy.deepcopy(entry["recording_snapshot"]),
         "timeout_seconds": plan.timeout_seconds,
     }
-    contracts.validate("InvokeRequest", body, what=f"步驟 {plan.step_id} 的 InvokeRequest")
+    previous = next(
+        (
+            a
+            for a in entry.get("attempts", [])
+            if a.get("superseded") and a["call_id"] != entry["call_id"]
+        ),
+        None,
+    )
+    if previous:
+        body["retry_of"] = {
+            "call_id": previous["call_id"],
+            "request_digest": previous["request_digest"],
+        }
+    contracts.validate(
+        "InvokeRequest", body, what=f"步驟 {plan.step_id} 的 InvokeRequest"
+    )
     return body
 
 
-__all__ = ["DEFAULT_TIMEOUT_SECONDS", "StepPlan", "input_summary", "invoke_request", "plan_run", "resolve_inputs"]
+__all__ = [
+    "DEFAULT_TIMEOUT_SECONDS",
+    "StepPlan",
+    "input_summary",
+    "invoke_request",
+    "plan_run",
+    "resolve_inputs",
+]

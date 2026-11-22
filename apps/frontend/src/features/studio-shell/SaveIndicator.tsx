@@ -39,7 +39,7 @@ export function SaveIndicator() {
         {spec.icon}
         {spec.text}
       </span>
-      <span className="machine text-fg-tertiary">{`r${revision}`}</span>
+      <span className="machine text-fg-tertiary">{`r${String(revision)}`}</span>
       {doc.status === "error" ? (
         <button type="button" onClick={saveNow} className="pressable rounded-full px-1.5 text-action-fg hover:bg-raised active:bg-sunken">
           {t("重試")}

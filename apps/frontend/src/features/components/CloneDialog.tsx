@@ -65,10 +65,10 @@ function CloneForm({
   const cloneDefinition = { node: target?.label ?? targetId, component_id: componentId, label, provider_id: source.descriptor.provider_id, runtime_id: source.descriptor.runtime_id, settings };
   const changes = diffDocuments(sourceDefinition, cloneDefinition);
   const crossNode = targetId !== sourceNode.node_id;
-  const blockReason = !target ? t("請選擇目標 Node") : target.stale ? t("目標 Node 離線") : (idError ?? (folder.error ? t("資料夾：{error}", { error: folder.error }) : null));
+  const blockReason = !target ? t("請選擇目標 Node") : target.stale ? t("目標 Node 離線") : (idError ?? ((folder.error != null && folder.error !== "") ? t("資料夾：{error}", { error: folder.error }) : null));
 
   const submit = () => {
-    if (blockReason || put.isPending) return;
+    if ((blockReason ?? "") || put.isPending) return;
     put.mutate(
       {
         nodeId: targetId,
@@ -80,11 +80,11 @@ function CloneForm({
           settings,
           autostart: false,
           folder: folder.value,
-          ...(group ? { exclusive_group: group } : {}),
+          ...((group != null && group !== "") ? { exclusive_group: group } : {}),
           ...(limits ? { limits: cloneJson(limits) } : {}),
         },
       },
-      { onSuccess: () => onCreated(targetId, componentId) },
+      { onSuccess: () => { onCreated(targetId, componentId); } },
     );
   };
 
@@ -94,7 +94,7 @@ function CloneForm({
         <div className="grid gap-4 md:grid-cols-3">
           <Field id="clone-node" label={t("目標 Node")}>
             {(describedBy) => (
-              <Select id="clone-node" value={targetId} aria-describedby={describedBy} onChange={(event) => setTargetId(event.target.value)}>
+              <Select id="clone-node" value={targetId} aria-describedby={describedBy} onChange={(event) => { setTargetId(event.target.value); }}>
                 {nodes.map((node) => (
                   <option key={node.node_id} value={node.node_id} disabled={node.stale}>
                     {node.label}
@@ -106,11 +106,11 @@ function CloneForm({
           </Field>
           <Field id="clone-id" label={t("新 component_id")} error={idError}>
             {(describedBy) => (
-              <Input id="clone-id" className="machine" value={componentId} aria-describedby={describedBy} aria-invalid={Boolean(idError) || undefined} onChange={(event) => setComponentId(event.target.value)} />
+              <Input id="clone-id" className="machine" value={componentId} aria-describedby={describedBy} aria-invalid={Boolean(idError) || undefined} onChange={(event) => { setComponentId(event.target.value); }} />
             )}
           </Field>
           <Field id="clone-label" label={t("顯示名稱")}>
-            {(describedBy) => <Input id="clone-label" value={label} aria-describedby={describedBy} onChange={(event) => setLabel(event.target.value)} />}
+            {(describedBy) => <Input id="clone-label" value={label} aria-describedby={describedBy} onChange={(event) => { setLabel(event.target.value); }} />}
           </Field>
         </div>
         <Field
@@ -127,14 +127,14 @@ function CloneForm({
               suggestions={suggestions}
               defaultFolder={defaultFolderFor(source.descriptor.provider_id)}
               invalid={folder.error !== null}
-              describedBy={describedBy}
+              {...(describedBy === undefined ? {} : { describedBy })}
             />
           )}
         </Field>
         <ul className="grid gap-1 rounded-md border border-line-subtle bg-sunken px-3 py-2 text-caption text-fg-secondary" aria-label={t("沿用來源的設定")}>
           <li>
-            {group ? (
-              <T source={"互斥群組：<0>{group}</0>（沿用來源；同一台 Node 上同群組一次只能載入一個）"} values={{ group }} slots={[<code className="machine text-fg" />]} />
+            {(group != null && group !== "") ? (
+              <T source={"互斥群組：<0>{group}</0>（沿用來源；同一台 Node 上同群組一次只能載入一個）"} values={{ group }} slots={[<code key="slot-0" className="machine text-fg" />]} />
             ) : (
               t("互斥群組：無（來源沒有設定）")
             )}
@@ -163,7 +163,7 @@ function CloneForm({
           ) : !providerInfo ? (
             <Callout tone="warning" title={t("目標 Node 沒有相同的 provider／runtime")}>
               <p>
-                <T source={"找不到 <0>{provider_id}</0>（runtime {runtime_id}）；PUT 可能被拒絕（例如 PROVIDER_NOT_INSTALLED）。"} values={{ provider_id: source.descriptor.provider_id, runtime_id: source.descriptor.runtime_id }} slots={[<code className="machine" />]} />
+                <T source={"找不到 <0>{provider_id}</0>（runtime {runtime_id}）；PUT 可能被拒絕（例如 PROVIDER_NOT_INSTALLED）。"} values={{ provider_id: source.descriptor.provider_id, runtime_id: source.descriptor.runtime_id }} slots={[<code key="slot-0" className="machine" />]} />
               </p>
             </Callout>
           ) : !providerInfo.available ? (
@@ -178,7 +178,7 @@ function CloneForm({
             schema={DEVICE_FORM_SCHEMA}
             rootSchema={DEVICE_FORM_ROOT}
             value={deviceFormValue(settings)}
-            onChange={(next) => setSettings(withDeviceForm(settings, next))}
+            onChange={(next) => { setSettings(withDeviceForm(settings, next)); }}
             idPrefix="clone-device"
             basePath="load"
             allowUnset
@@ -229,10 +229,10 @@ export function CloneDialog({
         <DialogHeader>
           <DialogTitle>{t("複製 instance")}</DialogTitle>
           <DialogDescription>
-            <T source={"來源：{value}（{label}）。只建立定義，不會啟動。"} values={{ value: source?.descriptor.label || source?.descriptor.component_id, label: source?.node.label }} />
+            <T source={"來源：{value}（{label}）。只建立定義，不會啟動。"} values={{ value: (source?.descriptor.label ?? "") || source?.descriptor.component_id, label: source?.node.label }} />
           </DialogDescription>
         </DialogHeader>
-        {source ? <CloneForm source={source} nodes={nodes} entries={entries} onCreated={onCreated} onCancel={() => onOpenChange(false)} /> : null}
+        {source ? <CloneForm source={source} nodes={nodes} entries={entries} onCreated={onCreated} onCancel={() => { onOpenChange(false); }} /> : null}
       </DialogContent>
     </Dialog>
   );

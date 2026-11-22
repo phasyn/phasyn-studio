@@ -1,0 +1,46 @@
+{
+  "pipeline_id": "previs-animatic",
+  "label": "分鏡動態預演",
+  "inputs": [
+    {
+      "name": "frames",
+      "type_id": "media.previs-frames.v1",
+      "required": true,
+      "transport": "file",
+      "description": "Frozen frame bundle, timed shot and layer sources"
+    },
+    {
+      "name": "audio",
+      "type_id": "media.audio.v1",
+      "required": false,
+      "transport": "file",
+      "description": "Optional temporary soundtrack"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "encode",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "previs-animatic",
+      "inputs": {
+        "frames": {
+          "from_input": "frames"
+        },
+        "audio": {
+          "from_input": "audio"
+        }
+      },
+      "parameters": {}
+    }
+  ],
+  "outputs": {
+    "asset": {
+      "from_step": "encode",
+      "output": "asset"
+    },
+    "video": {
+      "from_step": "encode",
+      "output": "video"
+    }
+  }
+}

@@ -3,7 +3,7 @@
 // the estimator id plus the plain inputs, stale answers for old inputs are dropped by the query cache. While new inputs
 // are estimated (for example as a prompt is typed) the previous answer stays on screen instead of flickering away.
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { createContext, useContext, useMemo } from "react";
+import { createContext, use, useMemo } from "react";
 import { qk } from "@/api/keys";
 import { etaRisks, NO_ETA, planEta, type EtaMissing, type EtaRisks, type PlanEta, type SegmentEta, type SegmentEtaEstimator, type SegmentEtaInput } from "../model/eta";
 
@@ -18,7 +18,7 @@ export interface SegmentEstimates {
 
 /** Per-segment estimates of the estimator in context (shared cache: the same inputs are estimated once). */
 export function useSegmentEstimates(segments: readonly SegmentEtaInput[]): SegmentEstimates {
-  const estimator = useContext(SegmentEtaContext);
+  const estimator = use(SegmentEtaContext);
   const enabled = estimator !== NO_ETA && segments.length > 0;
   const query = useQuery({
     queryKey: qk.durationEstimate(estimator.id, segments),
@@ -46,7 +46,7 @@ const NO_RISKS: EtaRisks = etaRisks([]);
 
 /** Why a plan without an estimate has none: a partial segment (some step without a cost profile) or no data at all. */
 function missingOf(results: readonly (SegmentEta | null)[] | undefined): EtaMissing {
-  return results?.some((item) => item?.basis === "partial") ? "partial" : "none";
+  return (results?.some((item) => item?.basis === "partial") === true) ? "partial" : "none";
 }
 
 export function usePlanEta(segments: readonly SegmentEtaInput[]): PlanEtaState {

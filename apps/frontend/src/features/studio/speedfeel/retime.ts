@@ -215,7 +215,7 @@ export function planRetime({ timeline, clipId, length, measure }: RetimeInput): 
   if (!clip) return refusedRetime(t("找不到這個片段（可能已經刪除，或被復原拿掉了）"));
   const peers = linkedPeers(timeline, clip);
   const refusal = splitRefusal(timeline, clip, peers, retimeAnimated);
-  if (refusal) return refusedRetime(refusal);
+  if (refusal != null && refusal !== "") return refusedRetime(refusal);
   const { mapping } = measure;
   if (mapping.length === 0 && measure.switched !== null) {
     return refusedRetime(t("生成在片段結尾前 {frames} 影格就切到下一個鏡頭，依動作同步補不到片段結尾（最多補 {max} 影格，而且只在動作少、切鏡或閃光的地方停格）", { frames: length - measure.switched, max: DTW_MAX_LAG }));
@@ -228,7 +228,7 @@ export function planRetime({ timeline, clipId, length, measure }: RetimeInput): 
   const zone = retimeZone(timeline, clip.clip_id);
   for (const start of starts.slice(1)) {
     const reason = zone(start);
-    if (reason) return refusedRetime(t("依動作同步要在片段中間分割，分割點{reason}", { reason }));
+    if (reason != null && reason !== "") return refusedRetime(t("依動作同步要在片段中間分割，分割點{reason}", { reason }));
   }
   const linked = clip.linked_id !== undefined;
   const origin = clip.start_frame;
@@ -245,7 +245,7 @@ export function planRetime({ timeline, clipId, length, measure }: RetimeInput): 
   };
   for (const command of commands) {
     const error = run(command);
-    if (error) return refusedRetime(error);
+    if (error != null && error !== "") return refusedRetime(error);
   }
   // Every part slips by its lag (a split keeps the clip's id on the first part)
   const partAt = (start: number) => document.clips.find((item) => item.track_id === clip.track_id && item.source_id === clip.source_id && item.start_frame === origin + start);
@@ -256,7 +256,7 @@ export function planRetime({ timeline, clipId, length, measure }: RetimeInput): 
     ids.push(part.clip_id);
     const lag = (mapping[start] ?? start) - start;
     const error = lag === 0 ? null : run({ type: "slip", clipId: part.clip_id, delta: lag, linked });
-    if (error) return refusedRetime(error);
+    if (error != null && error !== "") return refusedRetime(error);
   }
   // Checked: the parts cover the clip's frames exactly, each frame shows the mapped take frame (never one at or after
   // the clip's out point), nothing else changed

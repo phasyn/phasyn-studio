@@ -1,3 +1,4 @@
+import { takeLabel } from "./takeLabel";
 // What a shot's action menu offers (pure): every action comes with the reason it cannot run. The menu ends with the
 // latest playable takes, so another take can be made the active one right there.
 import type { StudioProject, StudioShot } from "@/api/generated/contracts";
@@ -46,13 +47,13 @@ export function duplicateBlockedReason(project: StudioProject): string | null {
 
 /** The takes that can become the active one (succeeded, with a video), newest first, at most `limit`; total = all playable ones. */
 export function takeChoices(shot: StudioShot, limit = MENU_TAKE_LIMIT): { entries: ShotMenuEntry[]; total: number } {
-  const playable = shot.takes.filter((take) => take.state === "succeeded" && take.asset);
+  const playable = shot.takes.filter((take) => Boolean(take.state === "succeeded" && take.asset));
   const current = activeTake(shot)?.take_id ?? null;
   const entries = [...playable]
     .reverse()
     .slice(0, limit)
     .map((take, index): ShotMenuEntry => {
-      const label = t("take {take}・seed {seed}", { take: shot.takes.indexOf(take) + 1, seed: take.seed });
+      const label = takeLabel(shot.takes.indexOf(take) + 1, take.seed);
       const active = take.take_id === current;
       return {
         id: "useTake",
@@ -65,7 +66,7 @@ export function takeChoices(shot: StudioShot, limit = MENU_TAKE_LIMIT): { entrie
     });
   if (playable.length > limit) {
     const latest = playable.at(-1);
-    entries.push({ id: "moreTakes", label: t("在「渲染」查看全部 {playableCount} 個 take", { playableCount: playable.length }), disabledReason: null, runId: latest?.run_id });
+    entries.push({ id: "moreTakes", label: t("在「渲染」查看全部 {playableCount} 個 take", { playableCount: playable.length }), disabledReason: null, ...(latest?.run_id === undefined ? {} : { runId: latest.run_id }) });
   }
   return { entries, total: playable.length };
 }

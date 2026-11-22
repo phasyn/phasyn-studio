@@ -1,3 +1,4 @@
+import { hasSlotContent } from "@/lib/dom";
 import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { AuroraBackdrop } from "./AuroraBackdrop";
@@ -62,7 +63,7 @@ export function EmptyState({ icon, mark = false, illustration, title, descriptio
         <GlowingMark size={compact ? 56 : 80} />
       </span>
     );
-  } else if (icon) {
+  } else if (hasSlotContent(icon)) {
     visual = (
       <span
         aria-hidden
@@ -87,9 +88,9 @@ export function EmptyState({ icon, mark = false, illustration, title, descriptio
       {scene ? <AuroraBackdrop /> : null}
       {visual}
       <p className={cn("font-semibold text-fg", compact ? "text-body" : "text-section")}>{title}</p>
-      {description ? <div className="max-w-[46ch] text-data leading-6 text-fg-secondary">{description}</div> : null}
+      {hasSlotContent(description) ? <div className="max-w-[46ch] text-data leading-6 text-fg-secondary">{description}</div> : null}
       {children}
-      {action ? <div className="mt-1 flex flex-wrap justify-center gap-2">{action}</div> : null}
+      {hasSlotContent(action) ? <div className="mt-1 flex flex-wrap justify-center gap-2">{action}</div> : null}
     </div>
   );
 }

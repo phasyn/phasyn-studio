@@ -1,4 +1,4 @@
-"""固定 Prompt 片段庫（x-phasyn-extension）：``data_dir/config/studio/_prompt-library.json``。
+"""固定 Prompt 片段庫（x-phasyn-extension）：``data_dir/config/studio/_prompt-library.json``.
 
 整個片段庫是一份文件（contract ``StudioPromptLibrary``），所有專案共用。保存以 revision 做樂觀並行控制：
 PUT 本文的 revision 必須等於目前 revision（從未保存過為 0），成功後 revision+1 並更新 updated_at；
@@ -28,6 +28,7 @@ from starlette.responses import JSONResponse
 
 from .revisions import require_revision, stored_revision
 
+
 if TYPE_CHECKING:
     from .state import Controller
 
@@ -36,19 +37,21 @@ SCHEMA = "StudioPromptLibrary"
 
 
 def empty_library() -> dict[str, Any]:
-    """從未保存過的片段庫（revision 0）。"""
+    """從未保存過的片段庫（revision 0）."""
     return {"revision": 0, "updated_at": None, "snippets": []}
 
 
 def duplicate_snippet_ids(snippets: Iterable[dict[str, Any]]) -> list[str]:
+    """Return repeated snippet IDs in sorted order."""
     counts = Counter(str(item["snippet_id"]) for item in snippets)
     return sorted(snippet_id for snippet_id, count in counts.items() if count > 1)
 
 
 class PromptLibraryStore:
-    """單一 JSON 文件；revision 檢查與寫入在同一把鎖內完成（單一主控程序是唯一 writer）。"""
+    """單一 JSON 文件；revision 檢查與寫入在同一把鎖內完成（單一主控程序是唯一 writer）."""
 
     def __init__(self, root: Path) -> None:
+        """Set the path and lock used for prompt library updates."""
         self.path = Path(root) / LIBRARY_FILE
         self._lock = threading.Lock()
 
@@ -58,17 +61,28 @@ class PromptLibraryStore:
         except FileNotFoundError:
             return None
         except (OSError, ValueError) as exc:
-            raise ComponentError("RUNTIME_ERROR", f"固定 Prompt 片段庫無法讀取：{exception_message(exc)}") from exc
-        contracts.validate(SCHEMA, doc, code="RUNTIME_ERROR", what=f"已保存的固定 Prompt 片段庫（{self.path.name}）")
+            raise ComponentError(
+                "RUNTIME_ERROR", f"固定 Prompt 片段庫無法讀取：{exception_message(exc)}"
+            ) from exc
+        contracts.validate(
+            SCHEMA,
+            doc,
+            code="RUNTIME_ERROR",
+            what=f"已保存的固定 Prompt 片段庫（{self.path.name}）",
+        )
         return dict(doc)
 
     def get(self) -> dict[str, Any]:
+        """Read the library or return its empty initial document."""
         stored = self._stored()
         return stored if stored is not None else empty_library()
 
     def put(self, body: Any) -> dict[str, Any]:
+        """Validate the snippet collection and save it at the expected revision."""
         if not isinstance(body, dict):
-            raise ComponentError("INVALID_ARGUMENT", "固定 Prompt 片段庫必須是 JSON object")
+            raise ComponentError(
+                "INVALID_ARGUMENT", "固定 Prompt 片段庫必須是 JSON object"
+            )
         contracts.validate(SCHEMA, body, what="固定 Prompt 片段庫")
         duplicates = duplicate_snippet_ids(body["snippets"])
         if duplicates:
@@ -84,12 +98,17 @@ class PromptLibraryStore:
                 what="固定 Prompt 片段庫",
                 suffix="請重新載入後再修改",
             )
-            doc = {"revision": revision + 1, "updated_at": utc_now(), "snippets": body["snippets"]}
+            doc = {
+                "revision": revision + 1,
+                "updated_at": utc_now(),
+                "snippets": body["snippets"],
+            }
             atomic_write_json(self.path, doc)
         return doc
 
 
 def routes(ctl: Controller) -> APIRouter:
+    """Build the Controller routes for prompt library."""
     router = APIRouter()
 
     @router.get("/api/studio/prompt-library")
@@ -104,4 +123,10 @@ def routes(ctl: Controller) -> APIRouter:
     return router
 
 
-__all__ = ["LIBRARY_FILE", "PromptLibraryStore", "duplicate_snippet_ids", "empty_library", "routes"]
+__all__ = [
+    "LIBRARY_FILE",
+    "PromptLibraryStore",
+    "duplicate_snippet_ids",
+    "empty_library",
+    "routes",
+]

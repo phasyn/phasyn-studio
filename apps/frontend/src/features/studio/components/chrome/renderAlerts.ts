@@ -26,7 +26,7 @@ function notifications(): typeof Notification | null {
 /** From the 渲染鏡頭 click: asks the browser, the first time only, whether this page may notify when a render ends. */
 export function askRenderAlerts(): void {
   const api = notifications();
-  if (!api || api.permission !== "default" || asked.get()) return;
+  if (api?.permission !== "default" || asked.get()) return;
   asked.set(true);
   // The answer is read when a render ends (Notification.permission); a refusal resolves as "denied", nothing to handle
   void api.requestPermission().catch(() => undefined);
@@ -35,7 +35,7 @@ export function askRenderAlerts(): void {
 /** A browser notification of the end of a run (only with permission and while the page is not in focus). */
 function notifyEnd(title: string, body: string, runId: string): void {
   const api = notifications();
-  if (!api || api.permission !== "granted" || document.hasFocus()) return;
+  if (api?.permission !== "granted" || document.hasFocus()) return;
   try {
     const note = new api(title, { body, tag: `phasyn-run-${runId}`, icon: "/brand/icon-192.png" });
     note.onclick = () => {
@@ -111,7 +111,7 @@ export function useRenderAlerts(): void {
   const ended = watched !== null && run?.run_id === watched.runId && run.state !== "running" ? run.state : null;
   const progress = activity ? tabProgress(activity) : null;
   const projectTitle = project.title || t("未命名專案");
-  const announced = useRef<string | null>(null);
+  const announcedRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (progress !== null) showTitle(t("{status} — {title}", { status: progress, title: projectTitle }));
@@ -119,7 +119,7 @@ export function useRenderAlerts(): void {
 
   // The browser starts audio only after the page has been used: the first press prepares it for the end of a render
   useEffect(() => {
-    const unlock = () => unlockRenderSound();
+    const unlock = () => { unlockRenderSound(); };
     window.addEventListener("pointerdown", unlock, { once: true, capture: true });
     window.addEventListener("keydown", unlock, { once: true, capture: true });
     return () => {
@@ -131,8 +131,8 @@ export function useRenderAlerts(): void {
   // Once per run: its sound; a page in focus has seen it end (its own title comes back); otherwise the title and a
   // notification say it
   useEffect(() => {
-    if (!watched || !ended || announced.current === watched.runId) return;
-    announced.current = watched.runId;
+    if (!watched || !ended || announcedRef.current === watched.runId) return;
+    announcedRef.current = watched.runId;
     const sound = endSound(watched.kind, ended);
     if (sound) playRenderSound(sound);
     if (document.hasFocus()) {

@@ -1,0 +1,57 @@
+{
+  "pipeline_id": "wan-speech-local",
+  "label": "Wan2.2 音訊驅動角色生成",
+  "inputs": [
+    {
+      "name": "character",
+      "type_id": "media.image.v1",
+      "required": true,
+      "transport": "file",
+      "description": "角色參考圖"
+    },
+    {
+      "name": "audio",
+      "type_id": "media.audio.v1",
+      "required": true,
+      "transport": "file",
+      "description": "已選定的來源音訊"
+    },
+    {
+      "name": "prompt",
+      "type_id": "text.prompt.v1",
+      "required": false,
+      "transport": "inline",
+      "description": "選用的畫面描述"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "generate",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "wan-speech",
+      "inputs": {
+        "character": {
+          "from_input": "character"
+        },
+        "audio": {
+          "from_input": "audio"
+        },
+        "prompt": {
+          "from_input": "prompt"
+        }
+      },
+      "parameters": {},
+      "timeout_seconds": 7200
+    }
+  ],
+  "outputs": {
+    "asset": {
+      "from_step": "generate",
+      "output": "asset"
+    },
+    "video_file": {
+      "from_step": "generate",
+      "output": "video_file"
+    }
+  }
+}

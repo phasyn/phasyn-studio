@@ -47,8 +47,8 @@ const NONE: ReadonlyMap<string, string> = new Map();
 
 export function BatchReplaceDialog({ shotIds, open, onClose, onApplied }: BatchReplaceDialogProps) {
   const { project, dispatch } = useStudio();
-  const content = useRef<HTMLDivElement>(null);
-  const turns = useRef(new Map<string, number>());
+  const contentRef = useRef<HTMLDivElement>(null);
+  const turnsRef = useRef(new Map<string, number>());
   const uploads = useLibraryUploads();
   /** The chosen file of each @ name (group key → library item id); a name without one stays as it is. */
   const [picks, setPicks] = useState<ReadonlyMap<string, string>>(NONE);
@@ -83,9 +83,9 @@ export function BatchReplaceDialog({ shotIds, open, onClose, onApplied }: BatchR
 
   // Every choice for a name (a click, an upload started) takes a turn: an upload is chosen when it lands only while it
   // still has the name's last turn, so a file clicked meanwhile, or a later upload, is not overridden
-  const nextTurn = (key: string) => (turns.current.get(key) ?? 0) + 1;
+  const nextTurn = (key: string) => (turnsRef.current.get(key) ?? 0) + 1;
   const choose = (key: string, itemId: string | null) => {
-    turns.current.set(key, nextTurn(key));
+    turnsRef.current.set(key, nextTurn(key));
     setPicks((current) => {
       const next = new Map(current);
       if (itemId === null) next.delete(key);
@@ -96,12 +96,12 @@ export function BatchReplaceDialog({ shotIds, open, onClose, onApplied }: BatchR
   const upload = (group: AliasGroup, file: File) => {
     const mine = nextTurn(group.key);
     const accepted = uploads.addAndPick(file, group.kind, group.key, (item) => {
-      if (turns.current.get(group.key) !== mine) return t("已加入專案素材庫");
+      if (turnsRef.current.get(group.key) !== mine) return t("已加入專案素材庫");
       choose(group.key, item.item_id);
       return t("已加入素材庫，選為 @{alias} 的新檔案", { alias: group.alias });
     });
     // A file of another kind is refused before it uploads: no upload started, so it takes no turn
-    if (accepted) turns.current.set(group.key, mine);
+    if (accepted) turnsRef.current.set(group.key, mine);
   };
   const apply = () => {
     if (blockedReason !== null || applied !== null) return;
@@ -124,11 +124,11 @@ export function BatchReplaceDialog({ shotIds, open, onClose, onApplied }: BatchR
       }}
     >
       <DialogContent
-        ref={content}
+        ref={contentRef}
         wide
         onOpenAutoFocus={(event) => {
           // The first @ name's choice (不換 at first), so the arrow keys choose right away
-          const first = content.current?.querySelector<HTMLInputElement>('input[type="radio"]:checked');
+          const first = contentRef.current?.querySelector<HTMLInputElement>('input[type="radio"]:checked');
           if (!first) return;
           event.preventDefault();
           first.focus();
@@ -170,13 +170,13 @@ export function BatchReplaceDialog({ shotIds, open, onClose, onApplied }: BatchR
                   pick={usable.get(group.key) ?? null}
                   changed={plan.changed.get(group.key) ?? 0}
                   unclipped={plan.unclipped.get(group.key) ?? 0}
-                  onPick={(itemId) => choose(group.key, itemId)}
-                  onUpload={(file) => upload(group, file)}
+                  onPick={(itemId) => { choose(group.key, itemId); }}
+                  onUpload={(file) => { upload(group, file); }}
                 >
                   {tasks.length > 0 ? (
                     <ul className="grid gap-0.5" aria-label={t("上傳")}>
                       {tasks.map((task) => (
-                        <ReferenceUploadRow key={task.key} task={task} onRetry={() => uploads.retry(task.key)} onDismiss={() => uploads.dismiss(task.key)} />
+                        <ReferenceUploadRow key={task.key} task={task} onRetry={() => { uploads.retry(task.key); }} onDismiss={() => { uploads.dismiss(task.key); }} />
                       ))}
                     </ul>
                   ) : null}

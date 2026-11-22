@@ -4,5 +4,5 @@ import { Notices } from "./Notices";
 
 export function StudioNotices() {
   const { notices, dismiss, setEngineOpen } = useStudioShell();
-  return <Notices notices={notices} onDismiss={dismiss} onEngine={() => setEngineOpen(true)} />;
+  return <Notices notices={notices} onDismiss={dismiss} onEngine={() => { setEngineOpen(true); }} />;
 }

@@ -38,8 +38,20 @@ from ..recorder.rmath import config_diff
 from .redact import Redactor
 from .store import RecordingStore
 
+
 EXPORT_FORMATS = ("jsonl", "csv", "zip", "trace")
-CSV_HEADER = ["recording", "node", "component", "metric", "value", "unit", "quality", "method", "scope", "reason"]
+CSV_HEADER = [
+    "recording",
+    "node",
+    "component",
+    "metric",
+    "value",
+    "unit",
+    "quality",
+    "method",
+    "scope",
+    "reason",
+]
 FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
 CHUNK_BYTES = 256 * 1024
 FILE_BLOCK_BYTES = 1024 * 1024
@@ -78,6 +90,7 @@ class ExportResult:
 
 
 def csv_safe(value: Any) -> Any:
+    """Encode a spreadsheet-safe CSV field."""
     if isinstance(value, str) and value.startswith(FORMULA_PREFIXES):
         return "'" + value
     return value
@@ -106,13 +119,17 @@ def _stream_ids(store: RecordingStore, rid: str) -> list[str]:
     return [s["stream_id"] for s in store.streams(rid)]
 
 
-def _events(store: RecordingStore, rid: str, stream: str, redactor: Redactor) -> Iterator[dict[str, Any]]:
+def _events(
+    store: RecordingStore, rid: str, stream: str, redactor: Redactor
+) -> Iterator[dict[str, Any]]:
     for event in store.iter_stream(rid, stream):
         yield redactor.document(event)
 
 
 # ---------------------------------------------------------------------------------------- jsonl
-def _jsonl_lines(store: RecordingStore, rid: str, rec: Mapping[str, Any], redactor: Redactor) -> Iterator[bytes]:
+def _jsonl_lines(
+    store: RecordingStore, rid: str, rec: Mapping[str, Any], redactor: Redactor
+) -> Iterator[bytes]:
     yield _json_line({"record": "context", "data": redactor.document(rec["context"])})
     for stream in _stream_ids(store, rid):
         for event in _events(store, rid, stream, redactor):
@@ -121,7 +138,9 @@ def _jsonl_lines(store: RecordingStore, rid: str, rec: Mapping[str, Any], redact
 
 
 # ------------------------------------------------------------------------------------------ csv
-def _metric_row(rid: str, ctx: Mapping[str, Any], name: str, m: Mapping[str, Any]) -> list[Any]:
+def _metric_row(
+    rid: str, ctx: Mapping[str, Any], name: str, m: Mapping[str, Any]
+) -> list[Any]:
     return [
         csv_safe(x)
         for x in (
@@ -152,7 +171,9 @@ _TRANSFER_FIELDS = (
 _IO_TRANSFERS = ("network", "disk_read", "disk_write")
 
 
-def _summary_rows(rid: str, ctx: Mapping[str, Any], summary: Mapping[str, Any]) -> Iterator[list[Any]]:
+def _summary_rows(
+    rid: str, ctx: Mapping[str, Any], summary: Mapping[str, Any]
+) -> Iterator[list[Any]]:
     for name, m in sorted((summary.get("metrics") or {}).items()):
         yield _metric_row(rid, ctx, name, m)
     for category, totals in sorted((summary.get("transfer_totals") or {}).items()):
@@ -166,13 +187,19 @@ def _summary_rows(rid: str, ctx: Mapping[str, Any], summary: Mapping[str, Any]) 
                     "value": value,
                     "unit": unit,
                     "quality": "instrumented" if value is not None else "unavailable",
-                    "method": "io_wrapper" if category in _IO_TRANSFERS else "runtime_copy_hook",
+                    "method": "io_wrapper"
+                    if category in _IO_TRANSFERS
+                    else "runtime_copy_hook",
                     "scope": "recording_transfer_totals",
                     "reason": None if value is not None else "未確認完成或未量測",
                 },
             )
     for part, totals in sorted((summary.get("part_totals") or {}).items()):
-        for field, unit in (("calls", "count"), ("host_ms_inclusive", "ms"), ("gpu_event_ms", "ms")):
+        for field, unit in (
+            ("calls", "count"),
+            ("host_ms_inclusive", "ms"),
+            ("gpu_event_ms", "ms"),
+        ):
             value = totals.get(field)
             yield _metric_row(
                 rid,
@@ -182,14 +209,18 @@ def _summary_rows(rid: str, ctx: Mapping[str, Any], summary: Mapping[str, Any]) 
                     "value": value,
                     "unit": unit,
                     "quality": "instrumented" if value is not None else "unavailable",
-                    "method": "cuda_event" if field == "gpu_event_ms" else "host_monotonic",
+                    "method": "cuda_event"
+                    if field == "gpu_event_ms"
+                    else "host_monotonic",
                     "scope": "part_inclusive",
                     "reason": None if value is not None else "未量測",
                 },
             )
 
 
-def _event_rows(rid: str, ctx: Mapping[str, Any], stream: str, event: Mapping[str, Any]) -> Iterator[list[Any]]:
+def _event_rows(
+    rid: str, ctx: Mapping[str, Any], stream: str, event: Mapping[str, Any]
+) -> Iterator[list[Any]]:
     kind, data = event.get("kind"), event.get("data") or {}
     if kind == "step":
         index = data.get("step_index")
@@ -203,7 +234,9 @@ def _event_rows(rid: str, ctx: Mapping[str, Any], stream: str, event: Mapping[st
                     "value": value,
                     "unit": "ms",
                     "quality": "instrumented" if value is not None else "unavailable",
-                    "method": "cuda_event" if field == "gpu_event_ms" else "host_monotonic",
+                    "method": "cuda_event"
+                    if field == "gpu_event_ms"
+                    else "host_monotonic",
                     "scope": f"{stream}#{event.get('seq')}",
                     "reason": None if value is not None else "未量測",
                 },
@@ -213,7 +246,9 @@ def _event_rows(rid: str, ctx: Mapping[str, Any], stream: str, event: Mapping[st
             yield _metric_row(rid, ctx, f"sample.{data.get('sample_id')}.{name}", m)
 
 
-def _csv_rows(store: RecordingStore, rid: str, rec: Mapping[str, Any], redactor: Redactor) -> Iterator[list[Any]]:
+def _csv_rows(
+    store: RecordingStore, rid: str, rec: Mapping[str, Any], redactor: Redactor
+) -> Iterator[list[Any]]:
     ctx = redactor.document(rec["context"])
     yield CSV_HEADER
     yield from _summary_rows(rid, ctx, redactor.document(rec["summary"]))
@@ -261,15 +296,21 @@ class _ChunkSink:
 def _settings_diff(ctx: Mapping[str, Any]) -> dict[str, Any]:
     settings = ctx.get("settings") or {}
     return {
-        "requested_vs_effective": config_diff(settings.get("requested") or {}, settings.get("effective") or {}),
-        "effective_vs_observed_keys": sorted(set((settings.get("observed") or {}).keys())),
+        "requested_vs_effective": config_diff(
+            settings.get("requested") or {}, settings.get("effective") or {}
+        ),
+        "effective_vs_observed_keys": sorted(
+            set((settings.get("observed") or {}).keys())
+        ),
         "stored_revision": settings.get("stored_revision"),
         "loaded_revision": settings.get("loaded_revision"),
         "config_digest": settings.get("config_digest"),
     }
 
 
-def _zip_member_from_lines(zf: zipfile.ZipFile, sink: _ChunkSink, name: str, lines: Iterable[bytes]) -> Iterator[bytes]:
+def _zip_member_from_lines(
+    zf: zipfile.ZipFile, sink: _ChunkSink, name: str, lines: Iterable[bytes]
+) -> Iterator[bytes]:
     with zf.open(name, "w", force_zip64=True) as member:
         for line in lines:
             member.write(line)
@@ -278,8 +319,10 @@ def _zip_member_from_lines(zf: zipfile.ZipFile, sink: _ChunkSink, name: str, lin
     yield sink.drain()
 
 
-def _zip_member_from_file(zf: zipfile.ZipFile, sink: _ChunkSink, name: str, path: Path) -> Iterator[bytes]:
-    with open(path, "rb") as src, zf.open(name, "w", force_zip64=True) as member:
+def _zip_member_from_file(
+    zf: zipfile.ZipFile, sink: _ChunkSink, name: str, path: Path
+) -> Iterator[bytes]:
+    with path.open("rb") as src, zf.open(name, "w", force_zip64=True) as member:
         while block := src.read(FILE_BLOCK_BYTES):
             member.write(block)
             if sink.pending >= CHUNK_BYTES:
@@ -287,7 +330,9 @@ def _zip_member_from_file(zf: zipfile.ZipFile, sink: _ChunkSink, name: str, path
     yield sink.drain()
 
 
-def _zip_chunks(store: RecordingStore, rid: str, rec: Mapping[str, Any], redactor: Redactor) -> Iterator[bytes]:
+def _zip_chunks(
+    store: RecordingStore, rid: str, rec: Mapping[str, Any], redactor: Redactor
+) -> Iterator[bytes]:
     ctx = redactor.document(rec["context"])
     readme = README
     if redactor:
@@ -296,11 +341,19 @@ def _zip_chunks(store: RecordingStore, rid: str, rec: Mapping[str, Any], redacto
     with zipfile.ZipFile(sink, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("README.txt", readme)
         zf.writestr("context.json", json.dumps(ctx, ensure_ascii=False, indent=2))
-        zf.writestr("summary.json", json.dumps(redactor.document(rec["summary"]), ensure_ascii=False, indent=2))
-        zf.writestr("settings_diff.json", json.dumps(_settings_diff(ctx), ensure_ascii=False, indent=2))
+        zf.writestr(
+            "summary.json",
+            json.dumps(redactor.document(rec["summary"]), ensure_ascii=False, indent=2),
+        )
+        zf.writestr(
+            "settings_diff.json",
+            json.dumps(_settings_diff(ctx), ensure_ascii=False, indent=2),
+        )
         yield sink.drain()
         for stream in _stream_ids(store, rid):
-            lines = (_json_line(event) for event in _events(store, rid, stream, redactor))
+            lines = (
+                _json_line(event) for event in _events(store, rid, stream, redactor)
+            )
             yield from _zip_member_from_lines(zf, sink, f"events/{stream}.jsonl", lines)
         if not redactor:
             for path in store.trace_files(rid):
@@ -310,7 +363,7 @@ def _zip_chunks(store: RecordingStore, rid: str, rec: Mapping[str, Any], redacto
 
 # ---------------------------------------------------------------------------------------- trace
 def _file_chunks(path: Path) -> Iterator[bytes]:
-    with open(path, "rb") as fh:
+    with path.open("rb") as fh:
         while block := fh.read(FILE_BLOCK_BYTES):
             yield block
 
@@ -332,20 +385,35 @@ def _export_trace(store: RecordingStore, rid: str, redactor: Redactor) -> Export
         )
     files = store.trace_files(rid)
     if not files:
-        raise ComponentError("TRACE_UNAVAILABLE", "此 recording 沒有 trace（只有 trace 模式且 backend 可用時才會產生）")
+        raise ComponentError(
+            "TRACE_UNAVAILABLE",
+            "此 recording 沒有 trace（只有 trace 模式且 backend 可用時才會產生）",
+        )
     if len(files) == 1:
-        return ExportResult(_file_chunks(files[0]), "application/json", f"{rid}-{files[0].name}")
+        return ExportResult(
+            _file_chunks(files[0]), "application/json", f"{rid}-{files[0].name}"
+        )
     return ExportResult(_trace_zip_chunks(files), "application/zip", f"{rid}-trace.zip")
 
 
-def export(store: RecordingStore, recording_id: str, fmt: str, *, redact: Iterable[str] = frozenset()) -> ExportResult:
+def export(
+    store: RecordingStore,
+    recording_id: str,
+    fmt: str,
+    *,
+    redact: Iterable[str] = frozenset(),
+) -> ExportResult:
     """Stream one recording as ``fmt`` (see the module docstring); ``redact`` takes categories or ``all``."""
     if fmt not in EXPORT_FORMATS:
-        raise ComponentError("INVALID_ARGUMENT", "format 必須是 jsonl、csv、zip 或 trace")
+        raise ComponentError(
+            "INVALID_ARGUMENT", "format 必須是 jsonl、csv、zip 或 trace"
+        )
     try:
         redactor = Redactor(redact)
     except ValueError as exc:
-        raise ComponentError("INVALID_ARGUMENT", str(exc), details={"field": "redact"}) from exc
+        raise ComponentError(
+            "INVALID_ARGUMENT", str(exc), details={"field": "redact"}
+        ) from exc
     rec = store.get(recording_id)
     rid = str(rec["context"].get("recording_id") or recording_id).lower()
     if fmt == "trace":
@@ -356,7 +424,11 @@ def export(store: RecordingStore, recording_id: str, fmt: str, *, redact: Iterab
     if fmt == "csv":
         chunks = _batched(_csv_lines(_csv_rows(store, rid, rec, redactor)))
         return ExportResult(chunks, "text/csv; charset=utf-8", f"recording-{rid}.csv")
-    return ExportResult(_zip_chunks(store, rid, rec, redactor), "application/zip", f"diagnostic-{rid}.zip")
+    return ExportResult(
+        _zip_chunks(store, rid, rec, redactor),
+        "application/zip",
+        f"diagnostic-{rid}.zip",
+    )
 
 
 __all__ = ["CSV_HEADER", "EXPORT_FORMATS", "ExportResult", "csv_safe", "export"]

@@ -135,7 +135,7 @@ export function materialTags(drafts: readonly MaterialDraft[]): Map<string, Mate
     ),
   );
   const tags = new Map<string, MaterialTag>();
-  ordered.forEach((draft, index) => tags.set(draft.key, { tag: labels[index]?.label ?? null, soundtrack: labels[index]?.soundtrack ?? null }));
+  ordered.forEach((draft, index) => void tags.set(draft.key, { tag: labels[index]?.label ?? null, soundtrack: labels[index]?.soundtrack ?? null }));
   return tags;
 }
 
@@ -156,7 +156,7 @@ export function parseSeconds(text: string): number | null {
 function neighbour(ordered: readonly MaterialDraft[], index: number, direction: -1 | 1): number | null {
   const current = ordered[index];
   const target = ordered[index + direction];
-  return current && target && target.role === current.role ? index + direction : null;
+  return current && target?.role === current.role ? index + direction : null;
 }
 
 export function canMoveMaterial(drafts: readonly MaterialDraft[], key: string, direction: -1 | 1): boolean {

@@ -77,7 +77,7 @@ export function batchReason(shot: StudioShot, project: StudioProject): BatchReas
 export function lanesLine(routes: readonly StudioRoute[], lanes: readonly string[], count: number): string {
   if (lanes.length < MIN_LANES) return t("把 {pendingCount} 個鏡頭放進同一個 run 依序渲染", { pendingCount: count });
   const problem = lanesProblem(routes, lanes);
-  if (problem) return t("DiT 分流有問題，按下會被擋下：{problem}", { problem });
+  if (problem != null && problem !== "") return t("DiT 分流有問題，按下會被擋下：{problem}", { problem });
   const ready = readyLanes(routes, lanes).length;
   if (ready === 0) return t("分流的 {count} 條元件組合都未就緒，按下會被擋下", { count: lanes.length });
   return ready < lanes.length

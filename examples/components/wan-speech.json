@@ -1,0 +1,26 @@
+{
+  "component_id": "wan-speech",
+  "label": "Wan2.2 音訊驅動角色生成",
+  "provider_id": "wan.speech",
+  "runtime_id": "wan-native",
+  "autostart": false,
+  "folder": "生成/影片/Wan",
+  "settings": {
+    "load": {
+      "model_path": "/path/to/models/Wan2.2-S2V-14B",
+      "model_revision": "dab4e9c55bbe4c8c4d03db1c2c98c7f0ac9c454b",
+      "device": {
+        "kind": "cuda",
+        "id": "GPU-REPLACE-0",
+        "resource_group": "gpu-0"
+      },
+      "provider_options": {
+        "engine_path": "/path/to/engines/Wan2.2-1ea34ff"
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "mode": "detailed"
+    }
+  }
+}

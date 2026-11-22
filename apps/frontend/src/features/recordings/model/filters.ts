@@ -1,3 +1,4 @@
+import { isListed } from "@/lib/json";
 import { t } from "@/i18n";
 // 紀錄篩選與 URL search params 同步。since／until 在 URL 與 API 都是 UTC RFC3339；
 // 輸入框是本地時間（datetime-local），轉換只在這裡做一次。
@@ -37,7 +38,7 @@ export function filtersFromSearch(params: URLSearchParams): RecordingFilters {
   const filters: RecordingFilters = {};
   for (const key of FILTER_KEYS) {
     const value = params.get(key)?.trim();
-    if (value) filters[key] = value;
+    if (value != null && value !== "") filters[key] = value;
   }
   return filters;
 }
@@ -47,7 +48,7 @@ export function withFilters(params: URLSearchParams, filters: RecordingFilters):
   const next = new URLSearchParams(params);
   for (const key of FILTER_KEYS) {
     const value = filters[key]?.trim();
-    if (value) next.set(key, value);
+    if (value != null && value !== "") next.set(key, value);
     else next.delete(key);
   }
   return next;
@@ -60,7 +61,7 @@ export function activeFilterCount(filters: RecordingFilters): number {
 /** 穩定的查詢鍵（鍵順序固定），讓 react-query 快取不因物件鍵序不同而重抓。 */
 export function filtersKey(filters: RecordingFilters): RecordingFilters {
   const ordered: RecordingFilters = {};
-  for (const key of FILTER_KEYS) if (filters[key]) ordered[key] = filters[key];
+  for (const key of FILTER_KEYS) if (filters[key] != null && filters[key] !== "") ordered[key] = filters[key];
   return ordered;
 }
 
@@ -84,10 +85,10 @@ function pad(value: number): string {
 
 /** UTC RFC3339 → datetime-local 值（本地時間，到分；有秒時保留秒）。無法解析回傳空字串。 */
 export function utcToLocalInput(iso: string | undefined): string {
-  if (!iso) return "";
+  if (!(iso != null && iso !== "")) return "";
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return "";
-  const base = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const base = `${String(date.getFullYear())}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
   return date.getSeconds() ? `${base}:${pad(date.getSeconds())}` : base;
 }
 
@@ -97,7 +98,7 @@ export type CenterTab = (typeof CENTER_TABS)[number];
 
 /** ?tab= → 中欄頁籤；沒有或不認得的值是摘要。 */
 export function parseCenterTab(value: string | null): CenterTab {
-  return (CENTER_TABS as readonly string[]).includes(value ?? "") ? (value as CenterTab) : "summary";
+  return isListed(value, CENTER_TABS) ? value : "summary";
 }
 
 /** 回到紀錄列表的 search（含「?」）：只保留篩選鍵，不帶 tab、stream 等明細參數。 */

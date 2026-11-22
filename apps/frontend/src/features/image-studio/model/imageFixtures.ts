@@ -38,7 +38,7 @@ export function component(node_id: string, component_id: string, provider_id: st
     state: opts.state ?? "ready",
     resourceGroup: opts.resourceGroup ?? RESOURCE_GROUP.gpu0,
     providerOptions: opts.options ?? {},
-    offload: opts.offload,
+    ...(opts.offload === undefined ? {} : { offload: opts.offload }),
     exclusive_group: opts.exclusiveGroup ?? null,
     parametersSchema: params === null ? {} : { type: "object", properties: Object.fromEntries(params.map((name) => [name, {}])), additionalProperties: false },
   });

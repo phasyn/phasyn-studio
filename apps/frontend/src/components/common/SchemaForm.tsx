@@ -1,19 +1,23 @@
 // Forms generated from the JSON schemas providers declare (settings, call parameters, part overrides). SchemaForm lays
 // out an object's fields and nested fieldsets; one field is SchemaField (schema-form/), its input FieldControl.
 import { Trash } from "lucide-react";
-import { useContext, useState } from "react";
+import { use, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { domId } from "@/lib/dom";
-import { isRecord, joinPath, previewValue, type JsonObject } from "@/lib/json";
-import { additionalPropertiesAllowed, describeField, hasDeclaredProperties, objectProperties, requiredKeys, type FieldInfo, type JsonSchema, type SchemaIssue } from "@/lib/schema";
+import { withRecordValue, isRecord, joinPath, previewValue, type JsonObject } from "@/lib/json";
+import { additionalPropertiesAllowed, describeField, hasDeclaredProperties, objectProperties, requiredKeys, schemaControl, type FieldInfo, type JsonSchema, type SchemaIssue } from "@/lib/schema";
 import { HelpButton, HelpText } from "./HelpTip";
 import { NullCheckbox } from "./schema-form/inputs";
+import { LoraStackField } from "./schema-form/LoraStackField";
+import { LORA_STACK_CONTROL } from "./schema-form/loraStackModel";
 import { SchemaField, type FieldMeta } from "./schema-form/SchemaField";
 import { useNullSwitch } from "./schema-form/useNullSwitch";
 import { SchemaDensityContext } from "./schemaDensity";
 import { t } from "@/i18n";
+
+const EMPTY_ITEMS = [] as const;
 
 export { SchemaField };
 export type { FieldMeta, SchemaFieldProps } from "./schema-form/SchemaField";
@@ -37,12 +41,7 @@ export interface SchemaFormProps {
   fieldMeta?: Readonly<Record<string, FieldMeta>>;
 }
 
-function setKey(record: JsonObject, key: string, next: unknown): JsonObject {
-  const out = { ...record };
-  if (next === undefined) delete out[key];
-  else out[key] = next;
-  return out;
-}
+
 
 /**
  * An object with declared fields (possibly nullable): a fieldset with a nested form. When nullable, the legend has a
@@ -86,14 +85,14 @@ function ObjectFieldset({
   const isNull = value === null;
   const own = issues.filter((issue) => issue.path === path);
   const caption = meta?.caption ?? info.title;
-  const compact = useContext(SchemaDensityContext) === "compact";
+  const compact = use(SchemaDensityContext) === "compact";
   return (
     <fieldset className={cn("grid min-w-0", compact ? "gap-1 pt-1" : "gap-3")} data-path={path} aria-describedby={help ? helpId : undefined}>
       <legend className={cn("flex flex-wrap items-center gap-2 text-data font-semibold text-fg", compact ? "mb-1" : "mb-2")}>
         <code className="machine">{name}</code>
-        {caption ? <span className="font-normal text-fg-secondary">{caption}</span> : null}
+        {(caption != null && caption !== "") ? <span className="font-normal text-fg-secondary">{caption}</span> : null}
         {required ? <Badge>{t("必填")}</Badge> : null}
-        {help ? <HelpButton open={helpOpen} onToggle={() => setHelpOpen((open) => !open)} controls={helpId} label={name} text={help} /> : null}
+        {help ? <HelpButton open={helpOpen} onToggle={() => { setHelpOpen((open) => !open); }} controls={helpId} label={name} text={help} /> : null}
         {info.nullable ? <NullCheckbox checked={isNull} onChange={setNull} name={name} disabled={disabled} /> : null}
       </legend>
       {help ? (
@@ -107,7 +106,7 @@ function ObjectFieldset({
       ) : (
         <SchemaForm
           schema={schema}
-          rootSchema={rootSchema}
+          {...(rootSchema === undefined ? {} : { rootSchema })}
           value={value}
           onChange={onChange}
           idPrefix={idPrefix}
@@ -134,15 +133,15 @@ export function SchemaForm({
   onChange,
   idPrefix,
   basePath = "",
-  issues = [],
+  issues = EMPTY_ITEMS,
   disabled = false,
   allowUnset = false,
-  hiddenKeys = [],
+  hiddenKeys = EMPTY_ITEMS,
   emptyText,
   depth = 0,
   fieldMeta,
 }: SchemaFormProps) {
-  const compact = useContext(SchemaDensityContext) === "compact";
+  const compact = use(SchemaDensityContext) === "compact";
   const record = isRecord(value) ? value : {};
   const hidden = new Set(hiddenKeys);
   const properties = objectProperties(schema, rootSchema).filter(([key]) => !hidden.has(key));
@@ -162,7 +161,22 @@ export function SchemaForm({
         const path = joinPath(basePath, key);
         const childValue = record[key];
         const meta = fieldMeta?.[key];
-        const update = (next: unknown) => onChange(setKey(record, key, next));
+        const update = (next: unknown) => { onChange(withRecordValue(record, key, next)); };
+        if (schemaControl(child, rootSchema) === LORA_STACK_CONTROL) {
+          return (
+            <LoraStackField
+              key={key}
+              name={key}
+              path={path}
+              idPrefix={idPrefix}
+              parent={record}
+              onParentChange={onChange}
+              disabled={disabled}
+              issues={issues}
+              description={meta?.help}
+            />
+          );
+        }
         if (childInfo.kind === "object" && hasDeclaredProperties(child, rootSchema) && depth < 6) {
           return (
             <ObjectFieldset
@@ -171,7 +185,7 @@ export function SchemaForm({
               path={path}
               schema={child}
               info={childInfo}
-              rootSchema={rootSchema}
+              {...(rootSchema === undefined ? {} : { rootSchema })}
               value={childValue}
               onChange={update}
               required={required.has(key)}
@@ -180,7 +194,7 @@ export function SchemaForm({
               allowUnset={allowUnset}
               idPrefix={idPrefix}
               depth={depth}
-              meta={meta}
+              {...(meta === undefined ? {} : { meta })}
             />
           );
         }
@@ -191,7 +205,7 @@ export function SchemaForm({
             path={path}
             idPrefix={idPrefix}
             schema={child}
-            rootSchema={rootSchema}
+            {...(rootSchema === undefined ? {} : { rootSchema })}
             value={childValue}
             onChange={update}
             required={required.has(key)}
@@ -218,7 +232,7 @@ export function SchemaForm({
                 <code className="machine text-fg">{joinPath(basePath, key)}</code>
                 <span className="machine text-fg-tertiary">{previewValue(record[key], 80)}</span>
                 {!disabled ? (
-                  <Button size="sm" variant="quiet" icon={<Trash aria-hidden />} onClick={() => onChange(setKey(record, key, undefined))}>
+                  <Button size="sm" variant="quiet" icon={<Trash aria-hidden />} onClick={() => { onChange(withRecordValue(record, key, undefined)); }}>
                     {t("從草稿移除")}
                   </Button>
                 ) : null}

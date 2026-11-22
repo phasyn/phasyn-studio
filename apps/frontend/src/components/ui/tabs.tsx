@@ -31,13 +31,13 @@ export function Tabs({
   /** sm：窄面板（例如 360 px 檢視器）用的緊湊頁籤。 */
   size?: "md" | "sm";
 }) {
-  const refs = useRef(new Map<string, HTMLButtonElement>());
+  const refsRef = useRef(new Map<string, HTMLButtonElement>());
   const listRef = useRef<HTMLDivElement>(null);
   const focusTab = (index: number) => {
     const item = items[(index + items.length) % items.length];
     if (!item) return;
     onChange(item.id);
-    refs.current.get(item.id)?.focus();
+    refsRef.current.get(item.id)?.focus();
   };
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     if (event.key === "ArrowRight") focusTab(index + 1);
@@ -55,8 +55,8 @@ export function Tabs({
           <button
             key={item.id}
             ref={(node) => {
-              if (node) refs.current.set(item.id, node);
-              else refs.current.delete(item.id);
+              if (node) refsRef.current.set(item.id, node);
+              else refsRef.current.delete(item.id);
             }}
             type="button"
             role="tab"
@@ -64,8 +64,8 @@ export function Tabs({
             aria-selected={selected}
             aria-controls={`${idPrefix}-panel-${item.id}`}
             tabIndex={selected ? 0 : -1}
-            onClick={() => onChange(item.id)}
-            onKeyDown={(event) => onKeyDown(event, index)}
+            onClick={() => { onChange(item.id); }}
+            onKeyDown={(event) => { onKeyDown(event, index); }}
             className={cn(
               "inline-flex shrink-0 items-center border-t-2 border-t-transparent whitespace-nowrap transition-colors duration-(--duration-fast)",
               size === "sm" ? "min-h-9 gap-1.5 px-2 text-data [&_svg]:size-3.5" : "min-h-10 gap-2 px-3 text-body [&_svg]:size-4",
@@ -85,7 +85,7 @@ export function Tabs({
 
 export function TabPanel({ idPrefix, id, children, className }: { idPrefix: string; id: string; children: ReactNode; className?: string }) {
   return (
-    <div role="tabpanel" id={`${idPrefix}-panel-${id}`} aria-labelledby={`${idPrefix}-tab-${id}`} tabIndex={0} className={className}>
+    <div role="tabpanel" id={`${idPrefix}-panel-${id}`} aria-labelledby={`${idPrefix}-tab-${id}`}  /* eslint-disable-line jsx-a11y-x/no-noninteractive-tabindex -- The tab panel is a keyboard destination even when its content has no interactive controls. */ tabIndex={0} className={className}>
       {children}
     </div>
   );

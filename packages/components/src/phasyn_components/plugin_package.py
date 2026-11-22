@@ -49,10 +49,15 @@ from .plugin_manifest import (
     parse_manifest,
 )
 
+
 PACKAGE_SUFFIX = ".phasynplugin"
 OCTET_STREAM = "application/octet-stream"
 # Bitmaps whose header was checked are the only files served with their own type.
-IMAGE_TYPES: Mapping[str, str] = {".png": "image/png", ".jpg": "image/jpeg", ".webp": "image/webp"}
+IMAGE_TYPES: Mapping[str, str] = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".webp": "image/webp",
+}
 TEXT_EXTENSIONS = frozenset({".json", ".js", ".md", ".txt", ".cube"})
 
 BLOCK_BYTES = 64 * 1024
@@ -79,7 +84,9 @@ _LOCAL_HEADER = struct.Struct("<4s5H3L2H")
 _LOCAL_HEADER_BYTES = _LOCAL_HEADER.size
 _DIRECTORY_RECORD = struct.Struct("<4s6H3L5H2L")
 _DIRECTORY_SIGNATURE = b"PK\x01\x02"
-_ENCRYPTION_FLAGS = 0x1 | 0x40 | 0x2000  # encrypted, strong encryption, masked local headers
+_ENCRYPTION_FLAGS = (
+    0x1 | 0x40 | 0x2000
+)  # encrypted, strong encryption, masked local headers
 _COMPRESSION = frozenset({zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED})
 # What a broken or hostile archive makes zipfile and zlib raise.
 _ARCHIVE_ERRORS = (
@@ -101,6 +108,11 @@ _EXPORT_DOS_DATE = (1 << 5) | 1
 _EXPORT_MODE = (stat.S_IFREG | 0o644) << 16
 
 
+_FILE_SIGNATURE_BYTES = 12
+_ZIP64_ENTRY_SENTINEL = 0xFFFF
+_ZIP64_OFFSET_SENTINEL = 0xFFFFFFFF
+
+
 @dataclass(frozen=True)
 class PackageFile:
     """One file of a package other than ``plugin.json`` (contract ``StudioPluginFile``)."""
@@ -111,7 +123,13 @@ class PackageFile:
     media_type: str
 
     def to_dict(self) -> dict[str, Any]:
-        return {"path": self.path, "size_bytes": self.size, "sha256": self.sha256, "media_type": self.media_type}
+        """Serialize the object to its wire representation."""
+        return {
+            "path": self.path,
+            "size_bytes": self.size,
+            "sha256": self.sha256,
+            "media_type": self.media_type,
+        }
 
 
 @dataclass(frozen=True)
@@ -127,18 +145,22 @@ class Package:
 
     @property
     def plugin_id(self) -> str:
+        """Return the identifier declared by the package."""
         return str(self.manifest["id"])
 
     @property
     def version(self) -> str:
+        """Return the version declared by the package."""
         return str(self.manifest["version"])
 
     @property
     def size_bytes(self) -> int:
+        """Return the size of the package contents in bytes."""
         return self.manifest_size + sum(item.size for item in self.files)
 
     @property
     def file_count(self) -> int:
+        """Return the number of files represented in the package."""
         return len(self.files) + 1
 
     def file(self, path: str) -> PackageFile | None:
@@ -155,6 +177,7 @@ def package_digest(hashes: Mapping[str, str]) -> str:
 
 
 def archive_name(package: Package) -> str:
+    """Return the archive member name."""
     return f"{package.plugin_id}-{package.version}{PACKAGE_SUFFIX}"
 
 
@@ -190,10 +213,14 @@ def kind_allowed(path: str) -> bool:
 
 
 def size_limit(path: str, limits: PluginLimits) -> int:
-    return {MANIFEST_NAME: limits.manifest_bytes, MAIN_NAME: limits.main_bytes}.get(path, limits.file_bytes)
+    """Return the admitted size limit for this file."""
+    return {MANIFEST_NAME: limits.manifest_bytes, MAIN_NAME: limits.main_bytes}.get(
+        path, limits.file_bytes
+    )
 
 
 def media_type(path: str) -> str:
+    """Return the declared media type."""
     return IMAGE_TYPES.get(_extension(path), OCTET_STREAM)
 
 
@@ -220,8 +247,8 @@ class _ContentCheck:
 
     def feed(self, block: bytes) -> None:
         if self._image is not None:
-            if len(self._head) < 12:
-                self._head += block[: 12 - len(self._head)]
+            if len(self._head) < _FILE_SIGNATURE_BYTES:
+                self._head += block[: _FILE_SIGNATURE_BYTES - len(self._head)]
             return
         if not self._ok:
             return
@@ -252,16 +279,19 @@ class _Names:
     def __init__(self) -> None:
         self._seen: dict[str, tuple[str, bool]] = {}
 
-    def _take(self, path: str, is_dir: bool) -> bool:
+    def _take(self, path: str, *, is_dir: bool) -> bool:
         known = self._seen.setdefault(path.lower(), (path, is_dir))
         return known == (path, is_dir) and is_dir
 
     def add(self, path: str, *, is_dir: bool) -> bool:
         """Record ``path`` and its parent directories; False when it clashes with an earlier entry."""
         parts = path.split("/")
-        parents_ok = all(self._take("/".join(parts[:depth]), True) for depth in range(1, len(parts)))
+        parents_ok = all(
+            self._take("/".join(parts[:depth]), is_dir=True)
+            for depth in range(1, len(parts))
+        )
         if is_dir:
-            return parents_ok and self._take(path, True)
+            return parents_ok and self._take(path, is_dir=True)
         fresh = path.lower() not in self._seen
         self._seen.setdefault(path.lower(), (path, False))
         return parents_ok and fresh
@@ -270,8 +300,14 @@ class _Names:
 # ---------------------------------------------------------------------------------------------- file system
 def _io_error(exc: OSError, what: str) -> ComponentError:
     if exc.errno == errno.ENOSPC:
-        return ComponentError("DISK_FULL", f"{what}：磁碟已滿", details={"errno": exc.errno})
-    return ComponentError("RUNTIME_ERROR", f"{what}：{exception_message(exc)}", details={"errno": exc.errno})
+        return ComponentError(
+            "DISK_FULL", f"{what}：磁碟已滿", details={"errno": exc.errno}
+        )
+    return ComponentError(
+        "RUNTIME_ERROR",
+        f"{what}：{exception_message(exc)}",
+        details={"errno": exc.errno},
+    )
 
 
 def _open_parent(root_fd: int, parts: list[str], *, create: bool) -> int:
@@ -315,19 +351,31 @@ def open_file(root: Path, path: str) -> BinaryIO:
         finally:
             os.close(root_fd)
     except OSError as exc:
-        raise (missing if exc.errno in _NOT_A_FILE else _io_error(exc, "無法讀取插件包的檔案")) from exc
+        raise (
+            missing
+            if exc.errno in _NOT_A_FILE
+            else _io_error(exc, "無法讀取插件包的檔案")
+        ) from exc
     try:
-        if not stat.S_ISREG(os.fstat(fd).st_mode):
-            raise missing
+        _require_regular_member(fd, missing)
         return os.fdopen(fd, "rb")
     except BaseException:
         os.close(fd)
         raise
 
 
+def _require_regular_member(fd: int, missing: ComponentError) -> None:
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        raise missing
+
+
 def _fsync_tree(root: Path, paths: list[str]) -> None:
     """Persist the directory entries of an unpacked package (each file was synced when it was written)."""
-    directories = {"/".join(path.split("/")[:depth]) for path in paths for depth in range(len(path.split("/")))}
+    directories = {
+        "/".join(path.split("/")[:depth])
+        for path in paths
+        for depth in range(len(path.split("/")))
+    }
     for relative in sorted(directories):
         fsync_dir(root / relative if relative else root)
 
@@ -357,14 +405,25 @@ def _check_layout(handle: BinaryIO, limits: PluginLimits) -> tuple[int, int]:
         raise invalid([issue("archive_unreadable", reason="no end record")])
     if found != len(tail) - _END_RECORD.size:
         raise invalid([issue("archive_layout", reason="comment or trailing data")])
-    _, disk, directory_disk, here, total, directory_size, offset, comment = _END_RECORD.unpack(tail[found:])
+    _, disk, directory_disk, here, total, directory_size, offset, comment = (
+        _END_RECORD.unpack(tail[found:])
+    )
     locator = tail[max(0, found - _ZIP64_LOCATOR_BYTES) : found]
-    zip64 = total == 0xFFFF or 0xFFFFFFFF in (directory_size, offset) or locator.startswith(_ZIP64_LOCATOR)
+    zip64 = (
+        total == _ZIP64_ENTRY_SENTINEL
+        or _ZIP64_OFFSET_SENTINEL in (directory_size, offset)
+        or locator.startswith(_ZIP64_LOCATOR)
+    )
     if zip64 or comment or disk or directory_disk or here != total:
-        raise invalid([issue("archive_layout", reason="zip64, comment or several disks")])
+        raise invalid(
+            [issue("archive_layout", reason="zip64, comment or several disks")]
+        )
     if total > limits.files:
         raise invalid([issue("too_many_files", count=total, limit=limits.files)])
-    if directory_size > limits.central_directory_bytes or offset + directory_size != size - _END_RECORD.size:
+    if (
+        directory_size > limits.central_directory_bytes
+        or offset + directory_size != size - _END_RECORD.size
+    ):
         raise invalid([issue("archive_layout", reason="central directory")])
     handle.seek(0)
     if total and handle.read(len(_LOCAL_SIGNATURE)) != _LOCAL_SIGNATURE:
@@ -386,13 +445,25 @@ def _check_members(entries: list[zipfile.ZipInfo], directory_offset: int) -> Non
     if ordered[0].header_offset != 0:
         raise invalid([issue("archive_layout", reason="data before the first entry")])
     # A member takes at least its header and its compressed bytes; the next one, or the directory, starts after it.
-    ends = [info.header_offset + _LOCAL_HEADER_BYTES + info.compress_size for info in ordered]
+    ends = [
+        info.header_offset + _LOCAL_HEADER_BYTES + info.compress_size
+        for info in ordered
+    ]
     starts = [*(info.header_offset for info in ordered[1:]), directory_offset]
     if any(end > start for end, start in zip(ends, starts, strict=True)):
-        raise invalid([issue("archive_layout", reason="entries overlap or lie outside the archive")])
+        raise invalid(
+            [
+                issue(
+                    "archive_layout",
+                    reason="entries overlap or lie outside the archive",
+                )
+            ]
+        )
 
 
-def _entry_issue(info: zipfile.ZipInfo, path: str, is_dir: bool, limits: PluginLimits) -> Issue | None:
+def _entry_issue(
+    info: zipfile.ZipInfo, path: str, *, is_dir: bool, limits: PluginLimits
+) -> Issue | None:
     """What is wrong with one archive entry, judged from the central directory alone."""
     shown = _shown(path)
     if info.filename != info.orig_filename or not path_allowed(path, limits):
@@ -405,9 +476,15 @@ def _entry_issue(info: zipfile.ZipInfo, path: str, is_dir: bool, limits: PluginL
     if kind not in (0, stat.S_IFDIR if is_dir else stat.S_IFREG):
         return issue("link_not_allowed", path=path)
     if is_dir:
-        return issue("size_mismatch", path=path) if info.file_size or info.compress_size else None
+        return (
+            issue("size_mismatch", path=path)
+            if info.file_size or info.compress_size
+            else None
+        )
     problem = _file_issue(path, info.file_size, limits)
-    if problem is None and info.file_size > limits.compression_ratio * max(info.compress_size, 1):
+    if problem is None and info.file_size > limits.compression_ratio * max(
+        info.compress_size, 1
+    ):
         problem = issue("ratio_too_high", path=path, limit=limits.compression_ratio)
     return problem
 
@@ -426,7 +503,7 @@ def _archive_files(
     for info in entries:
         is_dir = info.orig_filename.endswith("/")
         path = info.orig_filename[:-1] if is_dir else info.orig_filename
-        problem = _entry_issue(info, path, is_dir, limits)
+        problem = _entry_issue(info, path, is_dir=is_dir, limits=limits)
         if problem is None and not names.add(path, is_dir=is_dir):
             problem = issue("duplicate_path", path=path)
         if problem is not None:
@@ -435,7 +512,9 @@ def _archive_files(
             files[path] = info
     total = sum(info.file_size for info in files.values())
     if total > limits.unpacked_bytes:
-        problems.append(issue("total_too_large", size=total, limit=limits.unpacked_bytes))
+        problems.append(
+            issue("total_too_large", size=total, limit=limits.unpacked_bytes)
+        )
     if MANIFEST_NAME not in files:
         problems.append(issue("manifest_missing", path=MANIFEST_NAME))
     if problems:
@@ -472,7 +551,9 @@ def _file_set_issues(manifest: Mapping[str, Any], paths: set[str]) -> list[Issue
     """``integrity.files`` must list exactly the files other than the manifest; ``main`` and main.js come together."""
     listed = set(manifest["integrity"]["files"])
     actual = paths - {MANIFEST_NAME}
-    problems = [issue("integrity_files_mismatch", path=path) for path in sorted(listed ^ actual)]
+    problems = [
+        issue("integrity_files_mismatch", path=path) for path in sorted(listed ^ actual)
+    ]
     if ("main" in manifest) != (MAIN_NAME in actual):
         problems.append(issue("main_mismatch", path=MAIN_NAME))
     return problems
@@ -485,7 +566,9 @@ class _Measured:
     content_ok: bool
 
 
-def _measure(path: str, blocks: Iterator[bytes], sink: BinaryIO | None = None) -> _Measured:
+def _measure(
+    path: str, blocks: Iterator[bytes], sink: BinaryIO | None = None
+) -> _Measured:
     """Hash, count and check a file's blocks, writing them to ``sink`` when there is one."""
     digest = hashlib.sha256()
     check = _ContentCheck(path)
@@ -500,14 +583,24 @@ def _measure(path: str, blocks: Iterator[bytes], sink: BinaryIO | None = None) -
 
 
 def _verified(
-    manifest: Mapping[str, Any], manifest_data: bytes, measured: Mapping[str, _Measured], declared: Mapping[str, int]
+    manifest: Mapping[str, Any],
+    manifest_data: bytes,
+    measured: Mapping[str, _Measured],
+    declared: Mapping[str, int],
 ) -> tuple[tuple[PackageFile, ...], str]:
     """The package's files and digest once every file has its declared size, its kind and its listed hash."""
     listed = manifest["integrity"]["files"]
     problems = []
     for path, found in sorted(measured.items()):
         if found.size != declared[path]:
-            problems.append(issue("size_mismatch", path=path, declared=declared[path], actual=found.size))
+            problems.append(
+                issue(
+                    "size_mismatch",
+                    path=path,
+                    declared=declared[path],
+                    actual=found.size,
+                )
+            )
         elif not found.content_ok:
             problems.append(issue("content_mismatch", path=path))
         elif found.sha256 != listed[path]:
@@ -515,9 +608,13 @@ def _verified(
     if problems:
         raise invalid(problems)
     files = tuple(
-        PackageFile(path, found.size, found.sha256, media_type(path)) for path, found in sorted(measured.items())
+        PackageFile(path, found.size, found.sha256, media_type(path))
+        for path, found in sorted(measured.items())
     )
-    hashes = {MANIFEST_NAME: hashlib.sha256(manifest_data).hexdigest(), **{item.path: item.sha256 for item in files}}
+    hashes = {
+        MANIFEST_NAME: hashlib.sha256(manifest_data).hexdigest(),
+        **{item.path: item.sha256 for item in files},
+    }
     return files, package_digest(hashes)
 
 
@@ -547,27 +644,37 @@ def _unpack(handle: BinaryIO, dest: Path, limits: PluginLimits) -> Package:
         try:
             _write_file(root_fd, MANIFEST_NAME, iter([manifest_data]))
             others = sorted(set(entries) - {MANIFEST_NAME})
-            measured = {path: _write_file(root_fd, path, _member_blocks(bundle, entries[path])) for path in others}
+            measured = {
+                path: _write_file(root_fd, path, _member_blocks(bundle, entries[path]))
+                for path in others
+            }
         finally:
             os.close(root_fd)
-    files, digest = _verified(manifest, manifest_data, measured, {path: entries[path].file_size for path in measured})
+    files, digest = _verified(
+        manifest,
+        manifest_data,
+        measured,
+        {path: entries[path].file_size for path in measured},
+    )
     _fsync_tree(dest, [MANIFEST_NAME, *measured])
     manifest_sha256 = hashlib.sha256(manifest_data).hexdigest()
     return Package(dest, manifest, len(manifest_data), manifest_sha256, files, digest)
 
 
-def unpack_archive(archive: Path, dest: Path, *, limits: PluginLimits = LIMITS) -> Package:
+def unpack_archive(
+    archive: Path, dest: Path, *, limits: PluginLimits = LIMITS
+) -> Package:
     """Validate the uploaded archive and unpack it into the new directory ``dest`` (its parent must exist).
 
     Raises 422 ``STUDIO_PLUGIN_INVALID`` for anything the package rules refuse. On every failure ``dest`` is
     removed again, so a refused package leaves nothing behind.
     """
     try:
-        os.mkdir(dest, 0o700)
+        dest.mkdir(mode=0o700)
     except OSError as exc:
         raise _io_error(exc, "無法建立插件的暫存目錄") from exc
     try:
-        with open(archive, "rb") as handle:
+        with archive.open("rb") as handle:
             return _unpack(handle, dest, limits)
     except OSError as exc:
         shutil.rmtree(dest, ignore_errors=True)
@@ -612,7 +719,11 @@ class _Scan:
 
     def _file(self, path: str, facts: os.stat_result) -> None:
         linked = self._single_link and facts.st_nlink != 1
-        problem = issue("link_not_allowed", path=path) if linked else _file_issue(path, facts.st_size, self._limits)
+        problem = (
+            issue("link_not_allowed", path=path)
+            if linked
+            else _file_issue(path, facts.st_size, self._limits)
+        )
         if problem is None:
             self.sizes[path] = facts.st_size
         else:
@@ -634,33 +745,59 @@ def _file_blocks(root_fd: int, path: str, limit: int) -> Iterator[bytes]:
             yield block
 
 
-def _load(root: Path, root_fd: int, limits: PluginLimits, *, builtin: bool, linked: bool) -> Package:
+def _load(
+    root: Path, root_fd: int, limits: PluginLimits, *, builtin: bool, linked: bool
+) -> Package:
     scan = _Scan(limits, single_link=not linked)
     scan.directory(root_fd)
     sizes = scan.sizes
-    problems = sorted(scan.problems, key=lambda item: (str(item["path"]), str(item["code"])))
+    problems = sorted(
+        scan.problems, key=lambda item: (str(item["path"]), str(item["code"]))
+    )
     names = _Names()
-    problems += [issue("duplicate_path", path=path) for path in sorted(sizes) if not names.add(path, is_dir=False)]
+    problems += [
+        issue("duplicate_path", path=path)
+        for path in sorted(sizes)
+        if not names.add(path, is_dir=False)
+    ]
     if sum(sizes.values()) > limits.unpacked_bytes:
-        problems.append(issue("total_too_large", size=sum(sizes.values()), limit=limits.unpacked_bytes))
+        problems.append(
+            issue(
+                "total_too_large", size=sum(sizes.values()), limit=limits.unpacked_bytes
+            )
+        )
     if MANIFEST_NAME not in sizes:
         problems.append(issue("manifest_missing", path=MANIFEST_NAME))
     if problems:
         raise invalid(problems)
     manifest_data = b"".join(_file_blocks(root_fd, MANIFEST_NAME, sizes[MANIFEST_NAME]))
-    if len(manifest_data) != sizes[MANIFEST_NAME]:  # it changed while the directory was read
+    if (
+        len(manifest_data) != sizes[MANIFEST_NAME]
+    ):  # it changed while the directory was read
         raise invalid([issue("size_mismatch", path=MANIFEST_NAME)])
     manifest = parse_manifest(manifest_data, builtin=builtin)
     problems = _file_set_issues(manifest, set(sizes))
     if problems:
         raise invalid(problems)
     others = sorted(set(sizes) - {MANIFEST_NAME})
-    measured = {path: _measure(path, _file_blocks(root_fd, path, sizes[path])) for path in others}
+    measured = {
+        path: _measure(path, _file_blocks(root_fd, path, sizes[path]))
+        for path in others
+    }
     files, digest = _verified(manifest, manifest_data, measured, sizes)
-    return Package(root, manifest, len(manifest_data), hashlib.sha256(manifest_data).hexdigest(), files, digest)
+    return Package(
+        root,
+        manifest,
+        len(manifest_data),
+        hashlib.sha256(manifest_data).hexdigest(),
+        files,
+        digest,
+    )
 
 
-def load_directory(root: Path, *, builtin: bool, limits: PluginLimits = LIMITS, linked: bool = False) -> Package:
+def load_directory(
+    root: Path, *, builtin: bool, limits: PluginLimits = LIMITS, linked: bool = False
+) -> Package:
     """Validate an unpacked package in place: a built-in package, a development directory or an installed one.
 
     The rules are those of :func:`unpack_archive`. A file with several hard links is refused in a development
@@ -672,11 +809,15 @@ def load_directory(root: Path, *, builtin: bool, limits: PluginLimits = LIMITS, 
     try:
         root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY)
     except OSError as exc:
-        raise invalid([issue("file_unreadable", reason=exception_message(exc))]) from exc
+        raise invalid(
+            [issue("file_unreadable", reason=exception_message(exc))]
+        ) from exc
     try:
         return _load(root, root_fd, limits, builtin=builtin, linked=linked or builtin)
     except OSError as exc:
-        raise invalid([issue("file_unreadable", reason=exception_message(exc))]) from exc
+        raise invalid(
+            [issue("file_unreadable", reason=exception_message(exc))]
+        ) from exc
     finally:
         os.close(root_fd)
 
@@ -686,7 +827,9 @@ def _read_verified(package: Package, path: str, size: int, sha256: str) -> bytes
     with open_file(package.root, path) as source:
         data = source.read(size + 1)
     if len(data) != size or hashlib.sha256(data).hexdigest() != sha256:
-        raise ComponentError("STATE_CONFLICT", "插件包的內容在載入之後被改動；請重新載入或重新安裝")
+        raise ComponentError(
+            "STATE_CONFLICT", "插件包的內容在載入之後被改動；請重新載入或重新安裝"
+        )
     return data
 
 
@@ -722,9 +865,10 @@ def _packed(data: bytes, limits: PluginLimits) -> tuple[int, bytes]:
     return zipfile.ZIP_DEFLATED, packed
 
 
-def write_archive(package: Package, target: IO[bytes], *, limits: PluginLimits = LIMITS) -> None:
-    """Pack a loaded package as a ``.phasynplugin`` archive: ``plugin.json`` first, then the files by path, with
-    fixed timestamps and modes. Each file is read again and must still have its validated size and hash.
+def write_archive(
+    package: Package, target: IO[bytes], *, limits: PluginLimits = LIMITS
+) -> None:
+    """Pack a loaded package as a ``.phasynplugin`` archive: ``plugin.json`` first, then the files by path, with fixed timestamps and modes. Each file is read again and must still have its validated size and hash.
 
     The archive is written here, not by zipfile: its writer cannot keep a very compressible file within the
     compression ratio (it could only store such a file, which makes an export many times larger than the upload).
@@ -738,16 +882,40 @@ def write_archive(package: Package, target: IO[bytes], *, limits: PluginLimits =
         method, packed = _packed(data, limits)
         name = path.encode("ascii")
         crc = zlib.crc32(data)
-        fields = (0, method, _EXPORT_DOS_TIME, _EXPORT_DOS_DATE, crc, len(packed), len(data), len(name), 0)
-        target.write(_LOCAL_HEADER.pack(_LOCAL_SIGNATURE, _EXPORT_VERSION, *fields) + name)
+        fields = (
+            0,
+            method,
+            _EXPORT_DOS_TIME,
+            _EXPORT_DOS_DATE,
+            crc,
+            len(packed),
+            len(data),
+            len(name),
+            0,
+        )
+        target.write(
+            _LOCAL_HEADER.pack(_LOCAL_SIGNATURE, _EXPORT_VERSION, *fields) + name
+        )
         target.write(packed)
         directory += _DIRECTORY_RECORD.pack(
-            _DIRECTORY_SIGNATURE, _EXPORT_MADE_BY, _EXPORT_VERSION, *fields, 0, 0, 0, _EXPORT_MODE, offset
+            _DIRECTORY_SIGNATURE,
+            _EXPORT_MADE_BY,
+            _EXPORT_VERSION,
+            *fields,
+            0,
+            0,
+            0,
+            _EXPORT_MODE,
+            offset,
         )
         directory += name
         offset += _LOCAL_HEADER.size + len(name) + len(packed)
     target.write(directory)
-    target.write(_END_RECORD.pack(_END_SIGNATURE, 0, 0, len(members), len(members), len(directory), offset, 0))
+    target.write(
+        _END_RECORD.pack(
+            _END_SIGNATURE, 0, 0, len(members), len(members), len(directory), offset, 0
+        )
+    )
 
 
 __all__ = [

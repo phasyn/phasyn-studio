@@ -37,7 +37,7 @@ function ScopeList({ lines, label }: { lines: readonly ScopeLine[]; label: strin
   return (
     <ul className="grid gap-2 text-data" aria-label={label}>
       {lines.map((line, index) => (
-        <li key={`${line.icon}-${index}`} className={cn("flex items-start gap-2 [&_svg]:mt-0.5 [&_svg]:size-4 [&_svg]:shrink-0", TONE_CLASS[line.tone])}>
+        <li key={`${line.icon}-${String(index)}`} className={cn("flex items-start gap-2 [&_svg]:mt-0.5 [&_svg]:size-4 [&_svg]:shrink-0", TONE_CLASS[line.tone])}>
           {ICONS[line.icon]}
           <span>{line.text}</span>
         </li>
@@ -64,7 +64,7 @@ export function DeleteStudyDialog({
   const [result, setResult] = useState<PromptStudyDeletionPlan | null>(null);
   const [error, setError] = useState<unknown>(null);
   /** 開啟對話框的按鈕（研究頁或列表檢視器的「刪除…」）：刪除成功後它會跟著研究頁或選取一起消失。 */
-  const opener = useRef<HTMLElement | null>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
   // 研究的名稱在刪除後仍要顯示（列表重新讀取後 study 會變成空的）：記下最後一次看到的名稱
   const [shownTitle, setShownTitle] = useState(study?.title ?? "");
   if (study && study.title !== shownTitle) setShownTitle(study.title);
@@ -79,16 +79,16 @@ export function DeleteStudyDialog({
   });
   const blocked = plan.data ? deleteBlockReason(plan.data) : null;
   // 刪到一半停下來時，主控在錯誤的 details 附上已處理的項目（status=deleted）；照實列出
-  const partial = error ? normalizeDeletionPlan(toErrorInfo(error).details, studyId, mode) : null;
+  const partial = (error != null) ? normalizeDeletionPlan(toErrorInfo(error).details, studyId, mode) : null;
 
   const close = (next: boolean) => {
     if (pending) return;
-    if (!next && result?.deleted) onDeleted(result);
+    if (!next && (result?.deleted === true)) onDeleted(result);
     onOpenChange(next);
   };
 
   const confirm = async () => {
-    if (!study || pending || !plan.data || blocked) return;
+    if (!study || pending || !plan.data || (blocked != null && blocked !== "")) return;
     setPending(true);
     setError(null);
     try {
@@ -109,7 +109,7 @@ export function DeleteStudyDialog({
       <DialogContent
         onOpenAutoFocus={() => {
           const active = document.activeElement;
-          opener.current = active instanceof HTMLElement && active !== document.body ? active : null;
+          openerRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
         }}
         // 開啟它的按鈕還在（取消、刪除失敗）就照常回到它；刪除後它不在了，焦點改到頁面標題，不掉到 body
         onCloseAutoFocus={(event) => {
@@ -117,7 +117,7 @@ export function DeleteStudyDialog({
           setResult(null);
           setError(null);
           setMode("keep_images");
-          returnFocusOr(event, opener.current, pageFocusTarget());
+          returnFocusOr(event, openerRef.current, pageFocusTarget());
         }}
       >
         <DialogHeader>
@@ -132,7 +132,7 @@ export function DeleteStudyDialog({
               <fieldset className="grid gap-2">
                 <legend className="mb-1 text-data font-medium text-fg-secondary">{t("刪除方式")}</legend>
                 {DELETE_MODES.map((item) => (
-                  <label
+                  <label aria-label={[item.label, item.description].join(" ")}
                     key={item.mode}
                     htmlFor={`${id}-${item.mode}`}
                     className="pressable flex cursor-pointer items-start gap-3 rounded-lg border border-line-subtle p-3 hover:border-line-control has-checked:border-brand-blue/55 has-checked:bg-brand-gradient-soft has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-focus"
@@ -144,7 +144,7 @@ export function DeleteStudyDialog({
                       className="mt-1 size-4 accent-action"
                       checked={mode === item.mode}
                       disabled={pending}
-                      onChange={() => setMode(item.mode)}
+                      onChange={() => { setMode(item.mode); }}
                     />
                     <span className="grid gap-0.5">
                       <span className="text-data font-medium text-fg">{item.label}</span>
@@ -164,14 +164,14 @@ export function DeleteStudyDialog({
                   </p>
                 ) : plan.isError ? (
                   <ErrorCallout error={plan.error} title={t("無法試算刪除範圍（沒有刪除任何東西）")} onRetry={() => void plan.refetch()} retrying={plan.isFetching} />
-                ) : plan.data ? (
+                ) : (
                   <ScopeList lines={deleteScopeLines(plan.data, shownTitle)} label={t("刪除範圍")} />
-                ) : null}
+                )}
               </section>
             </>
           )}
-          {error ? <ErrorCallout error={error} write title={t("刪除沒有完成（不會自動重試）")} /> : null}
-          {partial && partial.runs.some((row) => row.status !== "planned") ? <ScopeList lines={deleteResultLines(partial)} label={t("停止前已處理的項目")} /> : null}
+          {(error != null) ? <ErrorCallout error={error} write title={t("刪除沒有完成（不會自動重試）")} /> : null}
+          {partial?.runs.some((row) => row.status !== "planned") === true ? <ScopeList lines={deleteResultLines(partial)} label={t("停止前已處理的項目")} /> : null}
           {result && !result.deleted ? (
             <p className="flex items-start gap-2 text-caption text-fg-secondary">
               <FileX2 aria-hidden className="mt-0.5 size-3.5 shrink-0" />
@@ -181,17 +181,17 @@ export function DeleteStudyDialog({
         </DialogBody>
         <DialogFooter>
           {result ? (
-            <Button variant="secondary" icon={result.deleted ? <CircleCheck aria-hidden /> : undefined} onClick={() => close(false)}>
+            <Button variant="secondary" icon={result.deleted ? <CircleCheck aria-hidden /> : undefined} onClick={() => { close(false); }}>
               {t("關閉")}
             </Button>
           ) : (
             <>
-              <Button variant="quiet" onClick={() => close(false)} disabled={pending}>
+              <Button variant="quiet" onClick={() => { close(false); }} disabled={pending}>
                 {t("取消")}
               </Button>
               <Button
                 variant="danger-confirm"
-                icon={blocked ? <Lock aria-hidden /> : <Trash2 aria-hidden />}
+                icon={(blocked != null && blocked !== "") ? <Lock aria-hidden /> : <Trash2 aria-hidden />}
                 pending={pending}
                 disabled={!plan.data || Boolean(blocked) || pending}
                 title={blocked ?? (!plan.data ? t("試算完成後才能刪除") : undefined)}

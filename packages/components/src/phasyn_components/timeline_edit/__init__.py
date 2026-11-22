@@ -10,12 +10,20 @@ passes in), shared by the Controller and its tests. The browser keeps its own in
 - :class:`TimelineRejected` is the typed refusal: a stable ``reason`` and a sentence for people.
 """
 
-from .commands import Applied, apply_command, apply_commands, check_command, execute_command, request_error
+from .commands import (
+    Applied,
+    apply_command,
+    apply_commands,
+    check_command,
+    execute_command,
+    request_error,
+)
 from .derived import continuity_frame, film_order, previous_shot
 from .export import Exporter, export_request
 from .model import AllocateId, Doc
 from .normalize import TIMELINE_VERSION, normalize_project
 from .rejection import REJECTED_CODE, TimelineRejected
+
 
 __all__ = [
     "REJECTED_CODE",

@@ -92,7 +92,7 @@ function ProjectAction({ plugin, onPickItems }: { plugin: StudioPlugin; onPickIt
   const selectable = pluginRefs(plugin);
   const blocked = !pluginUsable(plugin) ? t("這個包目前不能使用") : selectable.length === 0 ? t("這個包沒有可以在專案選用的內容") : null;
   const single = selectable.length === 1 ? enablePluginPlan(registry, project.refs, plugin) : null;
-  const singleBlocked = single && single.added.length === 0 ? t("現在加不進去（同一組已經選了別的，或已達上限）") : null;
+  const singleBlocked = single?.added.length === 0 ? t("現在加不進去（同一組已經選了別的，或已達上限）") : null;
   return (
     <>
       <ActionButton
@@ -119,7 +119,7 @@ function ProjectAction({ plugin, onPickItems }: { plugin: StudioPlugin; onPickIt
           anchor={{ kind: "element", element: menu.element }}
           returnFocus={menu.element}
           initialFocus={menu.focus}
-          onClose={() => setMenu(null)}
+          onClose={() => { setMenu(null); }}
         />
       ) : null}
     </>
@@ -134,10 +134,10 @@ function moreItems(plugin: StudioPlugin, manager: ManagerValue, actions: PluginA
       label: t("停用插件"),
       icon: PowerOff,
       disabledReason: sourceRefusal(plugin, "disable"),
-      onSelect: () => actions.setDisabled(plugin, true),
+      onSelect: () => { actions.setDisabled(plugin, true); },
     });
   }
-  if (plugin.source === "dev") items.push({ id: "reload", label: t("重新載入"), icon: RefreshCw, onSelect: () => actions.reload(plugin) });
+  if (plugin.source === "dev") items.push({ id: "reload", label: t("重新載入"), icon: RefreshCw, onSelect: () => { actions.reload(plugin); } });
   items.push({
     id: "remove",
     label: t("移除…"),
@@ -145,7 +145,7 @@ function moreItems(plugin: StudioPlugin, manager: ManagerValue, actions: PluginA
     tone: "danger",
     separatorBefore: items.length > 0,
     disabledReason: sourceRefusal(plugin, "remove") ?? (manager.registry.list?.install === "disabled" ? t("設定檔關閉了經 API 安裝與移除插件") : null),
-    onSelect: () => manager.requestRemove(plugin.plugin_id),
+    onSelect: () => { manager.requestRemove(plugin.plugin_id); },
   });
   return items;
 }
@@ -160,8 +160,8 @@ function MoreMenu({ plugin, actions }: { plugin: StudioPlugin; actions: PluginAc
         menuId={menuId}
         open={menu !== null}
         label={t("更多動作")}
-        onOpen={(element, focus) => setMenu({ element, focus })}
-        onClose={() => setMenu(null)}
+        onOpen={(element, focus) => { setMenu({ element, focus }); }}
+        onClose={() => { setMenu(null); }}
         className="size-10 border border-line-strong bg-raised text-fg-secondary shadow-edge [&_svg]:size-4"
       >
         <Ellipsis aria-hidden />
@@ -174,7 +174,7 @@ function MoreMenu({ plugin, actions }: { plugin: StudioPlugin; actions: PluginAc
           anchor={{ kind: "element", element: menu.element }}
           returnFocus={menu.element}
           initialFocus={menu.focus}
-          onClose={() => setMenu(null)}
+          onClose={() => { setMenu(null); }}
         />
       ) : null}
     </>
@@ -184,10 +184,10 @@ function MoreMenu({ plugin, actions }: { plugin: StudioPlugin; actions: PluginAc
 export function PluginDetail({ plugin }: { plugin: StudioPlugin }) {
   const actions = usePluginActions();
   const [tab, setTab] = useDetailTab();
-  const query = usePluginDetail(plugin.plugin_id, `${plugin.digest ?? ""}:${plugin.revision}`);
+  const query = usePluginDetail(plugin.plugin_id, `${plugin.digest ?? ""}:${String(plugin.revision)}`);
   const slideIn = useSlideIn<HTMLDivElement>();
   // 登錄表剛換了內容（更新、重新載入）而詳情還是舊的：等新的讀到再顯示
-  const detail = query.data && query.data.plugin.digest === plugin.digest ? query.data : null;
+  const detail = query.data?.plugin.digest === plugin.digest ? query.data : null;
   const state = { pending: query.isPending, error: query.error, retrying: query.isFetching, retry: () => void query.refetch() };
   return (
     <div ref={slideIn} className="flex min-h-0 flex-1 flex-col">
@@ -196,18 +196,18 @@ export function PluginDetail({ plugin }: { plugin: StudioPlugin }) {
         actions={
           <>
             {plugin.status === "disabled" ? (
-              <ActionButton variant="primary" icon={<Power aria-hidden />} pending={actions.pending.toggle} onClick={() => actions.setDisabled(plugin, false)}>
+              <ActionButton variant="primary" icon={<Power aria-hidden />} pending={actions.pending.toggle} onClick={() => { actions.setDisabled(plugin, false); }}>
                 {t("啟用插件")}
               </ActionButton>
             ) : (
-              <ProjectAction plugin={plugin} onPickItems={() => setTab("contents")} />
+              <ProjectAction plugin={plugin} onPickItems={() => { setTab("contents"); }} />
             )}
             <ActionButton
               variant="secondary"
               icon={<Download aria-hidden />}
               pending={actions.pending.export}
               disabledReason={plugin.status === "invalid" ? t("內容讀不到，無法匯出") : null}
-              onClick={() => actions.exportPackage(plugin)}
+              onClick={() => { actions.exportPackage(plugin); }}
             >
               {t("匯出")}
             </ActionButton>

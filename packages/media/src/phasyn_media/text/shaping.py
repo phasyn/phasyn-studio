@@ -37,6 +37,8 @@ class PlacedGlyph:
 
 @dataclass(frozen=True)
 class ShapedLine:
+    """Ordered glyph runs and the line advance."""
+
     width: int  # 26.6 sum of the advances
     glyphs: tuple[PlacedGlyph, ...]
 
@@ -59,7 +61,9 @@ def _cluster_ends(shaped: Sequence[ShapedGlyph], end: int) -> dict[int, int]:
 
 def _resolve(scripts: list[int]) -> list[int]:
     """Give the characters of one font run that have no script of their own their neighbour's."""
-    current = next((script for script in scripts if script not in WEAK_SCRIPTS), SCRIPT_COMMON)
+    current = next(
+        (script for script in scripts if script not in WEAK_SCRIPTS), SCRIPT_COMMON
+    )
     resolved = []
     for script in scripts:
         if script not in WEAK_SCRIPTS:
@@ -71,7 +75,10 @@ def _resolve(scripts: list[int]) -> list[int]:
 class LineShaper:
     """Shapes the lines of one item: one family, one weight, one pixel size (26.6)."""
 
-    def __init__(self, book: FontBook, harfbuzz: HarfBuzz, family: str, bold: bool, size: int) -> None:
+    def __init__(
+        self, book: FontBook, harfbuzz: HarfBuzz, family: str, *, bold: bool, size: int
+    ) -> None:
+        """Initialize the font selection and text shaping resources."""
         self._book = book
         self._harfbuzz = harfbuzz
         self._family = family
@@ -79,7 +86,9 @@ class LineShaper:
         self._size = size
         self._widths: dict[str, int] = {}
         self._clusters: dict[str, tuple[Face, int]] = {}
-        self.missing: dict[str, None] = {}  # "U+XXXX" of characters drawn as .notdef, in order of appearance
+        self.missing: dict[
+            str, None
+        ] = {}  # "U+XXXX" of characters drawn as .notdef, in order of appearance
 
     def measure(self, text: str) -> float:
         """The width of ``text`` in pixels."""
@@ -87,7 +96,10 @@ class LineShaper:
         if width is None:
             code_points, runs = self._itemize(text)
             advance = self._harfbuzz.advance
-            width = sum(advance(run.face.font, code_points, run.start, run.length, run.script) for run in runs)
+            width = sum(
+                advance(run.face.font, code_points, run.start, run.length, run.script)
+                for run in runs
+            )
             self._widths[text] = width
         return width / 64
 
@@ -97,19 +109,29 @@ class LineShaper:
         glyphs: list[PlacedGlyph] = []
         pen = 0
         for run in runs:
-            shaped = self._harfbuzz.shape(run.face.font, code_points, run.start, run.length, run.script)
+            shaped = self._harfbuzz.shape(
+                run.face.font, code_points, run.start, run.length, run.script
+            )
             ends = _cluster_ends(shaped, run.start + run.length)
             for glyph in shaped:
                 if glyph.glyph == 0:
-                    self._name_missing(run.face, code_points[glyph.cluster : ends[glyph.cluster]])
-                glyphs.append(PlacedGlyph(run.face.id, glyph.glyph, pen + glyph.x_offset, glyph.y_offset))
+                    self._name_missing(
+                        run.face, code_points[glyph.cluster : ends[glyph.cluster]]
+                    )
+                glyphs.append(
+                    PlacedGlyph(
+                        run.face.id, glyph.glyph, pen + glyph.x_offset, glyph.y_offset
+                    )
+                )
                 pen += glyph.x_advance
         return ShapedLine(pen, tuple(glyphs))
 
     def _name_missing(self, face: Face, cluster: Sequence[int]) -> None:
         """The characters of a cluster drawn as ``.notdef``: those the face lacks (else the first one)."""
         chars = [chr(code) for code in cluster]
-        lacking = [char for char in chars if needs_glyph(char) and not face.has_glyph(char)] or chars[:1]
+        lacking = [
+            char for char in chars if needs_glyph(char) and not face.has_glyph(char)
+        ] or chars[:1]
         for char in lacking:
             self.missing.setdefault(code_point_label(char))
 
@@ -141,6 +163,6 @@ class LineShaper:
         """The face that draws a cluster and the script of its first character."""
         chosen = self._clusters.get(part)
         if chosen is None:
-            face = self._book.face_for(self._family, self._bold, part)
+            face = self._book.face_for(self._family, bold=self._bold, cluster=part)
             chosen = self._clusters[part] = (face, self._harfbuzz.script(part[0]))
         return chosen

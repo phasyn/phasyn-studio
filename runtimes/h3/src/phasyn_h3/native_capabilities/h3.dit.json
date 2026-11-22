@@ -1,0 +1,1021 @@
+{
+  "capability_version": "1.0.0",
+  "default_settings": {
+    "invoke": {
+      "audio_shift": 3.0,
+      "seed": 42,
+      "steps": 50,
+      "video_shift": 12.0
+    },
+    "load": {
+      "device": {
+        "id": "GPU-REPLACE",
+        "kind": "cuda",
+        "resource_group": "gpu"
+      },
+      "model_path": "",
+      "model_revision": null,
+      "offload": {
+        "after_use": "host",
+        "max_pinned_bytes": 25769803776,
+        "mode": "block",
+        "prefetch_depth": 1,
+        "resident_layers": 0
+      },
+      "part_overrides": [],
+      "precision": {
+        "compute_dtype": "native",
+        "quantization": {
+          "scheme": "none"
+        }
+      },
+      "provider_options": {
+        "adaln": {
+          "host_cache_bytes": 8589934592,
+          "mode": "online"
+        },
+        "attention": {
+          "provider": "auto_exact",
+          "reject_quadratic_materialization": true
+        },
+        "bounded_fp8_load": false,
+        "lora": null,
+        "mode": "exact",
+        "variant": "fl2va"
+      }
+    },
+    "recording": {
+      "batch_max_bytes": 262144,
+      "batch_max_events": 256,
+      "capture_prompt": true,
+      "capture_stderr": true,
+      "cuda_pending_event_pairs": 4096,
+      "device_sample_hz": 2,
+      "finite_scan": false,
+      "gpu_event_timing": true,
+      "log_level": "info",
+      "max_detail_bytes_per_recording": 2147483648,
+      "mode": "detailed",
+      "parts": [],
+      "publish_interval_ms": 1000,
+      "queue_max_bytes": 16777216,
+      "queue_max_events": 8192,
+      "record_shapes": false,
+      "segment_bytes": 67108864,
+      "steps": [],
+      "tensor_dump": false,
+      "trace_parts": [],
+      "trace_steps": [
+        0,
+        1
+      ],
+      "with_stack": false
+    }
+  },
+  "entry_point": "phasyn_h3.providers:DitProvider",
+  "execution": {
+    "cache": "conditional",
+    "cancellation": "cooperative",
+    "error_contract": "ComponentError",
+    "progress": [
+      "stage",
+      "updates"
+    ],
+    "retry": "verify_stopped_first",
+    "retry_condition": "Execution may be resubmitted only after the prior attempt is verified absent or stopped and policy allows it."
+  },
+  "inputs": [
+    {
+      "description": "TE conditioning bundle",
+      "name": "conditioning",
+      "required": true,
+      "transport": "file",
+      "type_id": "h3.conditioning.tap50.v1"
+    },
+    {
+      "description": "任務／幾何（與 conditioning 同一份）",
+      "name": "job",
+      "required": true,
+      "transport": "inline",
+      "type_id": "h3.job.v1"
+    },
+    {
+      "description": "前處理媒體（fl2va／ref2va 的 AdaLN 條件旗標需要）",
+      "name": "prepared",
+      "required": false,
+      "transport": "file",
+      "type_id": "h3.prepared-media.v1"
+    },
+    {
+      "description": "合併版 reference latents（h3.reference 的輸出）",
+      "name": "references",
+      "required": false,
+      "transport": "file",
+      "type_id": "h3.references.v1"
+    },
+    {
+      "description": "影像參考 latent（h3.video_encode）；與 audio_references 在 DiT 內合併，不可與 references 同時接",
+      "name": "video_references",
+      "required": false,
+      "transport": "file",
+      "type_id": "h3.references.video.v1"
+    },
+    {
+      "description": "聲音參考 latent（h3.audio_encode）；素材帶聲音（參考聲音或影片原聲）時必填",
+      "name": "audio_references",
+      "required": false,
+      "transport": "file",
+      "type_id": "h3.references.audio.v1"
+    },
+    {
+      "description": "從既有 latent 精修（選用，與 start_step 一起給）：另一個 run 的 DiT video_latent（同一份 blob 含 audio）",
+      "name": "init_latent",
+      "required": false,
+      "transport": "file",
+      "type_id": "video.final-latent.v1"
+    },
+    {
+      "description": "NAG 負面文字（選用）：另一個 h3.conditioning 步驟（task=t2va、不接素材）編碼的負面 prompt；接上即開 NAG",
+      "name": "nag_conditioning",
+      "required": false,
+      "transport": "file",
+      "type_id": "h3.conditioning.tap50.v1"
+    }
+  ],
+  "kind": "dit.denoise",
+  "label": "MiniMax H3 音畫聯合 DiT（完整去噪迴圈在單次呼叫內）",
+  "license": "Apache-2.0",
+  "models": [
+    {
+      "file_scope": "Native transformer files from the pinned snapshot. Config and index hashes are unknown where the upstream file tree only records a Git blob ID. Optional LoRAs, sidecars and alternate checkpoints depend on instance settings.",
+      "files": [
+        {
+          "path": "FL2VA/transformer/config.json",
+          "sha256": null,
+          "size_bytes": 604
+        },
+        {
+          "path": "FL2VA/transformer/model-00001-of-00013.safetensors",
+          "sha256": "0b3386565e476bfdea287e9ea9f269d036e5c649ed14bb9b4afac1dc4661bd2a",
+          "size_bytes": 5227812968
+        },
+        {
+          "path": "FL2VA/transformer/model-00002-of-00013.safetensors",
+          "sha256": "9c98fd4579c9bc96d1b1bbf65c1243f9256df60bccd229570cecc61897773003",
+          "size_bytes": 5164578856
+        },
+        {
+          "path": "FL2VA/transformer/model-00003-of-00013.safetensors",
+          "sha256": "fa484c940d4170199fb69f5016739df2daf6ecd1150631b12a297e06e3964730",
+          "size_bytes": 5164578872
+        },
+        {
+          "path": "FL2VA/transformer/model-00004-of-00013.safetensors",
+          "sha256": "4a851df37cce2d14b39cb58df41def7b591b1f11b8520a32b421a5fa3e997c9f",
+          "size_bytes": 5164578896
+        },
+        {
+          "path": "FL2VA/transformer/model-00005-of-00013.safetensors",
+          "sha256": "3fe6ff94dc9d3107c6776a25277d2b72b5443f88cf0f4ed835fd5b65a94ea5d4",
+          "size_bytes": 5164578896
+        },
+        {
+          "path": "FL2VA/transformer/model-00006-of-00013.safetensors",
+          "sha256": "79b47e1b9ff03a2c6f06dd15a28972acf32c0867172ee34e5aa6e96b99494127",
+          "size_bytes": 5164578896
+        },
+        {
+          "path": "FL2VA/transformer/model-00007-of-00013.safetensors",
+          "sha256": "6ac4d6ce639786b722a8dd99843ed56dcab48a0d174a4b0f9b8cdcbe5160fb0f",
+          "size_bytes": 5164578896
+        },
+        {
+          "path": "FL2VA/transformer/model-00008-of-00013.safetensors",
+          "sha256": "03531812243fb0a333e01efa7e3d39750580bca8cbf2ba0529da419278eab736",
+          "size_bytes": 5164578896
+        },
+        {
+          "path": "FL2VA/transformer/model-00009-of-00013.safetensors",
+          "sha256": "7e82a80b0d0d267026eb841b81523069cc7b956c1ebd8a18c07e462ffb262487",
+          "size_bytes": 5164578896
+        },
+        {
+          "path": "FL2VA/transformer/model-00010-of-00013.safetensors",
+          "sha256": "ef0a1f6b65145232543dd2232d58d91a4d31f44b0da5084acf22cea123255481",
+          "size_bytes": 5164578896
+        },
+        {
+          "path": "FL2VA/transformer/model-00011-of-00013.safetensors",
+          "sha256": "bf885b8f2f078c5499b75fded21094a26bfe0e6e00bee276e499443ecd2f298d",
+          "size_bytes": 5164578896
+        },
+        {
+          "path": "FL2VA/transformer/model-00012-of-00013.safetensors",
+          "sha256": "dc717572d014ebf8527e35af815d10eb2f5a6bc87253b8a7d2f456965192db69",
+          "size_bytes": 5164578896
+        },
+        {
+          "path": "FL2VA/transformer/model-00013-of-00013.safetensors",
+          "sha256": "8bfd852d5817e9836de1d3ec8dbac1c5446b167568b717371f08282b22291aa2",
+          "size_bytes": 4242305176
+        },
+        {
+          "path": "FL2VA/transformer/model.safetensors.index.json",
+          "sha256": null,
+          "size_bytes": 38323
+        },
+        {
+          "path": "Ref2VA/transformer/config.json",
+          "sha256": null,
+          "size_bytes": 604
+        },
+        {
+          "path": "Ref2VA/transformer/model-00001-of-00013.safetensors",
+          "sha256": "902d6ae787f6d394d0104c1ef3ce19528209715fd5b0292f09d4ef7ca19c8504",
+          "size_bytes": 5227812968
+        },
+        {
+          "path": "Ref2VA/transformer/model-00002-of-00013.safetensors",
+          "sha256": "97b907e4d9b3ba533c820827ab4a03ec0d6be2a5cb8925a7e570de849ea8b183",
+          "size_bytes": 5164578856
+        },
+        {
+          "path": "Ref2VA/transformer/model-00003-of-00013.safetensors",
+          "sha256": "fbdf425e351622103419d8f1ddf50f2515917235588849afb365967615141f55",
+          "size_bytes": 5164578872
+        },
+        {
+          "path": "Ref2VA/transformer/model-00004-of-00013.safetensors",
+          "sha256": "3831e9ff2640a93e3601d957c81640cc6ba7aa317dc7eae1d6ac3e2428767db3",
+          "size_bytes": 5164578896
+        },
+        {
+          "path": "Ref2VA/transformer/model-00005-of-00013.safetensors",
+          "sha256": "ec7c6bdd26985a7ac6c83a563d5d4ad6fd961c51a2e5eeabeaaa3b45b6053e1a",
+          "size_bytes": 5164578896
+        },
+        {
+          "path": "Ref2VA/transformer/model-00006-of-00013.safetensors",
+          "sha256": "536c4fe01ffdeaca8f28d8df8c53cd7deb62942ec630aa1f058d0423db4438a7",
+          "size_bytes": 5164578896
+        },
+        {
+          "path": "Ref2VA/transformer/model-00007-of-00013.safetensors",
+          "sha256": "c7b80189722b211af43bf04066ea98ef5ca5bc4f1f13d3b06444d4c30aafead7",
+          "size_bytes": 5164578896
+        },
+        {
+          "path": "Ref2VA/transformer/model-00008-of-00013.safetensors",
+          "sha256": "1a7da8bb7477d27cfcc03bd7ff81b3be015411e74006da6e542ce4ce32f7ecb4",
+          "size_bytes": 5164578896
+        },
+        {
+          "path": "Ref2VA/transformer/model-00009-of-00013.safetensors",
+          "sha256": "33f44f03128b6d47e3c17a12d3d6f9c67a06b2facdb18a7f2b2121312ba43909",
+          "size_bytes": 5164578896
+        },
+        {
+          "path": "Ref2VA/transformer/model-00010-of-00013.safetensors",
+          "sha256": "adb8df74dcffebed919e15ca1e99f6a21f738ac3dbcb111f27168d9b1f03a304",
+          "size_bytes": 5164578896
+        },
+        {
+          "path": "Ref2VA/transformer/model-00011-of-00013.safetensors",
+          "sha256": "7175cdde6953c234ba0f518e81628ae4ed97790e1eaadabaf1783bddba030c90",
+          "size_bytes": 5164578896
+        },
+        {
+          "path": "Ref2VA/transformer/model-00012-of-00013.safetensors",
+          "sha256": "1c5c0bf33ab63e018e5923afaa8ce0dbb0feb07dbda1671605b11b99192450b6",
+          "size_bytes": 5164578896
+        },
+        {
+          "path": "Ref2VA/transformer/model-00013-of-00013.safetensors",
+          "sha256": "572e060b9b727bba6ee6c639e988d74978adfbf94f8bac9aa8e7f5bde88c1ec7",
+          "size_bytes": 4242305176
+        },
+        {
+          "path": "Ref2VA/transformer/model.safetensors.index.json",
+          "sha256": null,
+          "size_bytes": 38323
+        }
+      ],
+      "id": "MiniMaxAI/MiniMax-H3",
+      "license": "LicenseRef-MiniMax-H3-Community",
+      "revision": "42ed227ee7df40d41602854ae760620d6eb651fe",
+      "variants": [
+        "fl2va",
+        "ref2va"
+      ]
+    }
+  ],
+  "operations": [
+    "denoise",
+    "refine"
+  ],
+  "outputs": [
+    {
+      "description": "最後一次 scheduler update 後的 video latent（manifest＋blob）",
+      "name": "video_latent",
+      "required": true,
+      "transport": "file",
+      "type_id": "video.final-latent.v1"
+    },
+    {
+      "description": "audio latent（同一 blob）",
+      "name": "audio_latent",
+      "required": true,
+      "transport": "file",
+      "type_id": "audio.final-latent.v1"
+    }
+  ],
+  "parameters_schema": {
+    "additionalProperties": false,
+    "properties": {
+      "audio_shift": {
+        "exclusiveMinimum": 0,
+        "type": "number"
+      },
+      "compile": {
+        "additionalProperties": false,
+        "description": "Explicitly compile the native H3 MLP gate with Inductor. Approximate/experimental profiles only. Specializes real inputs within this component process.",
+        "properties": {
+          "max_cache_bytes": {
+            "default": 67108864,
+            "maximum": 268435456,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "mode": {
+            "enum": [
+              "off",
+              "regional"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode"
+        ],
+        "type": "object"
+      },
+      "denoise_cache": {
+        "additionalProperties": false,
+        "if": {
+          "properties": {
+            "algorithm": {
+              "const": "cache_dit"
+            }
+          }
+        },
+        "properties": {
+          "algorithm": {
+            "enum": [
+              "none",
+              "cache_dit"
+            ]
+          },
+          "max_reuse_steps": {
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "threshold": {
+            "exclusiveMinimum": 0,
+            "maximum": 1,
+            "type": "number"
+          },
+          "warmup_steps": {
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "algorithm"
+        ],
+        "then": {
+          "required": [
+            "threshold",
+            "warmup_steps",
+            "max_reuse_steps"
+          ]
+        },
+        "type": "object"
+      },
+      "nag_alpha": {
+        "description": "NAG 混合比例 alpha（預設 0.25）；需要接 nag_conditioning",
+        "maximum": 1,
+        "minimum": 0,
+        "type": "number"
+      },
+      "nag_scale": {
+        "description": "NAG 強度 phi（預設 4；0＝不改變輸出）；需要接 nag_conditioning（負面文字）",
+        "maximum": 50,
+        "minimum": 0,
+        "type": "number"
+      },
+      "nag_steps": {
+        "description": "NAG 只在前 N 步開（預設全部步數）；需要接 nag_conditioning",
+        "maximum": 200,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "nag_tau": {
+        "description": "NAG 正規化上限 tau（預設 2.5）；需要接 nag_conditioning",
+        "maximum": 100,
+        "minimum": 1,
+        "type": "number"
+      },
+      "observe_attention": {
+        "description": "Record SDPA dispatcher operators from the first DiT forward.",
+        "type": "boolean"
+      },
+      "seed": {
+        "maximum": 9223372036854775807,
+        "minimum": 0,
+        "type": "integer"
+      },
+      "start_step": {
+        "description": "從既有 latent 精修：從 sigma 網格第 start_step 點開始（< steps），需同時接 init_latent；只支援 online AdaLN、未綁 LoRA 的 DiT",
+        "maximum": 199,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "steps": {
+        "maximum": 200,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "video_shift": {
+        "exclusiveMinimum": 0,
+        "type": "number"
+      }
+    },
+    "type": "object"
+  },
+  "provider_id": "h3.dit",
+  "resources": {
+    "devices": [
+      "cuda"
+    ],
+    "executables": [],
+    "memory_basis": "Depends on sequence length, attention backend, weight format and layer residency.",
+    "required_modules": [
+      "torch",
+      "sglang"
+    ],
+    "vram_bytes": null
+  },
+  "schema_version": "1.0",
+  "settings_schema": {
+    "additionalProperties": false,
+    "properties": {
+      "invoke": {
+        "additionalProperties": false,
+        "properties": {
+          "audio_shift": {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "compile": {
+            "additionalProperties": false,
+            "description": "Explicitly compile the native H3 MLP gate with Inductor. Approximate/experimental profiles only. Specializes real inputs within this component process.",
+            "properties": {
+              "max_cache_bytes": {
+                "default": 67108864,
+                "maximum": 268435456,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "mode": {
+                "enum": [
+                  "off",
+                  "regional"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "mode"
+            ],
+            "type": "object"
+          },
+          "denoise_cache": {
+            "additionalProperties": false,
+            "if": {
+              "properties": {
+                "algorithm": {
+                  "const": "cache_dit"
+                }
+              }
+            },
+            "properties": {
+              "algorithm": {
+                "enum": [
+                  "none",
+                  "cache_dit"
+                ]
+              },
+              "max_reuse_steps": {
+                "maximum": 200,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "threshold": {
+                "exclusiveMinimum": 0,
+                "maximum": 1,
+                "type": "number"
+              },
+              "warmup_steps": {
+                "maximum": 200,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "algorithm"
+            ],
+            "then": {
+              "required": [
+                "threshold",
+                "warmup_steps",
+                "max_reuse_steps"
+              ]
+            },
+            "type": "object"
+          },
+          "nag_alpha": {
+            "description": "NAG 混合比例 alpha（預設 0.25）；需要接 nag_conditioning",
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "nag_scale": {
+            "description": "NAG 強度 phi（預設 4；0＝不改變輸出）；需要接 nag_conditioning（負面文字）",
+            "maximum": 50,
+            "minimum": 0,
+            "type": "number"
+          },
+          "nag_steps": {
+            "description": "NAG 只在前 N 步開（預設全部步數）；需要接 nag_conditioning",
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "nag_tau": {
+            "description": "NAG 正規化上限 tau（預設 2.5）；需要接 nag_conditioning",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "number"
+          },
+          "observe_attention": {
+            "description": "Record SDPA dispatcher operators from the first DiT forward.",
+            "type": "boolean"
+          },
+          "seed": {
+            "maximum": 9223372036854775807,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "start_step": {
+            "description": "從既有 latent 精修：從 sigma 網格第 start_step 點開始（< steps），需同時接 init_latent；只支援 online AdaLN、未綁 LoRA 的 DiT",
+            "maximum": 199,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "steps": {
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "video_shift": {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "load": {
+        "additionalProperties": false,
+        "properties": {
+          "device": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "maxLength": 16384,
+                "pattern": "^[^\\x00-\\x1f\\x7f]*$",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "cuda"
+                ]
+              },
+              "resource_group": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id",
+              "resource_group"
+            ],
+            "type": "object"
+          },
+          "model_path": {
+            "description": "Node 本機模型路徑（使用者提供，不由主控下載）",
+            "type": "string"
+          },
+          "model_revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "offload": {
+            "additionalProperties": false,
+            "properties": {
+              "after_use": {
+                "description": "兩次呼叫之間權重的位置",
+                "enum": [
+                  "device",
+                  "host",
+                  "drop"
+                ]
+              },
+              "max_pinned_bytes": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "mode": {
+                "description": "none=常駐；component=整個元件 host 備份；block=逐層串流",
+                "enum": [
+                  "none",
+                  "component",
+                  "block"
+                ]
+              },
+              "prefetch_depth": {
+                "maximum": 4,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "resident_layers": {
+                "description": "block 時常駐的前 N 層",
+                "maximum": 64,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "part_overrides": {
+            "type": "array"
+          },
+          "precision": {
+            "additionalProperties": false,
+            "properties": {
+              "accumulation_dtype": {
+                "description": "kernel 累加精度無法由此 backend 控制或證明；observed 為 null",
+                "type": "null"
+              },
+              "autocast_dtype": {
+                "description": "由 recipe 內部決定（video decode fp16 時自動 autocast）；不提供任意設定",
+                "type": "null"
+              },
+              "compute_dtype": {
+                "description": "TE／DiT 原生 BF16；VAE 原生 FP32；video decode 另可 fp16（approximate）",
+                "enum": [
+                  "native",
+                  "bf16"
+                ]
+              },
+              "cudnn_tf32": {
+                "description": "recipe 依元件自行設定；observed 記錄實際值",
+                "type": "null"
+              },
+              "matmul_tf32": {
+                "description": "recipe 依元件自行設定（FP32 VAE decode 要求關閉）；observed 記錄實際值",
+                "type": "null"
+              },
+              "output_dtype": {
+                "description": "wire 輸出 dtype 由 bundle 契約決定（latent F32）",
+                "enum": [
+                  "native"
+                ]
+              },
+              "quantization": {
+                "additionalProperties": false,
+                "properties": {
+                  "excluded_modules": {
+                    "description": "線上量化時保留 BF16 的模組（SGLang quantization_ignored_layers；adaln_proj 一律保留）",
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "scheme": {
+                    "enum": [
+                      "none",
+                      "nf4",
+                      "int8_convrot",
+                      "fp8_e4m3"
+                    ]
+                  }
+                },
+                "type": "object"
+              },
+              "reduced_precision_reduction": {
+                "description": "此 backend 不提供設定；observed 記錄實際值",
+                "type": "null"
+              },
+              "weight_dtype": {
+                "description": "裝置上的權重 dtype 由 recipe 決定（量化時另記 scheme）",
+                "enum": [
+                  "native"
+                ]
+              },
+              "weight_format": {
+                "description": "checkpoint 形式；nf4_single_file 只用於 DiT 的 bitsandbytes NF4 單檔",
+                "enum": [
+                  "native",
+                  "nf4_single_file"
+                ]
+              }
+            },
+            "type": "object"
+          },
+          "provider_options": {
+            "additionalProperties": false,
+            "properties": {
+              "adaln": {
+                "additionalProperties": false,
+                "properties": {
+                  "cache_ref": {
+                    "maxLength": 200,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "host_cache_bytes": {
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "mode": {
+                    "enum": [
+                      "off",
+                      "online",
+                      "fixed"
+                    ]
+                  }
+                },
+                "type": "object"
+              },
+              "adaln_cache_root": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "attention": {
+                "additionalProperties": false,
+                "properties": {
+                  "provider": {
+                    "enum": [
+                      "auto_exact",
+                      "pytorch_sdpa",
+                      "flash_attention_3",
+                      "flash_attention_4",
+                      "fp8_fa_sm120",
+                      "subblock_sparse_attn"
+                    ]
+                  },
+                  "reject_quadratic_materialization": {
+                    "type": "boolean"
+                  },
+                  "subblock_sparse": {
+                    "type": "object"
+                  }
+                },
+                "type": "object"
+              },
+              "bounded_fp8_load": {
+                "description": "FP8＋block＋fixed AdaLN 的有界冷載入（其他組合會被拒絕）",
+                "type": "boolean"
+              },
+              "jit_cache_dir": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "lora": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "dynamic_chunk_tokens": {
+                        "maximum": 1048576,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "manifest_path": {
+                        "description": "LoRA manifest JSON；相對路徑依序在 load.model_path、load.model_path/loras、PHASYN_H3_LORA_MANIFEST_DIRS 與內建 manifest 尋找",
+                        "type": "string"
+                      },
+                      "merge_mode": {
+                        "enum": [
+                          "dynamic",
+                          "merge"
+                        ]
+                      },
+                      "scale": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "manifest_path"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "loras": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "description": "LoRA 串接：依序套用多個 LoRA（最多一個加速 LoRA，例如 PAI 8 步；其他是疊加的風格／概念 LoRA，各自有強度）。與 lora 擇一；採樣合約由加速 LoRA 決定",
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "dynamic_chunk_tokens": {
+                          "maximum": 1048576,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "manifest_path": {
+                          "description": "LoRA manifest JSON；相對路徑依序在 load.model_path、load.model_path/loras、PHASYN_H3_LORA_MANIFEST_DIRS 與內建 manifest 尋找",
+                          "minLength": 1,
+                          "type": "string"
+                        },
+                        "merge_mode": {
+                          "enum": [
+                            "dynamic",
+                            "merge"
+                          ]
+                        },
+                        "scale": {
+                          "maximum": 4.0,
+                          "minimum": -4.0,
+                          "type": "number"
+                        }
+                      },
+                      "required": [
+                        "manifest_path"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 4,
+                    "type": "array",
+                    "x-phasyn-control": "lora_stack"
+                  }
+                ]
+              },
+              "mode": {
+                "description": "量化／近似 attention／LoRA／fp16 decode 不可用 exact",
+                "enum": [
+                  "exact",
+                  "approximate",
+                  "experimental"
+                ]
+              },
+              "quantized_cache": {
+                "additionalProperties": false,
+                "description": "量化權重快取（預設關閉）：int8_convrot 第一次載入後把量化好的 DiT 存成 safetensors，之後同一組權重與設定直接讀取，不再讀 BF16 權重、不再量化；權重檔、量化設定或 runtime 版本有任何改變就重新量化並另存一份",
+                "properties": {
+                  "dir": {
+                    "description": "快取目錄：Node 主機上的絕對路徑（不可含 ..），每組設定約佔 20 GiB",
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "description": "true＝開啟；不填或 false＝照舊每次載入時線上量化（不傳進 runtime）",
+                    "type": "boolean"
+                  }
+                },
+                "type": "object"
+              },
+              "ref_kv_cache": {
+                "anyOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "cache_device": {
+                        "description": "gpu＝快取放在 DiT 的 GPU（預設）；host＝放在釘選的主記憶體，每層略過步前搬一層上 GPU（數值相同；給 16 GB 卡逐層串流的 DiT 用）",
+                        "enum": [
+                          "gpu",
+                          "host"
+                        ]
+                      },
+                      "cache_dtype": {
+                        "description": "fp8＝E4M3、每 head 一個 absmax scale（預設）；bf16＝原值（記憶體 2 倍）",
+                        "enum": [
+                          "fp8",
+                          "bf16"
+                        ]
+                      },
+                      "max_cache_bytes": {
+                        "description": "快取位元組上限；第 0 步前估計值超過就拒絕（null＝不設上限）",
+                        "minimum": 0,
+                        "type": [
+                          "integer",
+                          "null"
+                        ]
+                      },
+                      "mode": {
+                        "description": "off＝不使用（預設，與未設定相同）；skip＝快取步的參考列不進 DiT block，其他列改用快取的參考列 K/V（近似，只限 Ref2VA）",
+                        "enum": [
+                          "off",
+                          "skip"
+                        ]
+                      },
+                      "refresh_steps": {
+                        "description": "這些步（>= start_step）重新完整計算所有列，並在下一個略過步之前重填快取",
+                        "items": {
+                          "maximum": 199,
+                          "minimum": 1,
+                          "type": "integer"
+                        },
+                        "maxItems": 64,
+                        "type": "array",
+                        "uniqueItems": true
+                      },
+                      "start_step": {
+                        "description": "從第幾步（0 起算）開始略過參考列；之前的步完整計算，最後一個完整步填快取（預設 1）",
+                        "maximum": 199,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "mode"
+                    ],
+                    "type": "object"
+                  }
+                ],
+                "description": "參考列 K/V 跨步快取：快取 50 層 × K,V × 參考列 × 56 heads × 128 × （fp8 1 B／bf16 2 B）"
+              },
+              "shared_from": {
+                "description": "非 DiT 元件改用另一 variant 的同 hash 目錄",
+                "enum": [
+                  null,
+                  "fl2va",
+                  "ref2va"
+                ]
+              },
+              "transformer_file": {
+                "description": "NF4 單檔 DiT（相對 model_path）",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "variant": {
+                "description": "使用哪個 checkpoint 目錄（FL2VA／Ref2VA）",
+                "enum": [
+                  "fl2va",
+                  "ref2va"
+                ]
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "device",
+          "model_path"
+        ],
+        "type": "object"
+      },
+      "recording": {
+        "type": "object"
+      }
+    },
+    "required": [
+      "load",
+      "invoke",
+      "recording"
+    ],
+    "type": "object"
+  }
+}

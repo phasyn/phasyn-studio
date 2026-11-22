@@ -83,13 +83,13 @@ export function validatePipeline(pipeline: WirePipeline, lookup: DescriptorLooku
   const warn = (code: string, message: string, extra: Partial<PipelineIssue> = {}) => issues.push({ severity: "warning", code, message, ...extra });
 
   const idError = localIdError(pipeline.pipeline_id, "pipeline_id ");
-  if (idError) error("INVALID_ARGUMENT", idError);
+  if (idError != null && idError !== "") error("INVALID_ARGUMENT", idError);
   if (pipeline.steps.length === 0) error("INVALID_ARGUMENT", t("至少需要一個步驟"));
 
   const inputNames = pipeline.inputs.map((port) => port.name);
   pipeline.inputs.forEach((port) => {
     const nameError = localIdError(port.name, t("輸入名稱 "));
-    if (nameError) error("INVALID_ARGUMENT", t("pipeline 輸入：{nameError}", { nameError }));
+    if (nameError != null && nameError !== "") error("INVALID_ARGUMENT", t("pipeline 輸入：{nameError}", { nameError }));
     if (!port.type_id) error("INVALID_ARGUMENT", t("pipeline 輸入 {name} 缺少 type_id", { name: port.name }));
   });
   for (const name of new Set(inputNames.filter((name, index) => inputNames.indexOf(name) !== index))) {
@@ -105,7 +105,7 @@ export function validatePipeline(pipeline: WirePipeline, lookup: DescriptorLooku
   for (const step of pipeline.steps) {
     const sid = step.step_id;
     const stepIdError = localIdError(sid, "step_id ");
-    if (stepIdError) error("INVALID_ARGUMENT", stepIdError, { stepId: sid });
+    if (stepIdError != null && stepIdError !== "") error("INVALID_ARGUMENT", stepIdError, { stepId: sid });
     if (!step.node_id || !step.component_id) {
       error("INVALID_ARGUMENT", t("{sid}：尚未選擇元件", { sid }), { stepId: sid });
       continue;
@@ -166,7 +166,7 @@ export function validatePipeline(pipeline: WirePipeline, lookup: DescriptorLooku
       }
       if ("literal" in binding) {
         const transport = literalTransportError(port, binding.literal);
-        if (transport) error("PORT_MISMATCH", `${sid}.${transport}`, { stepId: sid, port: port.name });
+        if (transport != null && transport !== "") error("PORT_MISMATCH", `${sid}.${transport}`, { stepId: sid, port: port.name });
       }
     }
   }
@@ -178,7 +178,7 @@ export function validatePipeline(pipeline: WirePipeline, lookup: DescriptorLooku
   if (outputNames.length === 0) warn("NO_OUTPUTS", t("沒有宣告 pipeline 輸出：run 仍會保留每個步驟的輸出"));
   for (const [name, target] of Object.entries(pipeline.outputs)) {
     const nameError = localIdError(name, t("輸出名稱 "));
-    if (nameError) error("INVALID_ARGUMENT", t("pipeline 輸出：{nameError}", { nameError }));
+    if (nameError != null && nameError !== "") error("INVALID_ARGUMENT", t("pipeline 輸出：{nameError}", { nameError }));
     const source = pipeline.steps.find((step) => step.step_id === target.from_step);
     if (!source) {
       error("PORT_MISMATCH", t("pipeline 輸出 {name} 引用不存在的步驟 {from_step}", { name, from_step: target.from_step }));
@@ -382,7 +382,7 @@ export function addExport(pipeline: WirePipeline, stepId: string, port: string):
 /** 流程輸出改名的檢查（格式與重複）；合法＝null。 */
 export function exportNameError(pipeline: WirePipeline, current: string, next: string): string | null {
   const error = localIdError(next, t("名稱 "));
-  if (error) return error;
+  if (error != null && error !== "") return error;
   if (next !== current && Object.hasOwn(pipeline.outputs, next)) return t("名稱重複");
   return null;
 }

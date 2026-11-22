@@ -6,7 +6,7 @@
 // row's lane shows the keys. While the property is animated its name is a button that selects the key shaping the
 // curve under the playhead (the key strip then shows it); a typed value is written into the key at the playhead.
 import { ChevronLeft, ChevronRight, Diamond, Timer } from "lucide-react";
-import { useContext, useState } from "react";
+import { use, useState } from "react";
 import type { TimelineClip } from "@/api/generated/contracts";
 import { t } from "@/i18n";
 import { cn } from "@/lib/cn";
@@ -52,7 +52,7 @@ export interface PropertyRowProps {
 
 export function PropertyRow({ property, owner, hint, fixedRange }: PropertyRowProps) {
   const panel = useClipPanel();
-  const locked = useContext(FieldLockContext);
+  const locked = use(FieldLockContext);
   const [confirming, setConfirming] = useState(false);
   // Why switching the animation off was refused; shown under the row until the next action of the row
   const [refusal, setRefusal] = useState<string | null>(null);
@@ -117,7 +117,7 @@ export function PropertyRow({ property, owner, hint, fixedRange }: PropertyRowPr
         <Timer aria-hidden />
       </IconButton>
       {animated && confirming ? (
-        <InlineConfirm question={t("移除 {count} 個關鍵影格？", { count: property.keys.length })} action={t("移除")} onConfirm={removeAnimation} onCancel={() => setConfirming(false)} />
+        <InlineConfirm question={t("移除 {count} 個關鍵影格？", { count: property.keys.length })} action={t("移除")} onConfirm={removeAnimation} onCancel={() => { setConfirming(false); }} />
       ) : (
         <>
           {animated ? (
@@ -131,7 +131,7 @@ export function PropertyRow({ property, owner, hint, fixedRange }: PropertyRowPr
               {label}
             </button>
           ) : (
-            <span className={ROW_LABEL} title={hint ? t("{label}：{hint}", { label: name, hint }) : name}>
+            <span className={ROW_LABEL} title={(hint != null && hint !== "") ? t("{label}：{hint}", { label: name, hint }) : name}>
               {label}
             </span>
           )}
@@ -143,7 +143,7 @@ export function PropertyRow({ property, owner, hint, fixedRange }: PropertyRowPr
             decimals={unit.decimals}
             step={unit.step}
             suffix={unit.suffix}
-            hint={hint}
+            {...(hint === undefined ? {} : { hint })}
             disabledReason={animated ? keyReason : null}
             onCommit={commitValue}
           />
@@ -152,7 +152,7 @@ export function PropertyRow({ property, owner, hint, fixedRange }: PropertyRowPr
             <IconButton
               label={t("{name}：上一個關鍵影格", { name })}
               disabledReason={!animated ? NOT_ANIMATED : at.before ? null : t("播放頭之前沒有關鍵影格")}
-              onClick={() => jump(-1)}
+              onClick={() => { jump(-1); }}
             >
               <ChevronLeft aria-hidden />
             </IconButton>
@@ -168,14 +168,14 @@ export function PropertyRow({ property, owner, hint, fixedRange }: PropertyRowPr
             <IconButton
               label={t("{name}：下一個關鍵影格", { name })}
               disabledReason={!animated ? NOT_ANIMATED : at.after ? null : t("播放頭之後沒有關鍵影格")}
-              onClick={() => jump(1)}
+              onClick={() => { jump(1); }}
             >
               <ChevronRight aria-hidden />
             </IconButton>
           </span>
         </>
       )}
-      {refusal ? (
+      {(refusal != null && refusal !== "") ? (
         <p role="alert" className="order-last basis-full pb-1 text-caption text-danger">
           {t("無法關閉動畫：{reason}（播放頭上的數值會成為固定值，請移到其他影格再試）", { reason: refusal })}
         </p>

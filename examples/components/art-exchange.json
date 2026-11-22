@@ -1,0 +1,21 @@
+{
+  "component_id": "art-exchange",
+  "label": "美術素材往返",
+  "provider_id": "art.exchange",
+  "runtime_id": "art-exchange",
+  "autostart": false,
+  "folder": "後製/美術往返",
+  "settings": {
+    "load": {
+      "device": {
+        "kind": "cpu",
+        "id": "cpu",
+        "resource_group": "cpu-art"
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "mode": "detailed"
+    }
+  }
+}

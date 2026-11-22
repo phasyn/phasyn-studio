@@ -2,6 +2,7 @@
 // 修正與改寫動作都是純函式 apply(text) → text：只在使用者按下時由呼叫端套用（面板先預覽差異；工具列浮層的一鍵修正
 // 留下可以復原的提示），這個模組從不自動改字。
 import type { StudioLibraryItem, StudioReference } from "@/api/generated/contracts";
+import type { PromptRules } from "../../model/providerTraits";
 import { t } from "@/i18n";
 
 /** 鏡頭的 H3 任務（= 運算路由的 capability）。Studio 的 fl2va 有首幀：前一鏡最後一格或素材庫圖片（官方 I2VA 寫法）。 */
@@ -55,6 +56,8 @@ export interface AnalyzeInput {
   library: readonly StudioLibraryItem[];
   /** 有首幀（I2VA）；省略時 fl2va 視為有首幀。 */
   firstFrame?: boolean;
+  /** 路線的 prompt 與長度規則（model/promptRules.ts）；省略時用 H3 的規則。不是 H3 的路線只做與模型無關的檢查。 */
+  rules?: PromptRules;
 }
 
 export const SEVERITY_ORDER: readonly Severity[] = ["error", "warning", "suggestion", "info"];

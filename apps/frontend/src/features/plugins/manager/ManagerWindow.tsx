@@ -100,10 +100,10 @@ export default function ManagerWindow({ tab, onTabChange, dropping, revealSerial
   }
   const layout = {
     railOpen,
-    onToggleRail: () => setRailOpen(!railOpen),
+    onToggleRail: () => { setRailOpen(!railOpen); },
     detailOpen,
-    onToggleDetail: () => setDetailOpen(!detailOpen),
-    onOpenDetail: () => (detailOpen ? undefined : setDetailOpen(true)),
+    onToggleDetail: () => { setDetailOpen(!detailOpen); },
+    onOpenDetail: () => { if (!(detailOpen)) { setDetailOpen(true); } },
   };
   const count = registry.list?.items.length;
   const current = project ? tab : "installed";
@@ -115,9 +115,9 @@ export default function ManagerWindow({ tab, onTabChange, dropping, revealSerial
           idPrefix={ID_PREFIX}
           label={t("插件管理")}
           value={current}
-          onChange={(next) => onTabChange(next === "project" ? "project" : "installed")}
+          onChange={(next) => { onTabChange(next === "project" ? "project" : "installed"); }}
           tabs={[
-            { id: "installed", label: t("已安裝"), icon: Package, count },
+            { id: "installed", label: t("已安裝"), icon: Package, ...(count === undefined ? {} : { count }) },
             { id: "project", label: t("這個專案"), icon: FolderKanban, count: project.refs.length },
           ]}
           className="px-2"

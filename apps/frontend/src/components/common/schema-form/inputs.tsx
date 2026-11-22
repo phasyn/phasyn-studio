@@ -1,3 +1,4 @@
+import { hasSlotContent } from "@/lib/dom";
 // The schema form's leaf inputs: numbers and scalar lists that keep the typed text while it does not parse yet, and the
 // explicit null switches (beside an input, or in a field or fieldset header).
 import { useState, type ReactNode } from "react";
@@ -31,7 +32,7 @@ export function NumberControl({
 }) {
   const external = typeof value === "number" || typeof value === "string" ? String(value) : "";
   const [draft, setDraft] = useState<{ base: string; text: string } | null>(null);
-  const text = draft && draft.base === external ? draft.text : external;
+  const text = draft?.base === external ? draft.text : external;
   return (
     <Input
       id={id}
@@ -86,7 +87,7 @@ export function ListControl({
 }) {
   const external = formatScalarList(value);
   const [draft, setDraft] = useState<{ base: string; text: string } | null>(null);
-  const text = draft && draft.base === external ? draft.text : external;
+  const text = draft?.base === external ? draft.text : external;
   return (
     <Input
       id={id}
@@ -133,7 +134,7 @@ export function NullToggle({
         className="size-3.5 accent-action"
         checked={checked}
         disabled={disabled}
-        onChange={(event) => onChange(event.target.checked)}
+        onChange={(event) => { onChange(event.target.checked); }}
         aria-label={t("{name} 設為 null", { name })}
       />
       <span className="machine">null</span>
@@ -150,7 +151,7 @@ export function NullCheckbox({ checked, onChange, name, disabled }: { checked: b
         className="size-3.5 accent-action"
         checked={checked}
         disabled={disabled}
-        onChange={(event) => onChange(event.target.checked)}
+        onChange={(event) => { onChange(event.target.checked); }}
         aria-label={t("{name} 設為 null", { name })}
       />
       <span className="machine">null</span>
@@ -160,7 +161,7 @@ export function NullCheckbox({ checked, onChange, name, disabled }: { checked: b
 
 /** An input with its null toggle beside it, or the input alone. */
 export function NullableRow({ toggle, children }: { toggle: ReactNode; children: ReactNode }) {
-  if (!toggle) return children;
+  if (!hasSlotContent(toggle)) return children;
   return (
     <div className="flex min-w-0 items-start gap-2">
       <div className="min-w-0 flex-1">{children}</div>

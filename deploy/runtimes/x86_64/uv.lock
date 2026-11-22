@@ -1870,6 +1870,8 @@ dependencies = [
     { name = "phasyn-components" },
     { name = "phasyn-h3" },
     { name = "phasyn-media" },
+    { name = "phasyn-rife" },
+    { name = "phasyn-seedvr2" },
     { name = "sglang", extra = ["diffusion"] },
     { name = "torch" },
     { name = "torchaudio" },
@@ -1884,6 +1886,8 @@ requires-dist = [
     { name = "phasyn-components", editable = "../../../packages/components" },
     { name = "phasyn-h3", editable = "../../../runtimes/h3" },
     { name = "phasyn-media", editable = "../../../packages/media" },
+    { name = "phasyn-rife", editable = "../../../runtimes/rife" },
+    { name = "phasyn-seedvr2", editable = "../../../runtimes/seedvr2" },
     { name = "sglang", extras = ["diffusion"], git = "https://github.com/sgl-project/sglang?subdirectory=python&rev=de487f8039e06853b5f376fd5f068ea9d7c400bb" },
     { name = "torch", specifier = "==2.14.1", index = "https://download.pytorch.org/whl/cu130" },
     { name = "torchaudio", specifier = "==2.11.0", index = "https://download.pytorch.org/whl/cu130" },
@@ -1924,6 +1928,44 @@ dependencies = [
 requires-dist = [
     { name = "numpy", specifier = ">=1.26" },
     { name = "phasyn-components", editable = "../../../packages/components" },
+]
+
+[[package]]
+name = "phasyn-rife"
+version = "1.0.0"
+source = { editable = "../../../runtimes/rife" }
+dependencies = [
+    { name = "numpy" },
+    { name = "phasyn-captioner" },
+    { name = "phasyn-components" },
+    { name = "phasyn-media" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy" },
+    { name = "phasyn-captioner" },
+    { name = "phasyn-components" },
+    { name = "phasyn-media" },
+]
+
+[[package]]
+name = "phasyn-seedvr2"
+version = "1.0.0"
+source = { editable = "../../../runtimes/seedvr2" }
+dependencies = [
+    { name = "phasyn-captioner" },
+    { name = "phasyn-components" },
+    { name = "phasyn-media" },
+    { name = "rotary-embedding-torch" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "phasyn-captioner" },
+    { name = "phasyn-components" },
+    { name = "phasyn-media" },
+    { name = "rotary-embedding-torch", specifier = "==0.9.2" },
 ]
 
 [[package]]
@@ -2280,6 +2322,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/c0/8f/0722ca900cc807c13a6a0c696dacf35430f72e0ec571c4275d2371fca3e9/rich-15.0.0.tar.gz", hash = "sha256:edd07a4824c6b40189fb7ac9bc4c52536e9780fbbfbddf6f1e2502c31b068c36", size = 230680, upload-time = "2026-04-12T08:24:00.75Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/82/3b/64d4899d73f91ba49a8c18a8ff3f0ea8f1c1d75481760df8c68ef5235bf5/rich-15.0.0-py3-none-any.whl", hash = "sha256:33bd4ef74232fb73fe9279a257718407f169c09b78a87ad3d296f548e27de0bb", size = 310654, upload-time = "2026-04-12T08:24:02.83Z" },
+]
+
+[[package]]
+name = "rotary-embedding-torch"
+version = "0.9.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "einops" },
+    { name = "torch" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/42/45/a363e3848971bb77bfdbf02895f6d47e0db0b2eca19e3c256195c3511505/rotary_embedding_torch-0.9.2.tar.gz", hash = "sha256:5eb7c8e899af5fb3cfa24f9e5902663183ef77c9e3fa55f478d0de34d183431b", size = 13361, upload-time = "2026-11-07T14:09:09.220Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/99/30/db962f3755fc0accdd164e3320e2116bd8d4c52b60ead7d65db3f1bfd3e6/rotary_embedding_torch-0.9.2-py3-none-any.whl", hash = "sha256:c57891f82e6d73981d46b08ea22e2944d217bc3b463612e336498c9f32d69d16", size = 17530, upload-time = "2026-11-07T14:09:08.104Z" },
 ]
 
 [[package]]

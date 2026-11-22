@@ -1,0 +1,34 @@
+{
+  "pipeline_id": "storyboard-from-script-local",
+  "label": "劇本轉可編輯分鏡（CPU）",
+  "inputs": [
+    {
+      "name": "script",
+      "type_id": "text.prompt.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "原始劇本（最多 32768 字元）；支援場景、鏡頭標題、說話者與匿名段落。"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "draft",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "storyboard-from-script",
+      "inputs": {
+        "script": {
+          "from_input": "script"
+        }
+      },
+      "parameters": {
+        "cut_seconds": 2
+      }
+    }
+  ],
+  "outputs": {
+    "board": {
+      "from_step": "draft",
+      "output": "board"
+    }
+  }
+}

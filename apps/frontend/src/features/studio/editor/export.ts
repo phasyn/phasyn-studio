@@ -1,3 +1,4 @@
+import { isNonzeroNumber } from "@/lib/json";
 // The one sequence export of a project: its timeline document becomes a media.concat run. The export dialog, the
 // Render workspace and the character-swap panel all send this request.
 import type { ComponentDescriptor, FileRef, MediaClipTitle, StudioProject, StudioTimeline, TimelineCaption, TimelineClip, TimelineSource } from "@/api/generated/contracts";
@@ -34,7 +35,7 @@ function rasterCache(timeline: StudioTimeline, width: number, height: number): M
   }
   for (const caption of timeline.captions) {
     const fresh = caption.image && caption.image_key === captionKey(caption.text, caption.position, caption.size, width, height);
-    if (fresh && caption.image) cache.set(titleKey(caption, width, height), Promise.resolve(caption.image));
+    if ((fresh === true) && caption.image) cache.set(titleKey(caption, width, height), Promise.resolve(caption.image));
   }
   return cache;
 }
@@ -62,8 +63,8 @@ export function rasterizeTextSources(timeline: StudioTimeline, width: number, he
     if (source?.kind !== "text") return clip;
     const title = clip.effects?.title;
     if (!title?.image || titleLayerState(title, width, height) !== "fresh") throw new Error(t("「{name}」的標題圖層尚未完成", { name: clip.name }));
-    let sourceId = `text-render.${serial++}`;
-    while (ids.has(sourceId)) sourceId = `text-render.${serial++}`;
+    let sourceId = `text-render.${String(serial++)}`;
+    while (ids.has(sourceId)) sourceId = `text-render.${String(serial++)}`;
     ids.add(sourceId);
     sources.push({ source_id: sourceId, name: clip.name, kind: "image", file: title.image, width, height, duration_frames: source.duration_frames, has_audio: false });
     const { title: _title, ...effects } = clip.effects ?? {};
@@ -105,7 +106,7 @@ export async function prepareTimelineExport(project: StudioProject): Promise<Stu
   }
   const prepared = { ...timeline, clips, captions };
   const titleProblem = timelineTitleProblem(prepared, width, height);
-  if (titleProblem) throw new Error(titleProblem);
+  if (titleProblem != null && titleProblem !== "") throw new Error(titleProblem);
   return { ...project, timeline: rasterizeTextSources(prepared, width, height) };
 }
 
@@ -148,7 +149,7 @@ export function exportSnapshot(timeline: StudioTimeline): StudioTimeline {
 
 /** The export component a run is sent to, with what its descriptor says it can do (facts.timeline_export). */
 export function exportTarget(component: Pick<ComponentDescriptor, "node_id" | "component_id" | "facts">): ExportTarget {
-  const facts = component.facts?.timeline_export;
+  const facts = component.facts?.["timeline_export"];
   const adjustment = typeof facts === "object" && facts !== null && "adjustment" in facts && facts.adjustment === true;
   return { node_id: component.node_id, component_id: component.component_id, adjustment };
 }
@@ -172,7 +173,12 @@ export function timelineRequest(
           node_id: target.node_id,
           component_id: target.component_id,
           inputs: { sequence: { from_input: "sequence" } },
-          parameters: { crf: options.crf ?? 18, preset: options.preset ?? "medium", audio_bitrate: options.audioBitrate ?? 192000 },
+          parameters: {
+            crf: options.crf ?? 18,
+            preset: options.preset ?? "medium",
+            audio_bitrate: options.audioBitrate ?? 192000,
+            ...(isNonzeroNumber(options.loudnessLufs) ? { loudness_lufs: options.loudnessLufs } : {}),
+          },
         },
       ],
       outputs: { final: { from_step: "concat", output: "asset" } },
@@ -195,21 +201,27 @@ export interface SequenceExport {
   clips: number;
   /** The shots whose takes the sequence uses (recorded with the export). */
   shotIds: string[];
+  /** Media left out as silence because it is not rendered yet (options.unrendered "gap"), by name. */
+  gaps: string[];
 }
 
 /** What exporting the project's sequence means right now: the document, what blocks it and the request to send. */
 export function sequenceExport(project: StudioProject, target: ExportTarget | null, options: ExportOptions = {}): SequenceExport {
   const result = projectTimeline(project);
-  if (!result.ok) return { timeline: null, body: null, problems: [result.error], totalFrames: 0, clips: 0, shotIds: [] };
-  const timeline = result.value;
+  if (!result.ok) return { timeline: null, body: null, problems: [result.error], totalFrames: 0, clips: 0, shotIds: [], gaps: [] };
   const problems: string[] = [];
-  const fullFrames = timelineDuration(timeline);
+  const fullFrames = timelineDuration(result.value);
   if (fullFrames === 0) problems.push(t("時間軸沒有可匯出的內容"));
   // A switched-off clip is not exported, so its media need not exist
+  const enabled = new Set(result.value.clips.filter(clipEnabled).map((clip) => clip.source_id));
+  const unrendered = result.value.sources.filter((source) => enabled.has(source.source_id) && !isGenerated(source) && !source.file);
+  const gap = options.unrendered === "gap";
+  const missing = new Set(unrendered.map((source) => source.source_id));
+  // As a gap, an unrendered shot's clips leave the request (its time stays silent); otherwise it blocks it
+  const timeline = gap && missing.size > 0 ? { ...result.value, clips: result.value.clips.filter((clip) => !missing.has(clip.source_id)), sources: result.value.sources.filter((source) => !missing.has(source.source_id)) } : result.value;
+  if (!gap) for (const source of unrendered) problems.push(t("「{name}」尚未完成渲染", { name: source.name }));
+  if (gap && timeline.clips.filter(clipEnabled).length === 0 && fullFrames > 0) problems.push(t("還沒有任何已渲染的鏡頭可以混音"));
   const used = new Set(timeline.clips.filter(clipEnabled).map((clip) => clip.source_id));
-  for (const source of timeline.sources) {
-    if (used.has(source.source_id) && !isGenerated(source) && !source.file) problems.push(t("「{name}」尚未完成渲染", { name: source.name }));
-  }
   // An export component that predates adjustment layers would refuse the whole document (even a switched-off layer)
   if (target && target.adjustment !== true && timeline.clips.some((clip) => isAdjustment(timeline, clip))) {
     problems.push(t("匯出元件還不能合成調整圖層；請更新 Node 並重啟後再匯出，或先移除調整圖層"));
@@ -220,6 +232,7 @@ export function sequenceExport(project: StudioProject, target: ExportTarget | nu
   }
   const label = t("Studio：{title}・序列匯出", { title: project.title });
   const body = target && problems.length === 0 ? timelineRequest(timeline, exportGeometry(project), target, label, options) : null;
-  const shotIds = [...new Set(timeline.sources.flatMap((source) => (used.has(source.source_id) && source.shot_id ? [source.shot_id] : [])))];
-  return { timeline, body, problems, totalFrames: area ? area.end_frame - area.start_frame : fullFrames, clips: timeline.clips.length, shotIds };
+  const shotIds = [...new Set(timeline.sources.flatMap((source) => (used.has(source.source_id) && (source.shot_id != null && source.shot_id !== "") ? [source.shot_id] : [])))];
+  const gaps = gap ? unrendered.map((source) => source.name) : [];
+  return { timeline, body, problems, totalFrames: area ? area.end_frame - area.start_frame : fullFrames, clips: timeline.clips.length, shotIds, gaps };
 }

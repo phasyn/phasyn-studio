@@ -11,6 +11,7 @@ import hashlib
 import json
 from typing import Any
 
+
 SHA256_HEX_LENGTH = 64
 
 
@@ -26,6 +27,7 @@ def canonical_json_bytes(value: Any) -> bytes:
 
 
 def sha256_hex(data: bytes) -> str:
+    """Compute the hexadecimal SHA-256 digest."""
     return hashlib.sha256(data).hexdigest()
 
 
@@ -35,6 +37,7 @@ def canonical_digest(value: Any) -> str:
 
 
 def artifact_id_for(sha256: str) -> str:
+    """Build a stable artifact identity from its canonical description."""
     return f"sha256:{sha256}"
 
 
@@ -50,4 +53,9 @@ def artifact_ref(data: bytes, media_type: str) -> dict[str, Any]:
 
 
 def is_sha256_hex(value: object) -> bool:
-    return isinstance(value, str) and len(value) == SHA256_HEX_LENGTH and all(c in "0123456789abcdef" for c in value)
+    """Check whether the supplied value is a SHA-256 digest."""
+    return (
+        isinstance(value, str)
+        and len(value) == SHA256_HEX_LENGTH
+        and all(c in "0123456789abcdef" for c in value)
+    )

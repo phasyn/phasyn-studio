@@ -1,0 +1,37 @@
+{
+  "pipeline_id": "speech-local",
+  "label": "配音與旁白（Qwen CustomVoice）",
+  "inputs": [
+    {
+      "name": "text",
+      "type_id": "text.prompt.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "已定稿的單句台詞或旁白"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "synthesize",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "speech-local",
+      "inputs": {
+        "text": {
+          "from_input": "text"
+        }
+      },
+      "parameters": {},
+      "timeout_seconds": 1800
+    }
+  ],
+  "outputs": {
+    "audio": {
+      "from_step": "synthesize",
+      "output": "audio"
+    },
+    "report": {
+      "from_step": "synthesize",
+      "output": "report"
+    }
+  }
+}

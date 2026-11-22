@@ -5,7 +5,7 @@
 // whole width and the keys of a property are reached with its ◀ ◆ ▶ buttons. An adjustment layer shows only what it
 // has: the clip, opacity and blending, its fades, the mask, its effects and its colour.
 import { ChartGantt, Film, Music2, SlidersHorizontal, Type } from "lucide-react";
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useMemo, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { TimelineClip } from "@/api/generated/contracts";
 import { reveal } from "@/components/ui/motion";
 import { t } from "@/i18n";
@@ -19,7 +19,7 @@ import { hasMotionReference } from "../../../speedfeel/target";
 import { useEditor } from "../../editorContext";
 import { chordOf } from "../../keymap";
 import { clipDuration, clipEnabled } from "../../model";
-import { clipEdits, clipKind, linkedAudio, lockReason } from "./clipEdits";
+import { clipEdits, clipKind, linkedAudio, lockReason, runEdit } from "./clipEdits";
 import { FieldLockContext, GroupsContext, setGroupOpen, useOpenGroups, type ClipKindId, type GroupId, type GroupsState } from "./controlsContext";
 import { AudioGroup } from "./groups/AudioGroup";
 import { CameraGroup, ImpactGroup } from "./groups/CameraGroup";
@@ -163,8 +163,8 @@ export interface ClipControlsProps {
 export function ClipControls({ clip, request }: ClipControlsProps) {
   const editor = useEditor();
   const { timeline } = editor;
-  const root = useRef<HTMLDivElement>(null);
-  const { width } = useElementSize(root);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const { width } = useElementSize(rootRef);
   const [wantLanes, setWantLanes] = usePersistentFlag("studio.nle.controls.lanes", true);
   const [selection, setSelection] = useState<KeySelection | null>(null);
 
@@ -173,7 +173,9 @@ export function ClipControls({ clip, request }: ClipControlsProps) {
   const frame = exportGeometry(editor.project);
   const properties = new Map((kind === "audio" ? [] : clipProperties(clip, "video", frame)).map((property) => [property.key, property]));
   const audio = sound ? audioProperties(sound, frame) : null;
+  // eslint-disable-next-line @eslint-react/no-unstable-context-value -- The lock reason is a primitive string or null; React compares it by value.
   const lock = lockReason(timeline, clip, editor.linked);
+  // eslint-disable-next-line @eslint-react/no-unstable-context-value -- The lock reason is a primitive string or null; React compares it by value.
   const soundLock = sound ? lockReason(timeline, sound, editor.linked) : null;
 
   // Layout: the lanes take the right part of a panel that is wide enough for them. Without them the rows have the
@@ -181,7 +183,7 @@ export function ClipControls({ clip, request }: ClipControlsProps) {
   const roomy = width >= LANES_FROM;
   const lanes = wantLanes && roomy;
   const column = lanes ? propertyColumn(width) : width - SCROLLBAR;
-  const sizes = { "--ec-props": `${column}px`, "--ec-label": `${Math.max(56, Math.min(112, column - ROW_FIXED))}px` } as CSSProperties;
+  const sizes: CSSProperties & Record<"--ec-props" | "--ec-label", string> = { "--ec-props": `${String(column)}px`, "--ec-label": `${String(Math.max(56, Math.min(112, column - ROW_FIXED)))}px` };
 
   const openGroups = useOpenGroups(kind);
   const asked = requestedGroup(request);
@@ -189,9 +191,10 @@ export function ClipControls({ clip, request }: ClipControlsProps) {
   useEffect(() => {
     if (asked) setGroupOpen(kind, asked, true);
   }, [asked, kind]);
-  const groups: GroupsState = { open: openGroups, forced: asked, setOpen: (id, open) => setGroupOpen(kind, id, open) };
+  const rowLayout = useMemo(() => ({ lead: true, lanes }), [lanes]);
+  const groups = useMemo<GroupsState>(() => ({ open: openGroups, forced: asked, setOpen: (id, open) => { setGroupOpen(kind, id, open); } }), [openGroups, asked, kind]);
 
-  const panel: ClipPanel = {
+  const panel = useMemo<ClipPanel>(() => ({
     ...clipEdits(editor, editor.warn),
     clip,
     fps: editor.fps,
@@ -202,10 +205,11 @@ export function ClipControls({ clip, request }: ClipControlsProps) {
       editor.transport.seek(target);
     },
     warn: editor.warn,
+    fixedLengthTiming: (edit) => runEdit(editor, { type: "fixedLengthTiming", clipId: clip.clip_id, linked: editor.linked, edit }, t("時間")),
     selection,
     select: setSelection,
-    rest: () => root.current?.focus({ preventScroll: true }),
-  };
+    rest: () => rootRef.current?.focus({ preventScroll: true }),
+  }), [editor, clip, selection]);
 
   // The selected key, while it still exists (an undo or another edit may have taken it away)
   const owned = selection ? ownedProperty(selection.property, clip, properties, sound, audio) : null;
@@ -222,9 +226,9 @@ export function ClipControls({ clip, request }: ClipControlsProps) {
           {
             id: "audio",
             node: (
-              <FieldLockContext.Provider value={soundLock}>
+              <FieldLockContext value={soundLock}>
                 <AudioGroup clip={sound} audio={audio} />
-              </FieldLockContext.Provider>
+              </FieldLockContext>
             ),
           },
         ]
@@ -259,12 +263,12 @@ export function ClipControls({ clip, request }: ClipControlsProps) {
   };
 
   return (
-    <ClipPanelContext.Provider value={panel}>
-      <GroupsContext.Provider value={groups}>
-        <RowLayoutContext.Provider value={{ lead: true, lanes }}>
-          <FieldLockContext.Provider value={lock}>
-            <div
-              ref={root}
+    <ClipPanelContext value={panel}>
+      <GroupsContext value={groups}>
+        <RowLayoutContext value={rowLayout}>
+          <FieldLockContext value={lock}>
+            <div /* eslint-disable-line jsx-a11y-x/no-static-element-interactions -- Keyboard events from this panel’s focusable controls bubble here so navigation and dismissal share one handler. */
+              ref={rootRef}
               // The panel keeps Delete while the focus is in it: there it removes the selected key, never the clip
               tabIndex={-1}
               data-keep-focus=""
@@ -274,7 +278,7 @@ export function ClipControls({ clip, request }: ClipControlsProps) {
               onKeyDown={(event) => {
                 if ((event.key !== "Delete" && event.key !== "Backspace") || event.defaultPrevented || isTextEntry(event.target)) return;
                 event.preventDefault();
-                if (event.repeat || !owned || !keyframe || (owned.owner === clip ? lock : soundLock)) return;
+                if (event.repeat || !owned || !keyframe || (Boolean(owned.owner === clip ? lock : soundLock))) return;
                 if (panel.perform(withoutKey(owned.property, keyframe.frame))) setSelection(null);
                 panel.rest();
               }}
@@ -286,7 +290,7 @@ export function ClipControls({ clip, request }: ClipControlsProps) {
                 lanes={lanes}
                 lanesBlocked={roomy ? null : t("面板不到 {width} px 寬，放不下關鍵影格軌道", { width: LANES_PANEL_WIDTH })}
                 lock={lock}
-                onToggleLanes={() => setWantLanes(!wantLanes)}
+                onToggleLanes={() => { setWantLanes(!wantLanes); }}
               />
               <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
                 <div className="relative min-h-full pb-2">
@@ -313,14 +317,14 @@ export function ClipControls({ clip, request }: ClipControlsProps) {
                 </div>
               </div>
               {selection && owned && keyframe ? (
-                <FieldLockContext.Provider value={owned.owner === clip ? lock : soundLock}>
+                <FieldLockContext value={owned.owner === clip ? lock : soundLock}>
                   <KeyStrip key={selection.property} property={owned.property} owner={owned.owner} keyframe={keyframe} wide={roomy} />
-                </FieldLockContext.Provider>
+                </FieldLockContext>
               ) : null}
             </div>
-          </FieldLockContext.Provider>
-        </RowLayoutContext.Provider>
-      </GroupsContext.Provider>
-    </ClipPanelContext.Provider>
+          </FieldLockContext>
+        </RowLayoutContext>
+      </GroupsContext>
+    </ClipPanelContext>
   );
 }

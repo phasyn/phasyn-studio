@@ -1,0 +1,96 @@
+{
+  "pipeline_id": "qimg-compose-person-mask-local",
+  "label": "人物遮罩：以現有圖片 Take 合成選定範圍",
+  "inputs": [
+    {
+      "name": "references",
+      "type_id": "qimg.references.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "參考圖 [{file: FileRef, label?}]（1–4 張，依序）"
+    },
+    {
+      "name": "video_file",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": "單人表演影片"
+    },
+    {
+      "name": "generated",
+      "type_id": "image.asset.v1",
+      "transport": "inline",
+      "required": true,
+      "description": "要合成到參考底圖上的現有圖片 Take"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "matte",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "person-mask",
+      "inputs": {
+        "video_file": {
+          "from_input": "video_file"
+        }
+      },
+      "parameters": {
+        "frame_index": 0
+      }
+    },
+    {
+      "step_id": "prepare",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "qimg-prepare",
+      "inputs": {
+        "references": {
+          "from_input": "references"
+        },
+        "mask": {
+          "from_step": "matte",
+          "output": "control_image"
+        }
+      },
+      "parameters": {
+        "width": 1024,
+        "height": 1024,
+        "reference_resolution": 1024,
+        "base_index": 0,
+        "mask_invert": false
+      }
+    },
+    {
+      "step_id": "compose",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "image-compose",
+      "inputs": {
+        "image": {
+          "from_input": "generated"
+        },
+        "prepared": {
+          "from_step": "prepare",
+          "output": "prepared"
+        }
+      },
+      "parameters": {}
+    }
+  ],
+  "outputs": {
+    "image": {
+      "from_step": "compose",
+      "output": "image"
+    },
+    "image_white": {
+      "from_step": "compose",
+      "output": "image_white"
+    },
+    "mask": {
+      "from_step": "matte",
+      "output": "control_image"
+    },
+    "field": {
+      "from_step": "matte",
+      "output": "field"
+    }
+  }
+}

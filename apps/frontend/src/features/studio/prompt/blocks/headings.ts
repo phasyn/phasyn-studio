@@ -1,3 +1,4 @@
+import { isListed } from "@/lib/json";
 // Heading syntax of a prompt: recognizing the line that starts a block, and writing [Shot n] markers.
 //
 // Block starts (always at the start of a line):
@@ -10,7 +11,7 @@
 //  - Plain time heading: 0.0–1.5 秒：content, 【0–1.5 秒】content
 //  - Paragraph: any other text, separated by blank lines
 import { formatClock, parseClock, rangeLabel } from "./time";
-import { H3_SECTIONS, type BlockLevel, type H3Section, type Heading, type TimeRange } from "./types";
+import { H3_SECTIONS, type BlockLevel, type Heading, type TimeRange } from "./types";
 
 const SECTION_RE = new RegExp(`^(${H3_SECTIONS.join("|")}):[ \\t]*\\r?$`);
 const CLOCK = "\\d{1,3}:\\d{2}(?:\\.\\d{1,3})?";
@@ -35,12 +36,12 @@ function decimalsOf(value: string): number {
 
 /** [Shot n, a-b] span marker (without a range = [Shot n]). */
 export function shotMarker(shot: number, range: TimeRange | null): string {
-  return range ? `[Shot ${shot}, ${formatClock(range.start)}-${formatClock(range.end)}]` : `[Shot ${shot}]`;
+  return range ? `[Shot ${String(shot)}, ${formatClock(range.start)}-${formatClock(range.end)}]` : `[Shot ${String(shot)}]`;
 }
 
 /** Official shot marker: [Shot n] (no cut-in time, the first shot) or [Shot n] At mm:ss.sss,. */
 export function cutMarker(shot: number, cue: number | null): string {
-  return cue === null ? `[Shot ${shot}]` : `[Shot ${shot}] At ${formatClock(cue)},`;
+  return cue === null ? `[Shot ${String(shot)}]` : `[Shot ${String(shot)}] At ${formatClock(cue)},`;
 }
 
 /** Cut-in time text (00:02.500, 2.5s, 2.5 seconds) → seconds; unparseable → null. */
@@ -97,23 +98,23 @@ function boldHeading(line: string): Heading | null {
 /** Whether a line starts a block; if so → its heading (formatting and the other pure functions share these recognition rules). */
 export function lineHeading(line: string): Heading | null {
   const section = SECTION_RE.exec(line);
-  if (section) {
-    const name = section[1] as H3Section;
+  const name = section?.[1];
+  if (isListed(name, H3_SECTIONS)) {
     return { kind: "section", level: "section", marker: `${name}:`, title: name, range: null, cue: null, shot: null, section: name, style: { type: "section" } };
   }
   const shot = SHOT_RE.exec(line);
   if (shot) {
-    const start = shot[2] ? parseClock(shot[2]) : null;
-    const end = shot[3] ? parseClock(shot[3]) : null;
+    const start = (shot[2] != null && shot[2] !== "") ? parseClock(shot[2]) : null;
+    const end = (shot[3] != null && shot[3] !== "") ? parseClock(shot[3]) : null;
     const range = start !== null && end !== null ? { start, end } : null;
     const number = Number(shot[1]);
     return {
       kind: "shot",
       level: "paragraph",
       marker: shot[0],
-      title: `Shot ${number}`,
+      title: `Shot ${String(number)}`,
       range,
-      cue: range === null && shot[4] ? parseCue(shot[4]) : null,
+      cue: range === null && (shot[4] != null && shot[4] !== "") ? parseCue(shot[4]) : null,
       shot: number,
       section: null,
       style: { type: "shot", form: range ? "range" : "cut" },

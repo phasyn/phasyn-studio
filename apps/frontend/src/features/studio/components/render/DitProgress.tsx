@@ -47,7 +47,7 @@ function StepBars({ view }: { view: BranchView }) {
               "min-w-0 flex-1 rounded-t-[2px]",
               ms !== undefined ? "bg-action/70" : current ? "h-full rounded-[2px] border border-info/70 bg-info/10" : done ? "h-1 bg-action/40" : "h-1 bg-line-subtle",
             )}
-            style={ms !== undefined ? { height: `${Math.max(6, (ms / max) * 100)}%` } : undefined}
+            style={ms !== undefined ? { height: `${String(Math.max(6, (ms / max) * 100))}%` } : undefined}
           />
         );
       })}
@@ -75,7 +75,7 @@ function headlineTitle(progress: DitProgress, running: boolean, converged: numbe
     // Without a badge (no step signal yet) the reason goes here
     if (progress.source === "none") lines.push(SOURCE_LABELS.none.detail);
     const stage = stageText(progress);
-    lines.push(stage.note ? t("此階段剩餘：{value}（{note}）", { value: stage.value, note: stage.note }) : t("此階段剩餘：{value}", { value: stage.value }));
+    lines.push((stage.note != null && stage.note !== "") ? t("此階段剩餘：{value}（{note}）", { value: stage.value, note: stage.note }) : t("此階段剩餘：{value}", { value: stage.value }));
     if (typeof converged === "number") {
       lines.push(t("預估剩餘：≈ {value}（依本機成本紀錄；已完成的步驟用實際時間，含這個分支的解碼與封裝）", { value: formatLeft(converged) }));
     }
@@ -169,7 +169,7 @@ export function DitProgressPanel({
 }) {
   return (
     <div className="grid gap-2">
-      {error ? (
+      {(error != null && error !== "") ? (
         <p role="status" className="text-caption text-warning [overflow-wrap:anywhere]">
           {t("讀取逐步事件失敗：{error}（下一輪會再讀；不影響渲染本身）", { error })}
         </p>

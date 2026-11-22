@@ -27,8 +27,8 @@ export function slugId(text: string, fallback: string): string {
 export function uniqueName(base: string, taken: ReadonlySet<string>): string {
   if (!taken.has(base)) return base;
   for (let index = 2; index < 10_000; index += 1) {
-    const candidate = `${base}-${index}`;
+    const candidate = `${base}-${String(index)}`;
     if (!taken.has(candidate)) return candidate;
   }
-  return `${base}-${taken.size + 1}`;
+  return `${base}-${String(taken.size + 1)}`;
 }

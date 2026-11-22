@@ -9,42 +9,22 @@ import { runQueryOptions } from "@/api/runs";
 import type { WireRun } from "@/api/types";
 import { continuityTakeOutcome } from "../model/continuity";
 import { exportOutcome } from "../model/pipelines";
-import { activeTake, RANDOM_SEED, runsInProgress, type ProjectAction } from "../model/project";
+import { runsInProgress, type ProjectAction } from "../model/project";
 
 /** 還在渲染的 take／匯出所屬的 run（每個 run 一次）。 */
 export function pendingRunIds(project: StudioProject): string[] {
-  return [...new Set([...runsInProgress(project), ...(project.timeline?.sources.flatMap((source) => source.proxy_run_id && !source.proxy && !source.proxy_error ? [source.proxy_run_id] : []) ?? [])])];
+  return [...new Set([...runsInProgress(project), ...(project.timeline?.sources.flatMap((source) => (source.proxy_run_id != null && source.proxy_run_id !== "") && !source.proxy && !(source.proxy_error != null && source.proxy_error !== "") ? [source.proxy_run_id] : []) ?? [])])];
 }
 
-/**
- * 由 run 算出需要更新的動作（純函式，方便測試）。
- * 成功的 take 自動成為使用中：一般渲染（同一個 run 裡這個鏡頭只有一個 take）一律；變體（同一個 run 裡同一鏡頭有多個 take）
- * 只在鏡頭還沒有使用中 take 時取第一個完成的，並讓固定 seed 的鏡頭採用它的 seed，避免每個變體輪流搶走使用中、
- * 或鏡頭被誤標「設定已變更：seed」。seed -1（每次隨機）的鏡頭不改寫 seed。
- */
+/** 從執行紀錄讀回結果；套用時由 reducer 依當下的選片決定首個成功 Take。 */
 export function reconcileActions(project: StudioProject, run: WireRun): ProjectAction[] {
   const actions: ProjectAction[] = [];
   for (const shot of project.shots) {
-    const current = activeTake(shot);
-    let claimed = current !== null;
-    // 沒有明確 active_take_id 時 activeTake 退回「最新成功的 take」：先把目前那個釘住，免得新完成的變體經由退回規則變成使用中
-    let pinned = shot.active_take_id !== null;
-    const variation = shot.takes.filter((take) => take.run_id === run.run_id).length > 1;
     for (const take of shot.takes) {
       if (take.run_id !== run.run_id || take.state !== "rendering") continue;
       const outcome = continuityTakeOutcome(run, take);
       if (outcome.state === "rendering") continue;
-      const activate = outcome.state === "succeeded" && (!variation || !claimed);
-      if (outcome.state === "succeeded" && !activate && !pinned && current) {
-        actions.push({ type: "setActiveTake", shotId: shot.shot_id, takeId: current.take_id });
-        pinned = true;
-      }
-      actions.push({ type: "updateTake", runId: run.run_id, outputKey: take.output_key, patch: outcome, activateOnSuccess: activate });
-      if (activate) {
-        claimed = true;
-        pinned = true;
-        if (variation && shot.seed !== RANDOM_SEED && shot.seed !== take.seed) actions.push({ type: "updateShot", shotId: shot.shot_id, patch: { seed: take.seed } });
-      }
+      actions.push({ type: "updateTake", runId: run.run_id, outputKey: take.output_key, patch: outcome, activateOnSuccess: true });
     }
   }
   for (const record of project.exports) {
@@ -54,12 +34,12 @@ export function reconcileActions(project: StudioProject, run: WireRun): ProjectA
     actions.push({ type: "updateExport", runId: run.run_id, patch: outcome });
   }
   for (const source of project.timeline?.sources ?? []) {
-    if (source.proxy_run_id !== run.run_id || source.proxy || source.proxy_error) continue;
+    if (source.proxy_run_id !== run.run_id || source.proxy || (source.proxy_error != null && source.proxy_error !== "")) continue;
     const outcome = exportOutcome(run);
     if (outcome.state === "rendering") continue;
     const asset = outcome.asset;
-    const valid = asset?.complete && asset.frame_count === source.duration_frames && asset.fps?.num === project.timeline?.fps.num && asset.fps?.den === project.timeline?.fps.den && source.file?.sha256 === source.proxy_source_sha256;
-    actions.push({ type: "patchTimelineSource", sourceId: source.source_id, patch: valid && asset ? { proxy: asset } : { proxy_error: outcome.error?.message ?? t("代理媒體的影格數、時間基準或原始來源不符") } });
+    const valid = asset?.complete === true && asset.frame_count === source.duration_frames && asset.fps?.num === project.timeline?.fps.num && asset.fps?.den === project.timeline?.fps.den && source.file?.sha256 === source.proxy_source_sha256;
+    actions.push({ type: "patchTimelineSource", sourceId: source.source_id, patch: valid ? { proxy: asset } : { proxy_error: outcome.error?.message ?? t("代理媒體的影格數、時間基準或原始來源不符") } });
   }
   return actions;
 }

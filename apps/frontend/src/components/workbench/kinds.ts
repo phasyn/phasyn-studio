@@ -73,14 +73,14 @@ const TEST: KindSpec = { icon: FlaskConical, tone: "neutral", label: t("測試�
 
 /** 依 provider_id 取類型；`test.*` 一律是測試／合成元件。 */
 export function providerKind(providerId: string | null | undefined): KindSpec {
-  if (!providerId) return FALLBACK;
+  if (!(providerId != null && providerId !== "")) return FALLBACK;
   if (providerId.startsWith("test.")) return TEST;
   return PROVIDERS[providerId] ?? FALLBACK;
 }
 
 /** 資料型別（type_id）的色調：接點、連線、型別標籤共用。 */
 export function typeTone(typeId: string | null | undefined): Tone {
-  if (!typeId) return "neutral";
+  if (!(typeId != null && typeId !== "")) return "neutral";
   if (typeId.startsWith("test.")) return "neutral";
   if (typeId.startsWith("text.") || typeId.startsWith("caption.") || typeId.startsWith("video.scene") || typeId.startsWith("prompt.")) return "info";
   if (typeId.includes("final-latent") || typeId.startsWith("h3.") || typeId.startsWith("qimg.")) return "entity";

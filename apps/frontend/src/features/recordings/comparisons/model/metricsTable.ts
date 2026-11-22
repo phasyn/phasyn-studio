@@ -34,7 +34,7 @@ export interface BasisMismatch {
 }
 
 /** 同一列的口徑（unit／method／scope）或品質不同：不可直接比較數值。只看有回報的格。 */
-export function basisMismatch(cells: ReadonlyArray<Metric | undefined>): BasisMismatch {
+export function basisMismatch(cells: readonly (Metric | undefined)[]): BasisMismatch {
   const present = cells.filter((cell): cell is Metric => cell !== undefined);
   const differs = (pick: (metric: Metric) => string) => new Set(present.map(pick)).size > 1;
   return {

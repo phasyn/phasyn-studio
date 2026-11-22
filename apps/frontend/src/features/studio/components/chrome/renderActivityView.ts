@@ -7,7 +7,7 @@ import { parseRunStep, type RunState, type RunStepView } from "@/api/types";
 import { formatTime } from "@/i18n/format";
 import { completionText, formatEtaClock, missingEtaDetail, missingEtaReason, queueCompletion } from "../../model/eta";
 import { runBranchSuffixes, runStepIds, splitRunStepId } from "../../model/pipelines";
-import { progressHeadline, stepLabel, type ProviderLookup } from "../../model/progress";
+import { componentLoadText, progressHeadline, stepLabel, stepsComponentLoad, type ProviderLookup } from "../../model/progress";
 import type { ActivityItem, ActivityItemState, ActivityKind, RenderActivity } from "../../model/renderActivity";
 import { projectHref } from "../../workspaces";
 import { t } from "@/i18n";
@@ -53,7 +53,7 @@ export function activitySubject(activity: RenderActivity): string {
   if (activity.kind === "export") return t("序列匯出");
   if (activity.kind === "proxy") return t("代理");
   const shot = activity.items.find((item) => item.shot)?.shot ?? null;
-  const title = shot?.title || t("未命名鏡頭");
+  const title = (shot?.title ?? "") || t("未命名鏡頭");
   if (activity.variations) return t("{value}・{takesCount} 個變體", { value: title, takesCount: activity.total });
   return activity.total > 1 ? t("批次 {takesCount} 個鏡頭", { takesCount: activity.total }) : title;
 }
@@ -63,7 +63,7 @@ function itemLabel(activity: RenderActivity, item: ActivityItem): string {
   if (activity.kind === "export") return t("序列");
   if (activity.kind === "proxy") return t("代理");
   if (activity.variations) return t("變體 {entry}", { entry: activity.items.indexOf(item) + 1 });
-  return item.shot?.title || t("未命名鏡頭");
+  return (item.shot?.title ?? "") || t("未命名鏡頭");
 }
 
 /** What the run is doing now in one line (「鏡頭 2／3・DiT 第 3／8 步」), or 「準備中」 between steps. */
@@ -77,7 +77,7 @@ const notYet = (activity: RenderActivity) => activity.remaining === null || acti
 /** The whole run's time left: 「剩餘約 9:23・預計 07:03 完成」, 「估算中…」 or why there is no estimate. */
 export function remainingText(activity: RenderActivity): string {
   const { remaining, now } = activity;
-  if (remaining && remaining.seconds !== null && now !== null) {
+  if (remaining?.seconds != null && now !== null) {
     return t("剩餘約 {left}・{completion}", { left: formatEtaClock(remaining.seconds), completion: completionText(now + remaining.seconds * 1000) });
   }
   if (notYet(activity)) return t("估算中…");
@@ -112,6 +112,9 @@ interface RowFacts {
 
 /** What one item is doing: its state, or the running step (「DiT 第 3／8 步」, 「影片解碼執行中」). */
 function itemStage(activity: RenderActivity, { item, state, steps }: RowFacts, lookup: ProviderLookup): string {
+  // A component that loads on use: 「載入模型中（約 N 秒）」 or why it waits for the model
+  const load = state === "running" || state === "waiting" ? stepsComponentLoad(steps) : null;
+  if (load) return componentLoadText(load);
   switch (state) {
     case "waiting":
       return t("等待中");
@@ -139,7 +142,7 @@ const clock = (atMs: number) => formatTime(atMs, { hour: "2-digit", minute: "2-d
 /** When the item's branch ended: the latest end time of its steps (measured); null when none reports one. */
 function endedAt(steps: readonly RunStepView[]): number | null {
   const ends = steps.flatMap((step) => {
-    const at = step.finished_at ? Date.parse(step.finished_at) : Number.NaN;
+    const at = (step.finished_at != null && step.finished_at !== "") ? Date.parse(step.finished_at) : Number.NaN;
     return Number.isFinite(at) ? [at] : [];
   });
   return ends.length > 0 ? Math.max(...ends) : null;
@@ -213,7 +216,7 @@ export function cancelScope(activity: RenderActivity): string | undefined {
 
 /** The render workspace with this run selected (and the selected shot kept). */
 export function runHref(projectId: string, runId: string, shot: string | null): string {
-  return `${projectHref("render", projectId)}${shot ? `&shot=${encodeURIComponent(shot)}` : ""}&run=${encodeURIComponent(runId)}`;
+  return `${projectHref("render", projectId)}${(shot != null && shot !== "") ? `&shot=${encodeURIComponent(shot)}` : ""}&run=${encodeURIComponent(runId)}`;
 }
 
 /** The tab title's progress while the run is running: the figure, or that it is working. */

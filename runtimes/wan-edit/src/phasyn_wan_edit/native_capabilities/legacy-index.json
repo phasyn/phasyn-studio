@@ -1,0 +1,135 @@
+{
+  "schema_version": "1.0",
+  "providers": {
+    "wan.vace": {
+      "default_settings": {
+        "invoke": {
+          "operation": "retake"
+        },
+        "load": {
+          "device": {
+            "id": "GPU-REPLACE",
+            "kind": "cuda",
+            "resource_group": "gpu"
+          },
+          "model_path": "/path/to/models/Wan2.1-VACE-1.3B-diffusers",
+          "provider_options": {
+            "residency": "model_offload"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_wan_edit.provider:WanEditProvider",
+      "kind": "wan.vace",
+      "label": "Wan VACE 影片編輯與控制",
+      "required_modules": [
+        "torch",
+        "diffusers",
+        "transformers",
+        "accelerate",
+        "ftfy",
+        "sentencepiece",
+        "safetensors",
+        "PIL",
+        "numpy"
+      ],
+      "source_pins": [
+        [
+          "diffusers",
+          "578c9b2c6636ab2424a0e56186268b83623656b2"
+        ]
+      ],
+      "synthetic": false
+    },
+    "wan.generate": {
+      "default_settings": {
+        "invoke": {},
+        "load": {
+          "device": {
+            "id": "GPU-REPLACE",
+            "kind": "cuda",
+            "resource_group": "gpu"
+          },
+          "model_path": "/path/to/models/Wan2.1-VACE-1.3B-diffusers",
+          "provider_options": {
+            "residency": "model_offload"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_wan_edit.provider:WanGenerateProvider",
+      "kind": "wan.generate",
+      "label": "Wan VACE 文字與首幀生成",
+      "required_modules": [
+        "torch",
+        "diffusers",
+        "transformers",
+        "accelerate",
+        "ftfy",
+        "sentencepiece",
+        "safetensors",
+        "PIL",
+        "numpy"
+      ],
+      "source_pins": [
+        [
+          "diffusers",
+          "578c9b2c6636ab2424a0e56186268b83623656b2"
+        ]
+      ],
+      "synthetic": false
+    }
+  }
+}

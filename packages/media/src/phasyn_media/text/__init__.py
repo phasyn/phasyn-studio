@@ -41,6 +41,7 @@ from .model import (
     TitleRaster,
 )
 
+
 if TYPE_CHECKING:
     from .errors import TextRenderError
     from .runner import render_texts

@@ -11,6 +11,7 @@ from __future__ import annotations
 from ..errors import MediaError
 from .model import TextFailure
 
+
 _MESSAGES = {
     "text_renderer_unavailable": "這台主機無法排版文字（需要系統的 FreeType、HarfBuzz 與 Fontconfig 函式庫）",
     "text_font_missing": "這台主機沒有可以用來排版文字的字型",
@@ -44,9 +45,14 @@ class TextRenderError(MediaError):
         detail: str | None = None,
         invalid_request: bool = False,
     ) -> None:
+        """Store the text-rendering diagnostic and its cause."""
         if reason not in _MESSAGES:
             raise ValueError(f"unknown text failure reason: {reason}")
-        code = _INVALID_ARGUMENT if invalid_request or reason in _INPUT_REASONS else _TOOL_FAILED
+        code = (
+            _INVALID_ARGUMENT
+            if invalid_request or reason in _INPUT_REASONS
+            else _TOOL_FAILED
+        )
         retryable = reason == "text_render_failed" and code == _TOOL_FAILED
         super().__init__(code, _MESSAGES[reason], retryable=retryable, actual=detail)
         self.reason = reason
@@ -55,7 +61,10 @@ class TextRenderError(MediaError):
         self.detail = detail
 
     @classmethod
-    def from_failure(cls, failure: TextFailure, *, invalid_request: bool = False) -> TextRenderError:
+    def from_failure(
+        cls, failure: TextFailure, *, invalid_request: bool = False
+    ) -> TextRenderError:
+        """Translate a text rendering failure into a component error."""
         return cls(
             failure.reason,
             job_id=failure.job_id,

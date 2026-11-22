@@ -1,11 +1,11 @@
-"""DiT 去噪迴圈的 recorder hooks（與 H3 ``phasyn_h3/instrument.py`` 一致的量測方式）。
+"""DiT 去噪迴圈的 recorder hooks（與 H3 ``phasyn_h3/instrument.py`` 一致的量測方式）.
 
-- 每 step：host 時間＋compute stream 上的 CUDA event pair（只在 step 邊界非阻塞 poll，call 結束才 drain）。
+- 每 step：host 時間+compute stream 上的 CUDA event pair（只在 step 邊界非阻塞 poll，call 結束才 drain）。
 - 每 block：forward pre-hook（prepend）與 forward hook 的 event 區間，彙總成 part_call（group_stream 時區間含
   等待權重與 hook 搬運，不是 kernel active time）。
 - group_stream：包裝每個 ModuleGroup 的 ``onload_``，在 side stream 上記 event pair → ``weight_h2d`` 完成量。
 - 計數：scheduler_steps_completed、denoiser_forwards_completed、cfg_branch_forward_count（uncond 分支）、
-  block_forward_count、block_load_count；``qimg.dit.step_ms``（每步 host 平均，count＝步數）。
+  block_forward_count、block_load_count；``qimg.dit.step_ms``（每步 host 平均，count=步數）。
 - steps ≠ NFE ≠ module forward 次數；只回報實際觀測到的計數。
 """
 
@@ -21,14 +21,15 @@ from typing import Any
 from phasyn_components import upstream
 from phasyn_components.recorder import Recorder
 
+
 # diffusers ModuleGroup attributes the block-transfer measurement relies on (pinned build; checked per group)
 GROUP_ATTRS = ("onload_", "modules", "parameters", "stream", "group_id")
 
 
 class DitObserver:
-    """實作 driver.StepObserver：取消檢查、step 計時、預覽送出。"""
+    """實作 driver.StepObserver：取消檢查、step 計時、預覽送出."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - Keep the published runtime API.
         self,
         rec: Recorder,
         *,
@@ -39,6 +40,7 @@ class DitObserver:
         preview_due: Callable[[int], bool] | None = None,
         preview_submit: Callable[[Any, int], None] | None = None,
     ) -> None:
+        """Initialize the state for this operation."""
         from phasyn_components.recorder.gpu import EventPairs, TraceWindow
 
         cfg_rec = rec.config
@@ -47,8 +49,15 @@ class DitObserver:
         self.cfg = cfg
         self._check = check_cancelled
         self.sigmas = sigmas
-        self.gpu = on_cuda and bool(cfg_rec.get("gpu_event_timing", True)) and rec.mode != "off"
-        self.pairs = EventPairs(max_pending=int(cfg_rec.get("cuda_pending_event_pairs", 4096)), enabled=self.gpu)
+        self.gpu = (
+            on_cuda
+            and bool(cfg_rec.get("gpu_event_timing", True))
+            and rec.mode != "off"
+        )
+        self.pairs = EventPairs(
+            max_pending=int(cfg_rec.get("cuda_pending_event_pairs", 4096)),
+            enabled=self.gpu,
+        )
         self.trace = TraceWindow(rec, name="qimg-dit-denoise") if on_cuda else None
         self._preview_due = preview_due
         self._preview_submit = preview_submit
@@ -68,9 +77,11 @@ class DitObserver:
 
     # ------------------------------------------------------------------ StepObserver
     def check_cancelled(self) -> None:
+        """Raise if the caller cancelled the current job."""
         self._check()
 
     def step_start(self, index: int) -> None:
+        """Begin measurements for this denoising step."""
         self.current_step = index
         self._t0 = time.perf_counter_ns()
         self._start = self.pairs.record()
@@ -78,12 +89,14 @@ class DitObserver:
             self._trace_scope = self.trace.step(index)
             self._trace_scope.__enter__()
 
-    def forward_done(self, index: int, branch: str) -> None:
+    def forward_done(self, index: int, branch: str) -> None:  # noqa: ARG002 - Provider and callback signatures accept these argument names.
+        """Record the completion of a denoiser forward pass."""
         self.forwards += 1
         if branch == "uncond":
             self.uncond_forwards += 1
 
     def step_end(self, index: int, *, sigma: float, forwards: int) -> None:
+        """Finish measurements for this denoising step."""
         end = self.pairs.record()
         if self._trace_scope is not None:
             with contextlib.suppress(Exception):
@@ -96,9 +109,15 @@ class DitObserver:
         self.pairs.poll()
 
     def wants_preview(self, index: int) -> bool:
-        return self._preview_due is not None and self._preview_submit is not None and self._preview_due(index + 1)
+        """Report whether this step should publish a preview."""
+        return (
+            self._preview_due is not None
+            and self._preview_submit is not None
+            and self._preview_due(index + 1)
+        )
 
     def preview(self, index: int, x0: Callable[[], Any]) -> None:
+        """Publish the intermediate preview for this step."""
         if self._preview_submit is None:
             return
         t0 = time.perf_counter()
@@ -110,6 +129,7 @@ class DitObserver:
     # ------------------------------------------------------------------ block hooks
     @contextlib.contextmanager
     def attach(self, transformer: Any, groups: list[Any] | None = None) -> Any:
+        """Attach measurement hooks to the loaded model."""
         try:
             self._install(transformer, groups or [])
             yield self
@@ -125,7 +145,9 @@ class DitObserver:
         )
         for idx, block in enumerate(getattr(transformer, "transformer_blocks", [])):
             part = f"transformer.transformer_blocks.{idx}"
-            self.handles.append(block.register_forward_pre_hook(self._make_pre(), prepend=True))
+            self.handles.append(
+                block.register_forward_pre_hook(self._make_pre(), prepend=True)
+            )
             self.handles.append(block.register_forward_hook(self._make_post(part)))
         if groups:
             self.rec.declare("block_load_count")
@@ -147,7 +169,10 @@ class DitObserver:
 
     def _make_pre(self) -> Any:
         def hook(module: Any, _args: Any) -> None:
-            module._phasyn_qimg_state = {"t0": time.perf_counter_ns(), "a": self.pairs.record()}
+            module._phasyn_qimg_state = {
+                "t0": time.perf_counter_ns(),
+                "a": self.pairs.record(),
+            }
 
         return hook
 
@@ -172,8 +197,12 @@ class DitObserver:
 
         return hook
 
-    def _transfer_done(self, transfer_id: str, nbytes: int, gpu_ms: float | None) -> None:
-        self.rec.transfer_completed(transfer_id, completed_bytes=nbytes, gpu_event_ms=gpu_ms)
+    def _transfer_done(
+        self, transfer_id: str, nbytes: int, gpu_ms: float | None
+    ) -> None:
+        self.rec.transfer_completed(
+            transfer_id, completed_bytes=nbytes, gpu_event_ms=gpu_ms
+        )
 
     def _wrap_group(self, group: Any) -> None:
         missing = upstream.missing_attrs(group, GROUP_ATTRS)
@@ -185,7 +214,9 @@ class DitObserver:
         original_bound = group.onload_
         had_instance = "onload_" in vars(group)
         stream = group.stream
-        params = [p for m in group.modules for p in m.parameters()] + list(group.parameters or [])
+        params = [p for m in group.modules for p in m.parameters()] + list(
+            group.parameters or []
+        )
         nbytes = sum(int(p.numel() * p.element_size()) for p in params)
         name = str(group.group_id or "group")
 
@@ -223,7 +254,9 @@ class DitObserver:
                     src_memory_kind="pinned",
                     dst_memory_kind="device",
                 )
-                self.pairs.pair(start, end, functools.partial(self._transfer_done, tid, nbytes))
+                self.pairs.pair(
+                    start, end, functools.partial(self._transfer_done, tid, nbytes)
+                )
             self.rec.count("block_load_count", part=f"transformer.{name}")
             return result
 
@@ -232,7 +265,7 @@ class DitObserver:
 
     # ------------------------------------------------------------------ finish
     def finish(self, *, completed: bool) -> dict[str, Any]:
-        """call 結束邊界：drain event（結果本來就必須完成）、寫 step／part／counter／metric。"""
+        """Call 結束邊界：drain event（結果本來就必須完成）、寫 step／part／counter／metric."""
         self.pairs.drain(wait=True)
         rec = self.rec
         host = []
@@ -255,7 +288,9 @@ class DitObserver:
         for part, agg in sorted(self.blocks.items()):
             total_blocks += agg["forwards"]
             gpu = None if agg["gpu_missing"] else agg["gpu_ms"]
-            rec.part_call(part, host_ms=agg["host_ms"], gpu_event_ms=gpu, calls=agg["forwards"])
+            rec.part_call(
+                part, host_ms=agg["host_ms"], gpu_event_ms=gpu, calls=agg["forwards"]
+            )
         rec.count("block_forward_count", total_blocks)
         if host:
             rec.set_metric(
@@ -287,7 +322,13 @@ class DitObserver:
                     unit="ms",
                 )
         else:
-            rec.set_metric("qimg.dit.step_ms", None, quality="unavailable", reason="沒有完成任何 step", unit="ms")
+            rec.set_metric(
+                "qimg.dit.step_ms",
+                None,
+                quality="unavailable",
+                reason="沒有完成任何 step",
+                unit="ms",
+            )
         if self.pairs.dropped:
             rec.notice(
                 "DETAIL_TRUNCATED",
@@ -296,13 +337,23 @@ class DitObserver:
             )
             rec.set_coverage("partial", "部分 CUDA event 區間因待解上限未記錄")
         if not self.gpu:
-            rec.note("沒有 CUDA event（CPU 裝置或 gpu_event_timing 關閉）：只有 host 時間")
-        rec.note("block 時間為 compute stream 上的 CUDA event 區間（含等待與空隙），不是 kernel active time")
+            rec.note(
+                "沒有 CUDA event（CPU 裝置或 gpu_event_timing 關閉）：只有 host 時間"
+            )
+        rec.note(
+            "block 時間為 compute stream 上的 CUDA event 區間（含等待與空隙），不是 kernel active time"
+        )
         if self.trace is not None and self.trace.enabled:
-            rec.note(f"trace 狀態：{self.trace.status}{'（' + self.trace.reason + '）' if self.trace.reason else ''}")
+            rec.note(
+                f"trace 狀態：{self.trace.status}{'（' + self.trace.reason + '）' if self.trace.reason else ''}"
+            )
         if not completed:
             rec.note(f"去噪未完成：完成 {len(self.rows)} 步")
-        return {"steps_completed": len(self.rows), "forwards": self.forwards, "preview_main_thread_ms": self.preview_ms}
+        return {
+            "steps_completed": len(self.rows),
+            "forwards": self.forwards,
+            "preview_main_thread_ms": self.preview_ms,
+        }
 
 
 __all__ = ["DitObserver"]

@@ -1,3 +1,4 @@
+import { isRecord } from "@/lib/json";
 // 分頁 2：場景與候選。中欄＝版本選擇、8 區段編修（鎖定、有意修改、證據）與候選（已儲存、草稿預覽、逐區段差異）；
 // 檢視器＝版本事實、資料檢查、視覺模型修訂、接受與套用；底部是「儲存新版本」（prompt.scene_compile 編譯後另存，原版本不變）。
 import { ArrowLeft, BadgeCheck, FileBraces, ListChecks, RotateCcw, Save, Send, WandSparkles } from "lucide-react";
@@ -62,7 +63,7 @@ export function SceneCenter({ ws, scene }: { ws: Workspace; scene: SceneControll
         title={t("還沒有場景")}
         description={t("先分析原圖：產生 8 區段場景（主體、動作、構圖、環境、光線、外觀與材質、風格、可見文字）與 core／detailed 候選。")}
         action={
-          <Button icon={<ArrowLeft aria-hidden />} onClick={() => ws.goTab("source")}>
+          <Button icon={<ArrowLeft aria-hidden />} onClick={() => { ws.goTab("source"); }}>
             {t("前往來源與分析")}
           </Button>
         }
@@ -77,7 +78,7 @@ export function SceneCenter({ ws, scene }: { ws: Workspace; scene: SceneControll
         <label htmlFor="prompt-scene-version" className="text-caption text-fg-secondary">
           {t("版本")}
         </label>
-        <Select id="prompt-scene-version" compact className="w-auto max-w-full min-w-60" value={version.version_id} onChange={(event) => scene.selectVersion(event.target.value)}>
+        <Select id="prompt-scene-version" compact className="w-auto max-w-full min-w-60" value={version.version_id} onChange={(event) => { scene.selectVersion(event.target.value); }}>
           {[...study.versions].reverse().map((item) => (
             <option key={item.version_id} value={item.version_id}>
               {versionOption(ws, item)}
@@ -146,7 +147,7 @@ export function SceneInspector({ ws, scene }: { ws: Workspace; scene: SceneContr
             <span>{ORIGIN_LABELS[version.origin]}</span>
             <span aria-hidden>·</span>
             <TimeText iso={version.created_at} />
-            {version.parent_version_id ? <span>{t("· 由 {versionLabel} 修改", { versionLabel: versionLabel(study, version.parent_version_id) })}</span> : null}
+            {(version.parent_version_id != null && version.parent_version_id !== "") ? <span>{t("· 由 {versionLabel} 修改", { versionLabel: versionLabel(study, version.parent_version_id) })}</span> : null}
           </span>
         }
         id={version.version_id}
@@ -158,7 +159,7 @@ export function SceneInspector({ ws, scene }: { ws: Workspace; scene: SceneContr
             <PropertyRow label={t("鎖定區段")}>{locked.length === 0 ? <span className="text-fg-tertiary">{t("無")}</span> : formatList(locked.map((key) => SECTION_LABELS[key]))}</PropertyRow>
             <PropertyRow label={t("備註")}>{version.note || <span className="text-fg-tertiary">—</span>}</PropertyRow>
           </PropertyGrid>
-          {version.provenance ? (
+          {isRecord(version.provenance) ? (
             <Disclosure summary={t("來源紀錄（run、元件、模型輸出摘要）")}>
               <JsonView value={version.provenance} label="provenance" maxHeightClass="max-h-48" />
             </Disclosure>
@@ -193,7 +194,7 @@ export function SceneInspector({ ws, scene }: { ws: Workspace; scene: SceneContr
                 readOnly={ws.readOnly}
                 placeholder={t("例如：保留構圖，補足主體的材質描述。")}
                 value={scene.instruction}
-                onChange={(event) => scene.setInstruction(event.target.value)}
+                onChange={(event) => { scene.setInstruction(event.target.value); }}
               />
               <ActionButton size="sm" icon={<WandSparkles aria-hidden />} disabledReason={refineReason} onClick={scene.refine}>
                 {t("修訂場景")}
@@ -213,10 +214,10 @@ export function SceneInspector({ ws, scene }: { ws: Workspace; scene: SceneContr
               <p className="text-caption text-fg-secondary">{t("尚未接受任何候選。")}</p>
             )}
             <div className="flex flex-wrap gap-2">
-              <ActionButton size="sm" icon={<BadgeCheck aria-hidden />} disabledReason={acceptReason} onClick={() => ws.requestAccept(ref, null)}>
+              <ActionButton size="sm" icon={<BadgeCheck aria-hidden />} disabledReason={acceptReason} onClick={() => { ws.requestAccept(ref, null); }}>
                 {t("接受 {variant}…", { variant: scene.variant })}
               </ActionButton>
-              <ActionButton size="sm" icon={<Send aria-hidden />} disabledReason={applyReason} onClick={() => ws.requestApply(ref, ws.settings)}>
+              <ActionButton size="sm" icon={<Send aria-hidden />} disabledReason={applyReason} onClick={() => { ws.requestApply(ref, ws.settings); }}>
                 {t("套用到 Image Studio…")}
               </ActionButton>
             </div>

@@ -72,7 +72,7 @@ export function studyFlow(input: StudyFlowInput): Record<StudyStepId, StudyFlowS
   else if (busy === "refine") scene = { status: "running", detail: t("修訂中") };
   else if (input.dirty) scene = { status: "warning", detail: t("場景未儲存") };
   else if (refine?.state === "running") scene = unfinished(refine);
-  else scene = { status: "done", detail: study.accepted_version_id ? t("已接受候選") : null };
+  else scene = { status: "done", detail: (study.accepted_version_id != null && study.accepted_version_id !== "") ? t("已接受候選") : null };
 
   return {
     source,

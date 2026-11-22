@@ -10,6 +10,7 @@ import { returnFocusOr } from "@/components/ui/focusReturn";
 import { cn } from "@/lib/cn";
 import { runDisplayName } from "@/lib/runName";
 import { t } from "@/i18n";
+import { chipName } from "./runChip";
 
 /**
  * 頂欄右側的進行中 run（只有 state=running 的 run 時出現）：連到 run 詳情的狀態膠囊＋取消鈕（先確認範圍）。
@@ -26,6 +27,8 @@ export function ActiveRun() {
   // The run being confirmed (as it was when asked) and the button that asked
   const [confirming, setConfirming] = useState<{ run: WireRun; opener: HTMLElement } | null>(null);
   const label = running ? runDisplayName(running) : "";
+  // The chip is short: a Studio render reads as its shot (「鏡頭 3」), the full name stays in the tooltip
+  const short = chipName(label);
   return (
     <>
       {running ? (
@@ -36,16 +39,19 @@ export function ActiveRun() {
               "pressable relative inline-flex h-8 min-w-0 items-center gap-1.5 overflow-hidden rounded-full border border-info/35 bg-info/10 pr-3 pl-2.5 text-caption text-info no-underline",
               "hover:border-info/70 hover:bg-info/15",
             )}
-            title={t("執行中：{label}（{run_id}）", { label, run_id: running.run_id })}
+            title={t("執行中：{label}", { label })}
+            aria-label={runs.length > 1 ? t("執行中：{label}（共 {count} 個工作）", { label, count: runs.length }) : t("執行中：{label}", { label })}
           >
             <LoaderCircle aria-hidden className="size-3.5 shrink-0 animate-spin" />
-            <span className="max-w-56 truncate">{t("執行中：{label}", { label })}</span>
+            <span className="max-w-56 truncate max-sm:hidden">{t("執行中：{label}", { label: short })}</span>
+            {/* A phone has room for a count, not a name that would be cut after two letters */}
+            <span className="whitespace-nowrap sm:hidden">{t("{count} 個工作執行中", { count: runs.length })}</span>
             <span aria-hidden className="absolute inset-x-3 bottom-0 h-px bg-brand-gradient opacity-80 animate-shimmer" />
           </Link>
           {others > 0 ? (
             <Link
               to={PATHS.runs}
-              className="pressable inline-flex h-8 shrink-0 items-center rounded-full border border-info/35 bg-info/10 px-2.5 text-caption text-info no-underline hover:border-info/70 hover:bg-info/15"
+              className="pressable inline-flex h-8 shrink-0 items-center rounded-full max-sm:hidden border border-info/35 bg-info/10 px-2.5 text-caption text-info no-underline hover:border-info/70 hover:bg-info/15"
               title={t("另外還有 {count} 個 run 在執行", { count: others })}
             >
               +{others}
@@ -53,7 +59,7 @@ export function ActiveRun() {
           ) : null}
           <button
             type="button"
-            onClick={(event) => setConfirming({ run: running, opener: event.currentTarget })}
+            onClick={(event) => { setConfirming({ run: running, opener: event.currentTarget }); }}
             aria-label={t("取消 run {label}", { label })}
             title={t("取消這個 run（會先確認）")}
             className="pressable grid size-8 shrink-0 place-items-center rounded-full border border-line-subtle bg-sunken text-danger hover:border-danger/60 hover:bg-danger/10 active:bg-sunken"
@@ -66,8 +72,8 @@ export function ActiveRun() {
         <CancelRunDialog
           run={confirming.run}
           open
-          onOpenChange={(open) => (open ? undefined : setConfirming(null))}
-          onCloseAutoFocus={(event) => returnFocusOr(event, confirming.opener, pageFocusTarget())}
+          onOpenChange={(open) => { if (!(open)) { setConfirming(null); } }}
+          onCloseAutoFocus={(event) => { returnFocusOr(event, confirming.opener, pageFocusTarget()); }}
         />
       ) : null}
     </>

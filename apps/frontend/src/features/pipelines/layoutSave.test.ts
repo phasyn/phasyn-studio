@@ -35,7 +35,7 @@ function setup() {
   return { client, server, save, cached };
 }
 
-const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+const flush = () => new Promise((resolve) => void setTimeout(resolve, 0));
 
 describe("分類與排序的保存", () => {
 

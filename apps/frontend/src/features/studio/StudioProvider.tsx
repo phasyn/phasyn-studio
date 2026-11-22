@@ -10,10 +10,11 @@ import type { StudioProject, StudioTimelineCommand } from "@/api/generated/contr
 import { usePipelines } from "@/api/pipelines";
 import { usePluginRegistry } from "@/features/plugins";
 import { useArchiveRun, useRunList } from "@/api/runs";
-import { runTimelineCommands as postTimelineCommands } from "@/api/studioProjects";
+import { fetchProject, runTimelineCommands as postTimelineCommands } from "@/api/studioProjects";
 import { RunDeleteDialog } from "@/features/runs";
 import { StudioShellContext, useOutsideSaves, useStudioShellValue } from "@/features/studio-shell";
 import { runIdName } from "@/lib/runName";
+import { postAdoptedMedia, postRunTake } from "./attach/api";
 import { EditorProvider } from "./editor/EditorProvider";
 import { createPlayheadStore } from "./hooks/playhead";
 import { useCostProfileEstimator } from "./hooks/useCostProfileEstimator";
@@ -59,23 +60,23 @@ export function StudioProvider({ initial, children }: { initial: StudioProject; 
   const plugins = usePluginRegistry();
   // Render-time estimates (render buttons, queue, running renders, swap wizard) from the routes' cost profiles
   const estimator = useCostProfileEstimator(engine.routes);
-  const { busy, renderShots, renderVariants, renderVariantBatch, renderVariations, exportSequence, createProxy } = useStudioRender({ project, dispatch, engine, catalog: catalog.data, notify, estimator });
+  const { busy, renderShots, renderVariants, renderVariantBatch, renderVariations, exportSequence, createProxy } = useStudioRender({ project, dispatch, transact, engine, catalog: catalog.data, notify, estimator });
 
   const { activeRunIds, blockedReason: runBlockedReason } = useRunSlots();
-  // 已封存的 run：只讀第一頁（最多 200 個，伺服器上限）；更早的封存在這裡會當成未封存顯示
-  const archivedList = useRunList(200, "only");
+  // 這個專案已封存的 run（摘要）：只讀第一頁（最多 200 個，伺服器上限）；更早的封存在這裡會當成未封存顯示
+  const archivedList = useRunList(200, "only", { related_project_id: project.project_id }, "summary");
   const archivedRunIds = useMemo(() => new Set(archivedList.data?.pages.flatMap((page) => page.items.map((run) => run.run_id)) ?? []), [archivedList.data]);
   const { mutateAsync: archiveRun } = useArchiveRun();
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
 
   const [params, setParams] = useSearchParams();
   const [playhead] = useState(createPlayheadStore);
-  const [monitorMode, setMonitorModeState] = useState<MonitorMode>("source");
+  const [monitorModeState, setMonitorModeState] = useState<MonitorMode>("source");
   const [sourceTakeId, setSourceTakeId] = useState<string | null>(null);
   const [compareTakeId, setCompareTakeId] = useState<string | null>(null);
 
   const requested = params.get("shot");
-  const selectedShotId = requested && project.shots.some((shot) => shot.shot_id === requested) ? requested : (project.shots[0]?.shot_id ?? null);
+  const selectedShotId = (requested != null && requested !== "") && project.shots.some((shot) => shot.shot_id === requested) ? requested : (project.shots[0]?.shot_id ?? null);
 
   const shotListenerRef = useRef<ShotListener | null>(null);
   const listenShots = useCallback((listener: ShotListener) => {
@@ -88,11 +89,11 @@ export function StudioProvider({ initial, children }: { initial: StudioProject; 
     (shotId: string | null, options: { fromClip?: boolean } = {}) => {
       setSourceTakeId(null);
       setCompareTakeId(null);
-      if (!options.fromClip) shotListenerRef.current?.selected(shotId);
+      if (!(options.fromClip === true)) shotListenerRef.current?.selected(shotId);
       setParams(
         (current) => {
           const next = new URLSearchParams(current);
-          if (shotId) next.set("shot", shotId);
+          if (shotId != null && shotId !== "") next.set("shot", shotId);
           else next.delete("shot");
           return next;
         },
@@ -124,6 +125,24 @@ export function StudioProvider({ initial, children }: { initial: StudioProject; 
     [dispatch, engine, project, selectShot, selectedShotId],
   );
 
+  const attachRunTake = useCallback(
+    (shotId: string, runId: string, output: string) =>
+      transact(async (saved) => {
+        await postRunTake(saved.project_id, shotId, saved.revision, runId, output);
+        return fetchProject(saved.project_id);
+      }),
+    [transact],
+  );
+
+  const adoptMedia = useCallback(
+    (shotId: string, runId: string, output: string, parent: string | null) =>
+      transact(async (saved) => {
+        await postAdoptedMedia(saved.project_id, shotId, saved.revision, runId, output, parent);
+        return fetchProject(saved.project_id);
+      }),
+    [transact],
+  );
+
   const runTimelineCommands = useCallback(
     (commands: StudioTimelineCommand[]) => transact(async (saved) => (await postTimelineCommands(saved.project_id, { revision: saved.revision, commands })).project),
     [transact],
@@ -133,7 +152,7 @@ export function StudioProvider({ initial, children }: { initial: StudioProject; 
     async (runId: string, archived: boolean) => {
       try {
         await archiveRun({ runId, archived });
-        notify({ tone: "success", title: archived ? t("已封存這次渲染") : t("已取消封存"), detail: archived ? t("檔案與紀錄都保留；在佇列打開「顯示已封存」可以再看到它。") : undefined });
+        notify({ tone: "success", title: archived ? t("已封存這次渲染") : t("已取消封存"), ...(archived ? { detail: t("檔案與紀錄都保留；在佇列打開「顯示已封存」可以再看到它。") } : {}) });
       } catch (error) {
         notify({ tone: "danger", title: archived ? t("封存失敗") : t("取消封存失敗"), detail: errorText(error) });
       }
@@ -142,7 +161,7 @@ export function StudioProvider({ initial, children }: { initial: StudioProject; 
   );
 
   const deleteRuns = useCallback(
-    (runIds: string[], options: { removeShotId?: string; nextShotId?: string | null } = {}) => setDeleteTarget(runIds.length > 0 ? { runIds: [...new Set(runIds)], ...options } : null),
+    (runIds: string[], options: { removeShotId?: string; nextShotId?: string | null } = {}) => { setDeleteTarget(runIds.length > 0 ? { runIds: [...new Set(runIds)], ...options } : null); },
     [],
   );
 
@@ -161,7 +180,7 @@ export function StudioProvider({ initial, children }: { initial: StudioProject; 
     reload()
       .then(() => {
         // 「刪除鏡頭與影片」：影片都刪掉之後才移除鏡頭；有任何 run 沒刪成，鏡頭保留讓使用者之後再試
-        if (!target?.removeShotId) return;
+        if (!(target?.removeShotId != null && target.removeShotId !== "")) return;
         if (!target.runIds.every((runId) => deleted.includes(runId))) {
           notify({ tone: "warning", title: t("鏡頭沒有移除"), detail: t("有些影片沒有刪除成功（例如 Node 離線）；鏡頭保留，之後可以再刪一次。") });
           return;
@@ -169,7 +188,7 @@ export function StudioProvider({ initial, children }: { initial: StudioProject; 
         dispatch({ type: "removeShot", shotId: target.removeShotId });
         if (selectedShotId === target.removeShotId) selectShot(target.nextShotId ?? null);
       })
-      .catch((error: unknown) => notify({ tone: "danger", title: t("重新載入專案失敗"), detail: errorText(error) }));
+      .catch((error: unknown) => { notify({ tone: "danger", title: t("重新載入專案失敗"), detail: errorText(error) }); });
   };
 
   const value = useMemo<StudioContextValue>(
@@ -180,6 +199,8 @@ export function StudioProvider({ initial, children }: { initial: StudioProject; 
       documentGeneration: state.generation,
       flush,
       runTimelineCommands,
+      adoptMedia,
+      attachRunTake,
       catalog: catalog.data,
       engine,
       plugins,
@@ -187,7 +208,7 @@ export function StudioProvider({ initial, children }: { initial: StudioProject; 
       selectShot,
       listenShots,
       playhead,
-      monitorMode,
+      monitorMode: monitorModeState,
       setMonitorMode,
       sourceTakeId,
       setSourceTakeId,
@@ -215,6 +236,8 @@ export function StudioProvider({ initial, children }: { initial: StudioProject; 
       state.generation,
       flush,
       runTimelineCommands,
+      adoptMedia,
+      attachRunTake,
       catalog.data,
       engine,
       plugins,
@@ -222,7 +245,7 @@ export function StudioProvider({ initial, children }: { initial: StudioProject; 
       selectShot,
       listenShots,
       playhead,
-      monitorMode,
+      monitorModeState,
       setMonitorMode,
       sourceTakeId,
       compareTakeId,
@@ -244,23 +267,23 @@ export function StudioProvider({ initial, children }: { initial: StudioProject; 
   );
 
   return (
-    <StudioShellContext.Provider value={shell}>
-      <StudioContext.Provider value={value}>
-        <SegmentEtaContext.Provider value={estimator}>
+    <StudioShellContext value={shell}>
+      <StudioContext value={value}>
+        <SegmentEtaContext value={estimator}>
           <RenderActivityProvider>
             <EditorProvider>{children}</EditorProvider>
           </RenderActivityProvider>
-        </SegmentEtaContext.Provider>
+        </SegmentEtaContext>
         <RunDeleteDialog
           runIds={deleteTarget?.runIds ?? []}
           open={deleteTarget !== null}
-          onOpenChange={(open) => (open ? undefined : setDeleteTarget(null))}
+          onOpenChange={(open) => { if (!(open)) { setDeleteTarget(null); } }}
           labelOf={runLabel}
           outputKind="video"
           beforeDelete={flush}
           onDone={onDeleted}
         />
-      </StudioContext.Provider>
-    </StudioShellContext.Provider>
+      </StudioContext>
+    </StudioShellContext>
   );
 }

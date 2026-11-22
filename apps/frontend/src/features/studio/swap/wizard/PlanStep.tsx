@@ -47,14 +47,13 @@ export function PlanStep({ api, derived }: { api: SwapDraftApi; derived: WizardD
     update({ manualCuts: [...draft.manualCuts, { id: newLocalId("cut"), seconds: round3(value) }].sort((a, b) => a.seconds - b.seconds) });
   };
   // 段落設定以「原影片範圍」為 key：分段改變後，範圍沒變的段落保留備註與角色勾選
-  const setNote = (key: string, value: string) => update((current) => ({ notes: { ...current.notes, [key]: value } }));
-  const toggleAbsent = (key: string, characterId: string, present: boolean) =>
-    update((current) => {
+  const setNote = (key: string, value: string) => { update((current) => ({ notes: { ...current.notes, [key]: value } })); };
+  const toggleAbsent = (key: string, characterId: string, present: boolean) => { update((current) => {
       const ids = new Set(current.absent[key] ?? []);
       if (present) ids.delete(characterId);
       else ids.add(characterId);
       return { absent: { ...current.absent, [key]: [...ids] } };
-    });
+    }); };
   // Options stop at this character count's limit (maxFramesFor)
   const frameOptions = segmentFrameOptions(derived.frameLimit);
   const perCount = derived.limit.maxFramesByCharacters ? t("（{characters} 個角色）", { characters: derived.characters }) : "";
@@ -86,13 +85,13 @@ export function PlanStep({ api, derived }: { api: SwapDraftApi; derived: WizardD
           <Label htmlFor={`${id}-fade`} hint={t("鏡頭中間的接縫重疊幾個影格（0–{maxCrossfadeFrames}；0＝直接接）", { maxCrossfadeFrames: MAX_CROSSFADE_FRAMES })}>
             {t("交叉溶接（影格）")}
           </Label>
-          <NumberField id={`${id}-fade`} integer value={draft.crossfade} min={0} max={MAX_CROSSFADE_FRAMES} onCommit={(value) => update({ crossfade: value ?? draft.crossfade })} />
+          <NumberField id={`${id}-fade`} integer value={draft.crossfade} min={0} max={MAX_CROSSFADE_FRAMES} onCommit={(value) => { update({ crossfade: value ?? draft.crossfade }); }} />
         </div>
       </div>
       <Checkbox
         id={`${id}-hold`}
         checked={draft.holdTail}
-        onChange={(event) => update({ holdTail: event.target.checked })}
+        onChange={(event) => { update({ holdTail: event.target.checked }); }}
         label={t("段尾凍結（推薦）")}
         description={t("每段的參考影片只用到段尾後 {leadOut} 秒（至少 {minReal} 秒原片），之後凍結最後一格：模型不會提早畫出下一段的鏡頭。", {
           leadOut: holdSeconds(DEFAULT_HOLD_TAIL.leadOutFrames, plan.fps),
@@ -116,7 +115,7 @@ export function PlanStep({ api, derived }: { api: SwapDraftApi; derived: WizardD
                   type="checkbox"
                   checked={checked}
                   className="size-3.5 accent-action"
-                  onChange={(event) => update({ disabledCuts: event.target.checked ? draft.disabledCuts.filter((value) => value !== key) : [...draft.disabledCuts, key] })}
+                  onChange={(event) => { update({ disabledCuts: event.target.checked ? draft.disabledCuts.filter((value) => value !== key) : [...draft.disabledCuts, key] }); }}
                 />
                 <label htmlFor={`${id}-cut-${key}`} className="flex flex-1 items-center gap-2 text-data">
                   <span className="machine text-fg">{formatCueTime(Math.round(cut * 24))}</span>
@@ -130,7 +129,7 @@ export function PlanStep({ api, derived }: { api: SwapDraftApi; derived: WizardD
             <li key={cut.id} className="flex items-center gap-2 rounded-md px-2 py-1 hover:bg-raised/60">
               <span className="machine text-data text-fg">{formatCueTime(Math.round(cut.seconds * 24))}</span>
               <Badge tone="neutral">{t("手動")}</Badge>
-              <Button size="icon-sm" variant="quiet" className="ml-auto" icon={<Trash2 aria-hidden />} aria-label={t("移除手動切鏡 {seconds} 秒", { seconds: cut.seconds })} title={t("移除")} onClick={() => update({ manualCuts: draft.manualCuts.filter((item) => item.id !== cut.id) })} />
+              <Button size="icon-sm" variant="quiet" className="ml-auto" icon={<Trash2 aria-hidden />} aria-label={t("移除手動切鏡 {seconds} 秒", { seconds: cut.seconds })} title={t("移除")} onClick={() => { update({ manualCuts: draft.manualCuts.filter((item) => item.id !== cut.id) }); }} />
             </li>
           ))}
         </ul>
@@ -211,7 +210,7 @@ export function PlanStep({ api, derived }: { api: SwapDraftApi; derived: WizardD
                         <span className="flex flex-wrap gap-x-2 gap-y-1">
                           {draft.characters.map((character, at) => (
                             <label key={character.id} className="inline-flex items-center gap-1 text-caption text-fg-secondary" title={t("第 {index} 段有角色 {at}", { index: index + 1, at: at + 1 })}>
-                              <input type="checkbox" checked={!absent.has(character.id)} onChange={(event) => toggleAbsent(key, character.id, event.target.checked)} className="size-3.5 accent-action" />
+                              <input type="checkbox" checked={!absent.has(character.id)} onChange={(event) => { toggleAbsent(key, character.id, event.target.checked); }} className="size-3.5 accent-action" />
                               <span className="machine">{at + 1}</span>
                               <span className="sr-only">{t("：第 {index} 段出現角色 {at}", { index: index + 1, at: at + 1 })}</span>
                             </label>
@@ -219,7 +218,7 @@ export function PlanStep({ api, derived }: { api: SwapDraftApi; derived: WizardD
                         </span>
                       </td>
                       <td className="px-2 py-1.5">
-                        <Input compact aria-label={t("第 {index} 段的備註", { index: index + 1 })} maxLength={FIELD_LIMITS.note} value={draft.notes[key] ?? ""} placeholder="a close-up of a talking girl, then a wide rooftop shot" onChange={(event) => setNote(key, event.target.value)} />
+                        <Input compact aria-label={t("第 {index} 段的備註", { index: index + 1 })} maxLength={FIELD_LIMITS.note} value={draft.notes[key] ?? ""} placeholder="a close-up of a talking girl, then a wide rooftop shot" onChange={(event) => { setNote(key, event.target.value); }} />
                       </td>
                     </tr>
                   );

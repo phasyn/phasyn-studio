@@ -146,9 +146,9 @@ export function conformOptions({ timeline, clipId, analysis, sync, cut }: Option
   // The shift is only ever the retime's fallback
   const shift = retimeRefused && sync.offered !== null ? planSync({ timeline, clipId, length, lag: sync.offered }) : null;
   const scores: Record<ConformMethod, MethodScore | null> = {
-    cut: cut?.ok ? methodScore(analysis, cut.plan.mapping) : null,
-    retime: retime?.ok ? methodScore(analysis, retime.plan.mapping) : null,
-    shift: shift?.ok ? methodScore(analysis, shift.plan.mapping) : null,
+    cut: (cut?.ok === true) ? methodScore(analysis, cut.plan.mapping) : null,
+    retime: (retime?.ok === true) ? methodScore(analysis, retime.plan.mapping) : null,
+    shift: (shift?.ok === true) ? methodScore(analysis, shift.plan.mapping) : null,
   };
   const retimeSettled = retime !== null && !retime.ok && retime.settled;
   const recommendation = recommend({ analysis, still, cut: scores.cut, retime: scores.retime, retimeSettled });

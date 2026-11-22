@@ -19,7 +19,7 @@ function Toggle({ pressed, onChange, label, title, icon, disabled }: { pressed: 
       aria-pressed={pressed}
       title={title}
       disabled={disabled}
-      onClick={() => onChange(!pressed)}
+      onClick={() => { onChange(!pressed); }}
       className={cn(
         "pressable inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-caption [&_svg]:size-3.5 [&_svg]:shrink-0",
         "border-line-subtle text-fg-secondary hover:border-line-control hover:text-fg active:bg-sunken",
@@ -72,7 +72,7 @@ function SectionBlock({
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
           <Toggle
             pressed={section.locked}
-            onChange={(next) => onChange(setLocked(draft, sectionKey, next))}
+            onChange={(next) => { onChange(setLocked(draft, sectionKey, next)); }}
             label={section.locked ? t("已鎖定") : t("鎖定")}
             title={section.locked ? t("{label}已鎖定：自動修訂會逐字保留（解除時一併取消有意修改）", { label }) : t("鎖定{label}：自動修訂必須逐字保留", { label })}
             icon={section.locked ? <Lock aria-hidden /> : <LockOpen aria-hidden />}
@@ -80,7 +80,7 @@ function SectionBlock({
           />
           <Toggle
             pressed={intentional}
-            onChange={(next) => onChange(setIntentional(draft, sectionKey, next))}
+            onChange={(next) => { onChange(setIntentional(draft, sectionKey, next)); }}
             label={t("有意修改")}
             title={intentional ? t("{label}是有意修改：比較時以它為目標", { label }) : t("標記{label}為有意修改（一併鎖定；比較時以修改後的內容為目標）", { label })}
             icon={<PenLine aria-hidden />}
@@ -100,7 +100,7 @@ function SectionBlock({
           readOnly={readOnly}
           value={text}
           aria-invalid={sectionIssues.length > 0 || undefined}
-          onChange={(event) => onChange(setSectionText(draft, sectionKey, event.target.value))}
+          onChange={(event) => { onChange(setSectionText(draft, sectionKey, event.target.value)); }}
         />
         {language === "zh-TW" && section.text_en ? (
           <p className="text-caption text-fg-tertiary">
@@ -121,7 +121,7 @@ function SectionBlock({
           maxLength={LIMITS.explanation}
           readOnly={readOnly}
           value={section.explanation_zh_tw}
-          onChange={(event) => onChange(setExplanation(draft, sectionKey, event.target.value))}
+          onChange={(event) => { onChange(setExplanation(draft, sectionKey, event.target.value)); }}
         />
       </div>
       <Disclosure summary={t("觀察依據 · {observation_idsCount}／{observationsCount}", { observation_idsCount: section.observation_ids.length, observationsCount: observations.length })}>
@@ -131,13 +131,13 @@ function SectionBlock({
           <ul className="grid gap-1">
             {observations.map((observation) => (
               <li key={observation.id}>
-                <label className="flex cursor-pointer items-start gap-2 rounded-sm py-0.5 text-caption text-fg-secondary has-disabled:cursor-default">
+                <label aria-label={[observation.id, observation.claim_en].join(" ")} className="flex cursor-pointer items-start gap-2 rounded-sm py-0.5 text-caption text-fg-secondary has-disabled:cursor-default">
                   <input
                     type="checkbox"
                     className="mt-0.5 size-3.5 shrink-0 accent-action"
                     checked={section.observation_ids.includes(observation.id)}
                     disabled={readOnly}
-                    onChange={(event) => onChange(setEvidence(draft, sectionKey, observation.id, event.target.checked))}
+                    onChange={(event) => { onChange(setEvidence(draft, sectionKey, observation.id, event.target.checked)); }}
                   />
                   <span className="grid gap-0.5">
                     <span className="flex flex-wrap items-center gap-1.5">
@@ -197,7 +197,7 @@ export function SceneEditor({
         ) : (
           <ul className="grid list-disc gap-0.5 pl-5 text-caption text-fg-secondary">
             {notes.map((note, index) => (
-              <li key={`${index}-${note}`}>{note}</li>
+              <li key={`${String(index)}-${note}`}>{note}</li>
             ))}
           </ul>
         )}
@@ -206,7 +206,7 @@ export function SceneEditor({
         <label htmlFor={`${id}-note`} className="text-caption text-fg-secondary">
           {t("這個版本的修改備註（儲存時記在新版本上）")}
         </label>
-        <Textarea id={`${id}-note`} compact rows={2} maxLength={LIMITS.note} readOnly={readOnly} value={draft.note} onChange={(event) => onChange(setNote(draft, event.target.value))} />
+        <Textarea id={`${id}-note`} compact rows={2} maxLength={LIMITS.note} readOnly={readOnly} value={draft.note} onChange={(event) => { onChange(setNote(draft, event.target.value)); }} />
       </div>
     </div>
   );

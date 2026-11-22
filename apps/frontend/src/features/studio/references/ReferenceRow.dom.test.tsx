@@ -10,7 +10,7 @@ const reference: StudioReference = { ref_id: "r-1", kind: "image", alias: "Image
 
 describe("ReferenceRow", () => {
   it("returns focus to the row's menu button after Cancel", async () => {
-    const onRemove = vi.fn();
+    const onRemove = vi.fn<() => void>();
     const { user } = renderWithProviders(
       <ul>
         <ReferenceRow reference={reference} item={undefined} label={undefined} mentions={1} disabled={false} onChange={() => undefined} onRemove={onRemove} />

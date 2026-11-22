@@ -127,7 +127,9 @@ export function moveGroup(layout: LayoutContent, groupId: string, toIndex: numbe
   const rest = layout.groups.filter((group) => group.group_id !== groupId);
   const index = Math.max(0, Math.min(toIndex, rest.length));
   if (index === from) return null;
-  rest.splice(index, 0, layout.groups[from] as PipelineLayoutGroup);
+  const moving = layout.groups[from];
+  if (!moving) return null;
+  rest.splice(index, 0, moving);
   return { layout: { groups: rest, ungrouped: layout.ungrouped }, index };
 }
 
@@ -165,7 +167,7 @@ function hasControlCharacter(text: string): boolean {
 
 /** 分類名稱的長度（以字元計，與契約 maxLength 相同）。 */
 export function nameLength(name: string): number {
-  return [...name].length;
+  return Array.from(name).length;
 }
 
 /**
@@ -190,7 +192,7 @@ export function newGroupId(layout: LayoutContent, now: number = Date.now()): str
   const base = `group-${Math.max(0, Math.floor(now)).toString(36)}`;
   if (!taken.has(base)) return base;
   for (let suffix = 2; ; suffix += 1) {
-    const candidate = `${base}-${suffix}`;
+    const candidate = `${base}-${String(suffix)}`;
     if (!taken.has(candidate)) return candidate;
   }
 }
@@ -209,7 +211,7 @@ export interface LayoutSection<T> {
 /** 依分類與排序分區（各分類依序，最後是未分類）；layout 應已正規化（不在清單上的 ID 會略過）。 */
 export function layoutSections<T extends { pipeline_id: string }>(layout: LayoutContent, pipelines: readonly T[]): LayoutSection<T>[] {
   const byId = new Map(pipelines.map((pipeline) => [pipeline.pipeline_id, pipeline]));
-  const pick = (ids: readonly string[]) => ids.flatMap((id) => (byId.has(id) ? [byId.get(id) as T] : []));
+  const pick = (ids: readonly string[]) => ids.flatMap((id) => { const item = byId.get(id); return item ? [item] : []; });
   return [
     ...layout.groups.map((group) => ({ key: group.group_id, name: group.name, items: pick(group.pipeline_ids) })),
     { key: null, name: UNGROUPED_LABEL, items: pick(layout.ungrouped) },

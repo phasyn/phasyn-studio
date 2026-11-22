@@ -18,12 +18,12 @@ export interface CostStageRow {
   /** risk_measure with its risk_unit, when the stage recorded one. */
   risk: { measure: ShapeValue; unit: ShapeValue } | null;
   /** The other scalar facts the work was derived from, in recorded order. */
-  shape: Array<[string, ShapeValue]>;
+  shape: [string, ShapeValue][];
 }
 
 export function costStageRows(cost: RecordingCost): CostStageRow[] {
   return cost.stages.map((stage) => {
-    const shape: Array<[string, ShapeValue]> = [];
+    const shape: [string, ShapeValue][] = [];
     for (const [key, value] of Object.entries(stage.shape)) {
       if (value !== undefined && key !== RISK_MEASURE && key !== RISK_UNIT) shape.push([key, value]);
     }
@@ -50,6 +50,8 @@ export function costAbsence(recording: { context: Pick<Recording["context"], "op
       return t("Node 層級的紀錄不記錄運算量：cost 只來自元件程序的 load 與 invoke。");
     case "unload":
       return t("unload 不記錄運算量：cost 只來自元件程序的 load 與 invoke。");
+    case "invoke":
+    case "load":
     default:
       return recording.summary.state === "running"
         ? t("呼叫還在執行：運算量在結束時寫入。")

@@ -24,7 +24,7 @@ import { T } from "@/i18n/T";
 
 const FAILED = new Set(["failed", "interrupted", "unknown", "cancelled"]);
 
-function uniqueRecordings(pages: ReadonlyArray<{ items: Recording[] }>): Recording[] {
+function uniqueRecordings(pages: readonly { items: Recording[] }[]): Recording[] {
   const seen = new Set<string>();
   const out: Recording[] = [];
   for (const page of pages) {
@@ -68,13 +68,13 @@ export function RecordingList({
   const updatedAt = list.dataUpdatedAt ? formatTime(list.dataUpdatedAt) : null;
   const listKey = JSON.stringify(filtersKey(filters));
   const scrollRef = useRef<HTMLDivElement>(null);
-  const savedScroll = useRef<{ key: string; top: number }>({ key: "", top: 0 });
+  const savedScrollRef = useRef<{ key: string; top: number }>({ key: "", top: 0 });
 
   // display:none 會讓瀏覽器丟掉捲動位置：可見時記錄 scrollTop，重新顯示同一份篩選結果時還原。
   useLayoutEffect(() => {
     if (hidden) return;
     const element = scrollRef.current;
-    const saved = savedScroll.current;
+    const saved = savedScrollRef.current;
     if (element && saved.key === listKey && saved.top > 0) element.scrollTop = saved.top;
   }, [hidden, listKey]);
 
@@ -90,7 +90,7 @@ export function RecordingList({
           </span> }} />
         </h2>
         <div className="ml-auto flex items-center gap-2 text-caption text-fg-tertiary">
-          {updatedAt ? <span>{t("更新於 {updatedAt}", { updatedAt })}</span> : null}
+          {(updatedAt != null && updatedAt !== "") ? <span>{t("更新於 {updatedAt}", { updatedAt })}</span> : null}
           <Button
             size="sm"
             variant="quiet"
@@ -130,12 +130,12 @@ export function RecordingList({
         <div
           ref={scrollRef}
           onScroll={(event) => {
-            if (!hidden) savedScroll.current = { key: listKey, top: event.currentTarget.scrollTop };
+            if (!hidden) savedScrollRef.current = { key: listKey, top: event.currentTarget.scrollTop };
           }}
           className="min-h-0 min-w-0 flex-1 overflow-auto"
           role="region"
           aria-label={t("紀錄列表（可捲動）")}
-          tabIndex={0}
+           /* eslint-disable-line jsx-a11y-x/no-noninteractive-tabindex -- Keyboard users can focus this scrollable region and scroll its overflow. */ tabIndex={0}
         >
           <Table className="[&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-[1]">
             <thead>
@@ -159,7 +159,7 @@ export function RecordingList({
                 const inCompare = compare.has(id);
                 const blocked = !inCompare && compare.full;
                 const failed = FAILED.has(summary.state);
-                const wall = summary.metrics.host_wall_ms ?? missingMetric("host_wall_ms");
+                const wall = summary.metrics["host_wall_ms"] ?? missingMetric("host_wall_ms");
                 return (
                   <Tr
                     key={id}
@@ -174,7 +174,7 @@ export function RecordingList({
                           checked={inCompare}
                           disabled={blocked}
                           title={blocked ? t("比較清單已滿 {maxCompare} 筆", { maxCompare: MAX_COMPARE }) : undefined}
-                          onChange={() => compare.toggle(id)}
+                          onChange={() => { compare.toggle(id); }}
                           aria-label={t("加入比較：{component_id} {created_at}", { component_id: context.component_id, created_at: clockOf(context.created_at) })}
                         />
                       </label>
@@ -206,7 +206,7 @@ export function RecordingList({
                       <MetricValue metric={wall} />
                     </Td>
                     <Td className="max-w-[16rem] text-caption">
-                      {failed && summary.notes[0] ? (
+                      {failed && (summary.notes[0] != null && summary.notes[0] !== "") ? (
                         <span className="line-clamp-2 break-words text-danger" title={tServer(summary.notes[0])}>
                           {tServer(summary.notes[0])}
                         </span>
@@ -228,7 +228,7 @@ export function RecordingList({
             <LoadMoreButton
               onLoad={() => void list.fetchNextPage()}
               pending={list.isFetchingNextPage}
-              hasMore={Boolean(list.hasNextPage)}
+              hasMore={list.hasNextPage}
               describedBy={moreId}
               doneLabel={t("已載入全部符合的紀錄")}
             />

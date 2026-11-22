@@ -34,7 +34,7 @@ export function Stages({ run, item, now, views, error, remaining, lookup }: {
       {showDit ? (
         <div className="min-w-0">
           <SectionTitle icon={Timer}>{t("DiT 去噪進度")}</SectionTitle>
-          <DitProgressPanel views={views} labelFor={(view) => branchLabel(item, takeForSuffix(item, view.suffix), view.stepId)} now={now} error={error} remaining={remaining} />
+          <DitProgressPanel views={views} labelFor={(view) => branchLabel(item, takeForSuffix(item, view.suffix), view.stepId)} now={now} error={error} {...(remaining === undefined ? {} : { remaining })} />
         </div>
       ) : null}
     </div>

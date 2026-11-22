@@ -22,7 +22,7 @@ function nearestMultiple(value: number, multiple: number): number {
 
 /** Why H3 would reject the image (ratio beyond 1:4／4:1); null when usable or when the size is unknown (no guessing). */
 export function referenceRatioProblem(width: number | null, height: number | null): string | null {
-  if (!width || !height || width <= 0 || height <= 0) return null;
+  if (!(width != null && Boolean(width)) || !(height != null && Boolean(height)) || width <= 0 || height <= 0) return null;
   if (width > REFERENCE_MAX_RATIO * height || height > REFERENCE_MAX_RATIO * width) return t("圖片 {width}×{height} 的比例超過 1:4／4:1，H3 會拒絕這張參考圖", { width, height });
   return null;
 }
@@ -30,7 +30,7 @@ export function referenceRatioProblem(width: number | null, height: number | nul
 /** Size after H3 preprocessing to `shortEdge`; null when the size is unknown or the ratio is rejected. */
 export function preparedReferenceSize(width: number | null, height: number | null, shortEdge = REFERENCE_SHORT_EDGE): { width: number; height: number } | null {
   if (width === null || height === null || !Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return null;
-  if (referenceRatioProblem(width, height)) return null;
+  if ((referenceRatioProblem(width, height) ?? "") !== "") return null;
   const scale = shortEdge / Math.min(width, height);
   return { width: nearestMultiple(width * scale, REFERENCE_MULTIPLE), height: nearestMultiple(height * scale, REFERENCE_MULTIPLE) };
 }

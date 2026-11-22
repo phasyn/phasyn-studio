@@ -25,6 +25,7 @@ from pathlib import Path
 
 import pytest
 
+
 pytestmark = pytest.mark.static
 
 SRC = Path(__file__).resolve().parents[1] / "src"
@@ -42,6 +43,7 @@ GPU_ENV = frozenset(
         "diffusers",
         "transformers",
         "bitsandbytes",
+        "cache_dit",
         "pynvml",
         "safetensors",
         "PIL",
@@ -65,6 +67,10 @@ RUNTIME_GPU_MODULES = frozenset(
         "accel_load",
         "adaln_sidecar",
         "attention_runtime",
+        "attention_probe",
+        "denoise_cache",
+        "regional_compile",
+        "regional_compile_cache",
         "backend",
         "bounded_fp8_load",
         "dit_trace",
@@ -73,7 +79,10 @@ RUNTIME_GPU_MODULES = frozenset(
         "loaders",
         "lora",
         "lora_inplace",
+        "lora_stack",
         "measure",
+        "mlp_token_chunk",
+        "nag",
         "pdd",
         "provider",
         "quantized_cache",
@@ -92,14 +101,34 @@ RUNTIME_GPU_MODULES = frozenset(
         "stages.vae_frame_streaming",
         "stages.vae_streaming",
         "stages.vae_weight_streaming",
+        "training.export",
+        "training.loop",
+        "training.model",
+        "training.samples",
+        "training.target",
         "upstream_patches",
     }
 )
 # component-layer modules that sit at the GPU boundary
-TOP_GPU_MODULES = frozenset({"host", "instrument", "providers"})
+TOP_GPU_MODULES = frozenset({"host", "instrument", "lora_train", "providers"})
 # component-layer -> recipe.runtime edges besides host.py: pure helpers of the reference bundle format
 TOP_TO_RUNTIME = {
-    "providers": {"phasyn_h3.recipe.runtime.stages.encode_references"},  # scoped_sources (pure)
+    "providers": {
+        "phasyn_h3.recipe.runtime.stages.encode_references",  # scoped_sources (pure)
+        "phasyn_h3.recipe.runtime.denoise_cache_rules",  # per-request checks
+        "phasyn_h3.recipe.runtime.regional_compile_rules",  # per-request checks
+        "phasyn_h3.recipe.runtime.nag_rules",  # NAG request rules (pure)
+        "phasyn_h3.recipe.runtime.errors",  # their error types
+    },
+    "lora_train": {  # the LoRA trainer's provider drives its own runtime modules
+        "phasyn_h3.recipe.runtime.training",
+        "phasyn_h3.recipe.runtime.training.export",
+        "phasyn_h3.recipe.runtime.training.loop",
+        "phasyn_h3.recipe.runtime.training.model",
+        "phasyn_h3.recipe.runtime.training.samples",
+        "phasyn_h3.recipe.runtime.training.target",
+        "phasyn_h3.recipe.runtime.training.thermal",
+    },
     "references": {
         "phasyn_h3.recipe.runtime.bundles",
         "phasyn_h3.recipe.runtime.errors",
@@ -137,7 +166,9 @@ def _imports(path: Path) -> list[tuple[str, bool]]:
             if node.level:
                 base = package.split(".")[: len(package.split(".")) - (node.level - 1)]
                 if node.module is None:
-                    found += [(".".join([*base, alias.name]), lazy) for alias in node.names]
+                    found += [
+                        (".".join([*base, alias.name]), lazy) for alias in node.names
+                    ]
                     continue
                 found.append((".".join([*base, node.module]), lazy))
             else:
@@ -147,13 +178,48 @@ def _imports(path: Path) -> list[tuple[str, bool]]:
 
 def _layer(module: str) -> str:
     for layer in ("abi", "adapter", "runtime"):
-        if module == f"phasyn_h3.recipe.{layer}" or module.startswith(f"phasyn_h3.recipe.{layer}."):
+        if module == f"phasyn_h3.recipe.{layer}" or module.startswith(
+            f"phasyn_h3.recipe.{layer}."
+        ):
             return layer
     return "recipe" if module == "phasyn_h3.recipe" else "top"
 
 
 def _allowed_external(target: str, allowed: frozenset[str]) -> bool:
     return any(target == item or target.startswith(item + ".") for item in allowed)
+
+
+def _check_internal(layer: str, short: str, target: str, where: str) -> list[str]:
+    problems: list[str] = []
+    to = _layer(target)
+    if layer == "abi" and to != "abi":
+        problems.append(f"R1 {where}")
+    elif layer == "adapter" and to not in ("abi", "adapter"):
+        problems.append(f"R2 {where}")
+    elif layer == "runtime" and to not in ("abi", "adapter", "runtime"):
+        problems.append(f"R3 {where}")
+    elif (
+        layer == "top"
+        and to == "runtime"
+        and short != "host"
+        and not any(
+            target == t or target.startswith(t + ".")
+            for t in TOP_TO_RUNTIME.get(short, ())
+        )
+    ):
+        problems.append(f"R4 {where}")
+    return problems
+
+
+def _check_gpu(layer: str, short: str, where: str, *, lazy: bool) -> list[str]:
+    problems: list[str] = []
+    if layer in ("abi", "adapter", "recipe"):
+        problems.append(f"R1/R2 {where}")
+    elif layer == "runtime" and (not lazy or short not in RUNTIME_GPU_MODULES):
+        problems.append(f"R3 {where}")
+    elif layer == "top" and (not lazy or short not in TOP_GPU_MODULES):
+        problems.append(f"R4/R5 {where}")
+    return problems
 
 
 def _check(module: str, imports: list[tuple[str, bool]]) -> list[str]:
@@ -167,28 +233,10 @@ def _check(module: str, imports: list[tuple[str, bool]]) -> list[str]:
         if top in STDLIB:
             continue
         if top == "phasyn_h3":
-            to = _layer(target)
-            if layer == "abi" and to != "abi":
-                problems.append(f"R1 {where}")
-            elif layer == "adapter" and to not in ("abi", "adapter"):
-                problems.append(f"R2 {where}")
-            elif layer == "runtime" and to not in ("abi", "adapter", "runtime"):
-                problems.append(f"R3 {where}")
-            elif (
-                layer == "top"
-                and to == "runtime"
-                and short != "host"
-                and not any(target == t or target.startswith(t + ".") for t in TOP_TO_RUNTIME.get(short, ()))
-            ):
-                problems.append(f"R4 {where}")
+            problems.extend(_check_internal(layer, short, target, where))
             continue
         if top in GPU_ENV:
-            if layer in ("abi", "adapter", "recipe"):
-                problems.append(f"R1/R2 {where}")
-            elif layer == "runtime" and (not lazy or short not in RUNTIME_GPU_MODULES):
-                problems.append(f"R3 {where}")
-            elif layer == "top" and (not lazy or short not in TOP_GPU_MODULES):
-                problems.append(f"R4/R5 {where}")
+            problems.extend(_check_gpu(layer, short, where, lazy=lazy))
             continue
         if layer == "abi" and not _allowed_external(target, ABI_THIRD_PARTY):
             problems.append(f"R1 {where}")
@@ -202,7 +250,11 @@ def _check(module: str, imports: list[tuple[str, bool]]) -> list[str]:
 
 
 def test_layering_rules_hold() -> None:
-    problems = [p for path in sorted(PACKAGE.rglob("*.py")) for p in _check(_module_name(path), _imports(path))]
+    problems = [
+        p
+        for path in sorted(PACKAGE.rglob("*.py"))
+        for p in _check(_module_name(path), _imports(path))
+    ]
     assert problems == []
 
 
@@ -210,11 +262,21 @@ def test_the_checker_catches_gpu_imports_and_new_edges() -> None:
     assert _check("phasyn_h3.recipe.adapter.probe", [("torch", True)]) == [
         "R1/R2 phasyn_h3.recipe.adapter.probe: imports torch (lazy)"
     ]
-    assert _check("phasyn_h3.plan", [("torch", True)]) == ["R4/R5 phasyn_h3.plan: imports torch (lazy)"]
-    assert _check("phasyn_h3.recipe.runtime.policy", [("sglang.multimodal_gen", True)])  # not a GPU module
-    assert _check("phasyn_h3.recipe.runtime.loaders", [("torch", False)])  # GPU imports only inside functions
-    assert _check("phasyn_h3.recipe.runtime.loaders", [("phasyn_h3.plan", True)])  # never the component layer
-    assert _check("phasyn_h3.config", [("phasyn_h3.recipe.runtime.provider", True)])  # only through host.py
+    assert _check("phasyn_h3.plan", [("torch", True)]) == [
+        "R4/R5 phasyn_h3.plan: imports torch (lazy)"
+    ]
+    assert _check(
+        "phasyn_h3.recipe.runtime.policy", [("sglang.multimodal_gen", True)]
+    )  # not a GPU module
+    assert _check(
+        "phasyn_h3.recipe.runtime.loaders", [("torch", False)]
+    )  # GPU imports only inside functions
+    assert _check(
+        "phasyn_h3.recipe.runtime.loaders", [("phasyn_h3.plan", True)]
+    )  # never the component layer
+    assert _check(
+        "phasyn_h3.config", [("phasyn_h3.recipe.runtime.provider", True)]
+    )  # only through host.py
     assert _check("phasyn_h3.recipe.abi.stage", [("phasyn_components.recorder", False)])
     assert _check("phasyn_h3.host", [("phasyn_h3.recipe.runtime.provider", True)]) == []
 
@@ -242,7 +304,7 @@ def test_every_module_imports_without_the_gpu_environment() -> None:
         print(len({modules!r}))
         """
     )
-    result = subprocess.run(
+    result = subprocess.run(  # noqa: S603 - Run the designated Python test worker using an argument vector.
         [sys.executable, "-c", script],
         capture_output=True,
         text=True,

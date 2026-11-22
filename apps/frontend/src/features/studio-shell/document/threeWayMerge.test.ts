@@ -18,10 +18,10 @@ describe("threeWayMerge", () => {
     const mine = project(711, false, "film", [{ shot_id: "s1", prompt: "new" }]); // tab B: stale draft, edits a prompt
     const result = threeWayMerge(base, latest, mine);
     expect(result.conflicts).toEqual([]);
-    const merged = result.merged as ReturnType<typeof project>;
-    expect(merged.timeline.tracks.find((t) => t.track_id === "audio-1")?.muted).toBe(true);
-    expect(merged.shots[0]?.prompt).toBe("new");
-    expect(merged.revision).toBe(712);
+    expect(result.merged).toMatchObject({
+      timeline: { tracks: [{ track_id: "video-1" }, { track_id: "audio-1", muted: true }] },
+      shots: [{ prompt: "new" }], revision: 712,
+    });
     expect(result.latestKept).toContain("timeline.tracks[audio-1].muted");
     expect(result.mineApplied).toContain("shots[s1].prompt");
   });
@@ -32,16 +32,16 @@ describe("threeWayMerge", () => {
     const mine = project(1, false, "c", []);
     const result = threeWayMerge(base, latest, mine);
     expect(result.conflicts.map((c) => c.path)).toEqual(["title"]);
-    expect((result.merged as { title: string }).title).toBe("b");
-    expect((resolveConflicts(base, latest, mine, new Map([["title", "mine"]])) as { title: string }).title).toBe("c");
-    expect((resolveConflicts(base, latest, mine, new Map()) as { title: string }).title).toBe("b");
+    expect(result.merged).toMatchObject({ title: "b" });
+    expect(resolveConflicts(base, latest, mine, new Map([["title", "mine"]]))).toMatchObject({ title: "c" });
+    expect(resolveConflicts(base, latest, mine, new Map())).toMatchObject({ title: "b" });
   });
 
   it("keeps a shot another tab added and drops a shot this tab removed", () => {
     const base = project(1, false, "f", [{ shot_id: "s1", prompt: "x" }, { shot_id: "s2", prompt: "y" }]);
     const latest = project(2, false, "f", [{ shot_id: "s1", prompt: "x" }, { shot_id: "s2", prompt: "y" }, { shot_id: "s3", prompt: "z" }]);
     const mine = project(1, false, "f", [{ shot_id: "s1", prompt: "x" }]);
-    const merged = threeWayMerge(base, latest, mine).merged as ReturnType<typeof project>;
-    expect(merged.shots.map((s) => s.shot_id)).toEqual(["s1", "s3"]);
+    const merged = threeWayMerge(base, latest, mine).merged;
+    expect(merged).toMatchObject({ shots: [{ shot_id: "s1" }, { shot_id: "s3" }] });
   });
 });

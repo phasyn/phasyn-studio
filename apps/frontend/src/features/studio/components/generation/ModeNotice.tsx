@@ -51,7 +51,7 @@ export function ModeNotice({ shot, notice, onDismiss, returnFocus }: { shot: Stu
   };
   const undo = () => {
     if (!canUndo) return;
-    dispatch({ type: "updateShot", shotId: shot.shot_id, patch: { route: notice.before.route, continuity: notice.before.continuity } });
+    dispatch({ type: "updateShot", shotId: shot.shot_id, patch: { route: notice.before.route, ...(notice.before.continuity === undefined ? {} : { continuity: notice.before.continuity }) } });
     close();
   };
 
@@ -75,7 +75,7 @@ export function ModeNotice({ shot, notice, onDismiss, returnFocus }: { shot: Stu
           <Button size="sm" variant="secondary" className="min-h-7 px-2" icon={<Undo2 aria-hidden />} disabled={!canUndo} title={canUndo ? undefined : t("之後又改過路線或首幀，無法復原")} onClick={undo}>
             {t("復原")}
           </Button>
-          {notice.notReadyRouteId ? (
+          {(notice.notReadyRouteId != null && notice.notReadyRouteId !== "") ? (
             <Button
               size="sm"
               variant="quiet"

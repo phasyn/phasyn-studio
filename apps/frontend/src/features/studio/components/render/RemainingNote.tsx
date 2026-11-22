@@ -10,7 +10,7 @@ export function RunRemainingNote({ remaining, now, pending }: { remaining: RunRe
   if (remaining.seconds !== null && now !== null) {
     return (
       <span className="text-caption text-fg-secondary" title={t("依本機成本紀錄；已完成的步驟用實際時間，進行中的步驟＝預估減去已經過的時間")}>
-        <T source={"剩餘約 <0>{left}</0>・{completion}"} values={{ left: formatEtaClock(remaining.seconds), completion: completionText(now + remaining.seconds * 1000) }} slots={[<span className="machine" />]} />
+        <T source={"剩餘約 <0>{left}</0>・{completion}"} values={{ left: formatEtaClock(remaining.seconds), completion: completionText(now + remaining.seconds * 1000) }} slots={[<span key="slot-0" className="machine" />]} />
       </span>
     );
   }

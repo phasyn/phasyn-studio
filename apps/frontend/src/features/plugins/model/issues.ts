@@ -22,56 +22,56 @@ function size(value: unknown): string | null {
 const ISSUE_TEXTS: Readonly<Record<string, (details: Details) => string | null>> = {
   code_unsupported: () => t("這個版本還不能執行程式碼"),
   host_version: (details) => {
-    const required = word(details.required);
-    const host = word(details.host);
-    return required && host ? t("需要 Phasyn Studio {required}，這台主控是 {host}", { required, host }) : null;
+    const required = word(details["required"]);
+    const host = word(details["host"]);
+    return (required != null && required !== "") && (host != null && host !== "") ? t("需要 Phasyn Studio {required}，這台主控是 {host}", { required, host }) : null;
   },
   permission_unknown: (details) => {
-    const permission = word(details.permission);
-    return permission ? t("要求了這個版本不認得的權限「{permission}」", { permission }) : null;
+    const permission = word(details["permission"]);
+    return (permission != null && permission !== "") ? t("要求了這個版本不認得的權限「{permission}」", { permission }) : null;
   },
   permission_reserved: (details) => {
-    const permission = word(details.permission);
-    return permission ? t("要求了保留、不開放的權限「{permission}」", { permission }) : null;
+    const permission = word(details["permission"]);
+    return (permission != null && permission !== "") ? t("要求了保留、不開放的權限「{permission}」", { permission }) : null;
   },
   preset_rule_missing: (details) => {
-    const preset = word(details.preset);
-    const rule = word(details.rule);
-    return preset && rule ? t("推薦組合「{preset}」引用了找不到的規則「{rule}」", { preset, rule }) : null;
+    const preset = word(details["preset"]);
+    const rule = word(details["rule"]);
+    return (preset != null && preset !== "") && (rule != null && rule !== "") ? t("推薦組合「{preset}」引用了找不到的規則「{rule}」", { preset, rule }) : null;
   },
   file_too_large: (details) => {
-    const actual = size(details.size);
-    const limit = size(details.limit);
-    return actual && limit ? t("檔案 {actual}，超過上限 {limit}", { actual, limit }) : null;
+    const actual = size(details["size"]);
+    const limit = size(details["limit"]);
+    return (actual != null && actual !== "") && (limit != null && limit !== "") ? t("檔案 {actual}，超過上限 {limit}", { actual, limit }) : null;
   },
   total_too_large: (details) => {
-    const actual = size(details.size);
-    const limit = size(details.limit);
-    return actual && limit ? t("解壓後合計 {actual}，超過上限 {limit}", { actual, limit }) : null;
+    const actual = size(details["size"]);
+    const limit = size(details["limit"]);
+    return (actual != null && actual !== "") && (limit != null && limit !== "") ? t("解壓後合計 {actual}，超過上限 {limit}", { actual, limit }) : null;
   },
   too_many_files: (details) => {
-    const limit = word(details.limit);
-    return limit ? t("檔案數量超過上限 {limit} 個", { limit }) : null;
+    const limit = word(details["limit"]);
+    return (limit != null && limit !== "") ? t("檔案數量超過上限 {limit} 個", { limit }) : null;
   },
   ratio_too_high: (details) => {
-    const limit = word(details.limit);
-    return limit ? t("壓縮比超過上限 {limit}:1", { limit }) : null;
+    const limit = word(details["limit"]);
+    return (limit != null && limit !== "") ? t("壓縮比超過上限 {limit}:1", { limit }) : null;
   },
   duplicate_id: (details) => {
-    const id = word(details.id);
-    return id ? t("同一個包內的 id「{id}」重複", { id }) : null;
+    const id = word(details["id"]);
+    return (id != null && id !== "") ? t("同一個包內的 id「{id}」重複", { id }) : null;
   },
   frames_invalid: (details) => {
-    const frames = word(details.frames);
-    return frames ? t("影格數 {frames} 不是 17n+5", { frames }) : null;
+    const frames = word(details["frames"]);
+    return (frames != null && frames !== "") ? t("影格數 {frames} 不是 17n+5", { frames }) : null;
   },
   dev_dir_conflict: (details) => {
-    const id = word(details.plugin_id);
-    return id ? t("開發目錄的插件 id「{id}」與另一個已載入的插件相同", { id }) : null;
+    const id = word(details["plugin_id"]);
+    return (id != null && id !== "") ? t("開發目錄的插件 id「{id}」與另一個已載入的插件相同", { id }) : null;
   },
   manifest_invalid: (details) => {
-    const reason = word(details.reason);
-    return reason ? t("plugin.json 不符合 manifest 契約：{reason}", { reason }) : null;
+    const reason = word(details["reason"]);
+    return (reason != null && reason !== "") ? t("plugin.json 不符合 manifest 契約：{reason}", { reason }) : null;
   },
 };
 
@@ -81,7 +81,7 @@ export function issueText(issue: StudioPluginIssue): string {
 }
 
 function isIssue(value: unknown): value is StudioPluginIssue {
-  return isRecord(value) && typeof value.code === "string" && typeof value.message === "string";
+  return isRecord(value) && typeof value["code"] === "string" && typeof value["message"] === "string";
 }
 
 function toIssue(value: StudioPluginIssue): StudioPluginIssue {
@@ -103,5 +103,5 @@ export interface InstallFailure {
 /** 安裝被拒絕時主控列出的問題；不是這種錯誤時 issues 為空。 */
 export function installFailure(error: unknown): InstallFailure {
   if (!isApiError(error)) return { issues: [], truncated: false };
-  return { issues: readIssues(error.details.errors), truncated: error.details.truncated === true };
+  return { issues: readIssues(error.details["errors"]), truncated: error.details["truncated"] === true };
 }

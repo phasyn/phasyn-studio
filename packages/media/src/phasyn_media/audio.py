@@ -14,13 +14,30 @@ import os
 import struct
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 import numpy as np
 
 from .errors import MediaError
-from .files import check_local_file, check_output_path, partial_path, publish, remove_quietly
+from .files import (
+    check_local_file,
+    check_output_path,
+    partial_path,
+    publish,
+    remove_quietly,
+)
 from .limits import DEFAULT_LIMITS, MediaLimits
+
+
+_AUDIO_ARRAY_DIMENSIONS = 2
+_RIFF_HEADER_BYTES = 12
+_CHUNK_HEADER_BYTES = 8
+_MIN_FORMAT_BYTES = 16
+_MAX_FORMAT_BYTES = 64
+_UNKNOWN_CHUNK_SIZE = 0xFFFFFFFF
+_EXTENSIBLE_FORMAT_BYTES = 40
+_FLOAT_SAMPLE_BITS = 32
+
 
 WAVE_FORMAT_IEEE_FLOAT = 0x0003
 WAVE_FORMAT_EXTENSIBLE = 0xFFFE
@@ -34,6 +51,8 @@ _MAX_CHUNKS = 64
 
 @dataclass(frozen=True)
 class AudioInfo:
+    """Decoded audio stream properties used to plan media processing."""
+
     path: Path
     sample_rate: int
     channels: int
@@ -46,6 +65,7 @@ class AudioInfo:
     peak_abs: float | None = None
 
     def as_dict(self) -> dict[str, Any]:
+        """Return the serializable field values."""
         doc = asdict(self)
         doc.pop("path")
         return doc
@@ -53,6 +73,8 @@ class AudioInfo:
 
 @dataclass(frozen=True)
 class WavHeader:
+    """PCM layout and data bounds from a WAV header."""
+
     sample_rate: int
     channels: int
     frames: int
@@ -63,6 +85,7 @@ class WavHeader:
 
     @property
     def duration_seconds(self) -> float:
+        """Return the playback duration in seconds."""
         return self.frames / self.sample_rate
 
 
@@ -72,7 +95,10 @@ def _check_rate(sample_rate: Any, limits: MediaLimits) -> int:
     rate = int(sample_rate)
     if not 1 <= rate <= limits.max_sample_rate:
         raise MediaError(
-            "INVALID_ARGUMENT", "sample_rate 超出範圍", expected=f"1..{limits.max_sample_rate}", actual=rate
+            "INVALID_ARGUMENT",
+            "sample_rate 超出範圍",
+            expected=f"1..{limits.max_sample_rate}",
+            actual=rate,
         )
     return rate
 
@@ -89,14 +115,29 @@ def write_wav_f32(
         raise MediaError("INVALID_ARGUMENT", "samples_lr 必須是 numpy 陣列")
     if samples_lr.dtype != np.float32:
         raise MediaError(
-            "INVALID_ARGUMENT", "samples_lr 必須是 float32", expected="float32", actual=str(samples_lr.dtype)
+            "INVALID_ARGUMENT",
+            "samples_lr 必須是 float32",
+            expected="float32",
+            actual=str(samples_lr.dtype),
         )
-    if samples_lr.ndim != 2 or samples_lr.shape[1] != CHANNELS or samples_lr.shape[0] < 1:
-        raise MediaError("INVALID_ARGUMENT", "samples_lr 形狀必須是 [N,2]（L,R）", actual=str(samples_lr.shape))
+    if (
+        samples_lr.ndim != _AUDIO_ARRAY_DIMENSIONS
+        or samples_lr.shape[1] != CHANNELS
+        or samples_lr.shape[0] < 1
+    ):
+        raise MediaError(
+            "INVALID_ARGUMENT",
+            "samples_lr 形狀必須是 [N,2]（L,R）",
+            actual=str(samples_lr.shape),
+        )
     rate = _check_rate(sample_rate, limits)
     frames = int(samples_lr.shape[0])
     if frames / rate > limits.max_duration_seconds:
-        raise MediaError("INVALID_ARGUMENT", "音訊時長超過上限", expected=f"<= {limits.max_duration_seconds} s")
+        raise MediaError(
+            "INVALID_ARGUMENT",
+            "音訊時長超過上限",
+            expected=f"<= {limits.max_duration_seconds} s",
+        )
     data_bytes = frames * BYTES_PER_FRAME
     if data_bytes > _MAX_RIFF_DATA:
         raise MediaError("RESOURCE_EXHAUSTED", "WAV 資料超過 4 GiB RIFF 上限")
@@ -139,7 +180,7 @@ def write_wav_f32(
     temp = partial_path(final)
     digest = hashlib.sha256()
     try:
-        with open(temp, "xb") as fh:
+        with Path(temp).open("xb") as fh:
             fh.write(header)
             digest.update(header)
             view = memoryview(payload).cast("B")
@@ -163,33 +204,40 @@ def write_wav_f32(
     )
 
 
-def read_wav_header(path: str | os.PathLike[str], *, limits: MediaLimits = DEFAULT_LIMITS) -> WavHeader:
+def read_wav_header(
+    path: str | os.PathLike[str], *, limits: MediaLimits = DEFAULT_LIMITS
+) -> WavHeader:
     """Parse and validate a stereo float32 WAV header (bounded RIFF walk)."""
     local = check_local_file(path, limits=limits)
     size = local.size_bytes
-    with open(local.path, "rb") as fh:
+    with Path(local.path).open("rb") as fh:
         riff = fh.read(12)
-        if len(riff) < 12 or riff[:4] != b"RIFF" or riff[8:12] != b"WAVE":
+        if (
+            len(riff) < _RIFF_HEADER_BYTES
+            or riff[:4] != b"RIFF"
+            or riff[8:12] != b"WAVE"
+        ):
             raise MediaError("INVALID_ARGUMENT", "不是 RIFF/WAVE 檔案")
         offset = 12
         fmt: bytes | None = None
         for _ in range(_MAX_CHUNKS):
             head = fh.read(8)
-            if len(head) < 8:
+            if len(head) < _CHUNK_HEADER_BYTES:
                 break
             chunk_id, chunk_size = head[:4], struct.unpack("<I", head[4:])[0]
             body_offset = offset + 8
             if chunk_id == b"fmt ":
-                if not 16 <= chunk_size <= 64:
-                    raise MediaError("INVALID_ARGUMENT", "WAV fmt chunk 大小不合法")
-                fmt = fh.read(chunk_size)
-                if len(fmt) != chunk_size:
-                    raise MediaError("INVALID_ARGUMENT", "WAV fmt chunk 不完整")
+                fmt = _read_wave_format(fh, chunk_size)
             elif chunk_id == b"data":
                 if fmt is None:
-                    raise MediaError("INVALID_ARGUMENT", "WAV data chunk 出現在 fmt 之前")
-                if chunk_size == 0xFFFFFFFF or body_offset + chunk_size > size:
-                    raise MediaError("INVALID_ARGUMENT", "WAV data chunk 長度超出檔案（截斷或串流式 header）")
+                    raise MediaError(
+                        "INVALID_ARGUMENT", "WAV data chunk 出現在 fmt 之前"
+                    )
+                if chunk_size == _UNKNOWN_CHUNK_SIZE or body_offset + chunk_size > size:
+                    raise MediaError(
+                        "INVALID_ARGUMENT",
+                        "WAV data chunk 長度超出檔案（截斷或串流式 header）",
+                    )
                 return _header_from(fmt, body_offset, chunk_size, limits)
             else:
                 fh.seek(chunk_size + (chunk_size & 1), os.SEEK_CUR)
@@ -201,20 +249,18 @@ def read_wav_header(path: str | os.PathLike[str], *, limits: MediaLimits = DEFAU
         raise MediaError("INVALID_ARGUMENT", "WAV 缺少 data chunk 或 chunk 數量過多")
 
 
-def _header_from(fmt: bytes, data_offset: int, data_bytes: int, limits: MediaLimits) -> WavHeader:
-    tag, channels, rate, byte_rate, block_align, bits = struct.unpack("<HHIIHH", fmt[:16])
-    mask: int | None = None
-    if tag == WAVE_FORMAT_EXTENSIBLE:
-        if len(fmt) < 40:
-            raise MediaError("INVALID_ARGUMENT", "WAVE_FORMAT_EXTENSIBLE fmt chunk 不完整")
-        _cb, _valid_bits, mask, subformat = struct.unpack("<HHI16s", fmt[16:40])
-        if subformat != KSDATAFORMAT_SUBTYPE_IEEE_FLOAT:
-            raise MediaError("INVALID_ARGUMENT", "WAV 必須是 IEEE float（float32）")
-        if mask not in (0, SPEAKER_FRONT_LEFT_RIGHT):
-            raise MediaError("INVALID_ARGUMENT", "WAV 聲道配置必須是 L,R 立體聲", actual=hex(mask))
-    elif tag != WAVE_FORMAT_IEEE_FLOAT:
-        raise MediaError("INVALID_ARGUMENT", "WAV 必須是 IEEE float（float32）", actual=hex(tag))
-    if channels != CHANNELS or bits != 32 or block_align != BYTES_PER_FRAME:
+def _header_from(
+    fmt: bytes, data_offset: int, data_bytes: int, limits: MediaLimits
+) -> WavHeader:
+    tag, channels, rate, byte_rate, block_align, bits = struct.unpack(
+        "<HHIIHH", fmt[:16]
+    )
+    mask = _channel_mask(fmt, tag)
+    if (
+        channels != CHANNELS
+        or bits != _FLOAT_SAMPLE_BITS
+        or block_align != BYTES_PER_FRAME
+    ):
         raise MediaError(
             "INVALID_ARGUMENT",
             "WAV 必須是 2 聲道 32-bit float",
@@ -229,5 +275,39 @@ def _header_from(fmt: bytes, data_offset: int, data_bytes: int, limits: MediaLim
     if frames < 1:
         raise MediaError("INVALID_ARGUMENT", "WAV 沒有音訊樣本")
     if frames / rate > limits.max_duration_seconds:
-        raise MediaError("INVALID_ARGUMENT", "音訊時長超過上限", expected=f"<= {limits.max_duration_seconds} s")
+        raise MediaError(
+            "INVALID_ARGUMENT",
+            "音訊時長超過上限",
+            expected=f"<= {limits.max_duration_seconds} s",
+        )
     return WavHeader(rate, channels, frames, data_offset, data_bytes, tag, mask)
+
+
+def _read_wave_format(fh: BinaryIO, chunk_size: int) -> bytes:
+    if not _MIN_FORMAT_BYTES <= chunk_size <= _MAX_FORMAT_BYTES:
+        raise MediaError("INVALID_ARGUMENT", "WAV fmt chunk 大小不合法")
+    fmt = fh.read(chunk_size)
+    if len(fmt) != chunk_size:
+        raise MediaError("INVALID_ARGUMENT", "WAV fmt chunk 不完整")
+    return fmt
+
+
+def _channel_mask(fmt: bytes, tag: int) -> int | None:
+    mask: int | None = None
+    if tag == WAVE_FORMAT_EXTENSIBLE:
+        if len(fmt) < _EXTENSIBLE_FORMAT_BYTES:
+            raise MediaError(
+                "INVALID_ARGUMENT", "WAVE_FORMAT_EXTENSIBLE fmt chunk 不完整"
+            )
+        _cb, _valid_bits, mask, subformat = struct.unpack("<HHI16s", fmt[16:40])
+        if subformat != KSDATAFORMAT_SUBTYPE_IEEE_FLOAT:
+            raise MediaError("INVALID_ARGUMENT", "WAV 必須是 IEEE float（float32）")
+        if mask not in (0, SPEAKER_FRONT_LEFT_RIGHT):
+            raise MediaError(
+                "INVALID_ARGUMENT", "WAV 聲道配置必須是 L,R 立體聲", actual=hex(mask)
+            )
+    elif tag != WAVE_FORMAT_IEEE_FLOAT:
+        raise MediaError(
+            "INVALID_ARGUMENT", "WAV 必須是 IEEE float（float32）", actual=hex(tag)
+        )
+    return mask

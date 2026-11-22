@@ -56,7 +56,7 @@ function usable(metric: Metric | undefined): metric is Metric & { value: number 
 
 export function buildConclusion(summary: RecordingSummary): Conclusion {
   const metrics = summary.metrics;
-  const wallMetric = metrics.host_wall_ms;
+  const wallMetric = metrics["host_wall_ms"];
   const wall = usable(wallMetric) ? wallMetric : null;
   const areas: AreaMeasure[] = [];
   const unmeasured: UnmeasuredArea[] = [];
@@ -100,7 +100,7 @@ export function buildConclusion(summary: RecordingSummary): Conclusion {
 
   areas.sort((a, b) => b.ms - a.ms);
   const dominant = areas[0] ?? null;
-  const gpu = metrics.gpu_event_ms;
+  const gpu = metrics["gpu_event_ms"];
   return {
     kind: dominant ? "dominant" : wall ? "wall_only" : "not_measurable",
     wall,

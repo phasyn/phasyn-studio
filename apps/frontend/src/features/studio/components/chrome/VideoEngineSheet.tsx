@@ -1,3 +1,4 @@
+import { isListed } from "@/lib/json";
 // Video Studio's engine sheet (渲染引擎): engine configuration only, in three tabs on a 44 px strip — 路線 (which saved
 // component combination renders the selected shot; choosing a row pins it; while the shot list has a multi-selection
 // the tab acts on the selected shots, as the selection bar's 路線 does), 畫質 (DiT steps and shifts, the project's frame
@@ -43,8 +44,8 @@ export function VideoEngineSheet() {
   }, [engineOpen]);
 
   const choose = (next: string) => {
-    if (!(ENGINE_TABS as readonly string[]).includes(next)) return;
-    setStoredTab(next as EngineTab);
+    if (!isListed(next, ENGINE_TABS)) return;
+    setStoredTab(next);
     clearEngineView();
   };
   // The control that asked for the view leaves with its tab panel: focus goes to the 元件 tab instead of the page
@@ -81,7 +82,7 @@ export function VideoEngineSheet() {
           tabs={[
             { id: "routes", label: t("路線"), icon: Route },
             { id: "quality", label: t("畫質"), icon: MonitorCog },
-            { id: "components", label: t("元件"), icon: Cpu, count: missing > 0 ? missing : undefined, countTone: "warning" },
+            { id: "components", label: t("元件"), icon: Cpu, ...(missing > 0 ? { count: missing } : {}), countTone: "warning" },
           ]}
           className="px-2"
         />
@@ -91,7 +92,7 @@ export function VideoEngineSheet() {
         {tab === "routes" ? shot ? <RouteList key={shot.shot_id} shot={shot} selection={selection} onShowComponents={showComponents} /> : noShot : null}
         {tab === "quality" ? shot ? <QualitySettings key={shot.shot_id} shot={shot} /> : noShot : null}
         {tab === "components" ? (
-          <EngineComponents shotRoute={route} shotRouteId={routeId} viewedRouteId={view?.tab === "components" ? view.routeId : null} control={control} onBackToShot={() => showComponents(null)} />
+          <EngineComponents shotRoute={route} shotRouteId={routeId} viewedRouteId={view?.tab === "components" ? view.routeId : null} control={control} onBackToShot={() => { showComponents(null); }} />
         ) : null}
       </div>
       {control.dialogs}

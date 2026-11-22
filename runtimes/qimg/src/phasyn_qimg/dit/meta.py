@@ -7,10 +7,11 @@ from typing import Any
 
 from .options import DitOptions, DitParams
 
+
 LATENT_LAYOUT = "packed (B, H·W, C)：H=height/16、W=width/16，列優先；正規化空間（VAE mean/std 之前）"
 
 
-def dit_identity(
+def dit_identity(  # noqa: PLR0913 - Keep the published runtime API.
     *,
     provider_id: str,
     component_id: str,
@@ -39,7 +40,7 @@ def dit_identity(
     }
 
 
-def latent_meta(
+def latent_meta(  # noqa: PLR0913 - Keep the published runtime API.
     *,
     params: DitParams,
     schedule: Any,
@@ -85,7 +86,10 @@ def latent_meta(
             },
             "ref_latents": None
             if ref_latents_sha256 is None
-            else {"sha256": ref_latents_sha256, "shapes": [list(s) for s in inputs["ref_shapes"]]},
+            else {
+                "sha256": ref_latents_sha256,
+                "shapes": [list(s) for s in inputs["ref_shapes"]],
+            },
         },
         "dit_identity": dict(identity),
     }

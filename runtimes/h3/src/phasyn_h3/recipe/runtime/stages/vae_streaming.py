@@ -27,9 +27,12 @@ from __future__ import annotations
 
 import contextlib
 from collections.abc import Iterator
-from typing import Any
+from typing import Any, NamedTuple
 
 from .. import pins
+
+
+_NO_IMAGE_PROCESSING = False
 
 
 def check_sources(vae: Any) -> None:
@@ -38,11 +41,16 @@ def check_sources(vae: Any) -> None:
 
 
 @contextlib.contextmanager
-def streaming_decode_scope(vae: Any, *, release_clip_outputs: bool = False) -> Iterator[dict[str, Any]]:
+def streaming_decode_scope(
+    vae: Any, *, release_clip_outputs: bool = False
+) -> Iterator[dict[str, Any]]:
     """Use bounded output only when decode_base is called with a synchronous sink.
 
-    ``release_clip_outputs``: drop each clip's decoded output before the next clip decodes (module docstring)."""
-    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.klvae import _resolve_temporal_stream_cat
+    ``release_clip_outputs``: drop each clip's decoded output before the next clip decodes (module docstring).
+    """
+    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.klvae import (  # type: ignore[import-untyped]
+        _resolve_temporal_stream_cat,
+    )
 
     if vae.training or not _resolve_temporal_stream_cat():
         # Preserve upstream's supported full-cat fallback and its rollback switch.
@@ -54,7 +62,12 @@ def streaming_decode_scope(vae: Any, *, release_clip_outputs: bool = False) -> I
     original_base = vae.decode_base
     original_stream = vae._decode_temporal_streaming
 
-    def decode_base(z, frame_num=None, process_image=False, on_frames=None):
+    def decode_base(
+        z: Any,
+        frame_num: Any = None,
+        process_image: Any = _NO_IMAGE_PROCESSING,
+        on_frames: Any = None,
+    ) -> Any:
         if on_frames is None:
             return original_base(z, frame_num=frame_num, process_image=process_image)
         if process_image or not vae.use_3d_conv or frame_num is not None:
@@ -62,22 +75,21 @@ def streaming_decode_scope(vae: Any, *, release_clip_outputs: bool = False) -> I
         # Upstream trim_output(recon, recon.shape[2]) is a no-op for this branch.
         return vae.decode_temporal(z, on_frames=on_frames)
 
-    def stream(z, z_head, z_tail, num_chunks, pad_tokens, temporal_cat_dtype, on_frames):
+    def stream(z: Any, z_head: Any, z_tail: Any, *values: Any, **named: Any) -> Any:
+        timing = _TemporalDecode(*values, **named)
+        num_chunks, pad_tokens, temporal_cat_dtype, on_frames = timing
         if on_frames is None:
-            return original_stream(z, z_head, z_tail, num_chunks, pad_tokens, temporal_cat_dtype, None)
+            return original_stream(
+                z, z_head, z_tail, num_chunks, pad_tokens, temporal_cat_dtype, None
+            )
         return _stream_to_sink(
-            vae,
-            z,
-            z_head,
-            z_tail,
-            num_chunks,
-            pad_tokens,
-            temporal_cat_dtype,
-            on_frames,
-            release_clip_outputs=release_clip_outputs,
+            vae, z, z_head, z_tail, *timing, release_clip_outputs=release_clip_outputs
         )
 
-    facts: dict[str, Any] = {"output_buffer": "callback_only", "full_video_buffer_allocated": False}
+    facts: dict[str, Any] = {
+        "output_buffer": "callback_only",
+        "full_video_buffer_allocated": False,
+    }
     if release_clip_outputs:
         facts["clip_output_released_before_next_clip"] = True
     try:
@@ -92,10 +104,25 @@ def streaming_decode_scope(vae: Any, *, release_clip_outputs: bool = False) -> I
                 delattr(vae, name)
 
 
+class _TemporalDecode(NamedTuple):
+    num_chunks: int
+    pad_tokens: Any
+    temporal_cat_dtype: Any
+    on_frames: Any
+
+
 def _stream_to_sink(
-    self, z, z_head, z_tail, num_chunks, pad_tokens, temporal_cat_dtype, on_frames, *, release_clip_outputs=False
-):
-    import torch
+    self: Any,
+    z: Any,
+    z_head: Any,
+    z_tail: Any,
+    *values: Any,
+    release_clip_outputs: bool = False,
+    **named: Any,
+) -> None:
+    num_chunks, pad_tokens, temporal_cat_dtype, on_frames = _TemporalDecode(
+        *values, **named
+    )
 
     total_frames, pad_frames, output_frames = self._decode_temporal_output_frame_plan(
         z, z_head, z_tail, num_chunks, pad_tokens
@@ -113,7 +140,7 @@ def _stream_to_sink(
     logical_frames = 0
     dropped_frames = 0
 
-    def write_part(part):
+    def write_part(part: Any) -> None:
         nonlocal write_pos, logical_frames, dropped_frames
         part_frames = int(part.shape[2])
         if part_frames <= 0:
@@ -129,46 +156,25 @@ def _stream_to_sink(
         dropped_frames += part_frames - copy_frames
 
     for i in range(num_chunks):
-        t_start_idx = i * self.tokens_chunk_size
-        t_end_idx = t_start_idx + self.tokens_chunk_size + self.token_overlap
-        clip_z = z[:, :, t_start_idx:t_end_idx, :, :]
+        clip_dec, clip_z = _decode_temporal_piece(
+            _DecodeTemporalPieceInputs(
+                i, self, z, z_head, num_chunks, z_tail, temporal_cat_dtype
+            )
+        )
 
-        if i == 0 and z_head is not None:
-            clip_z = torch.cat([z_head, clip_z], dim=2)
+        clip_dec, dec_tail = _trim_temporal_piece(
+            clip_dec,
+            self.vae_ratio_t,
+            write_part,
+            head=i == 0 and z_head is not None,
+            tail=i == num_chunks - 1 and z_tail is not None,
+        )
 
-        if i == num_chunks - 1 and z_tail is not None:
-            clip_z = torch.cat([clip_z, z_tail], dim=2)
-
-        clip_dec = self._adaptive_decode(clip_z)
-        if temporal_cat_dtype is not None and clip_dec.dtype != temporal_cat_dtype:
-            clip_dec = clip_dec.to(temporal_cat_dtype)
-        if clip_dec.device != z.device:
-            clip_dec = clip_dec.to(z.device)
-
-        dec_tail = None
-        if i == 0 and z_head is not None:
-            write_part(clip_dec[:, :, self.vae_ratio_t - 1 : self.vae_ratio_t, :, :])
-            clip_dec = clip_dec[:, :, self.vae_ratio_t :, :, :]
-
-        if i == num_chunks - 1 and z_tail is not None:
-            dec_tail = clip_dec[:, :, -1:, :, :]
-            clip_dec = clip_dec[:, :, : -self.vae_ratio_t, :, :]
-
-        for j in range(split_count):
-            f_start_idx = j * chunk_dec
-            f_end_idx = min(f_start_idx + chunk_dec, clip_dec.shape[2])
-            clip_dec_chunk = clip_dec[:, :, f_start_idx:f_end_idx, :, :]
-            clip_dec_chunk = clip_dec_chunk[:, :, self.frame_pre_padding :, :, :]
-
-            if j == 0:
-                if dec_overlap is not None:
-                    clip_dec_chunk = self.blend(dec_overlap, clip_dec_chunk, self.frame_overlap, dim=-3)
-                    dec_overlap = None
-                write_part(clip_dec_chunk)
-            else:
-                # Break the view's reference to the full decoded clip so earlier
-                # temporal chunks can be released before the final output exists.
-                dec_overlap = clip_dec_chunk.contiguous()
+        dec_overlap, clip_dec_chunk = _emit_temporal_splits(
+            _TemporalSplit(
+                self, clip_dec, split_count, chunk_dec, write_part, dec_overlap
+            )
+        )
 
         if i == num_chunks - 1:
             if dec_overlap is not None:
@@ -182,12 +188,124 @@ def _stream_to_sink(
             # the last split's view still points into this clip's decoded output (module docstring)
             del clip_dec_chunk
 
+    _check_streamed_frames(
+        _CheckStreamedFramesInputs(
+            write_pos,
+            logical_frames,
+            total_frames,
+            dropped_frames,
+            pad_frames,
+            output_frames,
+        )
+    )
+
+
+class _DecodeTemporalPieceInputs(NamedTuple):
+    i: Any
+    self: Any
+    z: Any
+    z_head: Any
+    num_chunks: Any
+    z_tail: Any
+    temporal_cat_dtype: Any
+
+
+def _decode_temporal_piece(inputs: _DecodeTemporalPieceInputs) -> tuple[Any, Any]:
+    import torch
+
+    i, self, z, z_head, num_chunks, z_tail, temporal_cat_dtype = inputs
+    t_start_idx = i * self.tokens_chunk_size
+    t_end_idx = t_start_idx + self.tokens_chunk_size + self.token_overlap
+    clip_z = z[:, :, t_start_idx:t_end_idx, :, :]
+
+    if i == 0 and z_head is not None:
+        clip_z = torch.cat([z_head, clip_z], dim=2)
+
+    if i == num_chunks - 1 and z_tail is not None:
+        clip_z = torch.cat([clip_z, z_tail], dim=2)
+
+    clip_dec = self._adaptive_decode(clip_z)
+    if temporal_cat_dtype is not None and clip_dec.dtype != temporal_cat_dtype:
+        clip_dec = clip_dec.to(temporal_cat_dtype)
+    if clip_dec.device != z.device:
+        clip_dec = clip_dec.to(z.device)
+    return clip_dec, clip_z
+
+
+def _trim_temporal_piece(
+    clip_dec: Any, ratio: int, write_part: Any, *, head: bool, tail: bool
+) -> tuple[Any, Any]:
+    dec_tail = None
+    if head:
+        write_part(clip_dec[:, :, ratio - 1 : ratio, :, :])
+        clip_dec = clip_dec[:, :, ratio:, :, :]
+
+    if tail:
+        dec_tail = clip_dec[:, :, -1:, :, :]
+        clip_dec = clip_dec[:, :, :-ratio, :, :]
+    return clip_dec, dec_tail
+
+
+class _CheckStreamedFramesInputs(NamedTuple):
+    write_pos: Any
+    logical_frames: Any
+    total_frames: Any
+    dropped_frames: Any
+    pad_frames: Any
+    output_frames: Any
+
+
+def _check_streamed_frames(inputs: _CheckStreamedFramesInputs) -> None:
+    (
+        write_pos,
+        logical_frames,
+        total_frames,
+        dropped_frames,
+        pad_frames,
+        output_frames,
+    ) = inputs
     if write_pos == 0:
         raise RuntimeError("decode_temporal streaming produced no output frames")
-    if logical_frames != total_frames or dropped_frames != pad_frames or write_pos != output_frames:
+    if (
+        logical_frames != total_frames
+        or dropped_frames != pad_frames
+        or write_pos != output_frames
+    ):
         raise RuntimeError(
             "decode_temporal streaming frame plan mismatch: "
             f"logical_frames={logical_frames} total_frames={total_frames} "
             f"dropped_frames={dropped_frames} pad_frames={pad_frames} "
             f"write_pos={write_pos} output_frames={output_frames}"
         )
+
+
+class _TemporalSplit(NamedTuple):
+    vae: Any
+    clip: Any
+    split_count: int
+    chunk_frames: int
+    write_part: Any
+    overlap: Any
+
+
+def _emit_temporal_splits(split: _TemporalSplit) -> tuple[Any, Any]:
+    vae, clip_dec, split_count, chunk_dec, write_part, dec_overlap = split
+    clip_dec_chunk = None
+    for j in range(split_count):
+        f_start_idx = j * chunk_dec
+        f_end_idx = min(f_start_idx + chunk_dec, clip_dec.shape[2])
+        clip_dec_chunk = clip_dec[:, :, f_start_idx:f_end_idx, :, :]
+        clip_dec_chunk = clip_dec_chunk[:, :, vae.frame_pre_padding :, :, :]
+
+        if j == 0:
+            if dec_overlap is not None:
+                clip_dec_chunk = vae.blend(
+                    dec_overlap, clip_dec_chunk, vae.frame_overlap, dim=-3
+                )
+                dec_overlap = None
+            write_part(clip_dec_chunk)
+        else:
+            # Break the view's reference to the full decoded clip so earlier
+            # temporal chunks can be released before the final output exists.
+            dec_overlap = clip_dec_chunk.contiguous()
+    return dec_overlap, clip_dec_chunk

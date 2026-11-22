@@ -31,6 +31,8 @@ from typing import Any
 from .acceleration import attention_plan
 from .errors import UnsupportedCombination
 from .policy import StagePolicy
+from .upstream_patches import ensure_uuid_device_ids
+
 
 _COUNTS: Counter[str] = Counter()
 _REASONS: Counter[str] = Counter()
@@ -66,15 +68,23 @@ def _instrument(provider: str) -> None:
     if provider in _INSTRUMENTED:
         return
     if provider == "fp8_fa_sm120":
-        mod = importlib.import_module("sglang.multimodal_gen.runtime.layers.attention.backends.fp8_fa_sm120_attn")
+        mod = importlib.import_module(
+            "sglang.multimodal_gen.runtime.layers.attention.backends.fp8_fa_sm120_attn"
+        )
         impl = mod.FP8FlashAttentionSM120Impl
         impl._run = _counting(impl._run, "fp8_kernel_calls")
-        impl._report_fallback = _counting(impl._report_fallback, "fp8_fallback_calls", reason_arg=True)
+        impl._report_fallback = _counting(
+            impl._report_fallback, "fp8_fallback_calls", reason_arg=True
+        )
     elif provider == "subblock_sparse_attn":
-        mod = importlib.import_module("sglang.multimodal_gen.runtime.layers.attention.backends.subblock_sparse_attn")
+        mod = importlib.import_module(
+            "sglang.multimodal_gen.runtime.layers.attention.backends.subblock_sparse_attn"
+        )
         impl = mod.SubBlockSparseAttentionImpl
         impl.forward_varlen = _counting(impl.forward_varlen, "subblock_varlen_calls")
-        impl._sparse_attention_heads = _counting(impl._sparse_attention_heads, "subblock_sparse_calls")
+        impl._sparse_attention_heads = _counting(
+            impl._sparse_attention_heads, "subblock_sparse_calls"
+        )
         impl._dense_segment = _counting(impl._dense_segment, "subblock_dense_segments")
     _INSTRUMENTED.add(provider)
 
@@ -86,13 +96,15 @@ def _snapshot() -> tuple[Counter[str], Counter[str]]:
 
 @contextlib.contextmanager
 def _attention_backend_config(config: Mapping[str, Any]) -> Iterator[None]:
-    """SubBlock reads its schedule from the global ServerArgs at impl construction
-    (``SubBlockSparseSchedule.from_server_args``); pin it to this run's plan."""
-    server_args_mod = importlib.import_module("sglang.multimodal_gen.runtime.server_args")
+    """SubBlock reads its schedule from the global ServerArgs at impl construction (``SubBlockSparseSchedule.from_server_args``); pin it to this run's plan."""
+    server_args_mod = importlib.import_module(
+        "sglang.multimodal_gen.runtime.server_args"
+    )
     args = server_args_mod.get_global_server_args()
     if args is None:
         raise UnsupportedCombination(
-            "SERVER_ARGS_UNAVAILABLE", "SubBlock schedule 需要已建立的 SGLang ServerArgs（DiT 尚未經 shim 載入）"
+            "SERVER_ARGS_UNAVAILABLE",
+            "SubBlock schedule 需要已建立的 SGLang ServerArgs（DiT 尚未經 shim 載入）",
         )
     previous = args.attention_backend_config
     factory = type(previous) if isinstance(previous, dict) else dict
@@ -107,12 +119,15 @@ def _check_runtime_availability(plan: Any, device: Any) -> None:
     if plan.provider != "subblock_sparse_attn":
         return
     mode = str(plan.backend_config.get("compute_mode", "bf16"))
-    sb = importlib.import_module("sglang.multimodal_gen.runtime.layers.attention.backends.subblock_sparse_attn")
+    sb = importlib.import_module(
+        "sglang.multimodal_gen.runtime.layers.attention.backends.subblock_sparse_attn"
+    )
     try:
         sb._get_subblock_sparse_attention_runner(device, mode)
     except (RuntimeError, ValueError) as exc:
         raise UnsupportedCombination(
-            "SUBBLOCK_MODE_UNSUPPORTED", f"SubBlock compute_mode={mode} 在此裝置不可用：{exc}"[:1500]
+            "SUBBLOCK_MODE_UNSUPPORTED",
+            f"SubBlock compute_mode={mode} 在此裝置不可用：{exc}"[:1500],
         ) from exc
     import torch
 
@@ -121,7 +136,9 @@ def _check_runtime_availability(plan: Any, device: Any) -> None:
             sb._load_sm120_sage_ops()
         except ImportError as exc:
             raise UnsupportedCombination(
-                "SUBBLOCK_SAGE_FP8_UNAVAILABLE", SAGE_FP8_HINT, field_path="attention.subblock_sparse.compute_mode"
+                "SUBBLOCK_SAGE_FP8_UNAVAILABLE",
+                SAGE_FP8_HINT,
+                field_path="attention.subblock_sparse.compute_mode",
             ) from exc
 
 
@@ -141,9 +158,10 @@ def preflight_attention(plan: Any) -> dict[str, Any]:
     if not plan.approximate:
         return {}
     import torch
-    from sglang.multimodal_gen.runtime.platforms import AttentionBackendEnum, current_platform
-
-    from .upstream_patches import ensure_uuid_device_ids
+    from sglang.multimodal_gen.runtime.platforms import (  # type: ignore[import-untyped]
+        AttentionBackendEnum,
+        current_platform,
+    )
 
     ensure_uuid_device_ids()
     device = torch.device("cuda", torch.cuda.current_device())
@@ -164,6 +182,8 @@ def preflight_attention(plan: Any) -> dict[str, Any]:
 
 @dataclass
 class AttentionSession:
+    """Track the backend used during each attention call."""
+
     requested: str
     effective: str
     sglang_backend: str
@@ -179,10 +199,17 @@ class AttentionSession:
     loop_counts: Counter[str] | None = None
 
     def deltas(self) -> tuple[dict[str, int], dict[str, int]]:
+        """Return the observations recorded since the last snapshot."""
         counts, reasons = _snapshot()
-        delta = {k: counts[k] - self.start_counts.get(k, 0) for k in counts if counts[k] - self.start_counts.get(k, 0)}
+        delta = {
+            k: counts[k] - self.start_counts.get(k, 0)
+            for k in counts
+            if counts[k] - self.start_counts.get(k, 0)
+        }
         reason_delta = {
-            k: reasons[k] - self.start_reasons.get(k, 0) for k in reasons if reasons[k] - self.start_reasons.get(k, 0)
+            k: reasons[k] - self.start_reasons.get(k, 0)
+            for k in reasons
+            if reasons[k] - self.start_reasons.get(k, 0)
         }
         return delta, reason_delta
 
@@ -204,6 +231,7 @@ class AttentionSession:
             )
 
     def report(self) -> dict[str, Any]:
+        """Report attention dispatch measurements."""
         delta, reasons = self.deltas()
         doc: dict[str, Any] = {
             "requested": self.requested,
@@ -225,11 +253,16 @@ class AttentionSession:
         return doc
 
     def warnings(self, planned_updates: int) -> list[str]:
+        """Return the warnings accumulated during execution."""
         delta, _ = self.deltas()
         out = []
         if self.effective == "fp8_fa_sm120" and delta.get("fp8_fallback_calls", 0):
-            out.append(f"fp8_fa_sm120 有 {delta['fp8_fallback_calls']} 次呼叫退回 cuDNN SDPA（見 fallback_reasons）")
-        if self.effective == "subblock_sparse_attn" and not delta.get("subblock_sparse_calls", 0):
+            out.append(
+                f"fp8_fa_sm120 有 {delta['fp8_fallback_calls']} 次呼叫退回 cuDNN SDPA（見 fallback_reasons）"
+            )
+        if self.effective == "subblock_sparse_attn" and not delta.get(
+            "subblock_sparse_calls", 0
+        ):
             skip = int(self.backend_config.get("skip_first_steps", 0))
             out.append(
                 f"SubBlock 整個 run 都是 dense（planned_updates={planned_updates}，skip_first_steps={skip}，"
@@ -238,29 +271,41 @@ class AttentionSession:
         return out
 
 
-def prepare_dit_attention(model: Any, policy: StagePolicy, device: Any) -> AttentionSession:
+def prepare_dit_attention(
+    model: Any, policy: StagePolicy, device: Any
+) -> AttentionSession:
     """Bind the DiT to this run's attention backend and verify SGLang resolved exactly it."""
     from sglang.multimodal_gen.runtime.platforms import AttentionBackendEnum
 
-    from .upstream_patches import ensure_uuid_device_ids
-
     plan = attention_plan(
-        policy.attention_provider_effective, policy.sglang_attention_backend, policy.effective_profile
+        policy.attention_provider_effective,
+        policy.sglang_attention_backend,
+        policy.effective_profile,
     )
     patches = {"uuid_device_ids": ensure_uuid_device_ids()}
     expected = AttentionBackendEnum[plan.sglang_backend.upper()]
     if plan.approximate:
         _check_runtime_availability(plan, device)
         _instrument(plan.provider)
-    dit = importlib.import_module("sglang.multimodal_gen.runtime.models.dits.minimax_h3")
-    attention_modules = [m for m in model.modules() if isinstance(m, dit.MiniMaxH3Attention)]
+    dit = importlib.import_module(
+        "sglang.multimodal_gen.runtime.models.dits.minimax_h3"
+    )
+    attention_modules = [
+        m for m in model.modules() if isinstance(m, dit.MiniMaxH3Attention)
+    ]
     if not attention_modules or not hasattr(model, "_resolve_attention_backend_once"):
         raise UnsupportedCombination(
-            "ATTENTION_BIND_UNSUPPORTED", "DiT 沒有可綁定的 MiniMaxH3Attention（非釘版模型？）"
+            "ATTENTION_BIND_UNSUPPORTED",
+            "DiT 沒有可綁定的 MiniMaxH3Attention（非釘版模型？）",
         )
     previous = getattr(model, "_resolved_attention_backend", None)
-    previous_name = None if previous is None else str(getattr(previous, "name", previous))
-    stale = any(getattr(m, "_attention_backend_enum", None) not in (None, expected) for m in attention_modules)
+    previous_name = (
+        None if previous is None else str(getattr(previous, "name", previous))
+    )
+    stale = any(
+        getattr(m, "_attention_backend_enum", None) not in (None, expected)
+        for m in attention_modules
+    )
     rebound = previous is not expected or stale or plan.approximate
     if rebound:
         model._resolved_attention_backend = None
@@ -269,11 +314,17 @@ def prepare_dit_attention(model: Any, policy: StagePolicy, device: Any) -> Atten
             module._selected_attention_backend = expected
             module._attention_impl = None
             module._attention_backend_enum = None
-        config_ctx = _attention_backend_config(plan.backend_config) if plan.backend_config else contextlib.nullcontext()
+        config_ctx = (
+            _attention_backend_config(plan.backend_config)
+            if plan.backend_config
+            else contextlib.nullcontext()
+        )
         with config_ctx:
             model._resolve_attention_backend_once()
     resolved = getattr(model, "_resolved_attention_backend", None)
-    resolved_name = None if resolved is None else str(getattr(resolved, "name", resolved))
+    resolved_name = (
+        None if resolved is None else str(getattr(resolved, "name", resolved))
+    )
     bound = {getattr(m, "_attention_backend_enum", None) for m in attention_modules}
     if resolved is not expected or bound != {expected}:
         raise UnsupportedCombination(
@@ -312,12 +363,21 @@ def prepare_dit_attention(model: Any, policy: StagePolicy, device: Any) -> Atten
     )
 
 
-def subblock_video_query_indices(packed: Mapping[str, Any], text_video_token_mask: Any) -> Any:
+def subblock_video_query_indices(
+    packed: Mapping[str, Any], text_video_token_mask: Any
+) -> Any:
     """Rows eligible for SubBlock sparsity (upstream helper, ``S/denoise_loop.py:40-58``)."""
     loop = importlib.import_module(
         "sglang.multimodal_gen.runtime.pipelines_core.stages.model_specific_stages.minimax_h3.denoise_loop"
     )
-    return loop._minimax_h3_subblock_video_query_indices(dict(packed), text_video_token_mask)
+    return loop._minimax_h3_subblock_video_query_indices(
+        dict(packed), text_video_token_mask
+    )
 
 
-__all__ = ["SAGE_FP8_HINT", "AttentionSession", "prepare_dit_attention", "subblock_video_query_indices"]
+__all__ = [
+    "SAGE_FP8_HINT",
+    "AttentionSession",
+    "prepare_dit_attention",
+    "subblock_video_query_indices",
+]

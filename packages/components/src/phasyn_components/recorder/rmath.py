@@ -1,4 +1,4 @@
-"""紀錄分析算式。分析用，不在 hot path。
+"""紀錄分析算式。分析用，不在 hot path.
 
 參考算式的語意：p50 用中位數、其他 nearest-rank；
 跨 clock domain 的區間不可合併；copy GB/s 分母為同一組 copy 的有效區間。
@@ -13,20 +13,26 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import Any
 
 
+_FULL_PERCENT = 100
+_MEDIAN_PERCENT = 50
+
+
 def percentile(values: Sequence[float], p: float) -> float | None:
-    if not 0 < p <= 100:
+    """Compute the requested percentile of a sample."""
+    if not 0 < p <= _FULL_PERCENT:
         raise ValueError("p must be in (0, 100]")
     if any(not math.isfinite(v) for v in values):
         raise ValueError("non-finite sample")
     xs = sorted(values)
     if not xs:
         return None
-    if p == 50 and len(xs) % 2 == 0:
+    if p == _MEDIAN_PERCENT and len(xs) % 2 == 0:
         return (xs[len(xs) // 2 - 1] + xs[len(xs) // 2]) / 2
-    return float(xs[max(0, math.ceil(len(xs) * p / 100) - 1)])
+    return float(xs[max(0, math.ceil(len(xs) * p / _FULL_PERCENT) - 1)])
 
 
 def union_duration_ms(intervals: Iterable[Mapping[str, Any]]) -> float:
+    """Compute the duration covered by overlapping intervals."""
     xs = list(intervals)
     domains = {x["clock_domain"] for x in xs}
     if len(domains) > 1:
@@ -47,7 +53,10 @@ def union_duration_ms(intervals: Iterable[Mapping[str, Any]]) -> float:
     return total / 1_000_000
 
 
-def effective_gbps(completed_bytes: int | None, duration_ms: float | None) -> float | None:
+def effective_gbps(
+    completed_bytes: int | None, duration_ms: float | None
+) -> float | None:
+    """Compute effective transfer throughput."""
     if completed_bytes is None or duration_ms is None or duration_ms == 0:
         return None
     if completed_bytes < 0 or not math.isfinite(duration_ms) or duration_ms < 0:
@@ -55,8 +64,10 @@ def effective_gbps(completed_bytes: int | None, duration_ms: float | None) -> fl
     return completed_bytes / (duration_ms / 1000) / 1_000_000_000
 
 
-def transfer_totals(records: Iterable[Mapping[str, Any]], coverage: str = "full") -> dict[str, Any]:
-    """依 transfer_id 取最後狀態；network 只計 consumer。"""
+def transfer_totals(
+    records: Iterable[Mapping[str, Any]], coverage: str = "full"
+) -> dict[str, Any]:
+    """依 transfer_id 取最後狀態；network 只計 consumer."""
     if coverage not in ("full", "partial", "none"):
         raise ValueError("invalid coverage")
     latest: dict[str, Mapping[str, Any]] = {}
@@ -72,7 +83,8 @@ def transfer_totals(records: Iterable[Mapping[str, Any]], coverage: str = "full"
     result: dict[str, Any] = {}
     for name, rs in grouped.items():
         unknown = coverage != "full" or any(
-            r.get("completed_bytes") is None or r.get("completed_count") is None for r in rs
+            r.get("completed_bytes") is None or r.get("completed_count") is None
+            for r in rs
         )
         observed_bytes = sum(r.get("completed_bytes") or 0 for r in rs)
         observed_count = sum(r.get("completed_count") or 0 for r in rs)
@@ -87,7 +99,10 @@ def transfer_totals(records: Iterable[Mapping[str, Any]], coverage: str = "full"
     return result
 
 
-def paired_roundtrips(records: Iterable[Mapping[str, Any]], coverage: str = "full") -> int | None:
+def paired_roundtrips(
+    records: Iterable[Mapping[str, Any]], coverage: str = "full"
+) -> int | None:
+    """Count paired transfer round trips."""
     if coverage != "full":
         return None
     groups: dict[str, set[str]] = defaultdict(set)
@@ -95,14 +110,21 @@ def paired_roundtrips(records: Iterable[Mapping[str, Any]], coverage: str = "ful
         pair = r.get("roundtrip_id")
         if not pair or not r.get("actual_copy", True):
             continue
-        if r["category"] in ("weight_h2d", "weight_d2h") and r.get("completed_count") is None:
+        if (
+            r["category"] in ("weight_h2d", "weight_d2h")
+            and r.get("completed_count") is None
+        ):
             return None
-        if (r.get("completed_count") or 0) > 0 and r["category"] in ("weight_h2d", "weight_d2h"):
+        if (r.get("completed_count") or 0) > 0 and r["category"] in (
+            "weight_h2d",
+            "weight_d2h",
+        ):
             groups[pair].add(r["direction"])
     return sum(d == {"H2D", "D2H"} for d in groups.values())
 
 
 def config_diff(a: Any, b: Any, prefix: str = "") -> list[dict[str, Any]]:
+    """List differences between two configurations."""
     if isinstance(a, dict) and isinstance(b, dict):
         out: list[dict[str, Any]] = []
         for key in sorted(set(a) | set(b)):
@@ -120,10 +142,23 @@ def config_diff(a: Any, b: Any, prefix: str = "") -> list[dict[str, Any]]:
             else:
                 out.extend(config_diff(a[key], b[key], path))
         return out
-    return [] if a == b else [{"path": prefix, "before": a, "after": b, "before_present": True, "after_present": True}]
+    return (
+        []
+        if a == b
+        else [
+            {
+                "path": prefix,
+                "before": a,
+                "after": b,
+                "before_present": True,
+                "after_present": True,
+            }
+        ]
+    )
 
 
 def same_latent(a: Mapping[str, Any], b: Mapping[str, Any]) -> bool:
+    """Check whether both records identify the same latent."""
     keys = ("latent_id", "blob_sha256", "manifest_sha256")
     return all(k in a and k in b and a[k] == b[k] for k in keys)
 

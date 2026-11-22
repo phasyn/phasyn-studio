@@ -65,7 +65,7 @@ function myers<T>(a: readonly T[], b: readonly T[], maxEdits: number): DiffOp[] 
 
 function push<T>(chunks: DiffChunk<T>[], op: DiffOp, item: T): void {
   const last = chunks[chunks.length - 1];
-  if (last && last.op === op) last.items.push(item);
+  if (last?.op === op) last.items.push(item);
   else chunks.push({ op, items: [item] });
 }
 
@@ -80,19 +80,21 @@ export function diffSequences<T>(a: readonly T[], b: readonly T[], maxEdits = 20
   const ops = myers(midA, midB, maxEdits) ?? [...midA.map((): DiffOp => "delete"), ...midB.map((): DiffOp => "insert")];
   const chunks: DiffChunk<T>[] = [];
   for (const item of a.slice(0, prefix)) push(chunks, "equal", item);
-  let i = 0;
-  let j = 0;
+  const left = midA.values();
+  const right = midB.values();
+  function take(cursor: ArrayIterator<T>): T {
+    const item = cursor.next();
+    if (item.done === true) throw new RangeError("Diff operation exceeded the source sequence");
+    return item.value;
+  }
   for (const op of ops) {
     if (op === "equal") {
-      push(chunks, "equal", midA[i] as T);
-      i += 1;
-      j += 1;
+      push(chunks, "equal", take(left));
+      take(right);
     } else if (op === "delete") {
-      push(chunks, "delete", midA[i] as T);
-      i += 1;
+      push(chunks, "delete", take(left));
     } else {
-      push(chunks, "insert", midB[j] as T);
-      j += 1;
+      push(chunks, "insert", take(right));
     }
   }
   for (const item of a.slice(a.length - suffix)) push(chunks, "equal", item);
@@ -158,7 +160,7 @@ export function collapseRows(rows: readonly PreviewRow[], context = 1): Collapse
   const out: CollapsedRow[] = [];
   let skipped = 0;
   rows.forEach((row, index) => {
-    if (keep[index]) {
+    if (keep[index] === true) {
       if (skipped > 0) out.push({ type: "skip", count: skipped });
       skipped = 0;
       out.push({ type: "row", row });
@@ -195,7 +197,7 @@ export function diffHunks(lines: readonly DiffLine[], context = 1): DiffHunk[] {
   let skipped = 0;
   let current: DiffHunk | null = null;
   lines.forEach((line, index) => {
-    if (!keep[index]) {
+    if (!(keep[index] === true)) {
       skipped += 1;
       current = null;
       return;

@@ -34,29 +34,29 @@ function readSpec(value: unknown): StepSpec | null {
 }
 
 function readCandidate(value: unknown): CandidateRef | null {
-  if (!isRecord(value) || !isText(value.version_id) || !oneOf<PromptVariant>(VARIANTS, value.variant)) return null;
-  return { version_id: value.version_id, variant: value.variant };
+  if (!isRecord(value) || !isText(value["version_id"]) || !oneOf<PromptVariant>(VARIANTS, value["variant"])) return null;
+  return { version_id: value["version_id"], variant: value["variant"] };
 }
 
 function readStep(value: unknown): StepData | null {
-  if (!isRecord(value) || !oneOf<StepAction>(STEP_ACTIONS, value.action)) return null;
-  const action = value.action;
-  switch (value.kind) {
+  if (!isRecord(value) || !oneOf<StepAction>(STEP_ACTIONS, value["action"])) return null;
+  const action = value["action"];
+  switch (value["kind"]) {
     case "analyze":
       return { kind: "analyze", action };
     case "revise":
-      if ((value.round !== null && !isInt(value.round)) || !isText(value.fromVersionId) || typeof value.comparison !== "boolean") return null;
-      return { kind: "revise", action, round: value.round, fromVersionId: value.fromVersionId, comparison: value.comparison };
+      if ((value["round"] !== null && !isInt(value["round"])) || !isText(value["fromVersionId"]) || typeof value["comparison"] !== "boolean") return null;
+      return { kind: "revise", action, round: value["round"], fromVersionId: value["fromVersionId"], comparison: value["comparison"] };
     case "render":
     case "compare": {
-      const spec = readSpec(value.spec);
-      return spec ? { kind: value.kind, action, spec } : null;
+      const spec = readSpec(value["spec"]);
+      return spec ? { kind: value["kind"], action, spec } : null;
     }
     case "pairwise": {
-      const incumbent = readCandidate(value.incumbent);
-      const challenger = readCandidate(value.challenger);
-      if (!incumbent || !challenger || !isInt(value.round) || !isInt(value.seed)) return null;
-      return { kind: "pairwise", action, round: value.round, seed: value.seed, incumbent, challenger };
+      const incumbent = readCandidate(value["incumbent"]);
+      const challenger = readCandidate(value["challenger"]);
+      if (!incumbent || !challenger || !isInt(value["round"]) || !isInt(value["seed"])) return null;
+      return { kind: "pairwise", action, round: value["round"], seed: value["seed"], incumbent, challenger };
     }
     default:
       return null;
@@ -64,10 +64,10 @@ function readStep(value: unknown): StepData | null {
 }
 
 function readFinish(value: unknown): FinishNote | null {
-  if (!isRecord(value) || !oneOf(FINISH_REASONS, value.reason)) return null;
-  const reason = value.reason;
+  if (!isRecord(value) || !oneOf(FINISH_REASONS, value["reason"])) return null;
+  const reason = value["reason"];
   if (reason === "image_budget" || reason === "vision_budget") {
-    return isInt(value.used) && isInt(value.max) ? { reason, used: value.used, max: value.max } : null;
+    return isInt(value["used"]) && isInt(value["max"]) ? { reason, used: value["used"], max: value["max"] } : null;
   }
   return { reason };
 }
@@ -81,16 +81,16 @@ export function readTaskNote(message: string): TaskNote | null {
   } catch {
     return null;
   }
-  if (!isRecord(value) || value.format !== FORMAT) return null;
-  switch (value.kind) {
+  if (!isRecord(value) || value["format"] !== FORMAT) return null;
+  switch (value["kind"]) {
     case "step": {
-      const step = readStep(value.step);
+      const step = readStep(value["step"]);
       return step ? { kind: "step", step } : null;
     }
     case "failed":
-      return isText(value.code) ? { kind: "failed", code: value.code } : null;
+      return isText(value["code"]) ? { kind: "failed", code: value["code"] } : null;
     case "finish": {
-      const finish = readFinish(value.finish);
+      const finish = readFinish(value["finish"]);
       return finish ? { kind: "finish", finish } : null;
     }
     default:

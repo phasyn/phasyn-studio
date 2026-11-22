@@ -62,7 +62,7 @@ export function applySummary(shot: StudioImageShot, projectTitle: string): strin
   return [
     t("專案「{projectTitle}」新增圖片鏡頭「{title}」（文生圖；不改既有鏡頭）", { projectTitle, title: shot.title }),
     t("prompt：{promptCount} 字{value}", { promptCount: shot.prompt.length, value: shot.negative_prompt.trim() ? t("；負面提示詞 {negative_promptCount} 字{value}", { negative_promptCount: shot.negative_prompt.length, value: shot.guidance > 1 ? "" : t("（guidance ≤ 1 時不使用）") }) : "" }),
-    t("{width}×{height} · {steps} 步 · guidance {guidance} · sigma {sigma_schedule} · μ {value} · 解碼 {decode}", { width: shot.width, height: shot.height, steps: shot.steps, guidance: shot.guidance, sigma_schedule: shot.sigma_schedule, value: shot.flow_shift_mu === null ? t("自動") : shot.flow_shift_mu, decode: shot.decode }),
+    t("{width}×{height} · {steps} 步 · guidance {guidance} · sigma {sigma_schedule} · μ {value} · 解碼 {decode}", { width: shot.width, height: shot.height, steps: shot.steps, guidance: shot.guidance, sigma_schedule: shot.sigma_schedule, value: shot.flow_shift_mu ?? t("自動"), decode: shot.decode }),
     t("seed：{value} · 張數 1", { value: shot.seed_mode === "random" ? t("每次隨機（實際值生成時記錄）") : t("{seed}（{value}）", { seed: shot.seed, value: shot.seed_mode === "fixed" ? t("固定") : t("遞增") }) }),
     t("元件組合：{value}", { value: shot.route || t("（未選擇）") }),
     t("不會自動生成；到 Image Studio 確認後再按生成"),

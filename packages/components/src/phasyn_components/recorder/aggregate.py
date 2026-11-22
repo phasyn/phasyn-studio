@@ -13,6 +13,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
+
+def _sample_value(point: object) -> Any:
+    return point.get("value") if isinstance(point, Mapping) else None
+
+
 MAX_STEP_SAMPLES = 200_000
 MAX_NOTES = 200
 NOTE_LIMIT = 2000
@@ -28,6 +33,8 @@ _COVERAGE_ORDER = {"full": 0, "partial": 1, "none": 2}
 
 @dataclass(slots=True)
 class TransferAgg:
+    """Accumulate measurements for a transfer category."""
+
     submitted_count: int = 0
     submitted_bytes: int = 0
     completed_count: int = 0
@@ -46,17 +53,20 @@ class CostLog:
     """The ``cost`` block of a summary: generic facts of the call plus the stages' actual work."""
 
     def __init__(self) -> None:
+        """Initialize cost log with its configuration."""
         self.facts: dict[str, Any] = {}
         self.stages: list[dict[str, Any]] = []
         self.dropped = 0
 
     def add_stage(self, stage: dict[str, Any]) -> None:
+        """Include the timing of one transfer stage."""
         if len(self.stages) < MAX_COST_STAGES:
             self.stages.append(stage)
         else:
             self.dropped += 1
 
     def summary(self) -> dict[str, Any] | None:
+        """Build the aggregate summary."""
         if not self.facts and not self.stages:
             return None
         out: dict[str, Any] = {
@@ -73,7 +83,10 @@ class CostLog:
 
 
 class Aggregates:
+    """Accumulate measurements consumed by the recorder summary."""
+
     def __init__(self) -> None:
+        """Initialize aggregates with its configuration."""
         self.phases: dict[str, float] = collections.defaultdict(float)
         self.counters: dict[str, int] = {}
         self.metrics: dict[str, dict[str, Any]] = {}
@@ -92,10 +105,12 @@ class Aggregates:
 
     # ------------------------------------------------------------------ notes / coverage
     def add_note(self, text: str) -> None:
+        """Record an explanatory note."""
         if len(self.notes) < MAX_NOTES and text not in self.notes:
             self.notes.append(text[:NOTE_LIMIT])
 
     def set_coverage(self, coverage: str, reason: str) -> None:
+        """Set the coverage reported for a component part."""
         if coverage not in _COVERAGE_ORDER:
             raise ValueError(coverage)
         if _COVERAGE_ORDER[coverage] > _COVERAGE_ORDER[self.coverage]:
@@ -104,11 +119,18 @@ class Aggregates:
 
     # ------------------------------------------------------------------ phases / parts
     def add_phase(self, phase: str, host_ms: float) -> None:
+        """Include a phase duration in the aggregate."""
         self.phases[phase] += host_ms
 
     def add_part(
-        self, part: str, *, host_ms: float = 0.0, gpu_ms: float | None = None, calls: int = 0
+        self,
+        part: str,
+        *,
+        host_ms: float = 0.0,
+        gpu_ms: float | None = None,
+        calls: int = 0,
     ) -> dict[str, Any]:
+        """Include measurements for a component part."""
         entry = self.parts.get(part)
         if entry is None:
             entry = {
@@ -129,27 +151,42 @@ class Aggregates:
                 entry["gpu_event_ms"] += gpu_ms
         return entry
 
-    def set_part_value(self, part: str, name: str, value: float | int | None, *, unit: str, method: str) -> None:
-        self.add_part(part).setdefault("values", {})[name] = {"value": value, "unit": unit, "method": method}
+    def set_part_value(
+        self, part: str, name: str, value: float | None, *, unit: str, method: str
+    ) -> None:
+        """Store a measured field on a part."""
+        self.add_part(part).setdefault("values", {})[name] = {
+            "value": value,
+            "unit": unit,
+            "method": method,
+        }
 
     # ------------------------------------------------------------------ counters / metrics
     def declare(self, names: tuple[str, ...]) -> None:
+        """Declare a metric for this operation."""
         for name in names:
             self.counters.setdefault(name, 0)
 
     def count(self, name: str, n: int, *, part: str | None) -> None:
+        """Increase the named counter."""
         self.counters[name] = self.counters.get(name, 0) + int(n)
         if part is not None:
             counters = self.add_part(part)["counters"]
             counters[name] = counters.get(name, 0) + int(n)
 
     def max_metric(self, name: str, m: dict[str, Any]) -> None:
+        """Keep the largest observed metric value."""
         current = self.metrics.get(name)
-        if current is None or current.get("value") is None or m["value"] > current["value"]:
+        if (
+            current is None
+            or current.get("value") is None
+            or m["value"] > current["value"]
+        ):
             self.metrics[name] = m
 
     # ------------------------------------------------------------------ steps / samples
     def add_step(self, host_ms: float, gpu_event_ms: float | None) -> None:
+        """Include one scheduler step in the aggregate."""
         if len(self.step_host) >= MAX_STEP_SAMPLES:
             return
         self.step_host.append(float(host_ms))
@@ -159,15 +196,20 @@ class Aggregates:
             self.step_gpu.append(float(gpu_event_ms))
 
     def add_sample(self, metrics: Mapping[str, Mapping[str, Any]]) -> None:
+        """Include one device sample in the aggregate."""
         self.sample_count += 1
         for name, m in metrics.items():
-            value = m.get("value") if isinstance(m, Mapping) else None
+            value = _sample_value(m)
             peak = SAMPLE_PEAKS.get(name)
-            if peak is not None and isinstance(value, (int, float)) and value > self.sample_peaks.get(peak, -1):
+            if (
+                peak is not None
+                and isinstance(value, (int, float))
+                and value > self.sample_peaks.get(peak, -1)
+            ):
                 self.sample_peaks[peak] = value
 
     # ------------------------------------------------------------------ transfers
-    def add_transfer(
+    def add_transfer(  # noqa: PLR0913 - Keep the published positional and keyword API.
         self,
         transfer_id: str,
         category: str,
@@ -183,13 +225,16 @@ class Aggregates:
         completion_status: str,
         part: str | None,
     ) -> None:
+        """Accumulate a transfer event."""
         agg = self.transfers.setdefault(category, TransferAgg())
         if not actual_copy or completion_status == "no_op":
             agg.no_op_count += submitted_count
             return
         agg.submitted_count += submitted_count
         agg.submitted_bytes += int(submitted_bytes)
-        agg.logical_bytes += int(logical_bytes if logical_bytes is not None else submitted_bytes)
+        agg.logical_bytes += int(
+            logical_bytes if logical_bytes is not None else submitted_bytes
+        )
         agg.host_ms += float(host_ms)
         if completion_status != "completed" or not float(host_ms) > 0:
             agg.host_timed = False
@@ -206,13 +251,21 @@ class Aggregates:
         else:  # failed / unknown
             agg.pending += 1
         if part is not None:
-            totals = self.add_part(part)["transfers"].setdefault(category, {"count": 0, "bytes": 0})
+            totals = self.add_part(part)["transfers"].setdefault(
+                category, {"count": 0, "bytes": 0}
+            )
             totals["count"] += submitted_count
             totals["bytes"] += int(submitted_bytes)
 
     def complete_transfer(
-        self, transfer_id: str, *, completed_bytes: int, completed_count: int, gpu_event_ms: float | None
+        self,
+        transfer_id: str,
+        *,
+        completed_bytes: int,
+        completed_count: int,
+        gpu_event_ms: float | None,
     ) -> None:
+        """Complete a previously submitted transfer."""
         pending = self.pending.pop(transfer_id, None)
         if pending is None:
             return

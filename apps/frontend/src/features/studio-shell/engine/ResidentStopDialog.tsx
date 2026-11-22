@@ -12,7 +12,7 @@ import { t } from "@/i18n";
 export function ResidentStopDialog({ component, onCancel, onConfirm }: { component: ComponentDescriptor | null; onCancel: () => void; onConfirm: (component: ComponentDescriptor) => void }) {
   const catalog = useCatalog();
   return (
-    <Dialog open={component !== null} onOpenChange={(open) => (open ? undefined : onCancel())}>
+    <Dialog open={component !== null} onOpenChange={(open) => { if (!(open)) { onCancel(); } }}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("停止常駐元件「{value}」？", { value: component ? component.label || component.component_id : "" })}</DialogTitle>
@@ -41,7 +41,7 @@ export function ResidentStopDialog({ component, onCancel, onConfirm }: { compone
           <Button variant="quiet" onClick={onCancel}>
             {t("保持常駐")}
           </Button>
-          <Button variant="danger" icon={<PowerOff aria-hidden />} onClick={() => (component ? onConfirm(component) : undefined)}>
+          <Button variant="danger" icon={<PowerOff aria-hidden />} onClick={() => { if (component) { onConfirm(component); } }}>
             {t("停止 {value}", { value: component?.component_id ?? "" })}
           </Button>
         </DialogFooter>

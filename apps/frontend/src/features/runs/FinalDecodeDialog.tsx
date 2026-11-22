@@ -50,7 +50,7 @@ function FinalDecodeForm({ seed, onClose }: { seed: FinalDecodeSeed; onClose: ()
   const [parameters, setParameters] = useState<Record<string, unknown>>({});
   const [note, setNote] = useState("");
   const create = useCreateRun();
-  const inFlight = useRef(false);
+  const inFlightRef = useRef(false);
   const usable = options.filter(compatible);
   const selected = options.find((option) => option.value === choice) ?? usable[0] ?? null;
   const facts = latentFacts(seed.latent);
@@ -69,14 +69,14 @@ function FinalDecodeForm({ seed, onClose }: { seed: FinalDecodeSeed; onClose: ()
           : null;
 
   const submit = () => {
-    if (!selected || blockReason || inFlight.current || created) return;
+    if (!selected || (blockReason != null && blockReason !== "") || inFlightRef.current || created) return;
     // 單一 decode.final 步驟：latent 由 pipeline 輸入帶入（不是範本清單裡的範本）
     const build = buildFromTemplate({ inputNames: { [LATENT_TYPE]: "latent" } }, [{ slot: { id: "final" }, descriptor: selected.descriptor }], "same-source-final", t("從既有 final latent 正式解碼"));
     const latentInput = build.pipeline.inputs.find((port) => port.type_id === LATENT_TYPE);
     if (!latentInput) return;
     const pipeline = { ...build.pipeline, steps: build.pipeline.steps.map((step) => ({ ...step, parameters })) };
     const origin: Origin = { source_run_id: seed.sourceRunId };
-    if (seed.previewAssetId) origin.preview_asset_id = seed.previewAssetId;
+    if (seed.previewAssetId != null && seed.previewAssetId !== "") origin.preview_asset_id = seed.previewAssetId;
     if (note.trim()) origin.note = note.trim();
     const body: RunRequestBody = {
       pipeline,
@@ -84,10 +84,10 @@ function FinalDecodeForm({ seed, onClose }: { seed: FinalDecodeSeed; onClose: ()
       label: seed.mode === "from-preview" ? t("從草稿來源正式解碼") : t("直接完整解碼"),
       origin,
     };
-    inFlight.current = true;
+    inFlightRef.current = true;
     create.mutate(body, {
       onSettled: () => {
-        inFlight.current = false;
+        inFlightRef.current = false;
       },
     });
   };
@@ -98,7 +98,7 @@ function FinalDecodeForm({ seed, onClose }: { seed: FinalDecodeSeed; onClose: ()
         <DialogBody>
           <Callout tone="success" title={t("已建立正式解碼 run")}>
             <p>
-              <T source={"run <0>{run_id}</0>（<1/>）讀取同一份 final latent；來源檔案不會被修改。"} values={{ run_id: created.run_id }} slots={[<code className="machine" />, <StatusBadge kind="run" value={created.state} />]} />
+              <T source={"run <0>{run_id}</0>（<1/>）讀取同一份 final latent；來源檔案不會被修改。"} values={{ run_id: created.run_id }} slots={[<code key="slot-0" className="machine" />, <StatusBadge key="slot-1" kind="run" value={created.state} />]} />
             </p>
           </Callout>
         </DialogBody>
@@ -120,11 +120,11 @@ function FinalDecodeForm({ seed, onClose }: { seed: FinalDecodeSeed; onClose: ()
       <DialogBody className="grid gap-5">
         <section className="grid gap-1 text-data" aria-label={t("來源 latent")}>
           <p className="text-fg-secondary">
-            <T source={"來源 run <0/>{value}"} values={{ value: seed.previewAssetId ? (
+            <T source={"來源 run <0/>{value}"} values={{ value: (seed.previewAssetId != null && seed.previewAssetId !== "") ? (
               <>
                 {t("{text}· 草稿 asset", { text: " " })} <IdText value={seed.previewAssetId} />
               </>
-            ) : null }} slots={[<IdText value={seed.sourceRunId} />]} />
+            ) : null }} slots={[<IdText key="slot-0" value={seed.sourceRunId} />]} />
           </p>
           <p className="text-fg-secondary">
             latent_id <IdText value={facts.latentId} /> · latent_space <code className="machine">{facts.latentSpaceId ?? t("未知")}</code> · manifest SHA{" "}
@@ -196,7 +196,7 @@ function FinalDecodeForm({ seed, onClose }: { seed: FinalDecodeSeed; onClose: ()
           <label htmlFor="final-decode-note" className="text-data font-medium text-fg-secondary">
             {t("備註（選填，保存在 run 的 origin.note）")}
           </label>
-          <Textarea id="final-decode-note" rows={2} value={note} onChange={(event) => setNote(event.target.value)} />
+          <Textarea id="final-decode-note" rows={2} value={note} onChange={(event) => { setNote(event.target.value); }} />
         </div>
         <p className="text-caption text-fg-tertiary">
           {t("這是普通的新 run：沒有核准、資格或勾選清單。latent 語意是否相容由解碼元件檢查（不符時回 LATENT_MISMATCH，不會胡亂 reshape）。")}
@@ -228,7 +228,7 @@ export function FinalDecodeDialog({ seed, onOpenChange }: { seed: FinalDecodeSee
           <DialogTitle>{seed?.mode === "from-preview" ? t("從此來源正式解碼") : t("直接完整解碼")}</DialogTitle>
           <DialogDescription>{t("讀取同一份 final latent 建立新的 run；不含 DiT，不修改來源。")}</DialogDescription>
         </DialogHeader>
-        {seed ? <FinalDecodeForm seed={seed} onClose={() => onOpenChange(false)} /> : null}
+        {seed ? <FinalDecodeForm seed={seed} onClose={() => { onOpenChange(false); }} /> : null}
       </DialogContent>
     </Dialog>
   );

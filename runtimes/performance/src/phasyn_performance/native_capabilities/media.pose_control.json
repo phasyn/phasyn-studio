@@ -1,0 +1,212 @@
+{
+  "label": "Body pose control sequence",
+  "kind": "media.pose_control",
+  "inputs": [
+    {
+      "name": "video_file",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": "Driving performance video"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "asset",
+      "type_id": "media.asset.v1",
+      "required": true,
+      "transport": "inline",
+      "description": ""
+    },
+    {
+      "name": "video_file",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": ""
+    },
+    {
+      "name": "landmarks",
+      "type_id": "media.landmarks.v1",
+      "required": true,
+      "transport": "file",
+      "description": ""
+    }
+  ],
+  "parameters_schema": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "load": {
+        "type": "object",
+        "properties": {
+          "model_path": {
+            "type": "string",
+            "description": "Node 本機模型路徑（使用者提供，不由主控下載）"
+          },
+          "model_revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "device": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "cpu"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "maxLength": 16384,
+                "pattern": "^[^\\x00-\\x1f\\x7f]*$"
+              },
+              "resource_group": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id",
+              "resource_group"
+            ],
+            "additionalProperties": false
+          },
+          "precision": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          },
+          "offload": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          },
+          "part_overrides": {
+            "type": "array"
+          },
+          "provider_options": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "device",
+          "model_path"
+        ],
+        "additionalProperties": false
+      },
+      "invoke": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "recording": {
+        "type": "object"
+      }
+    },
+    "required": [
+      "load",
+      "invoke",
+      "recording"
+    ],
+    "additionalProperties": false
+  },
+  "default_settings": {
+    "load": {
+      "device": {
+        "kind": "cpu",
+        "id": "cpu",
+        "resource_group": "cpu-performance"
+      },
+      "model_path": "/path/to/models/mediapipe/pose_landmarker_full.task"
+    },
+    "invoke": {},
+    "recording": {
+      "device_sample_hz": 2,
+      "publish_interval_ms": 1000,
+      "batch_max_events": 256,
+      "batch_max_bytes": 262144,
+      "queue_max_events": 8192,
+      "queue_max_bytes": 16777216,
+      "segment_bytes": 67108864,
+      "max_detail_bytes_per_recording": 2147483648,
+      "cuda_pending_event_pairs": 4096,
+      "trace_steps": [
+        0,
+        1
+      ],
+      "trace_parts": [],
+      "record_shapes": false,
+      "with_stack": false,
+      "capture_prompt": true,
+      "tensor_dump": false,
+      "capture_stderr": true,
+      "finite_scan": false,
+      "gpu_event_timing": true,
+      "log_level": "info",
+      "parts": [],
+      "steps": [],
+      "mode": "detailed"
+    }
+  },
+  "schema_version": "1.0",
+  "provider_id": "media.pose_control",
+  "entry_point": "phasyn_performance.provider:PoseControlProvider",
+  "operations": [
+    "pose_control"
+  ],
+  "capability_version": "1.0.0",
+  "license": "Apache-2.0",
+  "models": [
+    {
+      "id": "google/pose_landmarker",
+      "revision": "1",
+      "license": "NOASSERTION",
+      "variants": [
+        "full-float16"
+      ],
+      "files": [
+        {
+          "path": "pose_landmarker_full.task",
+          "size_bytes": 9398198,
+          "sha256": "5134a3aad27a58b93da0088d431f366da362b44e3ccfbe3462b3827a839011b1"
+        }
+      ],
+      "file_scope": "Exactly one local model is verified by byte length and SHA-256 before loading."
+    }
+  ],
+  "resources": {
+    "devices": [
+      "cpu"
+    ],
+    "required_modules": [
+      "mediapipe",
+      "numpy",
+      "cv2"
+    ],
+    "executables": [
+      "ffmpeg",
+      "ffprobe"
+    ],
+    "vram_bytes": 0,
+    "memory_basis": "CPU landmark inference and frame rendering on a single subject, limited to 900 frames."
+  },
+  "execution": {
+    "cache": "none",
+    "retry": "verify_stopped_first",
+    "cancellation": "cooperative",
+    "progress": [
+      "stage"
+    ],
+    "error_contract": "ComponentError",
+    "retry_condition": "Confirm the prior attempt stopped and inspect any published output before requesting another run."
+  }
+}

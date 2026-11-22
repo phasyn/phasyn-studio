@@ -3,11 +3,12 @@
 // Ctrl／Cmd＋A 全選，Enter／空白鍵預覽，F2 改名，Delete 移除（只有參考素材有；由呼叫端確認，還在使用的不能移除）。
 // 只掛看得到的列（useVirtualRows）；篩選或排序改變時清單重新依序進場，捲動時新掛上的項目不再播放進場動畫。
 import { ArrowDown, ArrowUp } from "lucide-react";
-import { useCallback, useLayoutEffect, useRef, type KeyboardEvent, type CSSProperties, type MouseEvent, type ReactNode, type RefObject } from "react";
-import { reveal } from "@/components/ui/motion";
+import { useLayoutEffect, useRef, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from "react";
 import { LIFT, LIST_ROW, LIST_ROW_IDLE, LIST_ROW_SELECTED } from "@/components/ui/look";
 import { cn } from "@/lib/cn";
 import type { LibrarySortKey } from "../../model/library";
+import { useEnter } from "./reveal";
+import { RevealScope } from "./RevealScope";
 import { selectAll, selectOnly, selectRange, toggleSelected, type LibrarySelection } from "./selection";
 import { useViewport, virtualRows } from "./useVirtualRows";
 import { t } from "@/i18n";
@@ -79,17 +80,6 @@ export interface CollectionProps<T> {
   empty: ReactNode;
 }
 
-/** 一個項目的進場：清單（重新）掛上後、使用者還沒捲動前才播放。 */
-function useEnter(scrolled: RefObject<boolean>, stagger: number) {
-  return useCallback(
-    (node: HTMLElement | null) => {
-      if (!node || scrolled.current) return;
-      return reveal(stagger)(node);
-    },
-    [scrolled, stagger],
-  );
-}
-
 interface ItemProps<T> {
   item: T;
   itemId: string;
@@ -106,14 +96,14 @@ interface ItemProps<T> {
 function GridTile<T>({ item, itemId, title, id, selected, focused, stagger, scrolled, onPointer, onOpen, thumbHeight, adapter }: ItemProps<T> & { thumbHeight: number; adapter: CollectionAdapter<T> }) {
   const enter = useEnter(scrolled, stagger);
   return (
-    <div
+    <div /* eslint-disable-line jsx-a11y-x/click-events-have-key-events, jsx-a11y-x/interactive-supports-focus -- The owning composite keeps keyboard focus and exposes the active option with aria-activedescendant. */
       ref={enter}
       id={id}
       role="option"
       aria-selected={selected}
       data-focused={focused || undefined}
-      onClick={(event) => onPointer(event, itemId)}
-      onDoubleClick={() => onOpen(itemId)}
+      onClick={(event) => { onPointer(event, itemId); }}
+      onDoubleClick={() => { onOpen(itemId); }}
       // 滑過影片縮圖時無聲播放（離開時回到開頭）
       onMouseEnter={(event) => void event.currentTarget.querySelector("video")?.play().catch(() => undefined)}
       onMouseLeave={(event) => {
@@ -138,14 +128,14 @@ function GridTile<T>({ item, itemId, title, id, selected, focused, stagger, scro
 function ListRow<T>({ item, itemId, title, id, selected, focused, stagger, scrolled, onPointer, onOpen, columns, template, adapter }: ItemProps<T> & { columns: CollectionColumn[]; template: string; adapter: CollectionAdapter<T> }) {
   const enter = useEnter(scrolled, stagger);
   return (
-    <div
+    <div /* eslint-disable-line jsx-a11y-x/click-events-have-key-events, jsx-a11y-x/interactive-supports-focus -- The owning composite keeps keyboard focus and exposes the active option with aria-activedescendant. */
       ref={enter}
       id={id}
       role="option"
       aria-selected={selected}
       data-focused={focused || undefined}
-      onClick={(event) => onPointer(event, itemId)}
-      onDoubleClick={() => onOpen(itemId)}
+      onClick={(event) => { onPointer(event, itemId); }}
+      onDoubleClick={() => { onOpen(itemId); }}
       title={title}
       style={{ gridTemplateColumns: template, height: LIST_ROW_HEIGHT }}
       className={cn(
@@ -173,10 +163,10 @@ function ListHeader({ columns, template, sort, descending, onSort }: { columns: 
           <button
             key={column.id}
             type="button"
-            onClick={() => column.sort && onSort(column.sort)}
+            onClick={() => { if (column.sort !== undefined) onSort(column.sort); }}
             aria-label={t("依「{label}」排序", { label: column.label })}
             className={cn(
-              "pressable flex min-w-0 items-center gap-1 rounded px-0.5 hover:text-fg",
+              "pressable flex min-w-0 items-center gap-1 rounded-sm px-0.5 hover:text-fg",
               column.align === "end" && "justify-end",
               sort === column.sort && "text-fg-secondary",
             )}
@@ -194,31 +184,13 @@ function ListHeader({ columns, template, sort, descending, onSort }: { columns: 
   );
 }
 
-/**
- * 進場的範圍：每次（重新）掛上時是「還沒捲動」，項目依序進場；之後一捲動，新掛上的項目就直接出現。
- * 以 key＝revealKey 掛上，所以篩選或排序改變時重新開始。
- */
-function RevealScope({ scrollRef, style, children }: { scrollRef: RefObject<HTMLElement | null>; style: CSSProperties; children: (scrolled: RefObject<boolean>) => ReactNode }) {
-  const scrolled = useRef(false);
-  useLayoutEffect(() => {
-    const element = scrollRef.current;
-    if (!element) return;
-    const mark = () => {
-      scrolled.current = true;
-    };
-    element.addEventListener("scroll", mark, { passive: true });
-    return () => element.removeEventListener("scroll", mark);
-  }, [scrollRef]);
-  return <div style={style}>{children(scrolled)}</div>;
-}
-
 export function LibraryCollection<T>(props: CollectionProps<T>) {
   const { baseId, items, adapter, label, selection, onSelection, view, thumb, sort, descending, onSort, revealKey, focusRequest, scrollMemoryRef, listboxRef, onOpen, onRename, onRemove, empty } = props;
   const scrollRef = useRef<HTMLDivElement>(null);
   const viewport = useViewport(scrollRef, view);
-  const firstKey = useRef(revealKey);
-  const handledFocus = useRef(0);
-  const mounted = useRef(false);
+  const firstKeyRef = useRef(revealKey);
+  const handledFocusRef = useRef(0);
+  const mountedRef = useRef(false);
   const layout = collectionLayout(viewport.width, view, thumb);
   const { columnsCount, thumbHeight, tileHeight, rowHeight } = layout;
   const rowCount = Math.ceil(items.length / columnsCount);
@@ -233,21 +205,21 @@ export function LibraryCollection<T>(props: CollectionProps<T>) {
   useLayoutEffect(() => {
     const element = scrollRef.current;
     if (!element) return;
-    const changed = firstKey.current !== revealKey;
-    firstKey.current = revealKey;
-    if (focusRequest !== handledFocus.current) {
-      handledFocus.current = focusRequest;
+    const changed = firstKeyRef.current !== revealKey;
+    firstKeyRef.current = revealKey;
+    if (focusRequest !== handledFocusRef.current) {
+      handledFocusRef.current = focusRequest;
       if (focusIndex >= 0) {
         // 剛掛上時還沒量到寬度：直接用容器的寬度算這一列的位置
         const now = collectionLayout(element.clientWidth, view, thumb);
         element.scrollTop = Math.max(0, Math.floor(focusIndex / now.columnsCount) * now.rowHeight - element.clientHeight / 3);
-        mounted.current = true;
+        mountedRef.current = true;
         return;
       }
     }
-    if (!mounted.current) element.scrollTop = scrollMemoryRef.current;
+    if (!mountedRef.current) element.scrollTop = scrollMemoryRef.current;
     else if (changed) element.scrollTop = 0;
-    mounted.current = true;
+    mountedRef.current = true;
   }, [revealKey, scrollMemoryRef, focusRequest, focusIndex, view, thumb]);
 
   /** 讓第 index 個項目在捲動範圍內（鍵盤移動時）。 */
@@ -378,7 +350,7 @@ export function LibraryCollection<T>(props: CollectionProps<T>) {
             <RevealScope key={revealKey} scrollRef={scrollRef} style={{ paddingTop: range.padTop, paddingBottom: Math.max(0, range.padBottom - (view === "grid" ? GRID_GAP : 0)) }}>
               {(scrolled) =>
                 view === "grid" ? (
-                  <div className="grid" style={{ gridTemplateColumns: `repeat(${columnsCount}, minmax(0, 1fr))`, gridAutoRows: tileHeight, gap: GRID_GAP }}>
+                  <div className="grid" style={{ gridTemplateColumns: `repeat(${String(columnsCount)}, minmax(0, 1fr))`, gridAutoRows: tileHeight, gap: GRID_GAP }}>
                     {visible.map((item, offset) => (
                       <GridTile key={adapter.idOf(item)} {...itemProps(item, offset, scrolled)} thumbHeight={thumbHeight} adapter={adapter} />
                     ))}

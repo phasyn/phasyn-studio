@@ -78,7 +78,7 @@ export function Monitor() {
           {showSequence && shot ? (
             <button
               type="button"
-              onClick={() => setMonitorMode("source")}
+              onClick={() => { setMonitorMode("source"); }}
               title={t("停止序列播放，改看選取的鏡頭「{title}」", { title: shot.title })}
               className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-caption text-fg-secondary transition-colors duration-(--duration-fast) hover:bg-raised hover:text-fg active:bg-sunken active:duration-0 [&_svg]:size-3.5"
             >
@@ -93,7 +93,7 @@ export function Monitor() {
               aria-pressed={pinned !== null}
               aria-label={pinned ? t("結束 A/B 比較") : t("A/B 比較兩個 take")}
               title={pinned ? t("結束 A/B 比較") : t("A/B 比較兩個 take")}
-              onClick={() => setCompareTakeId(pinned ? null : (defaultCompare(shot, take)?.take_id ?? null))}
+              onClick={() => { setCompareTakeId(pinned ? null : (defaultCompare(shot, take)?.take_id ?? null)); }}
               className={cn(TOOL_BUTTON, "size-8 [&_svg]:size-4", pinned && TOOL_BUTTON_ON)}
             >
               <Columns2 aria-hidden />

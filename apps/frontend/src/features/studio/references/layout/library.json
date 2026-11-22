@@ -1,0 +1,5 @@
+{
+  "$comment": "Built-in no-gaze layout clips (format and rules: ./library.ts). A clip is identified by the SHA-256 of its file; the file is not in the repository and reaches a project through its library (an upload, or a previs animatic collected into it). None is listed yet: NEEDED_LAYOUT_CLIPS in ./library.ts lists what is needed.",
+  "version": 1,
+  "clips": []
+}

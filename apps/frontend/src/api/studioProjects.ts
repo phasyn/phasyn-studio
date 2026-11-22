@@ -1,11 +1,21 @@
+import { t } from "@/i18n";
+import { wireDefinitions } from "@/lib/contractSchemas";
 // Studio project documents (x-phasyn-extension): list, read, save (optimistic revision), delete.
 // Video Studio and Image Studio share one project, so when the user switches between them the save sent while the
 // previous page unmounted may still be in flight. Saves from this tab are tracked per project (removed on success or
 // failure) and fetchProject waits for them, so the page opened next reads the server's newest revision instead of an
 // old one that would conflict on the next autosave. Every save is sent once and never retried.
 import { useQuery } from "@tanstack/react-query";
-import type { StudioProject, StudioProjectList, StudioTimelineCommandsRequest, StudioTimelineCommandsResult } from "./generated/contracts";
-import { apiJson } from "./http";
+import type { StudioProject, StudioTimelineCommandsRequest, StudioTimelineCommandsResult } from "./generated/contracts";
+import { apiJson, contractJson, matchesReply } from "./http";
+import { studioWrite } from "./studioWrite";
+
+/** A merge can combine otherwise valid versions into an invalid document. Check the project before the PUT. */
+export async function readMergedProject(candidate: unknown): Promise<StudioProject> {
+  const definitions = await wireDefinitions();
+  if (!matchesReply(candidate, "StudioProject", definitions)) throw new Error(t("回應格式不正確"));
+  return candidate;
+}
 
 export const studioKeys = {
   projects: () => ["studio", "projects"] as const,
@@ -22,9 +32,9 @@ export function useStudioProjects(options: { pollMs?: number } = {}) {
   const polling = options.pollMs !== undefined;
   return useQuery({
     queryKey: studioKeys.projects(),
-    queryFn: ({ signal }) => apiJson<StudioProjectList>("/api/studio/projects", { signal }),
+    queryFn: ({ signal }) => contractJson("StudioProjectList", "/api/studio/projects", { signal }),
     staleTime: 5000,
-    refetchInterval: polling ? options.pollMs : false,
+    refetchInterval: options.pollMs ?? false,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: polling,
   });
@@ -57,7 +67,7 @@ export async function projectWritesSettled(projectId: string): Promise<void> {
 /** Reads a project after this tab's in-flight saves of it finish (so it returns the version just saved). */
 export async function fetchProject(projectId: string, signal?: AbortSignal): Promise<StudioProject> {
   await projectWritesSettled(projectId);
-  return apiJson<StudioProject>(path(projectId), { signal });
+  return contractJson("StudioProject", path(projectId), { signal });
 }
 
 /**
@@ -79,7 +89,7 @@ export function keepaliveAllowed(body: string): boolean {
 export function saveProject(project: StudioProject, options: { keepalive?: boolean } = {}): Promise<StudioProject> {
   const body = JSON.stringify(project);
   const keepalive = options.keepalive === true && keepaliveAllowed(body);
-  return track(project.project_id, apiJson<StudioProject>(path(project.project_id), { method: "PUT", body, headers: { "Content-Type": "application/json" }, keepalive }));
+  return track(project.project_id, studioWrite("StudioProject", project.project_id, path(project.project_id), { method: "PUT", body, headers: { "Content-Type": "application/json" }, keepalive }));
 }
 
 /**
@@ -89,7 +99,8 @@ export function saveProject(project: StudioProject, options: { keepalive?: boole
  */
 export function runTimelineCommands(projectId: string, request: StudioTimelineCommandsRequest): Promise<StudioTimelineCommandsResult> {
   const body = JSON.stringify(request);
-  return track(projectId, apiJson<StudioTimelineCommandsResult>(`${path(projectId)}/timeline/commands`, { method: "POST", body, headers: { "Content-Type": "application/json" } }));
+  if ((request.dry_run === true)) return contractJson("StudioTimelineCommandsResult", `${path(projectId)}/timeline/commands`, { method: "POST", body, headers: { "Content-Type": "application/json" } });
+  return track(projectId, studioWrite("StudioTimelineCommandsResult", projectId, `${path(projectId)}/timeline/commands`, { method: "POST", body, headers: { "Content-Type": "application/json" } }));
 }
 
 export function deleteProject(projectId: string, revision: number): Promise<unknown> {

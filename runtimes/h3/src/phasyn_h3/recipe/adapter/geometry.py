@@ -19,11 +19,17 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
-from . import constants as C
+from . import constants
 from ._diag import INVALID, UNSUPPORTED, err, warn
 
 
-def requested_frame_count(seconds: float, fps: int = C.FPS) -> int:
+# Opt-in reference-image short edges besides the pinned 2048. Each is a whole number of DiT tokens
+# (REFERENCE_IMAGE_MULTIPLE = TOKEN_STRIDE = 32 px), so the resolved canvas stays on the same 32 px grid:
+# 736 is the short side of a 1280x736 take, 768 the official reference-video short edge.
+EXPERIMENTAL_IMAGE_SHORT_EDGES = (736, 768, 1024)
+
+
+def requested_frame_count(seconds: float, fps: int = constants.FPS) -> int:
     """``int(round(seconds * fps))`` with Python (banker's) rounding.
 
     SG:resolved_plan.py:208-210, SG:request_validation.py:296-301.
@@ -36,29 +42,33 @@ def align_frame_count(frame_count: int) -> int:
     if frame_count <= 0:
         return 1
     current = int(frame_count)
-    return current + (C.FRAME_OFFSET - current) % C.FRAME_GROUP
+    return current + (constants.FRAME_OFFSET - current) % constants.FRAME_GROUP
 
 
 def video_latent_t(frame_count: int) -> int:
     """SG:time_request.py:13-16."""
-    if frame_count <= C.FRAME_OFFSET:
+    if frame_count <= constants.FRAME_OFFSET:
         return 2
-    return ((int(frame_count) - C.FRAME_OFFSET) // C.FRAME_GROUP) * C.LATENT_T_GROUP + 2
+    return (
+        (int(frame_count) - constants.FRAME_OFFSET) // constants.FRAME_GROUP
+    ) * constants.LATENT_T_GROUP + 2
 
 
 def audio_latent_t(duration_seconds: float) -> int:
     """Per-channel 40 Hz audio latent length (SG:time_request.py:27-29)."""
-    return round(float(duration_seconds) * float(C.AUDIO_LATENT_HZ))
+    return round(float(duration_seconds) * float(constants.AUDIO_LATENT_HZ))
 
 
-def align_up(value: int, alignment: int = C.PACKED_ALIGNMENT) -> int:
+def align_up(value: int, alignment: int = constants.PACKED_ALIGNMENT) -> int:
     """Packed-sequence padding (SG:packed_sequence.py:165-169, alignment SGR:configs/models/dits/minimax_h3.py:9)."""
     return (int(value) + alignment - 1) // alignment * alignment
 
 
 def latent_frame_rows(width: int, height: int) -> int:
     """DiT rows per latent frame: VAE /16 then patch [1,2,2] (SG:packed_sequence.py:149-151)."""
-    return (int(height) // C.TOKEN_STRIDE) * (int(width) // C.TOKEN_STRIDE)
+    return (int(height) // constants.TOKEN_STRIDE) * (
+        int(width) // constants.TOKEN_STRIDE
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -71,16 +81,26 @@ def _nearest_multiple(value: float, multiple: int) -> int:
     return max(multiple, round(float(value) / multiple) * multiple)
 
 
-def resolve_spatial_shape(width: float, height: float, base_short_edge: int = C.BASE_SHORT_EDGE) -> dict[str, Any]:
+def resolve_spatial_shape(
+    width: float, height: float, base_short_edge: int = constants.BASE_SHORT_EDGE
+) -> dict[str, Any]:
     """Pure-Python port of ``minimax_h3_resolve_spatial_shape`` (SG:resolved_plan.py:114-182)."""
-    if isinstance(base_short_edge, bool) or int(base_short_edge) != base_short_edge or base_short_edge <= 0:
+    if (
+        isinstance(base_short_edge, bool)
+        or int(base_short_edge) != base_short_edge
+        or base_short_edge <= 0
+    ):
         raise ValueError("base_short_edge must be a positive integer")
     source_width = float(width)
     source_height = float(height)
-    if not (math.isfinite(source_width) and math.isfinite(source_height)) or source_width <= 0 or source_height <= 0:
+    if (
+        not (math.isfinite(source_width) and math.isfinite(source_height))
+        or source_width <= 0
+        or source_height <= 0
+    ):
         raise ValueError("shape width and height must be positive finite numbers")
     ratio = source_width / source_height
-    if not C.MIN_ASPECT_RATIO <= ratio <= C.MAX_ASPECT_RATIO:
+    if not constants.MIN_ASPECT_RATIO <= ratio <= constants.MAX_ASPECT_RATIO:
         raise ValueError("adapt_shape_v1 ratio must be within 1:4 .. 4:1")
     if ratio >= 1.0:
         nominal_width = float(base_short_edge) * ratio
@@ -89,23 +109,23 @@ def resolve_spatial_shape(width: float, height: float, base_short_edge: int = C.
         nominal_width = float(base_short_edge)
         nominal_height = float(base_short_edge) / ratio
     nominal_area = nominal_width * nominal_height
-    if nominal_area > C.MAX_PIXELS:
+    if nominal_area > constants.MAX_PIXELS:
         size_mode = "area"
-        scale = math.sqrt(float(C.MAX_PIXELS) / nominal_area)
+        scale = math.sqrt(float(constants.MAX_PIXELS) / nominal_area)
         nominal_width *= scale
         nominal_height *= scale
     else:
         size_mode = "short_edge"
-    resolved_width = _nearest_multiple(nominal_width, C.CANVAS_MULTIPLE)
-    resolved_height = _nearest_multiple(nominal_height, C.CANVAS_MULTIPLE)
+    resolved_width = _nearest_multiple(nominal_width, constants.CANVAS_MULTIPLE)
+    resolved_height = _nearest_multiple(nominal_height, constants.CANVAS_MULTIPLE)
     return {
         "geometry": "resolved_v2",
-        "shape_policy_version": C.SHAPE_POLICY_VERSION,
+        "shape_policy_version": constants.SHAPE_POLICY_VERSION,
         "base_short_edge": int(base_short_edge),
         "effective_short_edge": min(resolved_width, resolved_height),
         "size_mode": size_mode,
-        "max_pixels": C.MAX_PIXELS,
-        "multiple": C.CANVAS_MULTIPLE,
+        "max_pixels": constants.MAX_PIXELS,
+        "multiple": constants.CANVAS_MULTIPLE,
         "rounding": "nearest",
         "width": resolved_width,
         "height": resolved_height,
@@ -116,46 +136,61 @@ def reference_image_short_edge(value: Any) -> int | None:
     """Normalize the opt-in image experiment; None keeps the pinned 2048 path."""
     if value is None:
         return None
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or value not in (1024, 2048):
-        raise ValueError("reference_image_short_edge must be 1024, 2048 or null")
-    return 1024 if value == 1024 else None
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, (int, float))
+        or value
+        not in (*EXPERIMENTAL_IMAGE_SHORT_EDGES, constants.REFERENCE_IMAGE_SHORT_EDGE)
+    ):
+        allowed = ", ".join(str(edge) for edge in EXPERIMENTAL_IMAGE_SHORT_EDGES)
+        raise ValueError(
+            f"reference_image_short_edge must be {allowed}, "
+            f"{constants.REFERENCE_IMAGE_SHORT_EDGE} or null"
+        )
+    return int(value) if value in EXPERIMENTAL_IMAGE_SHORT_EDGES else None
 
 
-def resolve_reference_image_shape(width: float, height: float, *, short_edge: int | None = None) -> dict[str, int]:
+def resolve_reference_image_shape(
+    width: float, height: float, *, short_edge: int | None = None
+) -> dict[str, int]:
     """Reference-image canvas: 2048 px short edge, nearest 32, no area cap (SG:reference_encoding.py:125-178)."""
     w, h = float(width), float(height)
     if not (math.isfinite(w) and math.isfinite(h)) or w <= 0 or h <= 0:
-        raise ValueError("reference image width and height must be positive finite numbers")
+        raise ValueError(
+            "reference image width and height must be positive finite numbers"
+        )
     if w > 4.0 * h or h > 4.0 * w:
         raise ValueError("reference image ratio must be within 1:4 .. 4:1")
-    edge = reference_image_short_edge(short_edge) or C.REFERENCE_IMAGE_SHORT_EDGE
+    edge = (
+        reference_image_short_edge(short_edge) or constants.REFERENCE_IMAGE_SHORT_EDGE
+    )
     scale = edge / min(w, h)
     return {
-        "width": _nearest_multiple(w * scale, C.REFERENCE_IMAGE_MULTIPLE),
-        "height": _nearest_multiple(h * scale, C.REFERENCE_IMAGE_MULTIPLE),
+        "width": _nearest_multiple(w * scale, constants.REFERENCE_IMAGE_MULTIPLE),
+        "height": _nearest_multiple(h * scale, constants.REFERENCE_IMAGE_MULTIPLE),
     }
 
 
 def canvas_diagnostics(width: Any, height: Any) -> list[dict[str, Any]]:
-    """canvas checks with job-request field paths (errors + warnings)."""
+    """Canvas checks with job-request field paths (errors + warnings)."""
     out: list[dict[str, Any]] = []
     for path, value in (("output.width", width), ("output.height", height)):
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             out.append(err(INVALID, "畫布尺寸必須是正整數", path, actual=value))
-        elif value % C.CANVAS_MULTIPLE:
+        elif value % constants.CANVAS_MULTIPLE:
             out.append(
                 err(
                     INVALID,
-                    f"H3 畫布必須是 {C.CANVAS_MULTIPLE} 的倍數（VAE /16 再加 DiT 2×2 patch）",
+                    f"H3 畫布必須是 {constants.CANVAS_MULTIPLE} 的倍數（VAE /16 再加 DiT 2×2 patch）",
                     path,
-                    expected=f"{C.CANVAS_MULTIPLE} 的倍數",
+                    expected=f"{constants.CANVAS_MULTIPLE} 的倍數",
                     actual=value,
                 )
             )
     if out:
         return out
     ratio = width / height
-    if not C.MIN_ASPECT_RATIO <= ratio <= C.MAX_ASPECT_RATIO:
+    if not constants.MIN_ASPECT_RATIO <= ratio <= constants.MAX_ASPECT_RATIO:
         return [
             err(
                 INVALID,
@@ -175,11 +210,11 @@ def canvas_diagnostics(width: Any, height: Any) -> list[dict[str, Any]]:
                 f"本產品不默默改尺寸，請改用 {resolved['width']}×{resolved['height']}",
                 "output.width",
                 "output.height",
-                expected=f"{resolved['width']}×{resolved['height']}（面積上限 {C.MAX_PIXELS:,} 像素）",
+                expected=f"{resolved['width']}×{resolved['height']}（面積上限 {constants.MAX_PIXELS:,} 像素）",
                 actual=f"{width}×{height}",
             )
         ]
-    if min(width, height) != C.BASE_SHORT_EDGE:
+    if min(width, height) != constants.BASE_SHORT_EDGE:
         out.append(
             warn(
                 "UNVERIFIED_SHORT_EDGE",
@@ -199,6 +234,8 @@ def canvas_diagnostics(width: Any, height: Any) -> list[dict[str, Any]]:
 
 @dataclass(frozen=True)
 class RuntimeBounds:
+    """Define the geometry limits supported by this runtime."""
+
     runtime_provider: str
     requested_seconds: tuple[int | float, int | float]
     generated_frames: tuple[int, int]
@@ -208,35 +245,42 @@ class RuntimeBounds:
 
 def _sglang_bounds() -> RuntimeBounds:
     lo_frames = align_frame_count(1)  # 5 = smallest point of the 17n+5 grid
-    hi_frames = align_frame_count(requested_frame_count(C.MAX_DURATION_SECONDS))  # 362
+    hi_frames = align_frame_count(
+        requested_frame_count(constants.MAX_DURATION_SECONDS)
+    )  # 362
     return RuntimeBounds(
-        runtime_provider=C.RUNTIME_SGLANG,
-        requested_seconds=(C.MIN_DURATION_SECONDS, C.MAX_DURATION_SECONDS),
+        runtime_provider=constants.RUNTIME_SGLANG,
+        requested_seconds=(
+            constants.MIN_DURATION_SECONDS,
+            constants.MAX_DURATION_SECONDS,
+        ),
         generated_frames=(lo_frames, hi_frames),
-        generated_seconds=(lo_frames / C.FPS, hi_frames / C.FPS),
+        generated_seconds=(lo_frames / constants.FPS, hi_frames / constants.FPS),
         source="SG:constants.py:30-31; SG:request_validation.py:117-126; SG:time_request.py:5-10",
     )
 
 
 RUNTIME_BOUNDS: dict[str, RuntimeBounds] = {
-    C.RUNTIME_SGLANG: _sglang_bounds(),
+    constants.RUNTIME_SGLANG: _sglang_bounds(),
     # The Diffusers MiniMax-H3 pipeline documentation states 5-15 s; the limit is applied to the snapped
     # generated duration as well: a backend that disallows >15 s must reject 362 frames.
-    C.RUNTIME_DIFFUSERS: RuntimeBounds(
-        runtime_provider=C.RUNTIME_DIFFUSERS,
+    constants.RUNTIME_DIFFUSERS: RuntimeBounds(
+        runtime_provider=constants.RUNTIME_DIFFUSERS,
         requested_seconds=(5, 15),
-        generated_frames=(5 * C.FPS, 15 * C.FPS),
+        generated_frames=(5 * constants.FPS, 15 * constants.FPS),
         generated_seconds=(5.0, 15.0),
-        source="Diffusers MiniMax-H3 pipeline documentation (5-15 s); RULE-003",
+        source="Diffusers MiniMax-H3 pipeline documentation (5-15 s); ",
     ),
 }
 
 
-def effective_requested_bounds(bounds: RuntimeBounds) -> tuple[int | float, int | float]:
+def effective_requested_bounds(
+    bounds: RuntimeBounds,
+) -> tuple[int | float, int | float]:
     """Intersection of the official guide range [4, 15] and the runtime's requested range."""
     return (
-        max(C.MIN_DURATION_SECONDS, bounds.requested_seconds[0]),
-        min(C.MAX_DURATION_SECONDS, bounds.requested_seconds[1]),
+        max(constants.MIN_DURATION_SECONDS, bounds.requested_seconds[0]),
+        min(constants.MAX_DURATION_SECONDS, bounds.requested_seconds[1]),
     )
 
 
@@ -245,15 +289,15 @@ def effective_requested_bounds(bounds: RuntimeBounds) -> tuple[int | float, int 
 # ---------------------------------------------------------------------------
 
 
-def build_geometry(
+def build_geometry(  # noqa: PLR0913 - Preserve the existing provider or recipe ABI.
     *,
     requested_seconds: Any,
     width: Any,
     height: Any,
     duration_policy: str,
     runtime_provider: str | None,
-    fps: Any = C.FPS,
-    latent_dtype: str = C.LATENT_WIRE_DTYPE,
+    fps: Any = constants.FPS,
+    latent_dtype: str = constants.LATENT_WIRE_DTYPE,
     batch: int = 1,
 ) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     """Return ``(geometry_doc | None, diagnostics)`` (job-request field paths).
@@ -263,25 +307,43 @@ def build_geometry(
     SGLang bounds (the adapter's reference resolver) in the document.
     """
     diags: list[dict[str, Any]] = []
-    if isinstance(fps, bool) or fps != C.FPS:
-        diags.append(err(INVALID, "H3 只支援原生 24 fps", "output.fps", expected=C.FPS, actual=fps))
-    if isinstance(requested_seconds, bool) or not isinstance(requested_seconds, (int, float)):
-        diags.append(err(INVALID, "requested_seconds 必須是數字", "output.requested_seconds"))
+    if isinstance(fps, bool) or fps != constants.FPS:
+        diags.append(
+            err(
+                INVALID,
+                "H3 只支援原生 24 fps",
+                "output.fps",
+                expected=constants.FPS,
+                actual=fps,
+            )
+        )
+    if isinstance(requested_seconds, bool) or not isinstance(
+        requested_seconds, (int, float)
+    ):
+        diags.append(
+            err(INVALID, "requested_seconds 必須是數字", "output.requested_seconds")
+        )
         return None, diags
     if not math.isfinite(float(requested_seconds)) or not (
-        C.MIN_DURATION_SECONDS <= float(requested_seconds) <= C.MAX_DURATION_SECONDS
+        constants.MIN_DURATION_SECONDS
+        <= float(requested_seconds)
+        <= constants.MAX_DURATION_SECONDS
     ):
         diags.append(
             err(
                 INVALID,
-                f"H3 官方要求時長為 {C.MIN_DURATION_SECONDS}–{C.MAX_DURATION_SECONDS} 秒",
+                f"H3 官方要求時長為 {constants.MIN_DURATION_SECONDS}\N{EN DASH}{constants.MAX_DURATION_SECONDS} 秒",
                 "output.requested_seconds",
-                expected=f"[{C.MIN_DURATION_SECONDS}, {C.MAX_DURATION_SECONDS}]",
+                expected=f"[{constants.MIN_DURATION_SECONDS}, {constants.MAX_DURATION_SECONDS}]",
                 actual=requested_seconds,
             )
         )
     diags.extend(canvas_diagnostics(width, height))
-    bounds = RUNTIME_BOUNDS[C.RUNTIME_SGLANG] if runtime_provider is None else RUNTIME_BOUNDS.get(str(runtime_provider))
+    bounds = (
+        RUNTIME_BOUNDS[constants.RUNTIME_SGLANG]
+        if runtime_provider is None
+        else RUNTIME_BOUNDS.get(str(runtime_provider))
+    )
     if bounds is None:
         diags.append(
             err(
@@ -293,30 +355,40 @@ def build_geometry(
             )
         )
     if duration_policy not in ("preserve_generated", "trim_to_requested"):
-        diags.append(err(INVALID, "未知的 duration_policy", "output.duration_policy", actual=duration_policy))
+        diags.append(
+            err(
+                INVALID,
+                "未知的 duration_policy",
+                "output.duration_policy",
+                actual=duration_policy,
+            )
+        )
     if any(d["severity"] == "error" for d in diags):
         return None, diags
 
     frames = requested_frame_count(requested_seconds)
     generated = align_frame_count(frames)
     latent_t = video_latent_t(generated)
-    generated_seconds = generated / C.FPS
+    generated_seconds = generated / constants.FPS
     audio_t = audio_latent_t(generated_seconds)
 
-    assert bounds is not None
+    if not (bounds is not None):
+        raise AssertionError
     req_lo, req_hi = effective_requested_bounds(bounds)
     snapped_ok = (
         req_lo <= float(requested_seconds) <= req_hi
         and bounds.generated_frames[0] <= generated <= bounds.generated_frames[1]
-        and bounds.generated_seconds[0] <= generated_seconds <= bounds.generated_seconds[1]
+        and bounds.generated_seconds[0]
+        <= generated_seconds
+        <= bounds.generated_seconds[1]
     )
     if not snapped_ok:
         diags.append(
             err(
                 UNSUPPORTED,
                 f"要求 {requested_seconds} 秒對齊 17n+5 後生成 {generated} 幀（{generated_seconds:.4f} 秒），"
-                f"超出 runtime {bounds.runtime_provider} 的界線（要求 {req_lo}–{req_hi} 秒、"
-                f"生成 {bounds.generated_frames[0]}–{bounds.generated_frames[1]} 幀）；"
+                f"超出 runtime {bounds.runtime_provider} 的界線（要求 {req_lo}\N{EN DASH}{req_hi} 秒、"
+                f"生成 {bounds.generated_frames[0]}\N{EN DASH}{bounds.generated_frames[1]} 幀）；"
                 "不會默默縮短，請調整要求時長或改用其他 runtime",
                 "output.requested_seconds",
                 "profile.runtime_provider",
@@ -326,35 +398,37 @@ def build_geometry(
         )
         return None, diags
 
-    if duration_policy == "trim_to_requested":
-        delivered_frames = frames
-    else:
-        delivered_frames = generated
+    delivered_frames = frames if duration_policy == "trim_to_requested" else generated
     doc: dict[str, Any] = {
         "requested_seconds": requested_seconds,
         "requested_frames": frames,
         "generated_frames": generated,
         "generated_seconds": generated_seconds,
         "delivered_frames": delivered_frames,
-        "delivered_seconds": delivered_frames / C.FPS,
-        "fps_numerator": C.FPS,
+        "delivered_seconds": delivered_frames / constants.FPS,
+        "fps_numerator": constants.FPS,
         "fps_denominator": 1,
         "width": int(width),
         "height": int(height),
         "video_latent_shape": [
             int(batch),
-            C.VIDEO_LATENT_CHANNELS,
+            constants.VIDEO_LATENT_CHANNELS,
             latent_t,
-            int(height) // C.VAE_SPATIAL_FACTOR,
-            int(width) // C.VAE_SPATIAL_FACTOR,
+            int(height) // constants.VAE_SPATIAL_FACTOR,
+            int(width) // constants.VAE_SPATIAL_FACTOR,
         ],
-        "audio_latent_shape": [int(batch), C.AUDIO_CHANNELS, audio_t, C.AUDIO_LATENT_CHANNELS],
+        "audio_latent_shape": [
+            int(batch),
+            constants.AUDIO_CHANNELS,
+            audio_t,
+            constants.AUDIO_LATENT_CHANNELS,
+        ],
         "video_latent_dtype": latent_dtype,
         "audio_latent_dtype": latent_dtype,
         "requested_duration_bounds": [req_lo, req_hi],
         "generated_frame_bounds": list(bounds.generated_frames),
         "generated_duration_bounds": list(bounds.generated_seconds),
-        "frame_alignment_rule": C.FRAME_ALIGNMENT_RULE,
+        "frame_alignment_rule": constants.FRAME_ALIGNMENT_RULE,
     }
     return doc, diags
 
@@ -367,12 +441,17 @@ def token_counts(geometry: Mapping[str, Any]) -> dict[str, int]:
     return {
         "latent_frame_rows": rows,
         "N_video": latent_t * rows,
-        "N_audio": audio_t * C.AUDIO_CHANNELS,
+        "N_audio": audio_t * constants.AUDIO_CHANNELS,
     }
 
 
 def packed_length(
-    *, n_text: int, n_video: int, n_audio: int, n_keyframe_rows: int = 0, n_reference_rows: int = 0
+    *,
+    n_text: int,
+    n_video: int,
+    n_audio: int,
+    n_keyframe_rows: int = 0,
+    n_reference_rows: int = 0,
 ) -> int:
     """``align_up(N_text + N_cond + N_refs + N_audio + N_video, 64)`` (SG:packed_sequence.py:161-169,385-392)."""
     return align_up(n_text + n_keyframe_rows + n_reference_rows + n_audio + n_video)

@@ -1,3 +1,4 @@
+import { optionalField } from "@/lib/json";
 // A SegmentEtaEstimator backed by cost profiles: a segment's request facts → predicted work (h3Work) → per-step
 // estimates along its route (estimateSteps). Pure apart from the async interface; the caller supplies the profiles
 // (fitted by the controller) and the routes (from the catalog, with each component's state, device and facts).
@@ -9,7 +10,11 @@ import { worseRisk, type EtaRisk, type SegmentEta, type SegmentEtaEstimator, typ
 import type { H3Stage } from "./stages";
 import { profileFit, type ProfileFit } from "./wire";
 
-/** The modelled stages each H3 provider runs; other providers (mux, frame, concat…) are fixed-cost steps (per-call overhead). */
+/**
+ * The modelled stages each H3 provider runs; other providers (mux, frame, concat…) are fixed-cost steps (per-call overhead).
+ * The work model (h3Work.ts) is MiniMax H3's: a route without an H3 DiT (Wan and other families) gets no estimate rather
+ * than an H3-shaped guess.
+ */
 export const PROVIDER_STAGES: Readonly<Record<string, readonly H3Stage[]>> = {
   "h3.conditioning": ["encode"],
   "h3.reference": ["encode_image", "encode_video", "encode_keyframe", "encode_audio"],
@@ -60,7 +65,7 @@ export function etaRoute(route: StudioRoute): EtaRoute {
         resourceGroup: component?.device.resource_group ?? null,
         deviceId: component?.device.id ?? null,
         dependsOn: [...new Set(Object.values(step.inputs).flatMap((binding) => ("from_step" in binding ? [binding.from_step] : [])))],
-        loaded: component ? LOADED.has(component.state) : undefined,
+        ...(component ? { loaded: LOADED.has(component.state) } : {}),
         facts: component?.facts ?? undefined,
       };
     }),
@@ -90,8 +95,8 @@ export function segmentRequest(input: SegmentEtaInput, route: EtaRoute): H3Segme
   const videos = knownSizes(input.videos ?? []);
   const audios = input.audios ?? [];
   if (!images || !videos || (input.characters > 0 && images.length !== input.characters)) return null;
-  const task = input.task ?? (input.keyframe ? "fl2va" : images.length + videos.length + audios.length > 0 ? "ref2va" : "t2va");
-  return { task, width, height, frames: input.frames, steps: input.steps, text, images, videos, audios, keyframe: input.keyframe === true, referenceVideoShortEdge: input.referenceVideoShortEdge, referenceImageShortEdge: input.referenceImageShortEdge };
+  const task = input.task ?? ((input.keyframe === true) ? "fl2va" : images.length + videos.length + audios.length > 0 ? "ref2va" : "t2va");
+  return { task, width, height, frames: input.frames, steps: input.steps, text, images, videos, audios, keyframe: input.keyframe === true, referenceVideoShortEdge: input.referenceVideoShortEdge, ...(input.referenceImageShortEdge === undefined ? {} : { referenceImageShortEdge: input.referenceImageShortEdge }) };
 }
 
 /** Estimate of one segment on its route; null without enough request facts. */
@@ -99,12 +104,13 @@ export function estimateSegment(input: SegmentEtaInput, route: EtaRoute, fits: r
   const request = segmentRequest(input, route);
   if (!request) return null;
   const ditStep = route.steps.find((step) => step.providerId === "h3.dit");
+  if (!ditStep) return null;
   const teStep = route.steps.find((step) => step.providerId === "h3.conditioning");
-  const work = h3Work(request, resolveH3Constants({ dit: ditStep?.facts, te: teStep?.facts }));
+  const work = h3Work(request, resolveH3Constants({ dit: ditStep.facts, te: teStep?.facts }));
   // A later segment of the same run finds its components loaded and warm
   const continues = input.continuesBatch === true;
   const steps: EstimateStep[] = route.steps.map((step) => {
-    const stages = step.providerId ? (PROVIDER_STAGES[step.providerId] ?? []) : [];
+    const stages = (step.providerId != null && step.providerId !== "") ? (PROVIDER_STAGES[step.providerId] ?? []) : [];
     return {
       stepId: step.stepId,
       nodeId: step.nodeId,
@@ -112,9 +118,9 @@ export function estimateSegment(input: SegmentEtaInput, route: EtaRoute, fits: r
       resourceGroup: step.resourceGroup,
       dependsOn: step.dependsOn,
       work: work.stages.filter((item) => stages.includes(item.stage)),
-      profile: selectProfile(fits, { nodeId: step.nodeId, componentId: step.componentId, deviceId: step.deviceId, loadDigest: step.loadDigest, sourceRevision: step.sourceRevision }),
-      warm: continues ? true : step.warm,
-      loaded: continues ? true : step.loaded,
+      profile: selectProfile(fits, { nodeId: step.nodeId, componentId: step.componentId, ...(step.deviceId === undefined ? {} : { deviceId: step.deviceId }), ...(step.loadDigest === undefined ? {} : { loadDigest: step.loadDigest }), ...(step.sourceRevision === undefined ? {} : { sourceRevision: step.sourceRevision }) }),
+      ...optionalField("warm", continues ? true : step.warm),
+      ...optionalField("loaded", continues ? true : step.loaded),
     };
   });
   return estimateSteps(steps);
@@ -148,7 +154,7 @@ export function profileEstimator(id: string, profiles: readonly CostProfile[], r
     estimate: (segments) =>
       Promise.resolve(
         segments.map((segment) => {
-          const route = segment.routeId ? routes[segment.routeId] : undefined;
+          const route = (segment.routeId != null && segment.routeId !== "") ? routes[segment.routeId] : undefined;
           return route ? toSegmentEta(estimateSegment(segment, route, fits)) : null;
         }),
       ),

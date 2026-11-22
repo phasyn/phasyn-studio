@@ -42,9 +42,9 @@ export type SpeedFeelPlanResult = { ok: true; plan: SpeedFeelPlan } | { ok: fals
 /** Why the clip cannot take the edit at all; null when it can. */
 function clipRefusal(timeline: StudioTimeline, clip: TimelineClip): string | null {
   const locked = lockRefusal(timeline, clip, linkedPeers(timeline, clip));
-  if (locked) return locked;
+  if (locked != null && locked !== "") return locked;
   const retimed = retimingReason(clip);
-  if (retimed) return retimed;
+  if (retimed != null && retimed !== "") return retimed;
   if (hasShake(clip)) return t("這個片段已經有震動：請先在「效果控制」重設鏡頭運動");
   if (clip.effects?.impact) return t("這個片段已經有衝擊格：請先在「效果控制」關閉衝擊格");
   if (hasKeys(clip)) return t("這個片段有關鍵影格動畫：分割後無法再加效果，請先移除關鍵影格");
@@ -64,7 +64,7 @@ export function planSpeedFeel(timeline: StudioTimeline, clipId: string, hits: re
   const clip = timeline.clips.find((item) => item.clip_id === clipId);
   if (!clip) return { ok: false, reason: t("找不到這個片段（可能已經刪除，或被復原拿掉了）"), blocked: [] };
   const refusal = clipRefusal(timeline, clip);
-  if (refusal) return { ok: false, reason: refusal, blocked: [] };
+  if (refusal != null && refusal !== "") return { ok: false, reason: refusal, blocked: [] };
   const linked = clip.linked_id !== undefined;
   const blocked: BlockedHit[] = [];
   const planned: PlannedHit[] = [];

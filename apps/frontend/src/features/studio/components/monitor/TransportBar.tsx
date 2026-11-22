@@ -1,3 +1,4 @@
+import { hasSlotContent } from "@/lib/dom";
 // The transport of the Shots monitor as its own row under the picture (never over it): the scrub bar across the full
 // width, then the timecode, the playback buttons (and the caller's extra ones) and the length. The same parts as the
 // Edit workspace's monitors (editor/monitors/MonitorChrome); the buttons keep the focus where it was, so Space keeps
@@ -36,22 +37,22 @@ export function TransportBar({ frame, total, fps, playing, disabledReason = null
         </span>
         <div className="flex min-w-0 flex-1 justify-center">
           <TransportRow label={labels.group}>
-            <MonitorButton label={t("到開頭")} shortcut={chordOf("goStart")} disabledReason={disabledReason} onClick={() => onSeek(0)}>
+            <MonitorButton label={t("到開頭")} shortcut={chordOf("goStart")} disabledReason={disabledReason} onClick={() => { onSeek(0); }}>
               <SkipBack aria-hidden />
             </MonitorButton>
-            <MonitorButton label={t("上一影格")} shortcut={chordOf("stepBack")} disabledReason={disabledReason} onClick={() => onStep(-1)}>
+            <MonitorButton label={t("上一影格")} shortcut={chordOf("stepBack")} disabledReason={disabledReason} onClick={() => { onStep(-1); }}>
               <StepBack aria-hidden />
             </MonitorButton>
             <MonitorButton label={playing ? t("暫停") : labels.play} shortcut={chordOf("playToggle")} disabledReason={disabledReason} onClick={onToggle} primary>
               {playing ? <Pause aria-hidden /> : <Play aria-hidden />}
             </MonitorButton>
-            <MonitorButton label={t("下一影格")} shortcut={chordOf("stepForward")} disabledReason={disabledReason} onClick={() => onStep(1)}>
+            <MonitorButton label={t("下一影格")} shortcut={chordOf("stepForward")} disabledReason={disabledReason} onClick={() => { onStep(1); }}>
               <StepForward aria-hidden />
             </MonitorButton>
-            <MonitorButton label={t("到結尾")} shortcut={chordOf("goEnd")} disabledReason={disabledReason} onClick={() => onSeek(last)}>
+            <MonitorButton label={t("到結尾")} shortcut={chordOf("goEnd")} disabledReason={disabledReason} onClick={() => { onSeek(last); }}>
               <SkipForward aria-hidden />
             </MonitorButton>
-            {children ? (
+            {hasSlotContent(children) ? (
               <>
                 <span aria-hidden className="mx-1 h-5 w-px bg-line-subtle" />
                 {children}

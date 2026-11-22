@@ -83,7 +83,7 @@ export function playRenderSound(sound: RenderSound, force = false): void {
   if (!ctx) return;
   if (ctx.state === "suspended") {
     // Allowed once the page has been used; otherwise the promise stays pending or rejects and nothing is heard
-    void ctx.resume().then(() => play(ctx, SOUNDS[sound]), () => undefined);
+    void ctx.resume().then(() => { play(ctx, SOUNDS[sound]); }, () => undefined);
     return;
   }
   play(ctx, SOUNDS[sound]);

@@ -1,0 +1,23 @@
+{
+  "component_id": "transcribe-local",
+  "label": "語音辨識與字幕",
+  "provider_id": "media.transcribe",
+  "runtime_id": "transcription",
+  "autostart": false,
+  "folder": "後製/聲音與字幕",
+  "settings": {
+    "load": {
+      "device": {
+        "kind": "cpu",
+        "id": "cpu",
+        "resource_group": "cpu-asr"
+      },
+      "model_path": "/path/to/models/faster-whisper-small",
+      "model_revision": "536b0662742c02347bc0e980a01041f333bce120"
+    },
+    "invoke": {},
+    "recording": {
+      "mode": "detailed"
+    }
+  }
+}

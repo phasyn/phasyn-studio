@@ -35,7 +35,7 @@ export function placeEdit(
     start_frame: 0,
     in_frame: inFrame,
     out_frame: outFrame,
-    ...(linkId ? { linked_id: linkId } : {}),
+    ...((linkId != null && linkId !== "") ? { linked_id: linkId } : {}),
     motion: defaultMotion(),
   }));
   const sources = [...new Map([...timeline.sources, source].map((item) => [item.source_id, item])).values()];
@@ -67,7 +67,7 @@ export interface DropTargets {
  */
 export function dropTracks(timeline: StudioTimeline, source: TimelineSource, targets: DropTargets): TimelineResult<TimelineTrack[]> {
   const picture = source.kind !== "audio";
-  const sound = source.kind === "audio" || source.has_audio === true;
+  const sound = source.kind === "audio" || source.has_audio;
   const hovered = timeline.tracks.find((track) => track.track_id === targets.trackId);
   let video = targets.video;
   let audio = targets.audio;

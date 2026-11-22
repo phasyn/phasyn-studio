@@ -5,7 +5,7 @@ import { parsePrompt } from "../../prompt/blocks";
 
 export function slateDescription(shot: Pick<StudioShot, "prompt" | "note">): string {
   const summary = parsePrompt(shot.prompt).blocks.find((block) => block.section === "summary")?.body.trim();
-  if (summary) return summary;
+  if (summary != null && summary !== "") return summary;
   const note = shot.note.trim();
   if (note) return note;
   return shot.prompt

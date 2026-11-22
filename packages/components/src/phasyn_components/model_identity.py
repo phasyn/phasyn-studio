@@ -23,6 +23,7 @@ from collections.abc import Iterator, Mapping
 from pathlib import Path, PurePath
 from typing import Any
 
+
 PATH_BASE = "load.model_path"
 CONFIG_SUFFIXES = (".json", ".txt", ".jinja")
 SMALL_FILE_BYTES = 16 * 1024 * 1024
@@ -60,7 +61,9 @@ def _sha256_file(path: Path) -> str:
         return hashlib.file_digest(fh, "sha256").hexdigest()
 
 
-def path_stat(path: Path, root: Path | None, *, hash_configs: bool = True) -> dict[str, Any]:
+def path_stat(
+    path: Path, root: Path | None, *, hash_configs: bool = True
+) -> dict[str, Any]:
     """Identity of one file or directory: location, file count, total size, newest mtime and small-file hashes.
 
     * file: ``sha256`` of the content when it is at most ``SMALL_FILE_BYTES`` (else ``None``).
@@ -73,10 +76,26 @@ def path_stat(path: Path, root: Path | None, *, hash_configs: bool = True) -> di
     if path.is_file():
         try:
             st = path.stat()
-            digest = _sha256_file(path) if hash_configs and st.st_size <= SMALL_FILE_BYTES else None
+            digest = (
+                _sha256_file(path)
+                if hash_configs and st.st_size <= SMALL_FILE_BYTES
+                else None
+            )
         except OSError as exc:
-            return {**out, "files": 1, "size_bytes": 0, "mtime_ns": 0, "error": type(exc).__name__}
-        return {**out, "files": 1, "size_bytes": int(st.st_size), "mtime_ns": int(st.st_mtime_ns), "sha256": digest}
+            return {
+                **out,
+                "files": 1,
+                "size_bytes": 0,
+                "mtime_ns": 0,
+                "error": type(exc).__name__,
+            }
+        return {
+            **out,
+            "files": 1,
+            "size_bytes": int(st.st_size),
+            "mtime_ns": int(st.st_mtime_ns),
+            "sha256": digest,
+        }
     if not path.is_dir():
         return {**out, "files": 0, "size_bytes": 0, "mtime_ns": 0, "missing": True}
     files = sorted(p for p in path.rglob("*") if p.is_file())
@@ -90,15 +109,29 @@ def path_stat(path: Path, root: Path | None, *, hash_configs: bool = True) -> di
             st = file.stat()
             size += st.st_size
             mtime = max(mtime, st.st_mtime_ns)
-            if hash_configs and file.suffix in CONFIG_SUFFIXES and st.st_size <= SMALL_FILE_BYTES:
+            if (
+                hash_configs
+                and file.suffix in CONFIG_SUFFIXES
+                and st.st_size <= SMALL_FILE_BYTES
+            ):
                 data = file.read_bytes()
-                config.update(file.relative_to(path).as_posix().encode("utf-8") + b"\0" + data + b"\0")
+                config.update(
+                    file.relative_to(path).as_posix().encode("utf-8")
+                    + b"\0"
+                    + data
+                    + b"\0"
+                )
                 hashed += 1
         except OSError:
             unreadable += 1
     out.update({"files": len(files), "size_bytes": size, "mtime_ns": mtime})
     if hash_configs:
-        out.update({"config_files": hashed, "config_sha256": config.hexdigest() if hashed else None})
+        out.update(
+            {
+                "config_files": hashed,
+                "config_sha256": config.hexdigest() if hashed else None,
+            }
+        )
     if unreadable:
         out["unreadable_files"] = unreadable
     return out
@@ -106,7 +139,9 @@ def path_stat(path: Path, root: Path | None, *, hash_configs: bool = True) -> di
 
 def _absolute_facts(value: Any, where: str) -> Iterator[str]:
     """Where ``value`` (recursively) holds a path object or an absolute path string."""
-    if isinstance(value, PurePath) or (isinstance(value, str) and _ABSOLUTE.match(value)):
+    if isinstance(value, PurePath) or (
+        isinstance(value, str) and _ABSOLUTE.match(value)
+    ):
         yield where
     elif isinstance(value, Mapping):
         for key, item in value.items():
@@ -129,7 +164,9 @@ def model_identity(
     extra path-free fields (variant, architectures, …). Passing a path object or an absolute path string as a
     fact (at any depth) is a programming error, because it would bypass the relative-path rule.
     """
-    leaked = [where for key, value in facts.items() for where in _absolute_facts(value, key)]
+    leaked = [
+        where for key, value in facts.items() for where in _absolute_facts(value, key)
+    ]
     if leaked:
         raise TypeError(f"model_identity facts must not be paths: {', '.join(leaked)}")
     return {
@@ -138,7 +175,10 @@ def model_identity(
         "sha256": None,
         "sha256_reason": SHA256_REASON,
         **facts,
-        "components": {name: path_stat(path, root, hash_configs=hash_configs) for name, path in components.items()},
+        "components": {
+            name: path_stat(path, root, hash_configs=hash_configs)
+            for name, path in components.items()
+        },
     }
 
 

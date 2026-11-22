@@ -9,10 +9,11 @@ explicit placement; no strategy is chosen automatically.
 from __future__ import annotations
 
 import contextlib
+import gc
 import threading
 import time
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, override
 
 from phasyn_components import upstream
 from phasyn_components.errors import ComponentError
@@ -26,18 +27,36 @@ from phasyn_components.provider import (
 )
 from phasyn_components.weights import WeightPlan
 
+from ..bundle import read_bundle, write_bundle
 from ..config import diffusers_problem
-from ..instrument import CallMemory
+from ..instrument import (
+    CallMemory,
+    drop_frame_locals,
+    record_after_release,
+    release_cuda_cache,
+)
 from ..memory import process_rss_bytes
+from ..weights import image_plan
 from . import admission
 from .describe import describe_dit, dit_parts
 from .inputs import check_inputs
+from .instrument import DitObserver
+from .loading import (
+    checkpoint_bytes,
+    largest_quantized_matrix,
+    load_adapters,
+    load_transformer,
+    model_identity,
+    parameter_dtypes,
+    tensor_storage_bytes,
+)
 from .meta import dit_identity, latent_meta
 from .options import (
     CONDITIONING_KIND,
     LATENT_KIND,
     PROVIDER_ID,
     REF_LATENTS_KIND,
+    DitOptions,
     DitParams,
     configuration_problem,
     parse_options,
@@ -45,9 +64,20 @@ from .options import (
     read_config,
     unsupported,
 )
+from .placement import apply_load_placement, invoke_admission, invoke_placement
 from .preview import PACKAGED_COEFFICIENTS, PreviewUnavailable
 
-LIBRARIES = ("torch", "diffusers", "accelerate", "peft", "gguf", "safetensors", "numpy", "pillow")
+
+LIBRARIES = (
+    "torch",
+    "diffusers",
+    "accelerate",
+    "peft",
+    "gguf",
+    "safetensors",
+    "numpy",
+    "pillow",
+)
 
 
 class QimgDitProvider(BaseProvider):
@@ -65,31 +95,26 @@ class QimgDitProvider(BaseProvider):
     # ------------------------------------------------------------------ describe
     @classmethod
     def describe(cls, settings: Mapping[str, Any] | None) -> Description:
+        """Describe the ports, settings and current runtime availability."""
         return describe_dit(settings)
 
     @classmethod
     def weights(cls, settings: Mapping[str, Any] | None) -> WeightPlan:
         """The pinned Qwen-Image 2.1 directory the DiT reads; GGUF files and adapters stay user-supplied."""
-        from ..weights import image_plan
-
         return image_plan("dit", settings)
 
     # ------------------------------------------------------------------ load
+    @override
     def load(self, ctx: LoadContext) -> LoadResult:
+        """Load the component and report its actual configuration."""
         import torch
-        from phasyn_components.recorder.gpu import AllocatorWindow, runtime_identity, torch_backend_flags
-
-        from .loading import (
-            checkpoint_bytes,
-            load_adapters,
-            load_transformer,
-            model_identity,
-            parameter_dtypes,
-            tensor_storage_bytes,
+        from phasyn_components.recorder.gpu import (
+            AllocatorWindow,
+            runtime_identity,
+            torch_backend_flags,
         )
-        from .placement import apply_load_placement
-        from .preview import load_coefficients, load_preview_vae
-        from .schedule import ScheduleError, scheduler_spec
+
+        from .schedule import ScheduleError, scheduler_spec  # noqa: PLC0415 - Load optional runtime dependencies only on the path that needs them.
 
         rec = ctx.recorder
         load = ctx.load
@@ -101,20 +126,21 @@ class QimgDitProvider(BaseProvider):
         if problem is not None:
             raise ComponentError(problem[0], problem[1])
         try:
-            self.scheduler = scheduler_spec(read_config(opts.scheduler_config_path, opts.model_root))
+            self.scheduler = scheduler_spec(
+                read_config(opts.scheduler_config_path, opts.model_root)
+            )
         except ScheduleError as exc:
             raise unsupported(f"scheduler_config 不被支援：{exc}") from exc
-        device = torch.device("cuda", 0) if opts.device_kind == "cuda" else torch.device("cpu")
+        device = (
+            torch.device("cuda", 0)
+            if opts.device_kind == "cuda"
+            else torch.device("cpu")
+        )
         if device.type == "cuda" and not torch.cuda.is_available():
-            raise ComponentError("RUNTIME_UNAVAILABLE", "CUDA 無法使用；請檢查 PyTorch 與驅動")
-        file_bytes = checkpoint_bytes(opts)
-        preload = admission.preload_ram_estimate(opts.placement, file_bytes=file_bytes)
-        preload.available = admission.available_ram_bytes()
-        if preload.available is None:
-            preload.reason = "無法讀取 /proc/meminfo；未做主記憶體准入"
-            rec.note(preload.reason)
-        else:
-            admission.require(preload)  # too little host memory → HOST_MEMORY_INSUFFICIENT
+            raise ComponentError(
+                "RUNTIME_UNAVAILABLE", "CUDA 無法使用；請檢查 PyTorch 與驅動"
+            )
+        preload = _preflight_load_memory(opts, rec)
         self.opts = opts
         self.device = device
         self.dtype = torch.bfloat16
@@ -138,53 +164,15 @@ class QimgDitProvider(BaseProvider):
                     unified_reserve_bytes=opts.unified_reserve_bytes,
                 )
             self.transformer = transformer
-            self.preview_vae: Any = None
-            if opts.preview_vae:
-                rss_before = process_rss_bytes()
-                with rec.span("qimg.dit.load_preview_vae", part="preview"):
-                    self.preview_vae = load_preview_vae(opts.vae_dir)
-                vae_bytes = tensor_storage_bytes(self.preview_vae)
-                rss_after = process_rss_bytes()
-                observed["preview_vae"] = {
-                    "loaded": True,
-                    "device": "cpu",
-                    "dtype": "float32",
-                    "tensor_bytes": vae_bytes,
-                    "rss_delta_bytes": None if rss_before is None or rss_after is None else rss_after - rss_before,
-                }
-                rec.set_metric(
-                    "qimg.dit.preview_vae_host_bytes",
-                    vae_bytes,
-                    unit="bytes",
-                    quality="derived",
-                    scope="process",
-                    method="tensor_storage_bytes（CPU FP32 VAE 參數＋buffer）",
-                )
-            else:
-                observed["preview_vae"] = {"loaded": False}
+            self._load_preview_vae(opts, observed, rec)
         if allocator is not None:
             allocator.finish(rec, scope="load")
-        self._preview_lock = threading.Lock()
-        self.coefficients: Any = None
-        self.coefficients_reason: str | None = None
-        try:
-            self.coefficients = load_coefficients(
-                opts.coefficients_path(PACKAGED_COEFFICIENTS),
-                channels=int(transformer.config.in_channels),
-                root=opts.model_root,
-            )
-        except PreviewUnavailable as exc:
-            self.coefficients_reason = str(exc)
+        self._load_preview_coefficients(opts, transformer)
         facts = dict(self.placement.facts)
-        weight = int(facts["transformer_weight_bytes"])
-        resident_device = weight if opts.placement == "none" else 0
-        pinned = sum(self.placement.layout["block_bytes"]) if opts.pin_memory == "static" else 0
-        rec.set_metric("owned_weight_device_bytes", resident_device, scope="component_instance")
-        rec.set_metric("owned_pinned_host_bytes", pinned, scope="component_instance")
-        rec.set_metric(
-            "owned_weight_host_bytes", 0 if opts.placement == "none" else weight - pinned, scope="component_instance"
+        self._record_placement(rec, facts, opts)
+        processors = sorted(
+            {type(b.attn.processor).__name__ for b in transformer.transformer_blocks}
         )
-        processors = sorted({type(b.attn.processor).__name__ for b in transformer.transformer_blocks})
         observed.update(
             {
                 "placement": facts,
@@ -204,10 +192,7 @@ class QimgDitProvider(BaseProvider):
         if device.type == "cuda":
             observed["backend_flags"] = torch_backend_flags()
         self.calls = 0
-        effective = dict(load)
-        effective["precision"] = {"compute_dtype": "bf16"}
-        effective["offload"] = {"mode": opts.placement, **({"pin_memory": opts.pin_memory} if opts.pin_memory else {})}
-        effective["provider_options"] = opts.to_effective()
+        effective = _effective_load(load, opts)
         identity = model_identity(opts)
         self.dit_identity = dit_identity(
             provider_id=self.provider_id,
@@ -226,21 +211,88 @@ class QimgDitProvider(BaseProvider):
             parts=dit_parts(len(transformer.transformer_blocks)),
         )
 
+    def _load_preview_vae(
+        self, opts: DitOptions, observed: dict[str, Any], rec: Any
+    ) -> None:
+        from .preview import load_preview_vae  # noqa: PLC0415 - Load the optional VAE only on the configured path.
+
+        self.preview_vae: Any = None
+        if opts.preview_vae:
+            rss_before = process_rss_bytes()
+            with rec.span("qimg.dit.load_preview_vae", part="preview"):
+                self.preview_vae = load_preview_vae(opts.vae_dir)
+            vae_bytes = tensor_storage_bytes(self.preview_vae)
+            rss_after = process_rss_bytes()
+            observed["preview_vae"] = {
+                "loaded": True,
+                "device": "cpu",
+                "dtype": "float32",
+                "tensor_bytes": vae_bytes,
+                "rss_delta_bytes": None
+                if rss_before is None or rss_after is None
+                else rss_after - rss_before,
+            }
+            rec.set_metric(
+                "qimg.dit.preview_vae_host_bytes",
+                vae_bytes,
+                unit="bytes",
+                quality="derived",
+                scope="process",
+                method="tensor_storage_bytes（CPU FP32 VAE 參數\N{FULLWIDTH PLUS SIGN}buffer）",
+            )
+        else:
+            observed["preview_vae"] = {"loaded": False}
+
+    def _load_preview_coefficients(self, opts: DitOptions, transformer: Any) -> None:
+        from .preview import load_coefficients  # noqa: PLC0415 - Coefficients are read only at load.
+
+        self._preview_lock = threading.Lock()
+        self.coefficients: Any = None
+        self.coefficients_reason: str | None = None
+        try:
+            self.coefficients = load_coefficients(
+                opts.coefficients_path(PACKAGED_COEFFICIENTS),
+                channels=int(transformer.config.in_channels),
+                root=opts.model_root,
+            )
+        except PreviewUnavailable as exc:
+            self.coefficients_reason = str(exc)
+
+    def _record_placement(
+        self, rec: Any, facts: Mapping[str, Any], opts: DitOptions
+    ) -> None:
+        weight = int(facts["transformer_weight_bytes"])
+        resident_device = weight if opts.placement == "none" else 0
+        pinned = (
+            sum(self.placement.layout["block_bytes"])
+            if opts.pin_memory == "static"
+            else 0
+        )
+        rec.set_metric(
+            "owned_weight_device_bytes", resident_device, scope="component_instance"
+        )
+        rec.set_metric("owned_pinned_host_bytes", pinned, scope="component_instance")
+        rec.set_metric(
+            "owned_weight_host_bytes",
+            0 if opts.placement == "none" else weight - pinned,
+            scope="component_instance",
+        )
+
+    @override
     def unload(self, ctx: UnloadContext) -> None:
+        """Release the loaded component state."""
         with contextlib.suppress(Exception):
             import torch
 
             self.transformer = None
             self.preview_vae = None
-            import gc
 
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
     def after_failure(self, code: str) -> dict[str, Any] | None:
-        """Runs after the host has cleared the failed call's frames: drop the block groups a failed forward left on
-        the GPU and report whether the process is back at its allocation before the call."""
+        """Runs after the host has cleared the failed call's frames: drop the block groups a failed forward left on the GPU and report whether the process is back at its allocation before the call."""
         self._discard_call_state()
         memory, self._call_memory = self._call_memory, None
         if memory is not None:
@@ -269,38 +321,21 @@ class QimgDitProvider(BaseProvider):
 
     # ------------------------------------------------------------------ invoke
     def invoke(self, ctx: RunContext) -> None:
-        import torch
-        from phasyn_components.recorder.gpu import AllocatorWindow
-
-        from ..bundle import read_bundle, write_bundle
-        from ..instrument import drop_frame_locals, record_after_release, release_cuda_cache
-        from .driver import DenoiseRequest, denoise
-        from .instrument import DitObserver
-        from .placement import invoke_placement
-        from .preview import preview_due
+        """Run this provider with the validated call context."""
+        from .driver import DenoiseRequest  # noqa: PLC0415 - Load optional runtime dependencies only on the path that needs them.
 
         self._call_memory = None
         rec = ctx.recorder
         params = parse_params(ctx.parameters)
-        rec.log("info", "QIMG_DIT_PARAMS", code="QIMG_DIT_PARAMS", effective=params.to_dict(), cfg=params.cfg)
-        transformer = self.transformer
-        config = transformer.config
-        with rec.span("qimg.dit.read_inputs", phase="input_transfer"):
-            cond_meta, cond = read_bundle(ctx, "conditioning", kind=CONDITIONING_KIND)
-            ref_item = ctx.optional_input("ref_latents")
-            ref_meta: dict[str, Any] | None = None
-            ref_tensors: dict[str, Any] | None = None
-            if ref_item is not None and ref_item.file is not None:
-                ref_meta, ref_tensors = read_bundle(ctx, "ref_latents", kind=REF_LATENTS_KIND)
-        inputs = check_inputs(
-            params,
-            cond_meta,
-            cond,
-            ref_meta,
-            ref_tensors,
-            context_dim=int(config.context_in_dim),
-            channels=int(config.in_channels),
+        rec.log(
+            "info",
+            "QIMG_DIT_PARAMS",
+            code="QIMG_DIT_PARAMS",
+            effective=params.to_dict(),
+            cfg=params.cfg,
         )
+        transformer = self.transformer
+        inputs = _read_dit_inputs(ctx, params, transformer)
         schedule = self._schedule(rec, params)
         worker, preview_state = self._preview_worker(ctx, params)
         try:
@@ -311,28 +346,11 @@ class QimgDitProvider(BaseProvider):
             raise
 
         device = self.device
-        allocator = AllocatorWindow(0) if device.type == "cuda" else None
-        if allocator is not None:
-            allocator.start()
-        self._call_memory = CallMemory.start(device, allocator)
-        observer = DitObserver(
-            rec,
-            check_cancelled=ctx.check_cancelled,
-            sigmas=schedule.sigmas_with_terminal(),
-            cfg=params.cfg,
-            device=device,
-            preview_due=(lambda step: preview_due(step, params.preview.every, params.steps)) if worker else None,
-            preview_submit=worker.submit if worker else None,
-        )
-        self.calls += 1
-        rec.set_metric(
-            "qimg.dit.warm_call", 1 if self.calls > 1 else 0, unit="bool", scope="process", method="runtime_hook"
-        )
+        allocator, observer = self._begin_observation(ctx, params, schedule, worker)
         completed = False
         # device tensors to drop at the end of the call (bound first so the finally block can always clear them)
         request: Any = None
         result: Any = None
-        summary: dict[str, Any] = {}
         try:
             with rec.span("qimg.dit.stage_inputs"):
                 request = DenoiseRequest(
@@ -344,16 +362,7 @@ class QimgDitProvider(BaseProvider):
                     ref_shapes=inputs["ref_shapes"],
                     **self._stage_branches(inputs, cfg=params.cfg),
                 )
-            with (
-                invoke_placement(self.placement, transformer, rec=rec, pairs=observer.pairs),
-                observer.attach(transformer, self.placement.groups),
-                rec.span("qimg.dit.denoise", part="transformer", phase="denoise"),
-            ):
-                started = time.perf_counter()
-                result = denoise(transformer, request, device=device, observer=observer)
-                if device.type == "cuda":
-                    torch.cuda.synchronize(device)  # compute time of the loop itself, without the weight moves
-                compute_ms = (time.perf_counter() - started) * 1000
+            result, compute_ms = self._denoise_call(request, observer, rec)
             completed = True
             with rec.span("qimg.dit.readback", part="transformer"):
                 latent = result.latents.detach().to("cpu").contiguous()
@@ -371,11 +380,14 @@ class QimgDitProvider(BaseProvider):
                 placement=self.opts.placement,
             )
         except BaseException as exc:
-            drop_frame_locals(exc)  # a failed call's frames hold latents, the KV cache and activations
+            drop_frame_locals(
+                exc
+            )  # a failed call's frames hold latents, the KV cache and activations
             self._discard_call_state()  # and group_stream may have left block groups on the GPU
             raise
         finally:
-            summary = self._finish_call(rec, worker, preview_state, observer, allocator, completed=completed)
+            _finish_preview(rec, worker, preview_state)
+            summary = self._finish_call(rec, observer, allocator, completed=completed)
             if device.type == "cuda":
                 # return idle blocks to the driver after every call: phase releases once when moving back to the
                 # CPU (conditioning and latents still hold memory afterwards) and group_stream/none would never
@@ -388,8 +400,7 @@ class QimgDitProvider(BaseProvider):
                 record_after_release(rec, device)
         rec.log("info", "QIMG_DIT_PREVIEW", code="QIMG_DIT_PREVIEW", **preview_state)
         ctx.check_cancelled()
-        if not bool(torch.isfinite(latent.float()).all()):
-            raise ComponentError("RUNTIME_ERROR", "去噪結果含非有限數值（NaN／Inf）；不輸出", details=summary)
+        _check_sample(latent, summary)
         ref_item = ctx.optional_input("ref_latents")
         meta = latent_meta(
             params=params,
@@ -399,15 +410,80 @@ class QimgDitProvider(BaseProvider):
             inputs=inputs,
             conditioning_sha256=(ctx.input("conditioning").file or {}).get("sha256"),
             ref_latents_sha256=(
-                (ref_item.file or {}).get("sha256") if ref_item is not None and ref_item.file else None
+                (ref_item.file or {}).get("sha256")
+                if ref_item is not None and ref_item.file
+                else None
             ),
             identity=self.dit_identity,
         )
         with rec.span("qimg.dit.write_output", phase="output_publish"):
-            write_bundle(ctx, "latent", kind=LATENT_KIND, meta=meta, tensors={"latent": latent})
+            write_bundle(
+                ctx, "latent", kind=LATENT_KIND, meta=meta, tensors={"latent": latent}
+            )
+
+    def _begin_observation(
+        self, ctx: RunContext, params: DitParams, schedule: Any, worker: Any
+    ) -> tuple[Any, DitObserver]:
+        from phasyn_components.recorder.gpu import AllocatorWindow
+
+        from .preview import preview_due  # noqa: PLC0415 - Initialize preview support only for generation.
+
+        rec = ctx.recorder
+        device = self.device
+        allocator = AllocatorWindow(0) if device.type == "cuda" else None
+        if allocator is not None:
+            allocator.start()
+        self._call_memory = CallMemory.start(device, allocator)
+        observer = DitObserver(
+            rec,
+            check_cancelled=ctx.check_cancelled,
+            sigmas=schedule.sigmas_with_terminal(),
+            cfg=params.cfg,
+            device=device,
+            preview_due=(
+                lambda step: preview_due(step, params.preview.every, params.steps)
+            )
+            if worker
+            else None,
+            preview_submit=worker.submit if worker else None,
+        )
+        self.calls += 1
+        rec.set_metric(
+            "qimg.dit.warm_call",
+            1 if self.calls > 1 else 0,
+            unit="bool",
+            scope="process",
+            method="runtime_hook",
+        )
+        return allocator, observer
+
+    def _denoise_call(
+        self, request: Any, observer: DitObserver, rec: Any
+    ) -> tuple[Any, float]:
+        import torch
+
+        from .driver import denoise  # noqa: PLC0415 - Load denoising only on invocation.
+
+        transformer = self.transformer
+        device = self.device
+        with (
+            invoke_placement(
+                self.placement, transformer, rec=rec, pairs=observer.pairs
+            ),
+            observer.attach(transformer, self.placement.groups),
+            rec.span("qimg.dit.denoise", part="transformer", phase="denoise"),
+        ):
+            started = time.perf_counter()
+            result = denoise(transformer, request, device=device, observer=observer)
+            if device.type == "cuda":
+                torch.cuda.synchronize(
+                    device
+                )  # compute time of the loop itself, without the weight moves
+            compute_ms = (time.perf_counter() - started) * 1000
+        return result, compute_ms
 
     def _schedule(self, rec: Any, params: DitParams) -> Any:
-        from .schedule import ScheduleError, build_schedule
+        from .schedule import ScheduleError, build_schedule  # noqa: PLC0415 - Load optional runtime dependencies only on the path that needs them.
 
         try:
             schedule = build_schedule(
@@ -423,33 +499,48 @@ class QimgDitProvider(BaseProvider):
             rec.note("已套用自訂噪聲排程（非原生屬實驗選項，品質不保證較好）")
         return schedule
 
-    def _preview_worker(self, ctx: RunContext, params: DitParams) -> tuple[Any, dict[str, Any]]:
+    def _preview_worker(
+        self, ctx: RunContext, params: DitParams
+    ) -> tuple[Any, dict[str, Any]]:
         """An unavailable preview mode is a 422; a call without a preview channel turns previews off with a note."""
-        from .preview import PREVIEW_NOTE, PreviewWorker, render_linear, render_vae_thumbnail
+        from .preview import (  # noqa: PLC0415 - Load optional runtime dependencies only on the path that needs them.
+            PREVIEW_NOTE,
+            PreviewWorker,
+            render_linear,
+            render_vae_thumbnail,
+        )
 
         render = self._preview_renderer(params, render_vae_thumbnail, render_linear)
-        state: dict[str, Any] = {"requested": params.preview.to_dict(), "effective": "off", "reason": None}
+        state: dict[str, Any] = {
+            "requested": params.preview.to_dict(),
+            "effective": "off",
+            "reason": None,
+        }
         if render is None:
             return None, state
         if not ctx.preview_enabled:
-            state["reason"] = "這次呼叫沒有平台預覽通道（ctx.preview_enabled=False）；預覽關閉"
+            state["reason"] = (
+                "這次呼叫沒有平台預覽通道（ctx.preview_enabled=False）；預覽關閉"
+            )
             ctx.recorder.note(str(state["reason"]))
             return None, state
         note = PREVIEW_NOTE + (
-            "；合成係數" if params.preview.mode == "linear_fit" and self.coefficients.synthetic else ""
+            "；合成係數"
+            if params.preview.mode == "linear_fit" and self.coefficients.synthetic
+            else ""
         )
         worker = PreviewWorker(
-            render=render, publish=ctx.publish_preview, total=params.steps, note=note, lock=self._preview_lock
+            render=render,
+            publish=ctx.publish_preview,
+            total=params.steps,
+            note=note,
+            lock=self._preview_lock,
         )
         state["effective"] = params.preview.mode
         return worker, state
 
     def _admit(self, rec: Any, params: DitParams, inputs: Mapping[str, Any]) -> None:
-        """VRAM admission per placement (phase/gguf_phase/group_stream/none estimates); too little free GPU memory →
-        GPU_MEMORY_INSUFFICIENT before the transformer moves."""
-        from .loading import largest_quantized_matrix
-        from .placement import invoke_admission
-
+        """VRAM admission per placement (phase/gguf_phase/group_stream/none estimates); too little free GPU memory → GPU_MEMORY_INSUFFICIENT before the transformer moves."""
         transformer = self.transformer
         config = transformer.config
         dims = admission.ModelDims(
@@ -457,28 +548,45 @@ class QimgDitProvider(BaseProvider):
             hidden=int(config.num_attention_heads) * int(config.attention_head_dim),
             element_size=2,
         )
-        branches = [admission.BranchShape(inputs["pos_len"], inputs["pos_slots"], params.target_tokens)]
+        branches = [
+            admission.BranchShape(
+                inputs["pos_len"], inputs["pos_slots"], params.target_tokens
+            )
+        ]
         if params.cfg:
-            branches.append(admission.BranchShape(inputs["neg_len"], inputs["neg_slots"], params.target_tokens))
+            branches.append(
+                admission.BranchShape(
+                    inputs["neg_len"], inputs["neg_slots"], params.target_tokens
+                )
+            )
         dequant = (
             largest_quantized_matrix(transformer) * admission.GGUF_DEQUANT_FACTOR
             if self.opts.placement == "gguf_phase"
             else 0
         )
-        estimate = invoke_admission(self.placement, dims=dims, branches=branches, dequant_bytes=dequant)
-        rec.log("info", "QIMG_DIT_ADMISSION", code="QIMG_DIT_ADMISSION", **estimate.to_dict())
+        estimate = invoke_admission(
+            self.placement, dims=dims, branches=branches, dequant_bytes=dequant
+        )
+        rec.log(
+            "info",
+            "QIMG_DIT_ADMISSION",
+            code="QIMG_DIT_ADMISSION",
+            **estimate.to_dict(),
+        )
         rec.set_metric(
             "qimg.dit.vram_required_estimate_bytes",
             estimate.required,
             unit="bytes",
             quality="derived",
             scope="component_call",
-            method="admission_estimate（權重＋activation reserve＋prefix KV；見 QIMG_DIT_ADMISSION）",
+            method="admission_estimate（權重\N{FULLWIDTH PLUS SIGN}activation reserve\N{FULLWIDTH PLUS SIGN}prefix KV；見 QIMG_DIT_ADMISSION）",
         )
 
-    def _stage_branches(self, inputs: Mapping[str, Any], *, cfg: bool) -> dict[str, Any]:
+    def _stage_branches(
+        self, inputs: Mapping[str, Any], *, cfg: bool
+    ) -> dict[str, Any]:
         """Move the conditioning branches and reference latents to the device (``DenoiseRequest`` keyword arguments)."""
-        from .driver import Branch
+        from .driver import Branch  # noqa: PLC0415 - Load optional runtime dependencies only on the path that needs them.
 
         device = self.device
 
@@ -500,35 +608,25 @@ class QimgDitProvider(BaseProvider):
     def _finish_call(
         self,
         rec: Any,
-        worker: Any,
-        preview_state: dict[str, Any],
         observer: Any,
         allocator: Any,
         *,
         completed: bool,
     ) -> dict[str, Any]:
         """Close the preview worker and the step observer and record their statistics (never masks the outcome)."""
-        if worker is not None:
-            worker.close(discard=True)
-            stats = worker.statistics()
-            preview_state["stats"] = stats
-            for key in ("submitted", "published", "replaced", "dropped_by_platform"):
-                rec.set_metric(
-                    f"qimg.dit.preview_{key}", stats[key], unit="count", scope="component_call", method="runtime_hook"
-                )
-            if stats["error"]:
-                rec.note(f"預覽停用（生成繼續）：{stats['error']}")
         summary: dict[str, Any] = {}
         try:
             summary = observer.finish(completed=completed)
-        except Exception as exc:  # a measurement failure only degrades the record; it never replaces the outcome
+        except Exception as exc:  # noqa: BLE001 - Optional instrumentation failures must not change generation.
             rec.measurement_error(f"DiT step 紀錄：{type(exc).__name__}: {exc}"[:300])
         if allocator is not None:
             allocator.finish(rec, scope="invoke")
         return summary
 
     # ------------------------------------------------------------------ helpers
-    def _preview_renderer(self, params: DitParams, vae_render: Any, linear_render: Any) -> Any:
+    def _preview_renderer(
+        self, params: DitParams, vae_render: Any, linear_render: Any
+    ) -> Any:
         mode = params.preview.mode
         if mode == "off":
             return None
@@ -539,11 +637,93 @@ class QimgDitProvider(BaseProvider):
                     "preview.mode=vae_thumbnail 需要此元件以 provider_options.preview_vae=true 載入（不自動載入）"
                 )
             vae = self.preview_vae
-            return lambda packed: vae_render(vae, packed, width=width, height=height, max_side=side)
+            return lambda packed: vae_render(
+                vae, packed, width=width, height=height, max_side=side
+            )
         if self.coefficients is None:
-            raise unsupported(f"preview.mode=linear_fit 不可用：{self.coefficients_reason}")
+            raise unsupported(
+                f"preview.mode=linear_fit 不可用：{self.coefficients_reason}"
+            )
         coeffs = self.coefficients
-        return lambda packed: linear_render(coeffs, packed, width=width, height=height, max_side=side)
+        return lambda packed: linear_render(
+            coeffs, packed, width=width, height=height, max_side=side
+        )
+
+
+def _finish_preview(rec: Any, worker: Any, preview_state: dict[str, Any]) -> None:
+    if worker is not None:
+        worker.close(discard=True)
+        stats = worker.statistics()
+        preview_state["stats"] = stats
+        for key in ("submitted", "published", "replaced", "dropped_by_platform"):
+            rec.set_metric(
+                f"qimg.dit.preview_{key}",
+                stats[key],
+                unit="count",
+                scope="component_call",
+                method="runtime_hook",
+            )
+        if stats["error"]:
+            rec.note(f"預覽停用（生成繼續）：{stats['error']}")
+
+
+def _check_sample(latent: Any, summary: dict[str, Any]) -> None:
+    import torch
+
+    if not bool(torch.isfinite(latent.float()).all()):
+        raise ComponentError(
+            "RUNTIME_ERROR",
+            "去噪結果含非有限數值（NaN／Inf）；不輸出",
+            details=summary,
+        )
+
+
+def _effective_load(load: Mapping[str, Any], opts: DitOptions) -> dict[str, Any]:
+    effective = dict(load)
+    effective["precision"] = {"compute_dtype": "bf16"}
+    effective["offload"] = {
+        "mode": opts.placement,
+        **({"pin_memory": opts.pin_memory} if opts.pin_memory else {}),
+    }
+    effective["provider_options"] = opts.to_effective()
+    return effective
+
+
+def _read_dit_inputs(
+    ctx: RunContext, params: DitParams, transformer: Any
+) -> dict[str, Any]:
+    rec = ctx.recorder
+    config = transformer.config
+    with rec.span("qimg.dit.read_inputs", phase="input_transfer"):
+        cond_meta, cond = read_bundle(ctx, "conditioning", kind=CONDITIONING_KIND)
+        ref_item = ctx.optional_input("ref_latents")
+        ref_meta: dict[str, Any] | None = None
+        ref_tensors: dict[str, Any] | None = None
+        if ref_item is not None and ref_item.file is not None:
+            ref_meta, ref_tensors = read_bundle(
+                ctx, "ref_latents", kind=REF_LATENTS_KIND
+            )
+    return check_inputs(
+        params,
+        cond_meta,
+        cond,
+        ref_meta,
+        ref_tensors,
+        context_dim=int(config.context_in_dim),
+        channels=int(config.in_channels),
+    )
+
+
+def _preflight_load_memory(opts: DitOptions, rec: Any) -> Any:
+    file_bytes = checkpoint_bytes(opts)
+    preload = admission.preload_ram_estimate(opts.placement, file_bytes=file_bytes)
+    preload.available = admission.available_ram_bytes()
+    if preload.available is None:
+        preload.reason = "無法讀取 /proc/meminfo；未做主記憶體准入"
+        rec.note(preload.reason)
+    else:
+        admission.require(preload)  # too little host memory → HOST_MEMORY_INSUFFICIENT
+    return preload
 
 
 __all__ = ["LIBRARIES", "QimgDitProvider"]

@@ -6,7 +6,7 @@ export type Selection =
   | { kind: "event"; streamId: string; seq: number };
 
 export function selectionEventKey(selection: Selection | null): string | null {
-  return selection?.kind === "event" ? `${selection.streamId}:${selection.seq}` : null;
+  return selection?.kind === "event" ? `${selection.streamId}:${String(selection.seq)}` : null;
 }
 
 export function selectionLabel(selection: Selection): string {

@@ -1,7 +1,7 @@
 """Bounded numeric automation expressions shared by motion, masks and effects.
 
-Only validated values and compiler-owned clocks enter expressions. Registers 6–9
-are scratch space; a caller may cache per-frame parameters in registers 0–5.
+Only validated values and compiler-owned clocks enter expressions. Registers 6-9
+are scratch space; a caller may cache per-frame parameters in registers 0-5.
 """
 
 from __future__ import annotations
@@ -15,7 +15,11 @@ from phasyn_components.errors import ComponentError
 from phasyn_components.timeline import bezier_value
 
 
-def number(value: float | int) -> str:
+_MAX_CURVE_REGISTERS = 5
+
+
+def number(value: float) -> str:
+    """Format a validated numeric value for an FFmpeg expression."""
     numeric = float(value)
     if not math.isfinite(numeric):
         raise ComponentError("INVALID_ARGUMENT", "時間軸數值必須有限")
@@ -45,40 +49,7 @@ def expression(container: Mapping[str, Any], name: str, clock: str) -> str:
         return number(container[name])
     values: list[str] = []
     for left, right in pairwise(points):
-        a, b = int(left["frame"]), int(right["frame"])
-        if b <= a:
-            raise ComponentError("INVALID_ARGUMENT", "關鍵影格需依時間嚴格遞增")
-        start, end = number(left["value"]), number(right["value"])
-        raw = f"(({clock}-{a})/{b - a})"
-        progress = raw
-        kind = left["interpolation"]
-        low, high = left.get("curve_range", [0.0, 1.0])
-        span = high - low
-        if kind == "ease_in":
-            bend = number(span / (low + high))
-            progress = f"({raw}*(1-{bend}+{bend}*{raw}))"
-        elif kind == "ease_out":
-            bend = number(span / ((1 - low) + (1 - high)))
-            progress = f"({raw}*(1+{bend}-{bend}*{raw}))"
-        elif kind == "ease_in_out":
-            first = low * (1 - low)
-            middle = (low * (1 - high) + high * (1 - low)) / 2
-            last = high * (1 - high)
-            weight = first + middle + last
-            c1, c2 = first / weight, (first + middle) / weight
-            progress = (
-                f"({raw}*({number(3 * c1)}+{raw}*({number(3 * c2 - 6 * c1)}+{raw}*{number(1 + 3 * c1 - 3 * c2)})))"
-            )
-        elif kind == "bezier":
-            controls = left["bezier"]
-            first, last = bezier_value(low, controls), bezier_value(high, controls)
-            if last > first:
-                easing = _bezier(f"({low:.17g}+{span:.17g}*{raw})", controls)
-                progress = (
-                    f"if(lte({raw},0),0,if(gte({raw},1),1,clip((({easing})-{first:.17g})/{last - first:.17g},0,1)))"
-                )
-        value = start if kind == "hold" else f"({start}+({end}-{start})*{progress})"
-        values.append(value)
+        values.append(_key_interval(left, right, clock))
     values.append(number(points[-1]["value"]))
 
     def select(first: int, end: int) -> str:
@@ -86,7 +57,9 @@ def expression(container: Mapping[str, Any], name: str, clock: str) -> str:
             return values[first]
         middle = (first + end) // 2
         boundary = int(points[middle]["frame"])
-        return f"if(lt({clock},{boundary}),{select(first, middle)},{select(middle, end)})"
+        return (
+            f"if(lt({clock},{boundary}),{select(first, middle)},{select(middle, end)})"
+        )
 
     # FFmpeg bounds evaluator recursion. A balanced tree keeps 128 keys shallow.
     result = select(0, len(values))
@@ -95,8 +68,10 @@ def expression(container: Mapping[str, Any], name: str, clock: str) -> str:
 
 
 def eased(easing: str, progress: str) -> str:
-    """A transition's progress (0 to 1) through its easing, the keyframe easings over a whole interval:
-    ``ease_in`` t², ``ease_out`` t(2 - t), ``ease_in_out`` t²(3 - 2t) (the editor's ``easeProgress``)."""
+    """A transition's progress (0 to 1) through its easing, using the keyframe easing over the whole interval.
+
+    ``ease_in`` t², ``ease_out`` t(2 - t), ``ease_in_out`` t²(3 - 2t) (the editor's ``easeProgress``).
+    """
     if easing == "linear":
         return progress
     if easing == "ease_in":
@@ -106,11 +81,16 @@ def eased(easing: str, progress: str) -> str:
     return f"({progress}*{progress}*(3-2*{progress}))"
 
 
-def frame_parameters(container: Mapping[str, Any], names: Sequence[str], clock: str = "N") -> str:
+def frame_parameters(
+    container: Mapping[str, Any], names: Sequence[str], clock: str = "N"
+) -> str:
     """Cache up to five scalar channels once per frame in each geq slice/plane."""
-    if len(names) > 5:
+    if len(names) > _MAX_CURVE_REGISTERS:
         raise ValueError("at most five cached channels")
-    values = ";".join(f"st({index},{expression(container, name, clock)})" for index, name in enumerate(names))
+    values = ";".join(
+        f"st({index},{expression(container, name, clock)})"
+        for index, name in enumerate(names)
+    )
     # Registers initially contain zero. Store N+1 so the first frame is evaluated.
     return f"if(eq(ld(5),({clock})+1),0,({values};st(5,({clock})+1)));"
 
@@ -121,7 +101,45 @@ def command_filter(target: str, commands: Mapping[str, str]) -> str:
     The three parsers are sendcmd, filter options and filtergraph. Escape each
     enclosing layer separately; no user strings or paths are accepted here.
     """
-    command = "0 " + ",".join(f"[expr] {target} {name} '{value}'" for name, value in commands.items()) + ";"
+    command = (
+        "0 "
+        + ",".join(
+            f"[expr] {target} {name} '{value}'" for name, value in commands.items()
+        )
+        + ";"
+    )
     option = "".join("\\" + char if char in "\\':" else char for char in command)
     graph = "".join("\\" + char if char in "\\'[],;" else char for char in option)
     return f"sendcmd=c={graph}"
+
+
+def _key_interval(left: Mapping[str, Any], right: Mapping[str, Any], clock: str) -> str:
+    a, b = int(left["frame"]), int(right["frame"])
+    if b <= a:
+        raise ComponentError("INVALID_ARGUMENT", "關鍵影格需依時間嚴格遞增")
+    start, end = number(left["value"]), number(right["value"])
+    raw = f"(({clock}-{a})/{b - a})"
+    progress = raw
+    kind = left["interpolation"]
+    low, high = left.get("curve_range", [0.0, 1.0])
+    span = high - low
+    if kind == "ease_in":
+        bend = number(span / (low + high))
+        progress = f"({raw}*(1-{bend}+{bend}*{raw}))"
+    elif kind == "ease_out":
+        bend = number(span / ((1 - low) + (1 - high)))
+        progress = f"({raw}*(1+{bend}-{bend}*{raw}))"
+    elif kind == "ease_in_out":
+        first = low * (1 - low)
+        middle = (low * (1 - high) + high * (1 - low)) / 2
+        last = high * (1 - high)
+        weight = first + middle + last
+        c1, c2 = first / weight, (first + middle) / weight
+        progress = f"({raw}*({number(3 * c1)}+{raw}*({number(3 * c2 - 6 * c1)}+{raw}*{number(1 + 3 * c1 - 3 * c2)})))"
+    elif kind == "bezier":
+        controls = left["bezier"]
+        first, last = bezier_value(low, controls), bezier_value(high, controls)
+        if last > first:
+            easing = _bezier(f"({low:.17g}+{span:.17g}*{raw})", controls)
+            progress = f"if(lte({raw},0),0,if(gte({raw},1),1,clip((({easing})-{first:.17g})/{last - first:.17g},0,1)))"
+    return start if kind == "hold" else f"({start}+({end}-{start})*{progress})"

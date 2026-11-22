@@ -5,6 +5,7 @@
 // capsule, so it stays with the Controller's answer when the run ends meanwhile. When the run ends while focus is on the
 // capsule or in its popover, focus goes to the render button beside it instead of falling to the page.
 // Motion: the capsule pops in (snappy spring) and fades out (Motion presence, inert while it leaves); the chevron turns.
+import { withOccurrenceKeys } from "@/lib/occurrenceKeys";
 import { ChevronDown, LoaderCircle } from "lucide-react";
 import { AnimatePresence, motion, useIsPresent } from "motion/react";
 import { useId, useLayoutEffect, useRef, useState, type MouseEvent, type RefObject } from "react";
@@ -41,13 +42,13 @@ function capsuleParts(activity: RenderActivity, compact: boolean): string[] {
   const figure = runFigure(activity);
   if (compact) {
     const left = leftText(activity, false);
-    return left ? [left] : figure ? [figureText(figure)] : [];
+    return (left != null && left !== "") ? [left] : figure ? [figureText(figure)] : [];
   }
   const position = itemPosition(activity);
   const parts = position !== null ? [t("{index}／{total}", { index: position, total: activity.total })] : [];
   if (figure) parts.push(figureText(figure));
   const left = figure?.kind === "estimated" ? leftText(activity, true) : null;
-  if (left) parts.push(left);
+  if (left != null && left !== "") parts.push(left);
   return parts;
 }
 
@@ -100,8 +101,8 @@ function Capsule({ activity, compact, open, popoverId, buttonRef, onToggle, onEs
       </span>
       {parts.length > 0 ? (
         <span aria-hidden className="machine flex items-center gap-1.5 whitespace-nowrap">
-          {parts.map((part, index) => (
-            <span key={index} className="flex items-center gap-1.5">
+          {withOccurrenceKeys(parts, (part) => part).map(({ item: part, key }, index) => (
+            <span key={key} className="flex items-center gap-1.5">
               {index > 0 ? <span className="size-[3px] rounded-full bg-fg-tertiary" /> : null}
               {part}
             </span>
@@ -127,7 +128,7 @@ export function RenderCapsule({ compact, fallbackFocus }: { compact: boolean; fa
   const [confirming, setConfirming] = useState<Confirming | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const wrapperRef = useRef<HTMLSpanElement>(null);
-  const focusInside = useRef(false);
+  const focusInsideRef = useRef(false);
   const popoverId = useId();
   // The run ended: its popover goes with it (and does not come back with the next run)
   if (anchor !== null && activity === null) setAnchor(null);
@@ -135,10 +136,10 @@ export function RenderCapsule({ compact, fallbackFocus }: { compact: boolean; fa
 
   const ended = activity === null;
   useLayoutEffect(() => {
-    if (!ended || !focusInside.current) return;
-    focusInside.current = false;
+    if (!ended || !focusInsideRef.current) return;
+    focusInsideRef.current = false;
     const active = document.activeElement;
-    if (active === null || active === document.body || wrapperRef.current?.contains(active)) fallbackFocus.current?.focus({ preventScroll: true });
+    if (active === null || active === document.body || Boolean(wrapperRef.current?.contains(active))) fallbackFocus.current?.focus({ preventScroll: true });
   }, [ended, fallbackFocus]);
 
   const close = (restoreFocus: boolean) => {
@@ -149,14 +150,14 @@ export function RenderCapsule({ compact, fallbackFocus }: { compact: boolean; fa
   return (
     <>
       {/* `contents`: no box of its own; it only sees focus enter and leave the capsule and its popover */}
-      <span
+      <span /* eslint-disable-line jsx-a11y-x/no-static-element-interactions -- Focus and blur from the buttons and popup bubble to this display-contents wrapper. */
         ref={wrapperRef}
         className="contents"
         onFocus={() => {
-          focusInside.current = true;
+          focusInsideRef.current = true;
         }}
         onBlur={(event) => {
-          if (event.relatedTarget instanceof Node && !event.currentTarget.contains(event.relatedTarget)) focusInside.current = false;
+          if (event.relatedTarget instanceof Node && !event.currentTarget.contains(event.relatedTarget)) focusInsideRef.current = false;
         }}
       >
         <AnimatePresence>
@@ -168,13 +169,13 @@ export function RenderCapsule({ compact, fallbackFocus }: { compact: boolean; fa
               open={open}
               popoverId={popoverId}
               buttonRef={buttonRef}
-              onToggle={(event) => setAnchor(open ? null : event.currentTarget)}
-              onEscape={() => close(true)}
+              onToggle={(event) => { setAnchor(open ? null : event.currentTarget); }}
+              onEscape={() => { close(true); }}
             />
           ) : null}
         </AnimatePresence>
         <AnimatePresence>
-          {open && activity && anchor ? (
+          {open ? (
             <RenderPopover
               key="popover"
               id={popoverId}
@@ -195,12 +196,12 @@ export function RenderCapsule({ compact, fallbackFocus }: { compact: boolean; fa
         <CancelRunDialog
           run={confirming.run}
           open
-          onOpenChange={(next) => (next ? undefined : setConfirming(null))}
+          onOpenChange={(next) => { if (!(next)) { setConfirming(null); } }}
           scope={confirming.scope}
           onCloseAutoFocus={(event) => {
             // Back to the capsule, or to the render button when the run ended meanwhile
             event.preventDefault();
-            const target = buttonRef.current?.isConnected ? buttonRef.current : fallbackFocus.current;
+            const target = (buttonRef.current?.isConnected === true) ? buttonRef.current : fallbackFocus.current;
             target?.focus({ preventScroll: true });
           }}
         />

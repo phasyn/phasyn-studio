@@ -1,0 +1,4 @@
+# Linux x86_64 CPython 3.12, manylinux 2.27+. Install only into the separate Wan environment.
+ftfy==6.3.1 --hash=sha256:7c70eb532015cd2f9adb53f101fb6c7945988d023a085d127d1573dc49dd0083
+sentencepiece==0.2.3 --hash=sha256:cc3189b79c1ffda767f71b04238c27ac746f3b7abc263eab9a41c4cf46aee49e
+wcwidth==0.9.4 --hash=sha256:901eace6d2dd25ebb917d0ce5db18e5c537e1504c905cf32f0d006c12098b05d

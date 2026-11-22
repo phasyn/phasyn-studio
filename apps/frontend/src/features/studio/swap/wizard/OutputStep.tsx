@@ -63,7 +63,7 @@ export function OutputStep({
         <Label htmlFor={`${id}-title`} hint={t("會建立一個新的 Studio 專案；目前的專案不會被修改")}>
           {t("專案名稱")}
         </Label>
-        <Input id={`${id}-title`} compact maxLength={200} value={draft.title} onChange={(event) => update({ title: event.target.value, titleEdited: true })} />
+        <Input id={`${id}-title`} compact maxLength={200} value={draft.title} onChange={(event) => { update({ title: event.target.value, titleEdited: true }); }} />
       </div>
 
       <fieldset className="grid min-w-0 gap-1.5">
@@ -71,7 +71,7 @@ export function OutputStep({
         {derived.routes.length === 0 ? <p className="text-caption text-warning">{t("沒有 ref2va 元件組合可用。")}</p> : null}
         {derived.routes.map((route) => (
           <label key={route.id} className={cn(OPTION_CARD, "flex cursor-pointer items-start gap-2 px-2.5 py-2", route.id === derived.route?.id ? OPTION_SELECTED : OPTION_IDLE)}>
-            <input type="radio" name={`${id}-route`} checked={route.id === derived.route?.id} onChange={() => update({ routeId: route.id })} className="mt-0.5 accent-action" />
+            <input type="radio" name={`${id}-route`} checked={route.id === derived.route?.id} onChange={() => { update({ routeId: route.id }); }} className="mt-0.5 accent-action" />
             <span className="grid min-w-0 flex-1 gap-0.5">
               <span className="flex min-w-0 flex-wrap items-center gap-1.5">
                 <ReadyDot ready={route.ready} />
@@ -98,7 +98,7 @@ export function OutputStep({
           <Label htmlFor={`${id}-format`}>
             {t("畫面格式")}
           </Label>
-          <Select id={`${id}-format`} compact value={draft.format} onChange={(event) => update({ format: event.target.value })}>
+          <Select id={`${id}-format`} compact value={draft.format} onChange={(event) => { update({ format: event.target.value }); }}>
             {FORMAT_PRESETS.map((preset) => (
               <option key={preset.id} value={preset.id}>
                 {preset.label}
@@ -128,8 +128,8 @@ export function OutputStep({
               },
             ] as const
           ).map((option) => (
-            <label key={option.value} className={cn(OPTION_CARD, "flex cursor-pointer items-start gap-2 px-2.5 py-2", option.value === draft.audio ? OPTION_SELECTED : OPTION_IDLE)}>
-              <input type="radio" name={`${id}-audio`} checked={option.value === draft.audio} onChange={() => update({ audio: option.value })} className="mt-0.5 accent-action" />
+            <label aria-label={[option.label, option.hint].join(" ")} key={option.value} className={cn(OPTION_CARD, "flex cursor-pointer items-start gap-2 px-2.5 py-2", option.value === draft.audio ? OPTION_SELECTED : OPTION_IDLE)}>
+              <input type="radio" name={`${id}-audio`} checked={option.value === draft.audio} onChange={() => { update({ audio: option.value }); }} className="mt-0.5 accent-action" />
               <span className="grid min-w-0 gap-0.5">
                 <span className="text-data text-fg">{option.label}</span>
                 <span className="text-caption text-fg-tertiary">{option.hint}</span>
@@ -202,16 +202,16 @@ export function OutputStep({
 
       <div className="grid gap-1">
         <label className="flex items-start gap-2 text-data text-fg">
-          <input type="checkbox" checked={draft.autoExport} onChange={(event) => update({ autoExport: event.target.checked })} className="mt-1 size-3.5 accent-action" />
+          <input type="checkbox" checked={draft.autoExport} onChange={(event) => { update({ autoExport: event.target.checked }); }} className="mt-1 size-3.5 accent-action" />
           <span>
-            <T source={"全部段落完成後自動匯出一次<0>只自動送一次；失敗或之後要再匯出時，在「一鍵換角」按「匯出」。</0>"} slots={[<span className="block text-caption text-fg-tertiary" />]} />
+            <T source={"全部段落完成後自動匯出一次<0>只自動送一次；失敗或之後要再匯出時，在「一鍵換角」按「匯出」。</0>"} slots={[<span key="slot-0" className="block text-caption text-fg-tertiary" />]} />
           </span>
         </label>
-        <label className={cn("flex items-start gap-2 text-data", renderBlockedReason ? "text-fg-disabled" : "text-fg")}>
-          <input type="checkbox" checked={draft.startRender && !renderBlockedReason} disabled={Boolean(renderBlockedReason)} aria-describedby={renderBlockedReason ? `${id}-render-reason` : undefined} onChange={(event) => update({ startRender: event.target.checked })} className="mt-1 size-3.5 accent-action" />
+        <label className={cn("flex items-start gap-2 text-data", (renderBlockedReason != null && renderBlockedReason !== "") ? "text-fg-disabled" : "text-fg")}>
+          <input type="checkbox" checked={draft.startRender && !(renderBlockedReason != null && renderBlockedReason !== "")} disabled={Boolean(renderBlockedReason)} aria-describedby={(renderBlockedReason != null && renderBlockedReason !== "") ? `${id}-render-reason` : undefined} onChange={(event) => { update({ startRender: event.target.checked }); }} className="mt-1 size-3.5 accent-action" />
           <span>
             <T source={"建立後立即開始渲染{span}"} values={{ span: <span id={`${id}-render-reason`} className="block text-caption text-fg-tertiary">
-              {renderBlockedReason ? t("現在不能：{renderBlockedReason}。專案仍會建立，之後在專案的「一鍵換角」開始。", { renderBlockedReason }) : firstBatchText}
+              {(renderBlockedReason != null && renderBlockedReason !== "") ? t("現在不能：{renderBlockedReason}。專案仍會建立，之後在專案的「一鍵換角」開始。", { renderBlockedReason }) : firstBatchText}
             </span> }} />
           </span>
         </label>
@@ -235,7 +235,7 @@ export function OutputStep({
                 <span className="[overflow-wrap:anywhere]">
                   <T source={"{step}：{problems}"} values={{ step: STEP_LABELS[step], problems: problems[step][0] }} />
                 </span>
-                <button type="button" onClick={() => onGoto(step)} className="pressable rounded-md px-1.5 text-action-fg underline-offset-2 hover:bg-raised hover:underline">
+                <button type="button" onClick={() => { onGoto(step); }} className="pressable rounded-md px-1.5 text-action-fg underline-offset-2 hover:bg-raised hover:underline">
                   {t("前往")}
                 </button>
               </li>

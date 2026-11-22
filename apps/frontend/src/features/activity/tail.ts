@@ -113,7 +113,7 @@ export async function loadTails(
  * （即時輪詢時不每次都多讀一次 recording）。
  */
 export function needsDiscovery(prev: TailSnapshot | undefined, recordingId: string, now: number, maxAgeMs: number): boolean {
-  return !prev || prev.recordingId !== recordingId || prev.streams.length === 0 || now - prev.discoveredAt >= maxAgeMs;
+  return prev?.recordingId !== recordingId || prev.streams.length === 0 || now - prev.discoveredAt >= maxAgeMs;
 }
 
 /** 不重新探索時沿用上一份快照的 stream（last_seq 未知：直接從已讀到的位置往後讀）。 */

@@ -26,7 +26,7 @@ import { RunCreateError, StepInspector } from "./StepFrame";
 import type { DatasetStepState } from "./useSemanticsSteps";
 import { t } from "@/i18n";
 
-const SPLITS: Array<{ value: SplitChoice; label: string }> = [
+const SPLITS: { value: SplitChoice; label: string }[] = [
   { value: "auto", label: t("自動（依來源群組）") },
   { value: "train", label: "train" },
   { value: "validation", label: "validation" },
@@ -101,7 +101,7 @@ export function DatasetWorkspace({ rows, onRowsChange, currentPair }: { rows: Da
       },
     ]);
   };
-  const update = (index: number, patch: Partial<DatasetRow>) => onRowsChange(rows.map((row, position) => (position === index ? { ...row, ...patch } : row)));
+  const update = (index: number, patch: Partial<DatasetRow>) => { onRowsChange(rows.map((row, position) => (position === index ? { ...row, ...patch } : row))); };
 
   return (
     <div className="grid content-start">
@@ -113,8 +113,7 @@ export function DatasetWorkspace({ rows, onRowsChange, currentPair }: { rows: Da
           <FileRefPicker
             id="dataset-add-video"
             typeId="media.video.v1"
-            onPick={(value) =>
-              onRowsChange([
+            onPick={(value) => { onRowsChange([
                 ...rows,
                 {
                   key: crypto.randomUUID(),
@@ -124,7 +123,7 @@ export function DatasetWorkspace({ rows, onRowsChange, currentPair }: { rows: Da
                   source_group: value.file.sha256.slice(0, 16),
                   split: "auto",
                 },
-              ])
+              ]); }
             }
           />
         </div>
@@ -160,7 +159,7 @@ export function DatasetWorkspace({ rows, onRowsChange, currentPair }: { rows: Da
               {rows.map((row, index) => (
                 <tr key={row.key}>
                   <Td className="w-40">
-                    <Input compact aria-label={t("第 {index} 列 sample_id", { index: index + 1 })} className="machine" value={row.sample_id} onChange={(event) => update(index, { sample_id: event.target.value })} />
+                    <Input compact aria-label={t("第 {index} 列 sample_id", { index: index + 1 })} className="machine" value={row.sample_id} onChange={(event) => { update(index, { sample_id: event.target.value }); }} />
                   </Td>
                   <Td className="w-40">
                     <code className="machine text-caption text-fg-secondary">{row.source.file_id.slice(0, 8)}</code>
@@ -175,14 +174,14 @@ export function DatasetWorkspace({ rows, onRowsChange, currentPair }: { rows: Da
                       rows={2}
                       value={row.caption}
                       aria-invalid={!row.caption.trim() || undefined}
-                      onChange={(event) => update(index, { caption: event.target.value })}
+                      onChange={(event) => { update(index, { caption: event.target.value }); }}
                     />
                   </Td>
                   <Td className="w-40">
-                    <Input compact aria-label={t("第 {index} 列來源群組", { index: index + 1 })} className="machine" value={row.source_group} onChange={(event) => update(index, { source_group: event.target.value })} />
+                    <Input compact aria-label={t("第 {index} 列來源群組", { index: index + 1 })} className="machine" value={row.source_group} onChange={(event) => { update(index, { source_group: event.target.value }); }} />
                   </Td>
                   <Td className="w-44">
-                    <Select compact aria-label={t("第 {index} 列 split", { index: index + 1 })} value={row.split} onChange={(event) => update(index, { split: event.target.value as SplitChoice })}>
+                    <Select compact aria-label={t("第 {index} 列 split", { index: index + 1 })} value={row.split} onChange={(event) => { const target = SPLITS.find((split) => split.value === event.target.value); if (target) update(index, { split: target.value }); }}>
                       {SPLITS.map((split) => (
                         <option key={split.value} value={split.value}>
                           {split.label}
@@ -191,7 +190,7 @@ export function DatasetWorkspace({ rows, onRowsChange, currentPair }: { rows: Da
                     </Select>
                   </Td>
                   <Td>
-                    <Button size="icon-sm" variant="danger" aria-label={t("刪除第 {index} 列", { index: index + 1 })} title={t("刪除第 {index} 列", { index: index + 1 })} onClick={() => onRowsChange(rows.filter((_, position) => position !== index))}>
+                    <Button size="icon-sm" variant="danger" aria-label={t("刪除第 {index} 列", { index: index + 1 })} title={t("刪除第 {index} 列", { index: index + 1 })} onClick={() => { onRowsChange(rows.filter((_, position) => position !== index)); }}>
                       <Trash aria-hidden />
                     </Button>
                   </Td>
@@ -242,7 +241,7 @@ export function DatasetInspector({
       note={t("匯出包會實際包含影片檔（外部 FileRef 先物化），不是只寫路徑。")}
       actions={
         <>
-          {step.uploadError ? <ErrorCallout error={step.uploadError} write title={t("上傳資料列失敗")} /> : null}
+          {(step.uploadError != null) ? <ErrorCallout error={step.uploadError} write title={t("上傳資料列失敗")} /> : null}
           {step.create.isError ? <RunCreateError error={step.create.error} title={t("建立匯出 run 失敗")} /> : null}
           <div className="flex flex-wrap items-center gap-2">
             <ActionButton
@@ -260,10 +259,10 @@ export function DatasetInspector({
       }
     >
       <PropertySection title={t("匯出結果")} icon={<PackageCheck aria-hidden />}>
-        {exportRunId ? <ExportResult runId={exportRunId} /> : <p className="text-data text-fg-tertiary">{t("尚未匯出。")}</p>}
+        {(exportRunId != null && exportRunId !== "") ? <ExportResult runId={exportRunId} /> : <p className="text-data text-fg-tertiary">{t("尚未匯出。")}</p>}
       </PropertySection>
       <PropertySection title={t("匯出元件")} icon={<Cpu aria-hidden />}>
-        <KindComponentSelect id="dataset-export-component" label={t("匯出元件（dataset.export）")} kind="dataset.export" value={step.choice} onChange={(value) => step.setChoice(value)} />
+        <KindComponentSelect id="dataset-export-component" label={t("匯出元件（dataset.export）")} kind="dataset.export" value={step.choice} onChange={(value) => { step.setChoice(value); }} />
       </PropertySection>
       {step.descriptor ? (
         <PropertySection title={t("匯出參數")} icon={<SlidersHorizontal aria-hidden />}>

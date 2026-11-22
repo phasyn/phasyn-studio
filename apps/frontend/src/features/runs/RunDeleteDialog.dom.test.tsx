@@ -16,7 +16,7 @@ describe("RunDeleteDialog", () => {
     { runs: "other runs", outputKind: undefined, description: "會刪除 run 產生的輸出檔與中間檔（在各 Node 上）、主控上的效能紀錄，以及 Studio 專案中對它的引用。無法復原；只想先收起來請用「封存」。" },
   ] as const)("names what $runs made", async ({ outputKind, description }) => {
     installFakeApi({ [`DELETE /api/runs/${RUN_ID}`]: () => ({ run_id: RUN_ID, dry_run: true, deleted: false, files: [], recordings: { planned: 0, deleted: 0 }, projects: [] }) });
-    renderWithProviders(<RunDeleteDialog runIds={[RUN_ID]} open onOpenChange={() => undefined} outputKind={outputKind} />);
+    renderWithProviders(<RunDeleteDialog runIds={[RUN_ID]} open onOpenChange={() => undefined} {...(outputKind === undefined ? {} : { outputKind })} />);
     expect(await screen.findByRole("dialog")).toHaveAccessibleDescription(description);
   });
 });

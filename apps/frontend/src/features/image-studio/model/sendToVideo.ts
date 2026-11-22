@@ -11,26 +11,16 @@ import { LIMITS } from "./constants";
 import { takeNumber } from "./shots";
 import { t } from "@/i18n";
 
-/**
- * 影片 Studio 是否支援「素材庫圖片當 fl2va 首幀」：已整合（契約 StudioShot.continuity = { mode: "image", item_id }，
- * renderPlan.ts 把素材檔接到元件組合的首幀輸入）。
- */
-export const VIDEO_FIRST_FRAME_IMAGE = true;
-
-/** VIDEO_FIRST_FRAME_IMAGE＝false 時的停用原因（保留給回退用）。 */
-export const FIRST_FRAME_PENDING = t("Video Studio 還不支援以素材庫圖片當 fl2va 首幀（契約與渲染規劃尚未整合；目前的首幀只能「從前一個鏡頭接續」）");
-
 export type VideoUse = "ref2va" | "fl2va";
 
 /** 這張圖（白底版素材）能不能當這個專案影片鏡頭的首幀：比例與專案畫面不同時回傳原因（H3 會拉伸變形）；可以時 null。 */
 export function firstFrameBlockedReason(project: Pick<StudioProject, "format">, item: Pick<ImageLibraryItem, "kind" | "width" | "height"> | null): string | null {
-  if (!VIDEO_FIRST_FRAME_IMAGE) return FIRST_FRAME_PENDING;
   return item ? firstFrameImageProblem(item, project.format) : null;
 }
 
 /** take 的白底版在素材庫中的項目（同一個 take 只會有一個）；沒有時 null。 */
 export function takeLibraryItem(library: readonly ImageLibraryItem[], shotId: string, take: Pick<StudioImageTake, "take_id" | "library_item_id">): ImageLibraryItem | null {
-  if (take.library_item_id) {
+  if (take.library_item_id != null && take.library_item_id !== "") {
     const linked = library.find((item) => item.item_id === take.library_item_id);
     if (linked) return linked;
   }
@@ -89,18 +79,18 @@ export function videoShotOptions(project: Pick<StudioProject, "shots">, use: Vid
   return project.shots.map((shot, index) => {
     const route = findRoute(routes, shot.route);
     const references = shot.references ?? [];
-    const alias = itemId ? (references.find((ref) => ref.item_id === itemId)?.alias ?? null) : null;
+    const alias = (itemId != null && itemId !== "") ? (references.find((ref) => ref.item_id === itemId)?.alias ?? null) : null;
     if (use === "ref2va") {
-      const blocked = alias ? t("已經是這個鏡頭的 @{alias}", { alias }) : addBlockedReason("image", references);
+      const blocked = (alias != null && alias !== "") ? t("已經是這個鏡頭的 @{alias}", { alias }) : addBlockedReason("image", references);
       const note = route && route.capability !== "ref2va" ? t("運算路由「{label}」是 {capability}：參考圖只在 ref2va 元件組合有效", { label: route.label, capability: route.capability }) : route ? null : t("運算路由不存在：參考圖只在 ref2va 元件組合有效");
       return { shot, index, route, blocked, note, alias };
     }
     const current = firstFrameItemId(shot);
-    const blocked = !VIDEO_FIRST_FRAME_IMAGE ? FIRST_FRAME_PENDING : itemId !== null && current === itemId ? t("已經是這個鏡頭的首幀") : null;
+    const blocked = itemId !== null && current === itemId ? t("已經是這個鏡頭的首幀") : null;
     const note =
       shot.continuity?.mode === "previous_last"
         ? t("會取代「從前一個鏡頭接續」")
-        : current
+        : (current != null && current !== "")
           ? t("會取代目前的首幀圖片")
           : route && route.capability !== "fl2va"
             ? t("運算路由「{label}」是 {capability}：首幀只在 fl2va 元件組合有效", { label: route.label, capability: route.capability })

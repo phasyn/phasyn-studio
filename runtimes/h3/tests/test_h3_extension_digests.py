@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import pytest
+
 from phasyn_h3.config import EXTENSION_DIGESTS
 from phasyn_h3.recipe.abi.canonical import canonical_digest
 from phasyn_h3.recipe.adapter.profile_rules import PROFILE_EXTENSION_SCHEMAS
+
 
 pytestmark = pytest.mark.static
 

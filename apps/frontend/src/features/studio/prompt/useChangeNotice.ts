@@ -42,11 +42,11 @@ export function useChangeNotice(value: string, onChange: (next: string) => void)
       return true;
     },
     undo: () => {
-      if (!entry || entry.after !== value) return;
+      if (entry?.after !== value) return;
       onChange(entry.before);
       setEntry(null);
     },
-    report: (message) => setError(message),
+    report: (message) => { setError(message); },
     dismiss: () => {
       setEntry(null);
       setError(null);

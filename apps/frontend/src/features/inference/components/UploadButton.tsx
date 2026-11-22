@@ -28,8 +28,8 @@ export function UploadButton({
   onFiles: (files: File[]) => void;
   className?: string;
 }) {
-  const generated = useId();
-  const id = inputId ?? generated;
+  const generatedId = useId();
+  const id = inputId ?? generatedId;
   const reasonId = `${id}-reason`;
   const blocked = Boolean(disabledReason) || Boolean(pendingText);
   return (
@@ -40,10 +40,10 @@ export function UploadButton({
         className={cn(
           "pressable inline-flex min-h-8 w-fit max-w-full cursor-pointer items-center gap-2 rounded-lg border border-line-control bg-raised px-3 text-data text-fg hover:border-fg-tertiary hover:bg-overlay has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-focus [&_svg]:size-4 [&_svg]:shrink-0",
           blocked && "cursor-not-allowed border-line-subtle text-fg-disabled hover:border-line-subtle hover:bg-raised",
-          pendingText && "border-brand-blue/40 bg-brand-gradient-soft animate-shimmer",
+          ((pendingText != null && pendingText !== "") ? "border-brand-blue/40 bg-brand-gradient-soft animate-shimmer" : pendingText),
         )}
       >
-        {pendingText ? <LoaderCircle aria-hidden className="text-brand-cyan animate-spin" /> : <FileUp aria-hidden />}
+        {(pendingText != null && pendingText !== "") ? <LoaderCircle aria-hidden className="text-brand-cyan animate-spin" /> : <FileUp aria-hidden />}
         <span className="truncate" title={pendingText ?? label}>
           {pendingText ?? label}
         </span>
@@ -54,7 +54,7 @@ export function UploadButton({
           accept={accept}
           multiple={multiple}
           aria-disabled={blocked || undefined}
-          aria-describedby={disabledReason ? reasonId : undefined}
+          aria-describedby={(disabledReason != null && disabledReason !== "") ? reasonId : undefined}
           onClick={(event) => {
             if (blocked) event.preventDefault();
           }}
@@ -65,7 +65,7 @@ export function UploadButton({
           }}
         />
       </label>
-      {disabledReason ? (
+      {(disabledReason != null && disabledReason !== "") ? (
         <span id={reasonId} className="text-caption text-fg-tertiary">
           {disabledReason}
         </span>

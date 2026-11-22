@@ -29,7 +29,7 @@ function noticeFor(event: ControlEvent): NoticeInput | null {
       : null;
   }
   const failure = event.outcome.failure;
-  if (failure.skipped) return null;
+  if (failure.skipped === true) return null;
   const title = failure.unknown
     ? t("{name} 的結果未知", { name })
     : event.action === "start"
@@ -60,7 +60,7 @@ export function useEngineControl(notify: (notice: NoticeInput) => void): EngineC
         {control.dialog}
         <ResidentStopDialog
           component={confirmStop}
-          onCancel={() => setConfirmStop(null)}
+          onCancel={() => { setConfirmStop(null); }}
           onConfirm={(component) => {
             setConfirmStop(null);
             void control.run([component], "stop");

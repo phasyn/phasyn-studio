@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from phasyn_qimg import weights
 from phasyn_qimg.conditioning import ConditioningProvider
 from phasyn_qimg.config import DEFAULT_BASE, RESEARCH_USE_NOTE
@@ -26,7 +27,11 @@ def settings(root: Path | None, **options: Any) -> dict[str, Any]:
 @pytest.mark.static
 def test_the_image_set_is_the_pinned_full_pipeline_directory() -> None:
     image = weights.image_set()
-    assert (image.set_id, image.dest, image.repo) == ("qwen-image-2.1", DEFAULT_BASE, "Qwen/Qwen-Image-2.1")
+    assert (image.set_id, image.dest, image.repo) == (
+        "qwen-image-2.1",
+        DEFAULT_BASE,
+        "Qwen/Qwen-Image-2.1",
+    )
     paths = {item.path for item in image.files}
     assert {"model_index.json", "LICENSE"} <= paths
     for sub in ("transformer/", "text_encoder/", "vae/", "scheduler/"):
@@ -37,16 +42,27 @@ def test_the_image_set_is_the_pinned_full_pipeline_directory() -> None:
 
 
 def test_every_image_role_shares_the_same_directory(tmp_path: Path) -> None:
-    for provider in (ConditioningProvider, VaeEncodeProvider, VaeDecodeProvider, QimgDitProvider):
+    for provider in (
+        ConditioningProvider,
+        VaeEncodeProvider,
+        VaeDecodeProvider,
+        QimgDitProvider,
+    ):
         plan = provider.weights(settings(tmp_path))
         assert plan.root == str(tmp_path)
-        assert [item.set_id for item in plan.sets] == ["qwen-image-2.1"], provider.__name__
+        assert [item.set_id for item in plan.sets] == ["qwen-image-2.1"], (
+            provider.__name__
+        )
         assert plan.notes == ()
 
 
 def test_a_custom_base_has_no_pinned_source(tmp_path: Path) -> None:
     plan = ConditioningProvider.weights(settings(tmp_path, base="my-model"))
-    assert (plan.root, plan.sets, plan.notes) == (str(tmp_path), (), (weights.CUSTOM_BASE_NOTE,))
+    assert (plan.root, plan.sets, plan.notes) == (
+        str(tmp_path),
+        (),
+        (weights.CUSTOM_BASE_NOTE,),
+    )
     escaping = ConditioningProvider.weights(settings(tmp_path, base="../elsewhere"))
     assert escaping.sets == () and len(escaping.notes) == 1
 
@@ -55,4 +71,8 @@ def test_without_a_model_root_there_is_nothing_to_download() -> None:
     plan = ConditioningProvider.weights(settings(None))
     assert plan.root is None and plan.sets == () and len(plan.notes) == 1
     vision = QwenVisionProvider.weights(settings(None))
-    assert (vision.root, vision.sets, vision.notes) == (None, (), (weights.NO_VISION_PATH,))
+    assert (vision.root, vision.sets, vision.notes) == (
+        None,
+        (),
+        (weights.NO_VISION_PATH,),
+    )

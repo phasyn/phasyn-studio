@@ -19,7 +19,7 @@ import { t } from "@/i18n";
 
 /** 分析：反推 run 的狀態（執行中顯示不確定進度；沒有步數證據時不編比例）。 */
 function DescribeAnalysis({ describeRunId, describeRun }: { describeRunId: string | null; describeRun: UseQueryResult<WireRun> }) {
-  if (!describeRunId) return <p className="text-data text-fg-tertiary">{t("尚未執行反推：在檢視器選擇元件與抽樣參數後按「執行反推」。也可從 run 明細的 Scene 輸出開啟此頁。")}</p>;
+  if (!(describeRunId != null && describeRunId !== "")) return <p className="text-data text-fg-tertiary">{t("尚未執行反推：在檢視器選擇元件與抽樣參數後按「執行反推」。也可從 run 明細的 Scene 輸出開啟此頁。")}</p>;
   const run = describeRun.data;
   if (!run) {
     return describeRun.isError ? (
@@ -86,7 +86,7 @@ export function DescribeWorkspace({
   return (
     <div className="grid content-start p-5">
       <FlowSection id="semantics-source-title" phase="input" title={t("來源影片（media.video.v1）")} lit={Boolean(source)}>
-        <TypedValueInput id="semantics-source" label={t("來源影片")} typeId="media.video.v1" transport="file" required value={source} onChange={(next) => step.setSource(next)} />
+        <TypedValueInput id="semantics-source" label={t("來源影片")} typeId="media.video.v1" transport="file" required value={source} onChange={(next) => { step.setSource(next); }} />
         {step.usingRunSource ? <p className="text-caption text-fg-tertiary">{t("沿用反推 run 的來源影片。")}</p> : null}
         {source && "file" in source ? (
           <AssetPlayer
@@ -145,7 +145,7 @@ export function DescribeInspector({ step, describeRunId, describeRun }: { step: 
     >
       <RunSection title={t("反推 run")} runId={describeRunId} run={describeRun} label="video.describe" emptyText={t("尚未執行反推。")} errorTitle={t("無法讀取反推 run")} />
       <PropertySection title={t("元件")} icon={<Cpu aria-hidden />}>
-        <KindComponentSelect id="describe-component" label={t("反推元件（video.describe，任何 Node）")} kind="video.describe" value={step.choice} onChange={(value) => step.setChoice(value)} />
+        <KindComponentSelect id="describe-component" label={t("反推元件（video.describe，任何 Node）")} kind="video.describe" value={step.choice} onChange={(value) => { step.setChoice(value); }} />
       </PropertySection>
       {step.descriptor ? (
         <PropertySection title={t("抽樣參數")} icon={<SlidersHorizontal aria-hidden />}>

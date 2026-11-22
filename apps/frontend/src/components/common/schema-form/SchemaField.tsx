@@ -1,10 +1,10 @@
 // One schema field with its label, badges, actions (fill in the default, clear) and messages, in the regular layout or
 // the inspector's compact property grid (SchemaDensityContext). The input itself is FieldControl.
 import { Eraser, RotateCcw } from "lucide-react";
-import { useContext, useState, type ReactNode } from "react";
+import { use, useState, type ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { domId } from "@/lib/dom";
+import { hasSlotContent, domId } from "@/lib/dom";
 import { displayText, valuesEqual } from "@/lib/json";
 import { controlKind, describeField, initialNonNullValue, issuesUnder, rangeSummary, type JsonSchema, type SchemaIssue } from "@/lib/schema";
 import { HelpButton, HelpText } from "../HelpTip";
@@ -13,6 +13,8 @@ import { FieldControl } from "./FieldControl";
 import { NullCheckbox, NullToggle } from "./inputs";
 import { useNullSwitch } from "./useNullSwitch";
 import { t } from "@/i18n";
+
+const EMPTY_ITEMS = [] as const;
 
 export interface FieldMeta {
   /** A short display name beside the key. */
@@ -67,7 +69,7 @@ export function SchemaField({
   value,
   onChange,
   required = false,
-  issues = [],
+  issues = EMPTY_ITEMS,
   disabled = false,
   allowUnset = false,
   label,
@@ -76,7 +78,7 @@ export function SchemaField({
   hint,
   unsupported = null,
 }: SchemaFieldProps) {
-  const compact = useContext(SchemaDensityContext) === "compact";
+  const compact = use(SchemaDensityContext) === "compact";
   const info = describeField(schema, rootSchema);
   const id = domId(idPrefix, path);
   const labelId = `${id}-label`;
@@ -95,8 +97,8 @@ export function SchemaField({
   const locked = disabled || info.readOnly || unsupported !== null;
   const isNull = value === null;
   const range = rangeSummary(info);
-  const hasHint = Boolean(range || hint);
-  const hasHelp = Boolean(info.description || help);
+  const hasHint = Boolean((range ?? "") || hint);
+  const hasHelp = Boolean((info.description ?? "") || help);
   const helpTitle = [info.description, typeof help === "string" ? help : null].filter(Boolean).join(" · ") || undefined;
   const describedBy =
     [invalid ? errorId : null, unsupported ? unsupportedId : null, hasHint ? hintId : null, hasHelp ? helpId : null].filter(Boolean).join(" ") || undefined;
@@ -114,23 +116,23 @@ export function SchemaField({
       labelId={labelId}
       value={value}
       onChange={onChange}
-      rootSchema={rootSchema}
+      {...(rootSchema === undefined ? {} : { rootSchema })}
       required={required}
       allowUnset={allowUnset}
       canUnset={canUnset}
       locked={locked}
       invalid={invalid}
-      describedBy={describedBy}
+      {...(describedBy === undefined ? {} : { describedBy })}
       compact={compact}
       issues={[...own, ...nested]}
       nullToggle={inlineNull ? <NullToggle checked={isNull} onChange={setNull} name={name} disabled={locked} compact={compact} /> : null}
-      defaultPlaceholder={value === undefined && info.hasDefault ? t("預設 {defaultValue}", { defaultValue: displayText(info.defaultValue) }) : undefined}
+      {...(value === undefined && info.hasDefault ? { defaultPlaceholder: t("預設 {defaultValue}", { defaultValue: displayText(info.defaultValue) }) } : {})}
     />
   );
   const spanLabel = kind === "switch" || kind === "json" || kind === "fixed" || kind === "null-only";
   const captionText = caption ?? info.title;
   const nullCheckbox = headerNull ? <NullCheckbox checked={isNull} onChange={setNull} name={name} disabled={locked} /> : null;
-  const helpButton = hasHelp ? <HelpButton open={helpOpen} onToggle={() => setHelpOpen((open) => !open)} controls={helpId} label={name} text={helpTitle} /> : null;
+  const helpButton = hasHelp ? <HelpButton open={helpOpen} onToggle={() => { setHelpOpen((open) => !open); }} controls={helpId} label={name} {...(helpTitle === undefined ? {} : { text: helpTitle })} /> : null;
   const badges =
     required || info.readOnly || unsupported ? (
       <>
@@ -154,14 +156,14 @@ export function SchemaField({
       {hasHint ? (
         <p id={hintId} className="text-caption text-fg-tertiary">
           {range}
-          {range && hint ? " · " : null}
+          {(range != null && range !== "") && hasSlotContent(hint) ? " · " : null}
           {hint}
         </p>
       ) : null}
       {hasHelp ? (
         <HelpText id={helpId} open={helpOpen}>
           {info.description}
-          {info.description && help ? " · " : null}
+          {(info.description != null && info.description !== "") && hasSlotContent(help) ? " · " : null}
           {help}
         </HelpText>
       ) : null}
@@ -171,7 +173,7 @@ export function SchemaField({
   if (compact) {
     // The inspector's property grid: label column (display name, mono key below) | value column (control and icon
     // actions, messages below).
-    const text = label ?? (captionText ? <span>{captionText}</span> : <code className="machine">{name}</code>);
+    const text = label ?? (hasSlotContent(captionText) ? <span>{captionText}</span> : <code className="machine">{name}</code>);
     return (
       <div className="grid min-w-0 grid-cols-[minmax(6.5rem,7.5rem)_minmax(0,1fr)] items-start gap-x-3 py-0.5" data-path={path}>
         <div className="flex min-h-8 min-w-0 flex-col justify-center py-0.5" title={path}>
@@ -184,7 +186,7 @@ export function SchemaField({
               {text}
             </label>
           )}
-          {captionText && !label ? <code className="machine truncate text-[11px] leading-4 text-fg-tertiary">{name}</code> : null}
+          {hasSlotContent(captionText) && !hasSlotContent(label) ? <code className="machine truncate text-[11px] leading-4 text-fg-tertiary">{name}</code> : null}
         </div>
         <div className="grid min-w-0 gap-1">
           <div className="flex min-w-0 items-center gap-0.5">
@@ -196,13 +198,13 @@ export function SchemaField({
                 size="icon-sm"
                 variant="quiet"
                 icon={<RotateCcw aria-hidden />}
-                onClick={() => onChange(info.defaultValue)}
+                onClick={() => { onChange(info.defaultValue); }}
                 aria-label={t("{name} 填入 provider 預設值 {defaultValue}", { name, defaultValue: displayText(info.defaultValue) })}
                 title={t("填入 provider 預設：{defaultValue}", { defaultValue: displayText(info.defaultValue) })}
               />
             ) : null}
             {canUnset && !locked ? (
-              <Button size="icon-sm" variant="quiet" icon={<Eraser aria-hidden />} onClick={() => onChange(undefined)} aria-label={t("清除 {name}", { name })} title={t("清除 {name}", { name })} />
+              <Button size="icon-sm" variant="quiet" icon={<Eraser aria-hidden />} onClick={() => { onChange(undefined); }} aria-label={t("清除 {name}", { name })} title={t("清除 {name}", { name })} />
             ) : null}
           </div>
           {badges ? <div className="flex flex-wrap items-center gap-1">{badges}</div> : null}
@@ -215,7 +217,7 @@ export function SchemaField({
   const labelContent = (
     <>
       {label ?? <code className="machine text-fg">{name}</code>}
-      {captionText ? <span className="ml-2 font-normal">{captionText}</span> : null}
+      {hasSlotContent(captionText) ? <span className="ml-2 font-normal">{captionText}</span> : null}
     </>
   );
   return (
@@ -239,7 +241,7 @@ export function SchemaField({
               size="sm"
               variant="quiet"
               icon={<RotateCcw aria-hidden />}
-              onClick={() => onChange(info.defaultValue)}
+              onClick={() => { onChange(info.defaultValue); }}
               aria-label={t("{name} 填入 provider 預設值 {defaultValue}", { name, defaultValue: displayText(info.defaultValue) })}
               title={t("provider 預設：{defaultValue}", { defaultValue: displayText(info.defaultValue) })}
             >
@@ -247,7 +249,7 @@ export function SchemaField({
             </Button>
           ) : null}
           {canUnset && !locked ? (
-            <Button size="sm" variant="quiet" icon={<Eraser aria-hidden />} onClick={() => onChange(undefined)} aria-label={t("清除 {name}", { name })}>
+            <Button size="sm" variant="quiet" icon={<Eraser aria-hidden />} onClick={() => { onChange(undefined); }} aria-label={t("清除 {name}", { name })}>
               {t("清除")}
             </Button>
           ) : null}

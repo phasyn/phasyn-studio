@@ -27,11 +27,11 @@ export function BrandMark({ size = 32, glow = false, breathing = false, label, c
     <img
       src={src}
       srcSet={`${MARK_64} 64w, ${MARK_128} 128w, ${MARK_256} 256w`}
-      sizes={`${size}px`}
+      sizes={`${String(size)}px`}
       width={size}
       height={size}
       alt={label ?? ""}
-      aria-hidden={label ? undefined : true}
+      aria-hidden={(label != null && label !== "") ? undefined : true}
       draggable={false}
       decoding="async"
       className={cn(

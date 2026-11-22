@@ -1,0 +1,242 @@
+{
+ "op": "collect_output",
+ "about": "Conformance vectors of the collect_output timeline command.",
+ "vectors": [
+  {
+   "name": "collecting a published file pins the exact content and original sound metadata",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "command": {"op": "collect_output", "run_id": "00000000-0000-4000-8000-000000000003", "output_key": "final", "name": "Candidate", "expected_source_sha256": "abababababababababababababababababababababababababababababababab"},
+   "published_media": {
+    "kind": "video",
+    "file": {"node_id": "00000000-0000-4000-8000-000000000001", "file_id": "00000000-0000-4000-8000-000000000002", "size_bytes": 512, "sha256": "abababababababababababababababababababababababababababababababab", "media_type": "video/mp4", "metadata": {}},
+    "created_at": "2026-11-01T00:00:00.000Z",
+    "duration_seconds": 1,
+    "width": 768,
+    "height": 448,
+    "has_audio": true
+   },
+   "after": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "after_library": [
+    {
+     "kind": "video",
+     "file": {"node_id": "00000000-0000-4000-8000-000000000001", "file_id": "00000000-0000-4000-8000-000000000002", "size_bytes": 512, "sha256": "abababababababababababababababababababababababababababababababab", "media_type": "video/mp4", "metadata": {}},
+     "created_at": "2026-11-01T00:00:00.000Z",
+     "duration_seconds": 1,
+     "width": 768,
+     "height": 448,
+     "has_audio": true,
+     "name": "Candidate",
+     "item_id": "item-1",
+     "source": {"kind": "run_output", "run_id": "00000000-0000-4000-8000-000000000003", "output_key": "final"}
+    }
+   ]
+  },
+  {
+   "name": "collecting the same published file again is idempotent",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "project": {
+    "library": [
+     {
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-000000000001", "file_id": "00000000-0000-4000-8000-000000000002", "size_bytes": 512, "sha256": "abababababababababababababababababababababababababababababababab", "media_type": "video/mp4", "metadata": {}},
+      "created_at": "2026-11-01T00:00:00.000Z",
+      "duration_seconds": 1,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "name": "Candidate",
+      "item_id": "item-1",
+      "source": {"kind": "run_output", "run_id": "00000000-0000-4000-8000-000000000003", "output_key": "final"}
+     }
+    ]
+   },
+   "command": {"op": "collect_output", "run_id": "00000000-0000-4000-8000-000000000003", "output_key": "final", "name": "Candidate", "expected_source_sha256": "abababababababababababababababababababababababababababababababab"},
+   "published_media": {
+    "kind": "video",
+    "file": {"node_id": "00000000-0000-4000-8000-000000000001", "file_id": "00000000-0000-4000-8000-000000000002", "size_bytes": 512, "sha256": "abababababababababababababababababababababababababababababababab", "media_type": "video/mp4", "metadata": {}},
+    "created_at": "2026-11-01T00:00:00.000Z",
+    "duration_seconds": 1,
+    "width": 768,
+    "height": 448,
+    "has_audio": true
+   },
+   "after": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "after_library": [
+    {
+     "kind": "video",
+     "file": {"node_id": "00000000-0000-4000-8000-000000000001", "file_id": "00000000-0000-4000-8000-000000000002", "size_bytes": 512, "sha256": "abababababababababababababababababababababababababababababababab", "media_type": "video/mp4", "metadata": {}},
+     "created_at": "2026-11-01T00:00:00.000Z",
+     "duration_seconds": 1,
+     "width": 768,
+     "height": 448,
+     "has_audio": true,
+     "name": "Candidate",
+     "item_id": "item-1",
+     "source": {"kind": "run_output", "run_id": "00000000-0000-4000-8000-000000000003", "output_key": "final"}
+    }
+   ]
+  },
+  {
+   "name": "collecting a historical item restores its verified audio flag without altering the input project",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "project": {
+    "library": [
+     {
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-000000000001", "file_id": "00000000-0000-4000-8000-000000000002", "size_bytes": 512, "sha256": "abababababababababababababababababababababababababababababababab", "media_type": "video/mp4", "metadata": {}},
+      "created_at": "2026-11-01T00:00:00.000Z",
+      "duration_seconds": 1,
+      "width": 768,
+      "height": 448,
+      "has_audio": null,
+      "name": "Candidate",
+      "item_id": "item-1",
+      "source": {"kind": "run_output", "run_id": "00000000-0000-4000-8000-000000000003", "output_key": "final"}
+     }
+    ]
+   },
+   "command": {"op": "collect_output", "run_id": "00000000-0000-4000-8000-000000000003", "output_key": "final", "name": "Candidate", "expected_source_sha256": "abababababababababababababababababababababababababababababababab"},
+   "published_media": {
+    "kind": "video",
+    "file": {"node_id": "00000000-0000-4000-8000-000000000001", "file_id": "00000000-0000-4000-8000-000000000002", "size_bytes": 512, "sha256": "abababababababababababababababababababababababababababababababab", "media_type": "video/mp4", "metadata": {}},
+    "created_at": "2026-11-01T00:00:00.000Z",
+    "duration_seconds": 1,
+    "width": 768,
+    "height": 448,
+    "has_audio": true
+   },
+   "after": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "after_library": [
+    {
+     "kind": "video",
+     "file": {"node_id": "00000000-0000-4000-8000-000000000001", "file_id": "00000000-0000-4000-8000-000000000002", "size_bytes": 512, "sha256": "abababababababababababababababababababababababababababababababab", "media_type": "video/mp4", "metadata": {}},
+     "created_at": "2026-11-01T00:00:00.000Z",
+     "duration_seconds": 1,
+     "width": 768,
+     "height": 448,
+     "has_audio": true,
+     "name": "Candidate",
+     "item_id": "item-1",
+     "source": {"kind": "run_output", "run_id": "00000000-0000-4000-8000-000000000003", "output_key": "final"}
+    }
+   ]
+  },
+  {
+   "name": "a missing published result cannot enter the library",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "command": {"op": "collect_output", "run_id": "00000000-0000-4000-8000-000000000003", "output_key": "final", "name": "Candidate", "expected_source_sha256": "abababababababababababababababababababababababababababababababab"},
+   "reject_reason": "source_unavailable"
+  },
+  {
+   "name": "a changed content digest cannot enter the library",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "command": {"op": "collect_output", "run_id": "00000000-0000-4000-8000-000000000003", "output_key": "final", "name": "Candidate", "expected_source_sha256": "0000000000000000000000000000000000000000000000000000000000000000"},
+   "published_media": {
+    "kind": "video",
+    "file": {"node_id": "00000000-0000-4000-8000-000000000001", "file_id": "00000000-0000-4000-8000-000000000002", "size_bytes": 512, "sha256": "abababababababababababababababababababababababababababababababab", "media_type": "video/mp4", "metadata": {}},
+    "created_at": "2026-11-01T00:00:00.000Z",
+    "duration_seconds": 1,
+    "width": 768,
+    "height": 448,
+    "has_audio": true
+   },
+   "reject_reason": "source_unavailable"
+  }
+ ]
+}

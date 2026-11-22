@@ -2,13 +2,13 @@
 // 上可以用的元件（第一個是預設：就緒的優先，與元件組合頁的範本對話框相同），再依選好的元件接成元件組合，確認它是
 // Image Studio 這個模式可以用的圖片元件組合（接線、參數與輸出都由範本決定；不寫死任何主機）。不送出任何請求。
 import type { Catalog } from "@/api/generated/contracts";
-import { indexCatalog } from "@/api/catalog";
+import { componentUsable, indexCatalog } from "@/api/catalog";
 import type { WirePipeline } from "@/api/types";
 import { buildFromTemplate, makeLookup, slotCandidates, templateById, validatePipeline, type ComponentOption } from "@/features/pipelines";
 import { uniqueName } from "@/lib/ids";
 import type { ImageMode } from "../types";
 import { ROLE_LABELS, type ImageStepRole } from "./constants";
-import { deriveImageRoute } from "./routes";
+import { supportsImageMode, deriveImageRoute } from "./routes";
 import { t } from "@/i18n";
 
 export type EngineTemplate = ReturnType<typeof templateById>;
@@ -26,9 +26,9 @@ export function slotRoleName(slot: TemplateSlot): string {
   return role ? ROLE_LABELS[role] : slot.id;
 }
 
-/** 元件現在就能用（就緒或呼叫中，而且 Node 在線上）。 */
+/** 元件能用（就緒、呼叫中，或用到時自動載入，而且 Node 在線上）。 */
 export function optionUsable(option: ComponentOption): boolean {
-  return !option.node.stale && (option.descriptor.state === "ready" || option.descriptor.state === "busy");
+  return !option.node.stale && componentUsable(option.descriptor);
 }
 
 export interface SlotChoice {
@@ -66,7 +66,7 @@ export function planEngine(spec: EngineTemplate, rows: readonly SlotChoice[], ta
   const errors = validatePipeline(build.pipeline, makeLookup(catalog)).filter((issue) => issue.severity === "error");
   const route = deriveImageRoute(build.pipeline, indexCatalog(catalog));
   const details = [...build.unresolved, ...errors.map((issue) => issue.message)];
-  if (details.length > 0 || !route || route.capability !== mode) {
+  if (details.length > 0 || !route || !supportsImageMode(route, mode)) {
     return { pipeline: null, problem: t("範本接不起這些元件，沒有建立。可以到元件組合頁用範本手動建立。"), details };
   }
   return { pipeline: build.pipeline, problem: null, details: [] };

@@ -32,13 +32,13 @@ export function usePluginBadge(shot: StudioShot): PluginBadgeState | null {
   return useMemo((): PluginBadgeState | null => {
     const count = project.prompt_plugins?.length ?? 0;
     if (count === 0) return null;
-    if (plugins.status === "loading") return { count, state: "loading", failed: 0, problems: [], reasons: [], key: `${count}|loading` };
+    if (plugins.status === "loading") return { count, state: "loading", failed: 0, problems: [], reasons: [], key: `${String(count)}|loading` };
     const route = findRoute(engine.routes, laneRouteFor(engine.routes, lanes, shot));
     const result = applyPromptPlugins(shot.prompt, project.prompt_plugins, { project, shot, route }, plugins);
     const typed = shot.prompt.trim() !== "";
     const failed = result.problems.length + (typed ? result.findings.length : 0);
     const state = failed > 0 ? "fail" : typed ? "ok" : "empty";
     const reasons = typed ? pluginBlockItems(result) : result.problems;
-    return { count, state, failed, problems: result.problems, reasons, key: `${count}|${state}|${failed}` };
+    return { count, state, failed, problems: result.problems, reasons, key: `${String(count)}|${state}|${String(failed)}` };
   }, [project, plugins, engine.routes, lanes, shot]);
 }

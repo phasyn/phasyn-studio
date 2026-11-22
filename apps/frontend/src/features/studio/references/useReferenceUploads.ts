@@ -39,55 +39,55 @@ const aborted = () => new DOMException("aborted", "AbortError");
 
 export function useReferenceUploads(current: UploadScope) {
   const queue = useUploadQueue<ReferenceUploadInfo>(current.projectId);
-  const latest = useRef<UploadScope>(current);
+  const latestRef = useRef<UploadScope>(current);
 
   // 非同步上傳完成時要接在「最新的」素材庫與參考後面（不能用開始上傳時的舊陣列）
   useLayoutEffect(() => {
-    latest.current = current;
+    latestRef.current = current;
   });
 
   const upload =
     (file: File, kind: ReferenceKind, attach: Attach, projectId: string, shotId: string | null): UploadRun =>
     async (signal, phase) => {
       // 換了專案（中止前的空檔也算）：檔案不加進任何專案
-      const stale = () => signal.aborted || latest.current.projectId !== projectId;
-      if (latest.current.library.length >= LIBRARY_LIMIT) throw new UploadProblem(t("專案素材庫最多 {libraryLimit} 個檔案", { libraryLimit: LIBRARY_LIMIT }));
+      const stale = () => signal.aborted || latestRef.current.projectId !== projectId;
+      if (latestRef.current.library.length >= LIBRARY_LIMIT) throw new UploadProblem(t("專案素材庫最多 {libraryLimit} 個檔案", { libraryLimit: LIBRARY_LIMIT }));
       phase("reading");
       const facts = await readMediaFacts(file, kind);
       if (stale()) throw aborted();
       phase("uploading");
       const ref = await uploadFile(file, signal);
       if (stale()) throw aborted();
-      const now = latest.current;
+      const now = latestRef.current;
       const item: StudioLibraryItem = { item_id: newLocalId("lib"), kind, name: libraryName(file.name), file: ref, created_at: new Date().toISOString(), ...facts };
       const library = [...now.library, item];
       now.onLibraryChange(library);
-      latest.current = { ...now, library };
+      latestRef.current = { ...now, library };
       // Library only; whoever asked chooses the new file (no shot is involved)
       if (typeof attach === "object" && "pick" in attach) return attach.pick(item);
-      if (!attach) return t("已加入專案素材庫");
+      if (attach === false) return t("已加入專案素材庫");
       if (now.shotId !== shotId) return t("已加入專案素材庫；上傳期間切換了鏡頭，沒有加到任何鏡頭");
       if (typeof attach === "object") {
         // Replace: the reference keeps its @ name and order, and now points at the uploaded file (its clip where the file holds it)
         const target = now.references.find((ref) => ref.ref_id === attach.replace);
-        if (!target || target.kind !== kind) return t("已加入專案素材庫；要換掉的參考已經不在這個鏡頭");
+        if (target?.kind !== kind) return t("已加入專案素材庫；要換掉的參考已經不在這個鏡頭");
         const references = now.references.map((ref) => (ref.ref_id === target.ref_id ? replacedReference(ref, item.item_id, item.duration_seconds ?? null) : ref));
         now.onReferencesChange(references);
-        latest.current = { ...latest.current, references };
+        latestRef.current = { ...latestRef.current, references };
         return t("@{alias} 已換成「{name}」", { alias: target.alias, name: item.name });
       }
       const blocked = addBlockedReason(kind, now.references);
-      const created = blocked ? null : newReference(item, now.references, newLocalId("ref"));
+      const created = (blocked != null && blocked !== "") ? null : newReference(item, now.references, newLocalId("ref"));
       if (!created) return t("已加入素材庫，但沒有加到這個鏡頭：{value}", { value: blocked ?? t("{kind}的名稱已用完", { kind: KIND_LABEL[kind] }) });
       const references = [...now.references, created];
       now.onReferencesChange(references);
-      latest.current = { ...latest.current, references };
+      latestRef.current = { ...latestRef.current, references };
       return t("已加入，prompt 用 @{alias}", { alias: created.alias });
     };
 
   /** One file for the queue; a file that is no image, video or sound is refused before uploading. */
   const request = (file: File, attach: Attach): UploadRequest<ReferenceUploadInfo> => {
-    const { projectId, shotId } = latest.current;
+    const { projectId, shotId } = latestRef.current;
     const kind = kindForFile(file);
     return kind ? { file, info: { kind }, run: upload(file, kind, attach, projectId, shotId) } : { file, info: { kind: null }, problem: t("不支援的檔案類型：只接受圖片、影片、聲音") };
   };
@@ -96,16 +96,16 @@ export function useReferenceUploads(current: UploadScope) {
     /** 這個專案的上傳（其他專案的不顯示）。 */
     tasks: queue.tasks,
     /** attach：上傳後也加到目前的鏡頭。 */
-    addFiles: (list: readonly File[], attach: boolean) => queue.add(list.map((file) => request(file, attach))),
+    addFiles: (list: readonly File[], attach: boolean) => { queue.add(list.map((file) => request(file, attach))); },
     /** Uploads one file and, when it is done, makes the reference `refId` point at it (same kind only). */
-    replaceWith: (file: File, refId: string) => queue.add([request(file, { replace: refId })]),
+    replaceWith: (file: File, refId: string) => { queue.add([request(file, { replace: refId })]); },
     /**
      * Uploads one file of `kind` into the library only and, once it is there, hands the new item to `pick` (its answer
      * is the message shown when done). `target` names what it is for (the task's info carries it). A file of another
      * kind is refused before uploading; the answer says whether the file was accepted.
      */
     addAndPick: (file: File, kind: ReferenceKind, target: string, pick: (item: StudioLibraryItem) => string): boolean => {
-      const { projectId, shotId } = latest.current;
+      const { projectId, shotId } = latestRef.current;
       const fileKind = kindForFile(file);
       const accepted = fileKind === kind;
       queue.add([

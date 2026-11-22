@@ -79,11 +79,11 @@ export function registryFromError(error: unknown): PluginRegistry {
 
 /** 回應是不是登錄表的形狀（只看索引會用到的欄位；內容的合法性由主控負責）。 */
 export function isPluginList(value: unknown): value is StudioPluginList {
-  if (!isRecord(value) || !Array.isArray(value.items) || !isRecord(value.limits) || !isRecord(value.host)) return false;
-  return value.items.every((item) => {
-    if (!isRecord(item) || typeof item.plugin_id !== "string" || typeof item.status !== "string" || !isRecord(item.name)) return false;
-    const contributes = item.contributes;
-    return isRecord(contributes) && Array.isArray(contributes.rules) && Array.isArray(contributes.presets) && Array.isArray(contributes.generation);
+  if (!isRecord(value) || !Array.isArray(value["items"]) || !isRecord(value["limits"]) || !isRecord(value["host"])) return false;
+  return value["items"].every((item) => {
+    if (!isRecord(item) || typeof item["plugin_id"] !== "string" || typeof item["status"] !== "string" || !isRecord(item["name"])) return false;
+    const contributes = item["contributes"];
+    return isRecord(contributes) && Array.isArray(contributes["rules"]) && Array.isArray(contributes["presets"]) && Array.isArray(contributes["generation"]);
   });
 }
 

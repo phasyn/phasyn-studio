@@ -69,19 +69,18 @@ export function StudyListView() {
   const selected = items.find((item) => item.study_id === selectedId) ?? null;
   const openPath = (studyId: string) => `${location.pathname}?study=${encodeURIComponent(studyId)}`;
 
-  const setParam = (key: string, value: string | null) =>
-    setParams(
+  const setParam = (key: string, value: string | null) => { setParams(
       (previous) => {
         const next = new URLSearchParams(previous);
-        if (value) next.set(key, value);
+        if (value != null && value !== "") next.set(key, value);
         else next.delete(key);
         return next;
       },
       { replace: true },
-    );
+    ); };
 
   const toggleArchive = async (study: PromptStudySummary) => {
-    if (archiving) return;
+    if (archiving != null && archiving !== "") return;
     setArchiving(study.study_id);
     setArchiveError(null);
     try {
@@ -105,7 +104,7 @@ export function StudyListView() {
         description={t("從一張圖反推可編輯的 8 區段場景 → core／detailed prompt → 生成比對與有界搜尋。誤差是機器評審的差異量，不是相似百分比，也不保證還原原始 prompt。")}
         className="shrink-0 border-b border-line-subtle px-4 py-3"
         actions={
-          <Button variant="primary" size="sm" icon={<ImagePlus aria-hidden />} onClick={() => setCreating(true)}>
+          <Button variant="primary" size="sm" icon={<ImagePlus aria-hidden />} onClick={() => { setCreating(true); }}>
             {t("新增研究")}
           </Button>
         }
@@ -117,13 +116,13 @@ export function StudyListView() {
             { id: "archived", label: t("已封存"), count: list.data ? archived.length : null, title: t("封存的研究保留版本、任務與圖片") },
           ]}
           value={archivedView ? "archived" : "active"}
-          onChange={(next) => setParam("view", next === "archived" ? "archived" : null)}
+          onChange={(next) => { setParam("view", next === "archived" ? "archived" : null); }}
           idPrefix="prompt-study-list"
           label={t("研究分類")}
         />
         <div className="relative min-w-40 flex-1 sm:max-w-72">
           <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-fg-tertiary" />
-          <Input compact type="search" value={query} placeholder={t("搜尋名稱、ID 或檔名")} aria-label={t("搜尋研究（名稱、ID、原圖檔名）")} autoComplete="off" onChange={(event) => setQuery(event.target.value)} className="pl-8" />
+          <Input compact type="search" value={query} placeholder={t("搜尋名稱、ID 或檔名")} aria-label={t("搜尋研究（名稱、ID、原圖檔名）")} autoComplete="off" onChange={(event) => { setQuery(event.target.value); }} className="pl-8" />
         </div>
         <div className="ml-auto">
           <ToolButton label={t("重新讀取研究清單")} icon={<RefreshCw aria-hidden className={list.isFetching ? "animate-spin" : undefined} />} onClick={() => void list.refetch()} />
@@ -158,7 +157,7 @@ export function StudyListView() {
               title={t("還沒有研究")}
               description={t("從一張圖片開始：上傳或從 Studio 素材庫選圖，再按「分析原圖」。")}
               action={
-                <Button variant="primary" icon={<ImagePlus aria-hidden />} onClick={() => setCreating(true)}>
+                <Button variant="primary" icon={<ImagePlus aria-hidden />} onClick={() => { setCreating(true); }}>
                   {t("新增研究")}
                 </Button>
               }
@@ -185,7 +184,7 @@ export function StudyListView() {
               </thead>
               <tbody>
                 {shown.map((study) => (
-                  <Tr key={study.study_id} selected={study.study_id === selectedId} onClick={() => setParam("selected", study.study_id)} onDoubleClick={() => void navigate(openPath(study.study_id))}>
+                  <Tr key={study.study_id} selected={study.study_id === selectedId} onClick={() => { setParam("selected", study.study_id); }} onDoubleClick={() => void navigate(openPath(study.study_id))}>
                     <Td>
                       <StudyImage file={study.source} alt={t("{value} 的來源圖片", { value: study.title || t("未命名研究") })} className="size-10 rounded-lg" fit="cover" />
                     </Td>
@@ -217,7 +216,7 @@ export function StudyListView() {
                         to={openPath(study.study_id)}
                         aria-label={t("開啟研究 {value}", { value: study.title || study.study_id })}
                         title={t("開啟研究")}
-                        onClick={(event) => event.stopPropagation()}
+                        onClick={(event) => { event.stopPropagation(); }}
                         className={buttonVariants({ variant: "quiet", size: "icon-sm" })}
                       >
                         <ArrowRight aria-hidden />
@@ -252,7 +251,7 @@ export function StudyListView() {
                 {selected.running_task_count > 0 ? <span className="text-caption text-info">{t("· {running_task_count} 個未結束", { running_task_count: selected.running_task_count })}</span> : null}
               </span>
             </PropertyRow>
-            <PropertyRow label={t("接受的版本")}>{selected.accepted_version_id ? <IdText value={selected.accepted_version_id} /> : <span className="text-fg-tertiary">{t("尚未接受")}</span>}</PropertyRow>
+            <PropertyRow label={t("接受的版本")}>{(selected.accepted_version_id != null && selected.accepted_version_id !== "") ? <IdText value={selected.accepted_version_id} /> : <span className="text-fg-tertiary">{t("尚未接受")}</span>}</PropertyRow>
             <PropertyRow label={t("建立")}>
               <TimeText iso={selected.created_at} />
             </PropertyRow>
@@ -264,7 +263,7 @@ export function StudyListView() {
             </PropertyRow>
           </PropertyGrid>
         </PropertySection>
-        {archiveError ? (
+        {(archiveError != null) ? (
           <div className="p-3">
             <ErrorCallout error={archiveError} write title={t("封存狀態沒有變更")} />
           </div>
@@ -284,7 +283,7 @@ export function StudyListView() {
         >
           {selected.archived ? t("取消封存") : t("封存")}
         </ActionButton>
-        <Button size="sm" variant="danger" icon={<Trash2 aria-hidden />} onClick={() => setDeleting(selected)}>
+        <Button size="sm" variant="danger" icon={<Trash2 aria-hidden />} onClick={() => { setDeleting(selected); }}>
           {t("刪除…")}
         </Button>
       </InspectorFooter>
@@ -308,7 +307,7 @@ export function StudyListView() {
       <DeleteStudyDialog
         study={deleting}
         open={deleting !== null}
-        onOpenChange={(open) => (open ? undefined : setDeleting(null))}
+        onOpenChange={(open) => { if (!(open)) { setDeleting(null); } }}
         onDeleted={() => {
           if (deleting?.study_id === selectedId) setParam("selected", null);
         }}

@@ -22,7 +22,7 @@ export function InstalledPane(layout: PaneLayoutProps) {
   const sources = countSources(all);
   const flow = install.state.phase;
   const showInstall = installed.pane === "install" && flow !== "idle" && flow !== "done";
-  const plugin = installed.selectedId ? (registry.plugins.get(installed.selectedId) ?? null) : null;
+  const plugin = (installed.selectedId != null && installed.selectedId !== "") ? (registry.plugins.get(installed.selectedId) ?? null) : null;
   return (
     <div className={cn("grid min-h-0 flex-1", paneColumns(layout.railOpen, layout.detailOpen))}>
       {layout.railOpen ? (
@@ -32,7 +32,7 @@ export function InstalledPane(layout: PaneLayoutProps) {
               id: "plugin-kind",
               title: t("類型"),
               value: installed.kind,
-              onChange: (kind) => setInstalled({ kind }),
+              onChange: (kind) => { setInstalled({ kind }); },
               options: [
                 { id: "all", label: t("全部"), icon: LayoutGrid, count: kinds.all },
                 ...PLUGIN_KINDS.map((kind) => ({ id: kind, label: kindLabel(kind), icon: KIND_ICONS[kind], count: kinds[kind] })),
@@ -44,7 +44,7 @@ export function InstalledPane(layout: PaneLayoutProps) {
               id: "plugin-source",
               title: t("來源"),
               value: installed.source,
-              onChange: (source) => setInstalled({ source }),
+              onChange: (source) => { setInstalled({ source }); },
               options: [
                 { id: "all", label: t("全部"), icon: LayoutGrid, count: sources.all },
                 ...PLUGIN_SOURCES.map((source) => ({ id: source, label: sourceLabel(source), icon: SOURCE_ICONS[source], count: sources[source] })),

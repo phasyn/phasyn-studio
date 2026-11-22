@@ -87,10 +87,10 @@ export function framesByCharactersText(limit: Pick<SwapCapacity, "maxCharacters"
   for (let count = 1; count <= limit.maxCharacters; count += 1) {
     const frames = maxFramesFor(limit, count);
     const last = groups.at(-1);
-    if (last && last.frames === frames) last.to = count;
+    if (last?.frames === frames) last.to = count;
     else groups.push({ from: count, to: count, frames });
   }
-  return groups.map((group, index) => t("{value} 角色{value2}最多 {frames} 影格", { value: group.from === group.to ? group.from : `${group.from}–${group.to}`, value2: index === 0 ? t("每段") : "", frames: group.frames })).join(t("；"));
+  return groups.map((group, index) => t("{value} 角色{value2}最多 {frames} 影格", { value: group.from === group.to ? group.from : `${String(group.from)}–${String(group.to)}`, value2: index === 0 ? t("每段") : "", frames: group.frames })).join(t("；"));
 }
 
 /** The route's DiT (the pipeline's h3.dit step); null without a DiT step. */
@@ -98,7 +98,7 @@ export function routeDit(route: StudioRoute | null): { id: string; label: string
   const step = route?.steps.find((item) => item.step.step_id === route.ditStepId);
   if (!step) return null;
   const component = step.slot.component;
-  return { id: step.step.component_id, label: component?.label?.trim() || step.step.component_id, component };
+  return { id: step.step.component_id, label: ((component?.label.trim()) ?? "") || step.step.component_id, component };
 }
 
 /**
@@ -205,7 +205,7 @@ export function characterLimitReason(limit: ResolvedSwapLimit): string {
   const frames = maxFramesFor(limit, limit.maxCharacters);
   const values = { maxCharacters: limit.maxCharacters, frames, seconds: segmentSeconds(frames) };
   if (limit.source === "trial") return t("試跑最多 {maxCharacters} 個角色（換角能放的角色數上限）", values);
-  if (limit.fallback) return t("{fallback}，先用保守的預設上限：最多 {maxCharacters} 個角色、每段 {frames} 影格（{seconds} 秒）；打開「超過預設上限試跑」可以量測更多角色", { fallback: limit.fallback, ...values });
+  if (limit.fallback != null && limit.fallback !== "") return t("{fallback}，先用保守的預設上限：最多 {maxCharacters} 個角色、每段 {frames} 影格（{seconds} 秒）；打開「超過預設上限試跑」可以量測更多角色", { fallback: limit.fallback, ...values });
   if (limit.beyondLimit === "fails") return t("{beyondFails}：目前上限 {maxCharacters} 個角色、每段 {frames} 影格（{seconds} 秒）", { beyondFails: BEYOND_FAILS, ...values });
   return t("目前只量測過 {maxCharacters} 個角色、每段 {seconds} 秒；{notMeasuredYet}", { ...values, notMeasuredYet: NOT_MEASURED_YET });
 }
@@ -224,7 +224,7 @@ export function limitNoteItems(limit: ResolvedSwapLimit, current: { characters: 
       switching,
     ];
   }
-  if (limit.fallback) {
+  if (limit.fallback != null && limit.fallback !== "") {
     return [
       t("{fallback}，先用保守的預設上限：最多 {maxCharacters} 個角色、每段 {maxFrames} 影格（{seconds} 秒）。", { fallback: limit.fallback, maxCharacters: limit.maxCharacters, maxFrames: limit.maxFrames, seconds: segmentSeconds(limit.maxFrames) }),
       t("打開「超過預設上限試跑」可以量測更多角色與更長的段落；跑完後會記成這張卡的上限。也可以在 DiT 元件的 limits.swap 直接設定（格式見元件定義的說明）。"),
@@ -235,7 +235,7 @@ export function limitNoteItems(limit: ResolvedSwapLimit, current: { characters: 
   return [
     byCount ? t("{text}。", { text: limit.text }) : t("{text}（{seconds} 秒）。", { text: limit.text, seconds: segmentSeconds(limit.maxFrames) }),
     byCount && current.characters > 0 ? t("目前 {characters} 個角色：每段最多 {frameLimit} 影格（{seconds} 秒）。", { characters: current.characters, frameLimit: current.frameLimit, seconds: segmentSeconds(current.frameLimit) }) : "",
-    limit.note ? t("量測說明：{note}", { note: limit.note }) : "",
+    (limit.note != null && limit.note !== "") ? t("量測說明：{note}", { note: limit.note }) : "",
     limit.maxOutputPixels !== null && current.outputPixels !== null && current.outputPixels > limit.maxOutputPixels
       ? t("這次的畫面（{current} 萬像素）比量測時（最多 {measured} 萬像素）大，可能顯存不足。", { current: (current.outputPixels / 10_000).toFixed(1), measured: (limit.maxOutputPixels / 10_000).toFixed(1) })
       : "",
@@ -261,11 +261,11 @@ export function refVideoMemoryWarnings(
   route: StudioRoute | null,
 ): string[] {
   // A shot with a first frame (continuing the previous shot or a library image) is fl2va and sends no references
-  if (!route || route.capability !== "ref2va" || (shot.continuity?.mode ?? "none") !== "none") return [];
+  if (route?.capability !== "ref2va" || (shot.continuity?.mode ?? "none") !== "none") return [];
   const references = shot.references ?? [];
   if (!references.some((ref) => ref.kind === "video")) return [];
   const limit = swapLimitsFor(route);
-  if (limit.fallback) return [t("{fallback}：無法判斷這個鏡頭放不放得下（量測後可以在 DiT 元件的 limits.swap 設定）", { fallback: limit.fallback })];
+  if (limit.fallback != null && limit.fallback !== "") return [t("{fallback}：無法判斷這個鏡頭放不放得下（量測後可以在 DiT 元件的 limits.swap 設定）", { fallback: limit.fallback })];
   const items = new Map(library.map((item) => [item.item_id, item]));
   const images = references.filter((ref) => ref.kind === "image");
   const frameLimit = maxFramesFor(limit, images.length);

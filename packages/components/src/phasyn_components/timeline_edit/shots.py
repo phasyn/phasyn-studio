@@ -17,12 +17,14 @@ from ..timeline_limits import MAX_SEQUENCE_FRAMES, MAX_SOURCE_FRAMES, MAX_SOURCE
 from .model import Doc
 from .text import round_half_up
 
+
 H3_FPS = 24
 SWAP_JOB_TAG = "swap.v1 "
 PROXY_FIELDS = ("proxy", "proxy_run_id", "proxy_error", "proxy_source_sha256")
 
 
 def rate(fps: Mapping[str, Any]) -> float:
+    """Return the shot frame rate."""
     return int(fps["num"]) / int(fps["den"])
 
 
@@ -34,13 +36,19 @@ def active_take(shot: Mapping[str, Any]) -> Doc | None:
         found = next((take for take in takes if take["take_id"] == chosen), None)
         if found is not None:
             return dict(found)
-    return next((dict(take) for take in reversed(takes) if take["state"] == "succeeded"), None)
+    return next(
+        (dict(take) for take in reversed(takes) if take["state"] == "succeeded"), None
+    )
 
 
 def bound_take(shot: Mapping[str, Any]) -> Doc | None:
     """The take a shot's clips show: its active take once that is finished and its file complete."""
     take = active_take(shot)
-    if take is None or take["state"] != "succeeded" or not (take.get("asset") or {}).get("complete"):
+    if (
+        take is None
+        or take["state"] != "succeeded"
+        or not (take.get("asset") or {}).get("complete")
+    ):
         return None
     return take
 
@@ -69,29 +77,41 @@ def _side(value: Any) -> int:
     return max(0, min(MAX_SOURCE_SIDE, int(value)))
 
 
-def take_frames(shot: Mapping[str, Any], take: Mapping[str, Any] | None, fps: Mapping[str, Any]) -> int:
+def take_frames(
+    shot: Mapping[str, Any], take: Mapping[str, Any] | None, fps: Mapping[str, Any]
+) -> int:
     """The length of a take (or, without one, of the planned shot) in frames of the timeline's rate."""
     asset = take.get("asset") if take else None
     asset_fps = asset.get("fps") if asset else None
     source_rate = rate(asset_fps) if asset_fps else float(H3_FPS)
-    frames = (asset["frame_count"] if asset else 0) or (take["frames"] if take else 0) or shot["frames"]
-    return max(1, min(MAX_SOURCE_FRAMES, round_half_up((frames * rate(fps)) / source_rate)))
+    frames = (
+        (asset["frame_count"] if asset else 0)
+        or (take["frames"] if take else 0)
+        or shot["frames"]
+    )
+    return max(
+        1, min(MAX_SOURCE_FRAMES, round_half_up((frames * rate(fps)) / source_rate))
+    )
 
 
-def shot_source(project: Mapping[str, Any], shot: Mapping[str, Any], fps: Mapping[str, Any]) -> Doc:
+def shot_source(
+    project: Mapping[str, Any], shot: Mapping[str, Any], fps: Mapping[str, Any]
+) -> Doc:
     """A shot's source as the timeline binds it; ``file`` is None until the shot has a finished take."""
     take = bound_take(shot)
     asset = take["asset"] if take else None
     frame = project["format"]
     source: Doc = {
-        "source_id": source_id(f"shot/{shot['shot_id']}/{take['take_id'] if take else 'pending'}"),
+        "source_id": source_id(
+            f"shot/{shot['shot_id']}/{take['take_id'] if take else 'pending'}"
+        ),
         "name": shot["title"],
         "kind": "video",
         "file": copy.deepcopy(asset["file"]) if asset else None,
         "duration_frames": take_frames(shot, take, fps),
         "width": _side(asset["width"] if asset else frame["width"]),
         "height": _side(asset["height"] if asset else frame["height"]),
-        "has_audio": True,
+        "has_audio": asset.get("has_audio", True) if asset else True,
         "shot_id": shot["shot_id"],
     }
     if take:
@@ -134,7 +154,10 @@ def _no_constant(_name: str) -> Any:
 
 def swap_job(note: str | None) -> Doc | None:
     """The character-swap job a library video's note carries (the line after the ``swap.v1`` tag), or None."""
-    line = next((item for item in (note or "").split("\n") if item.startswith(SWAP_JOB_TAG)), None)
+    line = next(
+        (item for item in (note or "").split("\n") if item.startswith(SWAP_JOB_TAG)),
+        None,
+    )
     if line is None:
         return None
     try:
@@ -143,12 +166,25 @@ def swap_job(note: str | None) -> Doc | None:
         return None
     if not isinstance(job, dict) or isinstance(job.get("v"), bool) or job.get("v") != 1:
         return None
-    limits = (("fps", 1), ("start_frame", 0), ("end_frame", 1), ("max_frames", 1), ("crossfade_frames", 0))
+    limits = (
+        ("fps", 1),
+        ("start_frame", 0),
+        ("end_frame", 1),
+        ("max_frames", 1),
+        ("crossfade_frames", 0),
+    )
     if any(not _whole(job.get(name), minimum) for name, minimum in limits):
         return None
-    if job["end_frame"] <= job["start_frame"] or job.get("audio") not in ("original", "generated"):
+    if job["end_frame"] <= job["start_frame"] or job.get("audio") not in (
+        "original",
+        "generated",
+    ):
         return None
-    return {"fps": int(job["fps"]), "start_frame": int(job["start_frame"]), "audio": job["audio"]}
+    return {
+        "fps": int(job["fps"]),
+        "start_frame": int(job["start_frame"]),
+        "audio": job["audio"],
+    }
 
 
 def original_audio(project: Mapping[str, Any]) -> tuple[Doc, Doc] | None:
@@ -163,6 +199,7 @@ def original_audio(project: Mapping[str, Any]) -> tuple[Doc, Doc] | None:
 
 
 def shot_name(shot: Mapping[str, Any]) -> str:
+    """Return the display name of the shot."""
     return str(shot["title"] or shot["shot_id"])
 
 

@@ -24,16 +24,28 @@ from .core import replace, required_clip, resize_for_edit, selection, without_tr
 from .curves import curve_slice, map_clip_keyframes
 from .edits import clip_ids_of, remove, ripple_trim, validated
 from .legacy import fitted_fades
-from .model import Doc, clip_end, clip_output_window, find_source, processed_clip_duration, retimed_frames
+from .model import (
+    Doc,
+    clip_end,
+    clip_output_window,
+    find_source,
+    processed_clip_duration,
+    retimed_frames,
+)
 from .rejection import TimelineRejected, reject
 from .shots import PROXY_FIELDS, bound_take, shot_name, shot_source
+
 
 BOUND_FIELDS = ("file", "take_id", "duration_frames", "width", "height", "has_audio")
 
 
 def _rebound(source: Mapping[str, Any], resolved: Mapping[str, Any]) -> Doc:
     """``source`` showing the media of ``resolved``. A proxy belongs to the media it was made from."""
-    value = {key: item for key, item in source.items() if key not in PROXY_FIELDS and key != "pending_take_id"}
+    value = {
+        key: item
+        for key, item in source.items()
+        if key not in PROXY_FIELDS and key != "pending_take_id"
+    }
     value.update({key: resolved[key] for key in BOUND_FIELDS})
     return value
 
@@ -57,11 +69,18 @@ def _timed_effects(effects: Mapping[str, Any]) -> set[str]:
 
 def follows_take(clip: Mapping[str, Any], source: Mapping[str, Any]) -> bool:
     """A clip that shows the whole of ``source`` with nothing timed against its length: its length is the take's."""
-    if clip["source_id"] != source["source_id"] or clip.get("output_window") is not None:
+    if (
+        clip["source_id"] != source["source_id"]
+        or clip.get("output_window") is not None
+    ):
         return False
     if clip["in_frame"] != 0 or clip["out_frame"] != source["duration_frames"]:
         return False
-    if any((clip["motion"].get("keyframes") or {}).values()) or clip.get("effect_stack") or clip.get("mask"):
+    if (
+        any((clip["motion"].get("keyframes") or {}).values())
+        or clip.get("effect_stack")
+        or clip.get("mask")
+    ):
         return False
     return not _timed_effects(clip.get("effects") or {})
 
@@ -74,13 +93,21 @@ def _metadata_stays(timeline: Mapping[str, Any], old_end: int, new_end: int) -> 
     """
     captions = timeline["captions"]
     if new_end >= old_end:
-        return not any(caption["start_frame"] < old_end < caption["end_frame"] for caption in captions)
+        return not any(
+            caption["start_frame"] < old_end < caption["end_frame"]
+            for caption in captions
+        )
     if any(new_end < marker["frame"] < old_end for marker in timeline["markers"]):
         return False
-    return not any(caption["start_frame"] < old_end and caption["end_frame"] > new_end for caption in captions)
+    return not any(
+        caption["start_frame"] < old_end and caption["end_frame"] > new_end
+        for caption in captions
+    )
 
 
-def _refitted(timeline: Mapping[str, Any], source: Mapping[str, Any], frames: int) -> Doc | None:
+def _refitted(
+    timeline: Mapping[str, Any], source: Mapping[str, Any], frames: int
+) -> Doc | None:
     """``timeline`` with the clips that show the whole of ``source`` re-fitted to ``frames``.
 
     Each is trimmed at its end with its linked partners as a ripple edit, so the clips after it keep their distance;
@@ -101,21 +128,30 @@ def _refitted(timeline: Mapping[str, Any], source: Mapping[str, Any], frames: in
     done: set[str] = set()
     try:
         # Latest first: a ripple only moves what lies after it.
-        for clip in sorted((item for item in draft["clips"] if follows_take(item, source)), key=clip_end, reverse=True):
+        for clip in sorted(
+            (item for item in draft["clips"] if follows_take(item, source)),
+            key=clip_end,
+            reverse=True,
+        ):
             if clip["clip_id"] in done:
                 continue
-            group = selection(draft, [clip["clip_id"]], True)
+            group = selection(draft, [clip["clip_id"]], linked=True)
             if any(not follows_take(member, source) for member in group):
                 return None
             primary = required_clip(draft, clip["clip_id"])
             if not _metadata_stays(draft, clip_end(primary), clip_end(primary) + delta):
                 return None
-            ordered = [primary, *(member for member in group if member["clip_id"] != clip["clip_id"])]
+            ordered = [
+                primary,
+                *(member for member in group if member["clip_id"] != clip["clip_id"]),
+            ]
             resized = [{**member, "out_frame": frames} for member in ordered]
             ripple_trim(draft, ordered, resized, "out", delta, keep_spanning=True)
             done.update(clip_ids_of(group))
         draft["sources"] = [
-            {**item, "duration_frames": frames} if item["source_id"] == source["source_id"] else item
+            {**item, "duration_frames": frames}
+            if item["source_id"] == source["source_id"]
+            else item
             for item in draft["sources"]
         ]
         return validated(draft)
@@ -123,7 +159,9 @@ def _refitted(timeline: Mapping[str, Any], source: Mapping[str, Any], frames: in
         return None
 
 
-def _pin_cut_clips(timeline: Doc, source_id: str, clip_ids: Collection[str], frames: int) -> None:
+def _pin_cut_clips(
+    timeline: Doc, source_id: str, clip_ids: Collection[str], frames: int
+) -> None:
     """Keep clips that were cut from the source an edit when the new length happens to equal their out point.
 
     "Shows the whole take" is read from the clip, so such a clip would start to follow the next take. A visible
@@ -131,34 +169,55 @@ def _pin_cut_clips(timeline: Doc, source_id: str, clip_ids: Collection[str], fra
     """
     whole = {"source_id": source_id, "duration_frames": frames}
     timeline["clips"] = [
-        {**clip, "output_window": {"start_frame": 0, "end_frame": processed_clip_duration(clip)}}
+        {
+            **clip,
+            "output_window": {
+                "start_frame": 0,
+                "end_frame": processed_clip_duration(clip),
+            },
+        }
         if clip["clip_id"] in clip_ids and follows_take(clip, whole)
         else clip
         for clip in timeline["clips"]
     ]
 
 
-def _follow(project: Mapping[str, Any], timeline: Doc, source_id: str, notes: list[str]) -> None:
+def _follow(
+    project: Mapping[str, Any], timeline: Doc, source_id: str, notes: list[str]
+) -> None:
     """Bring one source of the draft ``timeline`` in line with its shot (see the module docstring)."""
     source = find_source(timeline, source_id)
     if source is None:
         return
     source.pop("pending_take_id", None)
-    shot = next((item for item in project["shots"] if item["shot_id"] == source.get("shot_id")), None)
+    shot = next(
+        (item for item in project["shots"] if item["shot_id"] == source.get("shot_id")),
+        None,
+    )
     if shot is None:
         return
     take = bound_take(shot)
     waiting = source["file"] is None and "take_id" not in source
     if take is None and not waiting:
         return
-    if take is not None and source["file"] is not None and source.get("take_id") == take["take_id"]:
+    if (
+        take is not None
+        and source["file"] is not None
+        and source.get("take_id") == take["take_id"]
+    ):
         return
     resolved = shot_source(project, shot, timeline["fps"])
     frames = int(resolved["duration_frames"])
     clips = [clip for clip in timeline["clips"] if clip["source_id"] == source_id]
     cut = {clip["clip_id"] for clip in clips if not follows_take(clip, source)}
-    used = max((int(clip["out_frame"]) for clip in clips if clip["clip_id"] in cut), default=0)
-    fitted = timeline if frames == source["duration_frames"] else _refitted(timeline, source, frames)
+    used = max(
+        (int(clip["out_frame"]) for clip in clips if clip["clip_id"] in cut), default=0
+    )
+    fitted = (
+        timeline
+        if frames == source["duration_frames"]
+        else _refitted(timeline, source, frames)
+    )
     if take is None:
         # Waiting for media: as long as the plan when its clips can follow; otherwise the placeholder stays as it is
         if fitted is not None and frames >= used:
@@ -178,7 +237,8 @@ def _follow(project: Mapping[str, Any], timeline: Doc, source_id: str, notes: li
         _adopt(timeline, fitted)
     _pin_cut_clips(timeline, source_id, cut, frames)
     timeline["sources"] = [
-        _rebound(item, resolved) if item["source_id"] == source_id else item for item in timeline["sources"]
+        _rebound(item, resolved) if item["source_id"] == source_id else item
+        for item in timeline["sources"]
     ]
 
 
@@ -191,8 +251,7 @@ def _adopt(timeline: Doc, fitted: Mapping[str, Any]) -> None:
 
 
 def _follow_titles(project: Mapping[str, Any], timeline: Doc) -> None:
-    """A shot renamed since its source was named: the source takes the new title, and so do the clips that still
-    carry the old one (a clip renamed in the editor keeps its own name)."""
+    """A shot renamed since its source was named: the source takes the new title, and so do the clips that still carry the old one (a clip renamed in the editor keeps its own name)."""
     titles = {shot["shot_id"]: shot["title"] for shot in project["shots"]}
     renamed: dict[str, tuple[str, str]] = {}
     for source in timeline["sources"]:
@@ -207,9 +266,7 @@ def _follow_titles(project: Mapping[str, Any], timeline: Doc) -> None:
 
 
 def bind_sources(project: Mapping[str, Any], timeline: Doc, notes: list[str]) -> None:
-    """Bring every shot source of the draft ``timeline`` in line with its shot: its title, its planned length while
-    it waits for media, its active take afterwards, with the clips that show the whole take following its length.
-    What the user should know and cannot see on the timeline is added to ``notes``."""
+    """Bring every shot source of the draft ``timeline`` in line with its shot: its title, its planned length while it waits for media, its active take afterwards, with the clips that show the whole take following its length. What the owner should know and cannot see on the timeline is added to ``notes``."""
     _follow_titles(project, timeline)
     for source_id in [str(source["source_id"]) for source in timeline["sources"]]:
         _follow(project, timeline, source_id, notes)
@@ -223,12 +280,21 @@ def _cut_keys(clip: Mapping[str, Any], edge: int, resume: int) -> Doc:
         if all(key["frame"] <= edge for key in keys):
             return keys
         head = curve_slice(keys, 0, edge, fallback)
-        return [*head, *({**key, "frame": key["frame"] - cut} for key in keys if key["frame"] > resume)]
+        return [
+            *head,
+            *(
+                {**key, "frame": key["frame"] - cut}
+                for key in keys
+                if key["frame"] > resume
+            ),
+        ]
 
     return map_clip_keyframes(clip, transform)
 
 
-def _cut_title(title: Mapping[str, Any], edge: int, resume: int, frames: int) -> Doc | None:
+def _cut_title(
+    title: Mapping[str, Any], edge: int, resume: int, frames: int
+) -> Doc | None:
     """A title on a clock of ``frames`` that lost the frames [edge, resume); None when it only showed on those."""
 
     def moved(frame: int) -> int:
@@ -241,7 +307,9 @@ def _cut_title(title: Mapping[str, Any], edge: int, resume: int, frames: int) ->
     return {**title, "start_frame": start, "end_frame": end}
 
 
-def _fitted_effects(clip: Mapping[str, Any], edge: int, resume: int, frames: int) -> Doc | None:
+def _fitted_effects(
+    clip: Mapping[str, Any], edge: int, resume: int, frames: int
+) -> Doc | None:
     """The clip's effects on the shortened clock of ``frames``."""
     if clip.get("effects") is None:
         return None
@@ -291,7 +359,9 @@ def shortened(clip: Mapping[str, Any], length: int) -> tuple[Doc | None, int]:
     return value, end - new_end
 
 
-def pending_sources(timeline: Mapping[str, Any], source_id: str | None, shot_id: str | None) -> list[Doc]:
+def pending_sources(
+    timeline: Mapping[str, Any], source_id: str | None, shot_id: str | None
+) -> list[Doc]:
     """The sources a ``reconcile`` names that wait for a shorter take."""
     if source_id is not None:
         source = find_source(timeline, source_id)
@@ -299,16 +369,20 @@ def pending_sources(timeline: Mapping[str, Any], source_id: str | None, shot_id:
             reject("source_not_found", "找不到指定的素材", source_id=source_id)
         named = [source]
     else:
-        named = [source for source in timeline["sources"] if source.get("shot_id") == shot_id]
+        named = [
+            source for source in timeline["sources"] if source.get("shot_id") == shot_id
+        ]
     pending = [source for source in named if source.get("pending_take_id")]
     if not pending:
         reject("nothing_pending", "這個素材沒有等待套用的較短 take")
     return pending
 
 
-def _trim_group(timeline: Doc, clip_id: str, source_id: str, length: int) -> tuple[list[str], int]:
+def _trim_group(
+    timeline: Doc, clip_id: str, source_id: str, length: int
+) -> tuple[list[str], int]:
     """Cut one clip and its linked partners back to ``length`` source frames: (ids trimmed, clips removed)."""
-    group = selection(timeline, [clip_id], True)
+    group = selection(timeline, [clip_id], linked=True)
     cuts = {
         member["clip_id"]: shortened(member, length)
         for member in group
@@ -323,12 +397,19 @@ def _trim_group(timeline: Doc, clip_id: str, source_id: str, length: int) -> tup
         value, frames = cuts.get(member["clip_id"], (member, 0))
         if value is None:
             continue
-        resized.append(resize_for_edit(value, "out", frames - lost) if frames != lost else without_transition(value))
+        resized.append(
+            resize_for_edit(value, "out", frames - lost)
+            if frames != lost
+            else without_transition(value)
+        )
     if lost == 0:
         replace(timeline, resized)
     else:
         primary = required_clip(timeline, clip_id)
-        ordered = [primary, *(member for member in group if member["clip_id"] != clip_id)]
+        ordered = [
+            primary,
+            *(member for member in group if member["clip_id"] != clip_id),
+        ]
         ripple_trim(timeline, ordered, resized, "out", -lost, keep_spanning=True)
     return clip_ids_of(group), 0
 
@@ -344,10 +425,25 @@ def apply_pending(
     trimmed: list[str] = []
     removed = 0
     for source in sources:
-        shot = next((item for item in project["shots"] if item["shot_id"] == source.get("shot_id")), None)
+        shot = next(
+            (
+                item
+                for item in project["shots"]
+                if item["shot_id"] == source.get("shot_id")
+            ),
+            None,
+        )
         take = bound_take(shot) if shot is not None else None
-        if shot is None or take is None or take["take_id"] != source.get("pending_take_id"):
-            reject("nothing_pending", "使用中的 take 已經改變，請重新讀取專案後再套用", source_id=source["source_id"])
+        if (
+            shot is None
+            or take is None
+            or take["take_id"] != source.get("pending_take_id")
+        ):
+            reject(
+                "nothing_pending",
+                "使用中的 take 已經改變，請重新讀取專案後再套用",
+                source_id=source["source_id"],
+            )
         resolved = shot_source(project, shot, timeline["fps"])
         length = int(resolved["duration_frames"])
         affected = [
@@ -360,16 +456,26 @@ def apply_pending(
         for clip in sorted(affected, key=clip_end, reverse=True):
             if clip["clip_id"] in done:
                 continue
-            members = clip_ids_of(selection(timeline, [clip["clip_id"]], True))
-            ids, gone = _trim_group(timeline, clip["clip_id"], source["source_id"], length)
+            members = clip_ids_of(selection(timeline, [clip["clip_id"]], linked=True))
+            ids, gone = _trim_group(
+                timeline, clip["clip_id"], source["source_id"], length
+            )
             done.update(members)
             trimmed += ids
             removed += gone
         timeline["sources"] = [
-            _rebound(item, resolved) if item["source_id"] == source["source_id"] else item
+            _rebound(item, resolved)
+            if item["source_id"] == source["source_id"]
+            else item
             for item in timeline["sources"]
         ]
     return trimmed, removed
 
 
-__all__ = ["apply_pending", "bind_sources", "follows_take", "pending_sources", "shortened"]
+__all__ = [
+    "apply_pending",
+    "bind_sources",
+    "follows_take",
+    "pending_sources",
+    "shortened",
+]

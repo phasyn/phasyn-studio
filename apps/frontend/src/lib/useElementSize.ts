@@ -29,7 +29,7 @@ function observeSize(element: HTMLElement, update: (size: ElementSize) => void):
     update(next);
   });
   observer.observe(element);
-  return () => observer.disconnect();
+  return () => { observer.disconnect(); };
 }
 
 /** Size of the element behind a stable ref (the element itself is not expected to be swapped). */

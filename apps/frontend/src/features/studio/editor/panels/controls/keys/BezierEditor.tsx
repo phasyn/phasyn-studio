@@ -6,7 +6,7 @@ import { t } from "@/i18n";
 import { cn } from "@/lib/cn";
 import { NumberField } from "../fields";
 import { roundTo } from "../numbers";
-import type { CommitResult } from "../useFieldDraft";
+import type { CommitHandler } from "../useFieldDraft";
 
 /** Room around the unit square, in px. */
 const PAD = 10;
@@ -53,14 +53,14 @@ export function BezierEditor({ value, size, locked, onChange }: BezierEditorProp
     const byY = event.key === "ArrowDown" ? -amount : event.key === "ArrowUp" ? amount : 0;
     if (byX === 0 && byY === 0) return;
     event.preventDefault();
-    if (!locked && !event.repeat) onChange(withHandle(value, handle, (value[handle * 2] ?? 0) + byX, (value[handle * 2 + 1] ?? 0) + byY));
+    if (!(locked != null && locked !== "") && !event.repeat) onChange(withHandle(value, handle, (value[handle * 2] ?? 0) + byX, (value[handle * 2 + 1] ?? 0) + byY));
   };
 
   if (size < 4 * PAD) return null;
-  const start = `${px(0)},${py(0)}`;
-  const end = `${px(1)},${py(1)}`;
-  const outgoing = `${px(out.x)},${py(out.y)}`;
-  const incoming = `${px(into.x)},${py(into.y)}`;
+  const start = `${String(px(0))},${String(py(0))}`;
+  const end = `${String(px(1))},${String(py(1))}`;
+  const outgoing = `${String(px(out.x))},${String(py(out.y))}`;
+  const incoming = `${String(px(into.x))},${String(py(into.y))}`;
   return (
     <svg
       width={size}
@@ -88,12 +88,12 @@ export function BezierEditor({ value, size, locked, onChange }: BezierEditorProp
             aria-valuenow={x}
             aria-valuetext={t("時間 {x}，進度 {y}", { x: x.toFixed(2), y: y.toFixed(2) })}
             strokeWidth="1.5"
-            className={cn("fill-brand-violet stroke-sunken outline-none focus-visible:stroke-focus", !locked && "cursor-grab active:cursor-grabbing")}
+            className={cn("fill-brand-violet stroke-sunken outline-none focus-visible:stroke-focus", !(locked != null && locked !== "") && "cursor-grab active:cursor-grabbing")}
             onPointerDown={(event) => {
               if (event.button !== 0) return;
               event.preventDefault();
               event.currentTarget.focus({ preventScroll: true });
-              if (locked) return;
+              if (locked != null && locked !== "") return;
               event.currentTarget.setPointerCapture(event.pointerId);
               setDrag([...value]);
             }}
@@ -106,8 +106,8 @@ export function BezierEditor({ value, size, locked, onChange }: BezierEditorProp
               setDrag(null);
               onChange(at(event, handle));
             }}
-            onPointerCancel={() => setDrag(null)}
-            onKeyDown={(event) => nudge(event, handle)}
+            onPointerCancel={() => { setDrag(null); }}
+            onKeyDown={(event) => { nudge(event, handle); }}
           />
         );
       })}
@@ -125,7 +125,7 @@ const FIELDS: readonly { index: number; label: string }[] = [
 export interface BezierFieldsProps {
   value: readonly number[];
   /** Applies the controls; the answer is the field's: true, or why they were refused. */
-  onChange: (value: number[]) => CommitResult;
+  onChange: CommitHandler<number[]>;
 }
 
 /** The two handles as numbers: a row per handle, a column for its time and one for its progress. */

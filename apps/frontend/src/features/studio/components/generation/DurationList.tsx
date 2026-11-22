@@ -8,12 +8,12 @@ import { formatDuration, frameOptions } from "../../model/frames";
 import { t } from "@/i18n";
 
 export function DurationList({ frames, onPick }: { frames: number; onPick: (frames: number) => void }) {
-  const list = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const standard = frameOptions();
   const options = standard.includes(frames) ? standard : [...standard, frames].sort((a, b) => a - b);
 
   useLayoutEffect(() => {
-    list.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
+    listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
   }, []);
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -28,11 +28,11 @@ export function DurationList({ frames, onPick }: { frames: number; onPick: (fram
   };
 
   return (
-    <div ref={list} role="listbox" aria-label={t("時長")} onKeyDown={onKeyDown} className="grid max-h-80 min-h-0 gap-0.5 overflow-y-auto p-1.5">
+    <div tabIndex={-1} ref={listRef} role="listbox" aria-label={t("時長")} onKeyDown={onKeyDown} className="grid max-h-80 min-h-0 gap-0.5 overflow-y-auto p-1.5">
       {options.map((value) => {
         const selected = value === frames;
         const unusual = !standard.includes(value);
-        const choose = () => onPick(value);
+        const choose = () => { onPick(value); };
         return (
           <div
             key={value}

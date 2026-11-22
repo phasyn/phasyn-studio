@@ -55,7 +55,7 @@ export function SamplingFix({ shot }: { shot: StudioShot }) {
         >
           {t("改用元件預設")}
         </Button>
-        <Button size="sm" variant="quiet" icon={<MonitorCog aria-hidden />} onClick={() => showEngine({ tab: "quality", routeId: null }, setEngineOpen)}>
+        <Button size="sm" variant="quiet" icon={<MonitorCog aria-hidden />} onClick={() => { showEngine({ tab: "quality", routeId: null }, setEngineOpen); }}>
           {t("開啟畫質設定")}
         </Button>
       </div>

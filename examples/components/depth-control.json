@@ -1,0 +1,22 @@
+{
+  "component_id": "depth-control",
+  "label": "影片相對深度",
+  "provider_id": "media.depth_control",
+  "runtime_id": "performance-cpu",
+  "autostart": false,
+  "folder": "製作/控制素材",
+  "settings": {
+    "load": {
+      "model_path": "/path/to/models/midas/midas-v2.1-small-256.onnx",
+      "device": {
+        "kind": "cpu",
+        "id": "cpu",
+        "resource_group": "cpu-performance"
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "mode": "detailed"
+    }
+  }
+}

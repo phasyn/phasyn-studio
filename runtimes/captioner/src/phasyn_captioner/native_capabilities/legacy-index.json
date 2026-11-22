@@ -1,0 +1,127 @@
+{
+  "providers": {
+    "media.upscale": {
+      "default_settings": {
+        "invoke": {},
+        "load": {
+          "device": {
+            "id": "GPU-REPLACE",
+            "kind": "cuda",
+            "resource_group": "gpu"
+          },
+          "precision": {
+            "compute_dtype": "fp16"
+          },
+          "provider_options": {
+            "cuda_memory_cap_bytes": null,
+            "max_frames": 7200,
+            "tile_pixels": 262144
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_captioner.upscale.provider:UpscaleProvider",
+      "kind": "media.upscale",
+      "label": "影片超分（Anime4K v4 Upscale_CNN_x2_VL，MIT；2×／1440p／2160p，保留 fps、幀數與原音訊）",
+      "required_modules": [
+        "numpy",
+        "torch"
+      ],
+      "source_pins": [],
+      "synthetic": false
+    },
+    "qwen_vl.describe": {
+      "default_settings": {
+        "invoke": {
+          "language": "zh-Hant",
+          "max_frames": 64,
+          "sampling_fps": 4
+        },
+        "load": {
+          "device": {
+            "id": "GPU-REPLACE",
+            "kind": "cuda",
+            "resource_group": "gpu"
+          },
+          "model_path": "",
+          "offload": {
+            "mode": "none"
+          },
+          "part_overrides": [],
+          "precision": {
+            "compute_dtype": "bf16",
+            "quantization": {
+              "scheme": "none"
+            }
+          },
+          "provider_options": {
+            "attn_implementation": "sdpa"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_captioner.provider:QwenVLDescribeProvider",
+      "kind": "video.describe",
+      "label": "影片反推語意（Qwen-VL 文字生成；依真實 PTS 抽樣，輸出 SceneDocument）",
+      "required_modules": [
+        "torch",
+        "transformers"
+      ],
+      "source_pins": [],
+      "synthetic": false
+    }
+  },
+  "schema_version": "1.0"
+}

@@ -2,7 +2,7 @@
 // estimator. They change only as new recordings arrive, so the query never polls and stays fresh for a minute.
 import { queryOptions } from "@tanstack/react-query";
 import type { CostProfileList } from "./generated/contracts";
-import { apiJson } from "./http";
+import { contractJson } from "./http";
 import { qk } from "./keys";
 
 export interface CostProfileQuery {
@@ -14,7 +14,7 @@ export interface CostProfileQuery {
 export const COST_PROFILES_STALE_MS = 60_000;
 
 export function fetchCostProfiles(query: CostProfileQuery = {}, signal?: AbortSignal): Promise<CostProfileList> {
-  return apiJson<CostProfileList>("/api/cost-profiles", { query: { ...query }, signal });
+  return contractJson("CostProfileList", "/api/cost-profiles", { query: { ...query }, signal });
 }
 
 export function costProfilesQueryOptions(query: CostProfileQuery = {}) {

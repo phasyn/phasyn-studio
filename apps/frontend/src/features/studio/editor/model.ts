@@ -81,11 +81,11 @@ export function activeClips(timeline: StudioTimeline, frame: number, kind: Timel
 }
 export function visibleClips(timeline: StudioTimeline, frame: number): TimelineClip[] { return activeClips(timeline, frame, "video"); }
 export function audibleClips(timeline: StudioTimeline, frame: number): TimelineClip[] {
-  return activeClips(timeline, frame, "audio").filter((clip) => !clip.effects?.mute);
+  return activeClips(timeline, frame, "audio").filter((clip) => !(clip.effects?.mute === true));
 }
 export function selectClips(timeline: StudioTimeline, ids: readonly string[], linked = true): TimelineClip[] {
   const selected = new Set(ids);
-  const links = new Set(timeline.clips.filter((clip) => selected.has(clip.clip_id) && clip.linked_id).map((clip) => clip.linked_id));
+  const links = new Set(timeline.clips.filter((clip) => Boolean(selected.has(clip.clip_id) && clip.linked_id)).map((clip) => clip.linked_id));
   return timeline.clips.filter((clip) => selected.has(clip.clip_id) || (linked && clip.linked_id !== undefined && links.has(clip.linked_id)));
 }
 

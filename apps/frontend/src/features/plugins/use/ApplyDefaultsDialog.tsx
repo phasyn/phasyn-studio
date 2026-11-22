@@ -104,7 +104,7 @@ function values(defaults: readonly GenerationDefault[]): GenerationValues {
 }
 
 export function ApplyDefaultsDialog({ entry, target, onClose }: { entry: RegistryGeneration | null; target: GenerationTarget; onClose: () => void }) {
-  const scopeName = useId();
+  const scopeNameId = useId();
   const [scope, setScope] = useState<GenerationScope>("shot");
   const defaults = entry ? generationDefaults(entry.generation) : [];
   const perShot = defaults.some((item) => item.field !== "format");
@@ -124,7 +124,7 @@ export function ApplyDefaultsDialog({ entry, target, onClose }: { entry: Registr
       }}
     >
       {entry ? (
-        <DialogContent onKeyDown={(event) => event.stopPropagation()}>
+        <DialogContent onKeyDown={(event) => { event.stopPropagation(); }}>
           <DialogHeader>
             <DialogTitle>{t("套用「{label}」的設定？", { label: generationLabel(entry) })}</DialogTitle>
             <DialogDescription>
@@ -137,7 +137,7 @@ export function ApplyDefaultsDialog({ entry, target, onClose }: { entry: Registr
                 <legend className="pb-1 text-caption font-semibold text-fg-tertiary">{t("鏡頭的範圍")}</legend>
                 {options.map((option) => (
                   <label key={option.id} className="flex min-h-9 cursor-pointer items-center gap-2.5 text-body text-fg">
-                    <input type="radio" name={scopeName} checked={effective === option.id} onChange={() => setScope(option.id)} className="size-4 accent-action" />
+                    <input type="radio" name={scopeNameId} checked={effective === option.id} onChange={() => { setScope(option.id); }} className="size-4 accent-action" />
                     <span className="truncate">{option.label}</span>
                   </label>
                 ))}

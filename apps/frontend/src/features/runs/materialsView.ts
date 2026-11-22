@@ -38,36 +38,36 @@ function rangeText(start: unknown, end: unknown): string {
 }
 
 /** 解析 h3.materials.v1 的值；形狀不符（不是陣列、缺 file 或 role）→ null（呼叫端改顯示原始 JSON）。 */
+function known(role: string): role is MaterialEntry["role"] {
+  return KNOWN_ROLES.has(role);
+}
+
 export function materialRows(value: unknown): MaterialRow[] | null {
   if (!Array.isArray(value)) return null;
-  const items: Record<string, unknown>[] = [];
+  const items: { data: Record<string, unknown>; role: string; file: FileRef }[] = [];
+  const labelInputs: LabelInput[] = [];
   for (const item of value as unknown[]) {
-    if (!isRecord(item) || !isFileRef(item.file) || typeof item.role !== "string") return null;
-    items.push(item);
+    if (!isRecord(item) || !isFileRef(item["file"]) || typeof item["role"] !== "string") return null;
+    const role = item["role"];
+    items.push({ data: item, role, file: item["file"] });
+    if (known(role)) {
+      const kind = ROLE_KIND[role];
+      labelInputs.push(kind === "video" ? { kind, soundtrack: item["use_embedded_audio"] === false ? "off" : "unknown" } : { kind });
+    }
   }
-  const known = (role: string): role is MaterialEntry["role"] => KNOWN_ROLES.has(role);
   // 有不認得的角色（例如關鍵幀）時，它可能也佔用 <Picture n> 編號：整份都不標標籤，不猜
-  const allKnown = items.every((item) => known(String(item.role)));
-  const labels = allKnown
-    ? labelsInOrder(
-        items.map((item): LabelInput => {
-          const kind = ROLE_KIND[item.role as MaterialEntry["role"]];
-          return kind === "video" ? { kind, soundtrack: item.use_embedded_audio === false ? "off" : "unknown" } : { kind };
-        }),
-      )
-    : [];
-  return items.map((item, index) => {
-    const role = String(item.role);
+  const labels = labelInputs.length === items.length ? labelsInOrder(labelInputs) : [];
+  return items.map(({ data: item, role, file }, index) => {
     const label = labels[index];
-    const range = role === "reference_image" ? null : rangeText(item.start_seconds, item.end_seconds);
+    const range = role === "reference_image" ? null : rangeText(item["start_seconds"], item["end_seconds"]);
     return {
       position: index + 1,
       role,
       roleLabel: known(role) ? ROLE_LABEL[role] : role,
-      file: item.file as FileRef,
+      file,
       tag: label?.label ?? null,
       soundtrack: label?.soundtrack ?? null,
-      range: range !== null && role === "reference_video" && item.hold_last_frame === true ? t("{range}，之後凍結最後一格", { range }) : range,
+      range: range !== null && role === "reference_video" && item["hold_last_frame"] === true ? t("{range}，之後凍結最後一格", { range }) : range,
     };
   });
 }

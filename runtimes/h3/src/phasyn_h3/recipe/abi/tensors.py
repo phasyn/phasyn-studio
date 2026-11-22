@@ -7,6 +7,7 @@ products checked for overflow, offsets legal, contiguous and non-overlapping.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import struct
@@ -16,6 +17,12 @@ from pathlib import Path
 from typing import Any, BinaryIO
 
 from .canonical import sha256_hex
+
+
+_LENGTH_PREFIX_BYTES = 8
+_MIN_HEADER_BYTES = 2
+_OFFSET_COUNT = 2
+
 
 MAX_HEADER_BYTES = 16 * 1024 * 1024
 MAX_RANK = 8
@@ -50,6 +57,8 @@ class TensorFormatError(ValueError):
 
 @dataclass(frozen=True)
 class TensorInfo:
+    """Describe the dtype, shape and byte offsets of a tensor."""
+
     name: str
     dtype: str
     shape: tuple[int, ...]
@@ -58,11 +67,14 @@ class TensorInfo:
 
     @property
     def byte_length(self) -> int:
+        """Return the number of bytes occupied by this tensor."""
         return self.end - self.start
 
 
 @dataclass
 class SafetensorsHeader:
+    """Expose a checked tensor index and its payload boundary."""
+
     header_length: int
     tensors: dict[str, TensorInfo]
     metadata: dict[str, str] = field(default_factory=dict)
@@ -70,6 +82,7 @@ class SafetensorsHeader:
 
     @property
     def data_offset(self) -> int:
+        """Return the offset where the safetensors payload begins."""
         return 8 + self.header_length
 
 
@@ -91,16 +104,7 @@ def _checked_nbytes(dtype: str, shape: Iterable[int]) -> int:
 
 def parse_header(prefix: bytes, total_size: int) -> SafetensorsHeader:
     """Parse and validate a safetensors header given the file's first bytes."""
-    if total_size < 8 or len(prefix) < 8:
-        raise TensorFormatError("檔案過短，缺少 header 長度")
-    (header_length,) = struct.unpack("<Q", prefix[:8])
-    if not 2 <= header_length <= MAX_HEADER_BYTES:
-        raise TensorFormatError("header 長度超出 16 MiB 限制或過短")
-    if 8 + header_length > total_size:
-        raise TensorFormatError("header 長度超過檔案大小")
-    if len(prefix) < 8 + header_length:
-        raise TensorFormatError("讀取的 header 不完整")
-    raw = prefix[8 : 8 + header_length]
+    header_length, raw = _header_bytes(prefix, total_size)
     if raw[:1] != b"{":
         raise TensorFormatError("header 必須是 JSON object")
     try:
@@ -115,20 +119,7 @@ def parse_header(prefix: bytes, total_size: int) -> SafetensorsHeader:
     ):
         raise TensorFormatError("__metadata__ 必須是字串對字串")
     data_length = total_size - 8 - header_length
-    tensors: dict[str, TensorInfo] = {}
-    for name, entry in doc.items():
-        if not isinstance(entry, dict) or set(entry) != {"dtype", "shape", "data_offsets"}:
-            raise TensorFormatError(f"tensor header 欄位錯誤：{name}")
-        dtype, shape, offsets = entry["dtype"], entry["shape"], entry["data_offsets"]
-        if not isinstance(shape, list):
-            raise TensorFormatError(f"shape 必須是陣列：{name}")
-        nbytes = _checked_nbytes(dtype, shape)
-        if not isinstance(offsets, list) or len(offsets) != 2 or not all(type(v) is int for v in offsets):
-            raise TensorFormatError(f"data_offsets 非法：{name}")
-        start, end = offsets
-        if not 0 <= start <= end <= data_length or end - start != nbytes:
-            raise TensorFormatError(f"offset 與 shape 長度不一致或越界：{name}")
-        tensors[name] = TensorInfo(name, dtype, tuple(shape), start, end)
+    tensors = _header_tensors(doc, data_length)
     cursor = 0
     for info in sorted(tensors.values(), key=lambda t: (t.start, t.end)):
         if info.start != cursor:
@@ -149,23 +140,26 @@ def _unique_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 
 def read_header_from_file(path: str | Path) -> SafetensorsHeader:
+    """Read and validate the safetensors header from a file."""
     path = Path(path)
     size = path.stat().st_size
     with path.open("rb") as fh:
         head = fh.read(8)
-        if len(head) < 8:
+        if len(head) < _LENGTH_PREFIX_BYTES:
             raise TensorFormatError("檔案過短")
         (length,) = struct.unpack("<Q", head)
-        if not 2 <= length <= MAX_HEADER_BYTES:
+        if not _MIN_HEADER_BYTES <= length <= MAX_HEADER_BYTES:
             raise TensorFormatError("header 長度超出 16 MiB 限制或過短")
         return parse_header(head + fh.read(length), size)
 
 
 def read_header_from_bytes(data: bytes) -> SafetensorsHeader:
+    """Parse a safetensors header from an in-memory buffer."""
     return parse_header(data, len(data))
 
 
 def tensor_bytes(data: bytes, header: SafetensorsHeader, name: str) -> bytes:
+    """Read the selected tensor payload."""
     info = header.tensors[name]
     base = header.data_offset
     return data[base + info.start : base + info.end]
@@ -186,17 +180,27 @@ def write_safetensors(
         shape_list = list(shape)
         nbytes = _checked_nbytes(dtype, shape_list)
         if len(raw) != nbytes:
-            raise TensorFormatError(f"{name} 資料長度 {len(raw)} 與 shape/dtype {nbytes} 不符")
-        header[name] = {"dtype": dtype, "shape": shape_list, "data_offsets": [offset, offset + nbytes]}
+            raise TensorFormatError(
+                f"{name} 資料長度 {len(raw)} 與 shape/dtype {nbytes} 不符"
+            )
+        header[name] = {
+            "dtype": dtype,
+            "shape": shape_list,
+            "data_offsets": [offset, offset + nbytes],
+        }
         offset += nbytes
         payloads.append(raw)
-    encoded = json.dumps(header, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    encoded = json.dumps(header, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
     pad = (8 - len(encoded) % 8) % 8
     encoded += b" " * pad
     return struct.pack("<Q", len(encoded)) + encoded + b"".join(payloads)
 
 
-def tensor_specs(header: SafetensorsHeader, layouts: Mapping[str, str]) -> list[dict[str, Any]]:
+def tensor_specs(
+    header: SafetensorsHeader, layouts: Mapping[str, str]
+) -> list[dict[str, Any]]:
     """tensor-bundle ``tensors`` entries for every tensor in the header."""
     specs = []
     for name in sorted(header.tensors):
@@ -214,7 +218,7 @@ def tensor_specs(header: SafetensorsHeader, layouts: Mapping[str, str]) -> list[
 
 
 def verify_payload_identity(manifest: Mapping[str, Any], payload: bytes) -> list[str]:
-    """payload sha/size and artifact_id agree with the manifest."""
+    """Payload sha/size and artifact_id agree with the manifest."""
     problems: list[str] = []
     ref = manifest.get("payload", {})
     digest = sha256_hex(payload)
@@ -227,7 +231,9 @@ def verify_payload_identity(manifest: Mapping[str, Any], payload: bytes) -> list
     return problems
 
 
-def verify_tensor_specs(manifest: Mapping[str, Any], header: SafetensorsHeader) -> list[str]:
+def verify_tensor_specs(
+    manifest: Mapping[str, Any], header: SafetensorsHeader
+) -> list[str]:
     """Every manifest tensor must exist with the same dtype/shape/byte_length."""
     problems: list[str] = []
     declared = {t["name"]: t for t in manifest.get("tensors", [])}
@@ -261,7 +267,7 @@ def verify_conditioning_bundle(
     *,
     max_tokens: int,
 ) -> list[str]:
-    """checks for an h3_conditioning bundle (CPU only)."""
+    """Checks for an h3_conditioning bundle (CPU only)."""
     problems = verify_payload_identity(manifest, payload)
     try:
         header = read_header_from_bytes(payload)
@@ -269,17 +275,27 @@ def verify_conditioning_bundle(
         return [*problems, str(exc)]
     problems += verify_tensor_specs(manifest, header)
     if manifest.get("tap") != CONDITIONING_TAP:
-        problems.append("tap 必須是 hidden_states[50]、未套 final norm、use_cache=false、寬 5120")
+        problems.append(
+            "tap 必須是 hidden_states[50]、未套 final norm、use_cache=false、寬 5120"
+        )
     seq = manifest.get("text_len")
     specs = {t["name"]: t for t in manifest.get("tensors", [])}
     if set(specs) != {"hidden_states", "text_token_tags", "text_video_token_mask"}:
         problems.append("conditioning bundle 必須恰有三個 tensor")
         return problems
     hidden = specs["hidden_states"]
-    if hidden["dtype"] != "BF16" or hidden["shape"] != [seq, 5120] or hidden["layout"] != "S,H":
+    if (
+        hidden["dtype"] != "BF16"
+        or hidden["shape"] != [seq, 5120]
+        or hidden["layout"] != "S,H"
+    ):
         problems.append("hidden_states 必須是 BF16 [S,5120]、layout S,H")
     tags = specs["text_token_tags"]
-    if tags["dtype"] not in ("I64", "I32") or tags["shape"] != [seq] or tags["layout"] != "S":
+    if (
+        tags["dtype"] not in ("I64", "I32")
+        or tags["shape"] != [seq]
+        or tags["layout"] != "S"
+    ):
         problems.append("text_token_tags 必須是整數 [S]、layout S")
     mask = specs["text_video_token_mask"]
     if mask["dtype"] != "BOOL" or mask["shape"] != [seq] or mask["layout"] != "S":
@@ -290,8 +306,7 @@ def verify_conditioning_bundle(
 
 
 def stream_sha256(fh: BinaryIO, chunk: int = 1 << 20) -> tuple[str, int]:
-    import hashlib
-
+    """Hash the stream contents with SHA-256."""
     h = hashlib.sha256()
     size = 0
     while True:
@@ -304,5 +319,46 @@ def stream_sha256(fh: BinaryIO, chunk: int = 1 << 20) -> tuple[str, int]:
 
 
 def file_sha256(path: str | Path) -> tuple[str, int]:
+    """Hash the file contents with SHA-256."""
     with Path(path).open("rb") as fh:
         return stream_sha256(fh)
+
+
+def _header_tensors(doc: dict[str, Any], data_length: int) -> dict[str, TensorInfo]:
+    tensors: dict[str, TensorInfo] = {}
+    for name, entry in doc.items():
+        if not isinstance(entry, dict) or set(entry) != {
+            "dtype",
+            "shape",
+            "data_offsets",
+        }:
+            raise TensorFormatError(f"tensor header 欄位錯誤：{name}")
+        dtype, shape, offsets = entry["dtype"], entry["shape"], entry["data_offsets"]
+        if not isinstance(shape, list):
+            raise TensorFormatError(f"shape 必須是陣列：{name}")
+        nbytes = _checked_nbytes(dtype, shape)
+        if (
+            not isinstance(offsets, list)
+            or len(offsets) != _OFFSET_COUNT
+            or not all(type(v) is int for v in offsets)
+        ):
+            raise TensorFormatError(f"data_offsets 非法：{name}")
+        start, end = offsets
+        if not 0 <= start <= end <= data_length or end - start != nbytes:
+            raise TensorFormatError(f"offset 與 shape 長度不一致或越界：{name}")
+        tensors[name] = TensorInfo(name, dtype, tuple(shape), start, end)
+    return tensors
+
+
+def _header_bytes(prefix: bytes, total_size: int) -> tuple[int, bytes]:
+    if total_size < _LENGTH_PREFIX_BYTES or len(prefix) < _LENGTH_PREFIX_BYTES:
+        raise TensorFormatError("檔案過短，缺少 header 長度")
+    (header_length,) = struct.unpack("<Q", prefix[:8])
+    if not _MIN_HEADER_BYTES <= header_length <= MAX_HEADER_BYTES:
+        raise TensorFormatError("header 長度超出 16 MiB 限制或過短")
+    if 8 + header_length > total_size:
+        raise TensorFormatError("header 長度超過檔案大小")
+    if len(prefix) < _LENGTH_PREFIX_BYTES + header_length:
+        raise TensorFormatError("讀取的 header 不完整")
+    raw = prefix[8 : 8 + header_length]
+    return header_length, raw

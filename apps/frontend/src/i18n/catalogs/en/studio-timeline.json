@@ -1,4 +1,19 @@
 {
   "適合寬度": "Fit to width",
-  "時間軸縮放": "Timeline zoom"
+  "時間軸縮放": "Timeline zoom",
+  "OTIO 文件過大": "The OTIO document is too large.",
+  "無法讀取 OTIO 時間軸": "Could not read the OTIO timeline.",
+  "專案版本已變更，請重新開啟交換視窗。": "The project has changed. Reopen the exchange dialog.",
+  "請指定每個外部媒體檔。": "Select a file for each external media reference.",
+  "匯回 Kdenlive 剪輯": "Import edits from Kdenlive",
+  "選擇從 Kdenlive 匯出的 OTIO。支援同名軌的切割、裁切與同內容媒體重新連結，字幕與標記沿用目前專案。": "Select an OTIO file exported from Kdenlive. Studio can import cuts and trims on tracks with matching names and relink files with identical content. It keeps the current project's subtitles and markers.",
+  "剪輯檔": "Edit file",
+  "比對素材並預覽回剪": "Match media and preview imported edits",
+  "原片段": "Original clips",
+  "回剪片段": "Imported clips",
+  "採用預覽的剪輯": "Apply the previewed edits",
+  "含合成參考片的交付包": "Delivery package with reference render",
+  "使用目前完整時間軸產生 MP4，連同字幕 SRT、媒體、OTIO 與轉換報告交付。": "Render the full timeline as an MP4 and deliver it with SRT subtitles, media files, the OTIO timeline, and a conversion report.",
+  "下載完整交付 ZIP": "Download the complete delivery ZIP",
+  "產生合成參考片": "Render reference video"
 }

@@ -30,11 +30,11 @@ describe("DefinitionRepair", () => {
   it("列出不認得的欄位與不支援的值；值可跳到設定；確認後以 PUT 送出移除欄位後的整份定義（只送一次）", async () => {
     const { refused, draft } = refusedEntry("stopped");
     const { calls } = installFakeApi({
-      [`PUT /api/nodes/${NODE_A_ID}/components/seeded`]: (request) => ({ ...refused, ...(request.body as object), last_error: null }),
+      [`PUT /api/nodes/${NODE_A_ID}/components/seeded`]: () => ({ ...refused, last_error: null }),
       "GET /api/catalog": () => catalog([{ ...refused, last_error: null }]),
     });
-    const onJump = vi.fn();
-    const onReplaced = vi.fn();
+    const onJump = vi.fn<(path: string) => void>();
+    const onReplaced = vi.fn<() => void>();
     const entry = { descriptor: refused, node, key: `${NODE_A_ID}::seeded` };
     const { user } = renderWithProviders(<DefinitionRepair entry={entry} draft={draft} draftChanged={false} onJump={onJump} onReplaced={onReplaced} />);
 
@@ -46,13 +46,13 @@ describe("DefinitionRepair", () => {
     const dialog = await screen.findByRole("dialog", { name: "移除 1 個欄位並替換定義？" });
     expect(within(dialog).getByText(/只有 stopped 時才能替換定義/)).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "移除並替換定義" }));
-    await waitFor(() => expect(onReplaced).toHaveBeenCalled());
+    await waitFor(() => { expect(onReplaced).toHaveBeenCalled(); });
 
     const puts = calls.filter((call) => call.method === "PUT");
     expect(puts).toHaveLength(1);
-    const body = puts[0]?.body as Record<string, unknown>;
+    const body = puts[0]?.body;
     expect(body).toMatchObject({ component_id: "seeded", provider_id: "h3.dit", runtime_id: "h3", exclusive_group: "dit", limits: { example: { max_items: 2 } }, folder: "生成/DiT", autostart: false });
-    expect(body.settings).toEqual(refused.settings.stored);
+    expect(body).toMatchObject({ settings: refused.settings.stored });
   });
 
   it("不是 stopped 時擋下替換、不開確認", async () => {

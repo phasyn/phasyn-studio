@@ -1,10 +1,11 @@
 // 推理 Studio・手動執行（/inference/run?pipeline=&run=）：選一個已保存的元件組合，依輸入型別填寫（prompt、上傳媒體、
 // ref2va 參考素材、其他型別的 JSON），檢查並啟動需要的元件，送出 POST /api/runs；run 在右側即時顯示狀態與輸出。
 // 草稿依 pipeline 保存在記憶體（draftStore）；網址只放選取的元件組合與 run。寫入不自動重送。
+import { withOccurrenceKeys } from "@/lib/occurrenceKeys";
 import { Activity, ChartGantt, CircleCheck, ExternalLink, FileInput, ListPlus, PencilRuler, Play, Rocket, Type, Workflow } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { useCatalog } from "@/api/catalog";
+import { componentUsable, useCatalog } from "@/api/catalog";
 import type { Catalog, Port } from "@/api/generated/contracts";
 import { usePipelines } from "@/api/pipelines";
 import { useCreateRun, useRun } from "@/api/runs";
@@ -56,9 +57,8 @@ const EDITOR_HINT: Record<ReturnType<typeof editorFor>, string> = {
 function InputRow({ pipelineId, port, value, materials, disabled }: { pipelineId: string; port: Port; value: WireTypedValue | null; materials: readonly MaterialDraft[]; disabled: boolean }) {
   const id = `inference-input-${port.name}`;
   const editor = editorFor(port);
-  const setValue = (next: WireTypedValue | null) => updateDraft(pipelineId, (draft) => ({ ...draft, inputs: { ...draft.inputs, [port.name]: next } }));
-  const updateMaterials = (update: (list: MaterialDraft[]) => MaterialDraft[]) =>
-    updateDraft(pipelineId, (draft) => ({ ...draft, materials: { ...draft.materials, [port.name]: update(draft.materials[port.name] ?? []) } }));
+  const setValue = (next: WireTypedValue | null) => { updateDraft(pipelineId, (draft) => ({ ...draft, inputs: { ...draft.inputs, [port.name]: next } })); };
+  const updateMaterials = (update: (list: MaterialDraft[]) => MaterialDraft[]) => { updateDraft(pipelineId, (draft) => ({ ...draft, materials: { ...draft.materials, [port.name]: update(draft.materials[port.name] ?? []) } })); };
   return (
     <div className="grid min-w-0 gap-2 border-b border-line-subtle px-4 py-3.5 last:border-b-0">
       <div className="flex flex-wrap items-center gap-2 text-data">
@@ -134,13 +134,13 @@ function InferenceForm({
   const uploading = useUploadsInFlight(pipeline.pipeline_id);
   const starter = useComponentControl();
   const create = useCreateRun();
-  const inFlight = useRef(false);
+  const inFlightRef = useRef(false);
   const lookup = useMemo(() => makeLookup(catalog), [catalog]);
   const required = requiredComponents(pipeline, catalog);
   const wiring = validatePipeline(pipeline, lookup).filter((issue) => issue.severity === "error");
   const problems = draftIssues(pipeline.inputs, draft);
   const unknownCatalog = catalogUnknownText(catalogStatus);
-  const notReady = required.filter((item) => item.known && (!item.descriptor || item.nodeStale || (item.descriptor.state !== "ready" && item.descriptor.state !== "busy")));
+  const notReady = required.filter((item) => item.known && (!item.descriptor || item.nodeStale || !componentUsable(item.descriptor)));
   const testRun = required.some((item) => item.descriptor?.provider_id.startsWith("test.") ?? false);
   const pending = create.isPending;
   const blockReason = pending ? null : submitBlockReason({ wiringErrors: wiring.length, uploading, problems });
@@ -148,15 +148,15 @@ function InferenceForm({
 
   const submit = () => {
     // 上傳數以 store 的當下值再確認一次（剛選完檔、畫面還沒重繪時也不送出舊值）
-    if (blockReason || inFlight.current || uploadsInFlight(pipeline.pipeline_id) > 0) return;
-    inFlight.current = true;
+    if ((blockReason ?? "") || inFlightRef.current || uploadsInFlight(pipeline.pipeline_id) > 0) return;
+    inFlightRef.current = true;
     const label = draft.label.trim();
     create.mutate(
       { pipeline, inputs: runInputs(pipeline.inputs, draft), ...(label ? { label } : {}) },
       {
-        onSuccess: (run) => onCreated(run.run_id),
+        onSuccess: (run) => { onCreated(run.run_id); },
         onSettled: () => {
-          inFlight.current = false;
+          inFlightRef.current = false;
         },
       },
     );
@@ -169,8 +169,8 @@ function InferenceForm({
         {wiring.length > 0 ? (
           <Callout tone="danger" title={t("接線錯誤（伺服器會以 422 拒絕）")} className="m-4 mb-0">
             <ul className="grid gap-1">
-              {wiring.map((issue, index) => (
-                <li key={index}>
+              {withOccurrenceKeys(wiring, (issue) => issue.message).map(({ item: issue, key }) => (
+                <li key={key}>
                   <span className="machine text-caption text-fg-tertiary">{issue.code}</span> {issue.message}
                 </li>
               ))}
@@ -242,9 +242,9 @@ function InferenceForm({
           <p className="min-w-0 flex-1 text-caption text-fg-tertiary" aria-live="polite">
             {pending ? (
               t("送出中…（不會自動重送）")
-            ) : blockReason ? (
+            ) : (blockReason != null && blockReason !== "") ? (
               <span className="text-warning">{blockReason}</span>
-            ) : unknownCatalog ? (
+            ) : (unknownCatalog != null && unknownCatalog !== "") ? (
               <span className={catalogStatus === "error" ? "text-warning" : undefined}>{t("{unknownCatalog}：還不能確認需要的元件是否就緒（不會自動啟動或重試）", { unknownCatalog })}</span>
             ) : notReady.length > 0 ? (
               <span className="text-warning">
@@ -329,7 +329,7 @@ function GanttDock({
         run={run}
         lookup={lookup}
         selectedStepId={selection?.kind === "step" ? selection.id : null}
-        onSelectStep={(stepId) => onSelect(stepId ? { kind: "step", id: stepId } : null)}
+        onSelectStep={(stepId) => { onSelect((stepId != null && stepId !== "") ? { kind: "step", id: stepId } : null); }}
         now={now ?? 0}
         nodeLabel={(nodeId) => catalog?.directory.find((entry) => entry.node_id === nodeId)?.label ?? null}
       />
@@ -347,26 +347,25 @@ export function InferencePage() {
   const run = useRun(runId);
   const [selection, setSelection] = useState<GraphSelection | null>(null);
   const items = pipelines.data?.items ?? [];
-  const pipeline = pipelineId ? (items.find((item) => item.pipeline_id === pipelineId) ?? null) : null;
+  const pipeline = (pipelineId != null && pipelineId !== "") ? (items.find((item) => item.pipeline_id === pipelineId) ?? null) : null;
 
-  const setRun = (runToShow: string | null) =>
-    setParams((previous) => {
+  const setRun = (runToShow: string | null) => { setParams((previous) => {
       const next = new URLSearchParams(previous);
-      if (runToShow) next.set("run", runToShow);
+      if (runToShow != null && runToShow !== "") next.set("run", runToShow);
       else next.delete("run");
       return next;
-    });
+    }); };
 
-  const docTabs: DocTab[] = [{ id: "list", label: t("手動執行"), icon: Play, to: PATHS.inferenceRun, active: !pipelineId, title: t("已保存的元件組合") }];
-  if (pipelineId) {
+  const docTabs: DocTab[] = [{ id: "list", label: t("手動執行"), icon: Play, to: PATHS.inferenceRun, active: !(pipelineId != null && pipelineId !== ""), title: t("已保存的元件組合") }];
+  if (pipelineId != null && pipelineId !== "") {
     docTabs.push({
       id: pipelineId,
-      label: pipeline?.label || pipelineId,
+      label: (pipeline?.label ?? "") || pipelineId,
       icon: Workflow,
       iconTone: "action",
       to: inferencePath({ pipeline: pipelineId, run: runId }),
       active: true,
-      title: t("{value}（{pipelineId}）", { value: pipeline?.label || pipelineId, pipelineId }),
+      title: t("{value}（{pipelineId}）", { value: (pipeline?.label ?? "") || pipelineId, pipelineId }),
       closeTo: PATHS.inferenceRun,
     });
   }
@@ -387,7 +386,7 @@ export function InferencePage() {
         <ErrorCallout error={pipelines.error} title={t("無法讀取元件組合列表")} onRetry={() => void pipelines.refetch()} retrying={pipelines.isFetching} />
       </div>
     );
-  } else if (!pipelineId) {
+  } else if (!(pipelineId != null && pipelineId !== "")) {
     body = (
       <DockBody className="relative">
         <PipelinePicker pipelines={items} catalog={catalog.data} catalogStatus={catalogStatusOf(catalog)} />
@@ -408,7 +407,7 @@ export function InferencePage() {
     );
   } else {
     body = (
-      <InferenceForm key={pipeline.pipeline_id} pipeline={pipeline} catalog={catalog.data} catalogStatus={catalogStatusOf(catalog)} activeRunId={runId} onCreated={(created) => setRun(created)} />
+      <InferenceForm key={pipeline.pipeline_id} pipeline={pipeline} catalog={catalog.data} catalogStatus={catalogStatusOf(catalog)} activeRunId={runId} onCreated={(created) => { setRun(created); }} />
     );
   }
 

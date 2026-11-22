@@ -47,8 +47,8 @@ export interface MediaItem {
 
 export function proxyState(source: TimelineSource): ProxyState {
   if (source.proxy) return "ready";
-  if (source.proxy_error) return "failed";
-  return source.proxy_run_id ? "building" : "none";
+  if (source.proxy_error != null && source.proxy_error !== "") return "failed";
+  return (source.proxy_run_id != null && source.proxy_run_id !== "") ? "building" : "none";
 }
 
 function placements(timeline: StudioTimeline): Map<string, number> {
@@ -122,7 +122,7 @@ export function mediaTitle(item: MediaItem, fps: number): string {
   return joinInline([
     item.name,
     KIND_LABEL[item.kind],
-    ...(source.width > 0 && source.height > 0 ? [`${source.width}×${source.height}`] : []),
+    ...(source.width > 0 && source.height > 0 ? [`${String(source.width)}×${String(source.height)}`] : []),
     ...(item.duration === null ? [] : [formatTimecode(item.duration, fps)]),
     ...(item.pending ? [t("尚未渲染")] : []),
     t("時間軸使用 {count} 次", { count: item.uses }),

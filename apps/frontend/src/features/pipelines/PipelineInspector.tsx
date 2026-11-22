@@ -1,5 +1,6 @@
 // The pipeline editor's inspector: the selected step (edited in place), a pipeline input or output, or — with nothing
 // selected — the pipeline's own properties and the front-end checks.
+import { withOccurrenceKeys } from "@/lib/occurrenceKeys";
 import { CircleAlert, Workflow } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import type { WirePipeline } from "@/api/types";
@@ -28,7 +29,7 @@ function StepInspector({ binding, lookup, issues }: { binding: StepBinding; look
     <div className="flex min-h-0 min-w-0 flex-1 flex-col animate-rise-in">
       <EntityHeader
         icon={kind.icon}
-        art={kind.art}
+        {...(kind.art === undefined ? {} : { art: kind.art })}
         tone={kind.tone}
         title={<code className="machine">{step.step_id}</code>}
         status={descriptor ? <StatusBadge kind="component" value={descriptor.state} /> : <StatusChip tone="warning" label={step.component_id ? t("未知元件") : t("未選 instance")} />}
@@ -70,12 +71,12 @@ function PropertiesInspector({
       <DockBody>
         <PropertySection title={t("基本")}>
           <PropertyGrid>
-            <PropertyRow label="pipeline_id" htmlFor={isNew ? "pipeline-id" : undefined} hint={isNew ? undefined : t("已保存的元件組合不可改 ID；可另存新元件組合。")}>
+            <PropertyRow label="pipeline_id" {...(isNew ? { htmlFor: "pipeline-id" } : {})} hint={isNew ? undefined : t("已保存的元件組合不可改 ID；可另存新元件組合。")}>
               {idField}
               {idTaken ? <span className="text-caption text-warning">{t("已有同 ID 的元件組合：儲存會覆寫它。")}</span> : null}
             </PropertyRow>
             <PropertyRow label={t("名稱")} htmlFor="pipeline-label">
-              <Input compact id="pipeline-label" value={pipeline.label} onChange={(event) => onLabelChange(event.target.value)} />
+              <Input compact id="pipeline-label" value={pipeline.label} onChange={(event) => { onLabelChange(event.target.value); }} />
             </PropertyRow>
             <PropertyRow label={t("步驟")} mono>
               {pipeline.steps.length}
@@ -89,8 +90,8 @@ function PropertiesInspector({
           {errors.length > 0 ? (
             <Callout tone="danger" title={t("{errorsCount} 個錯誤（接線或呼叫參數；執行時伺服器會以 422 拒絕，儲存前會先確認）", { errorsCount: errors.length })}>
               <ul className="grid gap-1">
-                {errors.map((issue, index) => (
-                  <li key={index}>
+                {withOccurrenceKeys(errors, (issue) => issue.message).map(({ item: issue, key }) => (
+                  <li key={key}>
                     <span className="machine text-caption text-fg-tertiary">{issue.code}</span> {issue.message}
                   </li>
                 ))}
@@ -101,8 +102,8 @@ function PropertiesInspector({
           )}
           {warnings.length > 0 ? (
             <ul className="mt-2 grid gap-1 text-caption text-warning">
-              {warnings.map((issue, index) => (
-                <li key={index}>{issue.message}</li>
+              {withOccurrenceKeys(warnings, (issue) => issue.message).map(({ item: issue, key }) => (
+                <li key={key}>{issue.message}</li>
               ))}
             </ul>
           ) : null}
@@ -150,7 +151,7 @@ export function PipelineInspector({
       isNew={isNew}
       idField={idField}
       idTaken={idTaken}
-      onLabelChange={(label) => onChange({ ...pipeline, label })}
+      onLabelChange={(label) => { onChange({ ...pipeline, label }); }}
       errors={errors}
       warnings={warnings}
     />

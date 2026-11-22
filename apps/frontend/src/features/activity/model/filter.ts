@@ -26,7 +26,7 @@ function haystack(line: LogLine): string {
 }
 
 function sinceMs(since: string | null): number | null {
-  if (!since) return null;
+  if (!(since != null && since !== "")) return null;
   const ms = Date.parse(since);
   return Number.isNaN(ms) ? null : ms;
 }

@@ -37,7 +37,7 @@ export function ShorterTakeDialog() {
       }}
     >
       {asked ? (
-        <DialogContent onKeyDown={(event) => event.stopPropagation()}>
+        <DialogContent onKeyDown={(event) => { event.stopPropagation(); }}>
           <DialogHeader>
             <DialogTitle>{t("改用「{name}」較短的新 take？", { name })}</DialogTitle>
             <DialogDescription>

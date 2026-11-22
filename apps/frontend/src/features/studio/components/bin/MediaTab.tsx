@@ -34,7 +34,7 @@ const acceptsFiles = (event: DragEvent<HTMLElement>) => event.dataTransfer.types
 /** After a removal the focus goes to the neighbouring tile, or to 上傳 when the library is empty. */
 function focusLater(itemId: string | null) {
   requestAnimationFrame(() => {
-    const tile = itemId ? document.querySelector<HTMLElement>(`[data-library-open="${CSS.escape(itemId)}"]`) : null;
+    const tile = (itemId != null && itemId !== "") ? document.querySelector<HTMLElement>(`[data-library-open="${CSS.escape(itemId)}"]`) : null;
     (tile ?? document.querySelector<HTMLElement>("[data-library-upload]"))?.focus();
   });
 }
@@ -43,7 +43,7 @@ export function MediaTab({ uploads }: { uploads: LibraryUploads }) {
   const { project } = useStudio();
   const headingId = useId();
   const menuId = useId();
-  const fileInput = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [dropping, setDropping] = useState(false);
   const [menu, setMenu] = useState<TileMenu | null>(null);
   /** The item in the remove confirmation, and the tile the focus goes to afterwards (decided when it opens). */
@@ -60,7 +60,7 @@ export function MediaTab({ uploads }: { uploads: LibraryUploads }) {
     if (media.length > 0) uploads.addFiles(media, false);
   };
   return (
-    <section
+    <section /* eslint-disable-line jsx-a11y-x/no-noninteractive-element-interactions -- This drop target complements the keyboard-accessible file picker in the same panel. */
       aria-labelledby={headingId}
       className={cn("relative flex min-h-0 flex-1 flex-col transition-[background-color,box-shadow] duration-(--duration-fast)", dropping && "bg-brand-soft ring-2 ring-brand-blue/70 ring-inset")}
       onDragEnter={(event) => {
@@ -74,7 +74,7 @@ export function MediaTab({ uploads }: { uploads: LibraryUploads }) {
         event.dataTransfer.dropEffect = "copy";
       }}
       onDragLeave={(event) => {
-        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+        if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
         setDropping(false);
       }}
       onDrop={(event) => {
@@ -88,7 +88,7 @@ export function MediaTab({ uploads }: { uploads: LibraryUploads }) {
         <h3 id={headingId} className="flex min-w-0 items-center gap-1.5 text-data font-semibold text-fg-secondary">
           <AtSign aria-hidden className="size-3.5 shrink-0 text-brand-cyan/80" />
           <span className="truncate">
-            <T source={"參考素材庫<0>{libraryCount}</0>"} values={{ libraryCount: library.length }} slots={[<span className="machine pl-1.5 font-normal text-fg-tertiary" />]} />
+            <T source={"參考素材庫<0>{libraryCount}</0>"} values={{ libraryCount: library.length }} slots={[<span key="slot-0" className="machine pl-1.5 font-normal text-fg-tertiary" />]} />
           </span>
         </h3>
         <Button
@@ -97,13 +97,13 @@ export function MediaTab({ uploads }: { uploads: LibraryUploads }) {
           variant="secondary"
           className="ml-auto"
           icon={<Upload aria-hidden />}
-          onClick={() => fileInput.current?.click()}
+          onClick={() => fileInputRef.current?.click()}
           title={t("上傳圖片、影片或聲音到專案素材庫（不會加到任何鏡頭）")}
         >
           {t("上傳")}
         </Button>
         <input
-          ref={fileInput}
+          ref={fileInputRef}
           type="file"
           accept="image/*,video/*,audio/*"
           multiple
@@ -118,7 +118,7 @@ export function MediaTab({ uploads }: { uploads: LibraryUploads }) {
       {uploads.tasks.length > 0 ? (
         <ul className={cn(CARD, "m-2 mb-0 grid shrink-0 gap-0.5 p-1")} aria-label={t("上傳")} aria-live="polite">
           {uploads.tasks.map((task) => (
-            <ReferenceUploadRow key={task.key} task={task} onRetry={() => uploads.retry(task.key)} onDismiss={() => uploads.dismiss(task.key)} />
+            <ReferenceUploadRow key={task.key} task={task} onRetry={() => { uploads.retry(task.key); }} onDismiss={() => { uploads.dismiss(task.key); }} />
           ))}
         </ul>
       ) : null}
@@ -133,9 +133,9 @@ export function MediaTab({ uploads }: { uploads: LibraryUploads }) {
                 index={index}
                 menuOpen={menu?.itemId === item.item_id}
                 menuId={menuId}
-                onOpen={(itemId) => openAssetLibrary(itemId)}
-                onMenu={(itemId, element, focus) => setMenu({ itemId, element, focus })}
-                onCloseMenu={() => setMenu(null)}
+                onOpen={(itemId) => { openAssetLibrary(itemId); }}
+                onMenu={(itemId, element, focus) => { setMenu({ itemId, element, focus }); }}
+                onCloseMenu={() => { setMenu(null); }}
               />
             ))}
           </ul>
@@ -169,9 +169,9 @@ export function MediaTab({ uploads }: { uploads: LibraryUploads }) {
           anchor={{ kind: "element", element: menu.element }}
           returnFocus={menu.element}
           initialFocus={menu.focus}
-          onClose={() => setMenu(null)}
+          onClose={() => { setMenu(null); }}
           items={[
-            { id: "open", label: t("在素材庫查看"), icon: ZoomIn, onSelect: () => openAssetLibrary(menuItem.item_id) },
+            { id: "open", label: t("在素材庫查看"), icon: ZoomIn, onSelect: () => { openAssetLibrary(menuItem.item_id); } },
             {
               id: "remove",
               label: t("從專案素材庫移除…"),
@@ -189,8 +189,8 @@ export function MediaTab({ uploads }: { uploads: LibraryUploads }) {
       <LibraryRemoveDialog
         itemId={removing?.itemId ?? null}
         uses={(removing && uses.get(removing.itemId)) ?? NO_USES}
-        onClose={() => setRemoving(null)}
-        onRemoved={() => focusLater(removing?.focusAfter ?? null)}
+        onClose={() => { setRemoving(null); }}
+        onRemoved={() => { focusLater(removing?.focusAfter ?? null); }}
       />
     </section>
   );

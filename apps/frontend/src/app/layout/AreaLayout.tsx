@@ -1,3 +1,5 @@
+import { changesPage } from "./shell/viewTransition";
+import { pageTransition, hasSlotContent } from "@/lib/dom";
 import { PanelLeftClose, PanelLeftOpen, Search, type LucideIcon } from "lucide-react";
 import { Suspense, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation, useMatches, useNavigate } from "react-router";
@@ -12,15 +14,15 @@ import { ancestorsOf, filterTree, type TreeItem } from "@/components/workbench/t
 import { cn } from "@/lib/cn";
 import { usePersistentFlag, usePersistentSet, usePersistentSize } from "@/lib/usePersistentSize";
 import { BrandLoading } from "./shell/BrandLoading";
-import { changesPage } from "./shell/viewTransition";
 import { t } from "@/i18n";
+import { isRecord } from "@/lib/json";
 
 /** 路由 handle：`{ frame: "self" }` 的頁面自己渲染工作台骨架（WorkbenchPage）；其他頁面放進單一中欄面板。 */
 function useSelfFramed(): boolean {
   const matches = useMatches();
   const last = matches[matches.length - 1];
-  const handle = last?.handle as { frame?: string } | undefined;
-  return handle?.frame === "self";
+  const handle = last?.handle;
+  return isRecord(handle) && handle["frame"] === "self";
 }
 
 function PageLoading() {
@@ -72,7 +74,7 @@ export function AreaLayout({
   };
 
   return (
-    <OutlinerSlotContext.Provider value={collapsed ? null : outlinerSlot}>
+    <OutlinerSlotContext value={collapsed ? null : outlinerSlot}>
       <div className="flex h-full min-h-0 bg-canvas max-md:h-auto max-md:flex-col">
         <div
           key={collapsed ? "rail" : "explorer"}
@@ -81,10 +83,10 @@ export function AreaLayout({
           style={collapsed ? undefined : { width }}
         >
           {collapsed ? (
-            rail(() => toggle(false))
+            rail(() => { toggle(false); })
           ) : (
             <>
-              {explorer(() => toggle(true))}
+              {explorer(() => { toggle(true); })}
               <div ref={setOutlinerSlot} className="flex h-[38%] max-h-[26rem] min-h-40 shrink-0 flex-col empty:hidden" />
             </>
           )}
@@ -98,7 +100,7 @@ export function AreaLayout({
           {selfFramed ? page : <CenterFrame>{page}</CenterFrame>}
         </div>
       </div>
-    </OutlinerSlotContext.Provider>
+    </OutlinerSlotContext>
   );
 }
 
@@ -123,7 +125,7 @@ export function AreaRail({ label, title, sections, onExpand }: { label: string; 
         <NavLink
           key={section.id}
           to={section.path}
-          viewTransition
+          {...pageTransition()}
           end={section.end ?? false}
           aria-label={section.label}
           title={t("{label}：{hint}", { label: section.label, hint: section.hint })}
@@ -183,19 +185,19 @@ export function AreaExplorer({
   /** 樹下方的一行狀態（例如讀取失敗）。 */
   footer?: ReactNode;
 }) {
-  const navigate = useNavigate();
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [stored, setStored] = usePersistentSet(storageKey, defaultExpanded);
   const selectedId = candidates.find((id) => findItem(items, id)) ?? null;
 
   const [lastSelected, setLastSelected] = useState<string | null>(null);
-  const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
+  const [closed, setClosed] = useState<ReadonlySet<string>>(() => new Set());
   if (selectedId !== lastSelected) {
     setLastSelected(selectedId);
     setClosed(new Set());
   }
-  const ancestors = selectedId ? ancestorsOf(items, selectedId) : [];
+  const ancestors = (selectedId != null && selectedId !== "") ? ancestorsOf(items, selectedId) : [];
   const filtered = filterTree(items, query);
   const expanded = new Set<string>([...stored, ...ancestors.filter((id) => !closed.has(id)), ...filtered.expand]);
 
@@ -222,7 +224,7 @@ export function AreaExplorer({
             compact
             type="search"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => { setQuery(event.target.value); }}
             placeholder={searchPlaceholder}
             aria-label={t("搜尋{title}", { title })}
             autoComplete="off"
@@ -241,12 +243,12 @@ export function AreaExplorer({
             expanded={expanded}
             onToggle={onToggle}
             onActivate={(item) => {
-              if (item.to) void navigate(item.to, { viewTransition: changesPage(item.to, pathname) });
+              if (item.to != null && item.to !== "") void navigate(item.to, pageTransition(changesPage(item.to, pathname)));
             }}
           />
         )}
       </DockBody>
-      {footer ? <div className="shrink-0 border-t border-line-subtle px-3 py-1.5 text-caption text-fg-tertiary">{footer}</div> : null}
+      {hasSlotContent(footer) ? <div className="shrink-0 border-t border-line-subtle px-3 py-1.5 text-caption text-fg-tertiary">{footer}</div> : null}
     </DockPanel>
   );
 }

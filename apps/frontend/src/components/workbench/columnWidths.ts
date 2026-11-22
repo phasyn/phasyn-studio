@@ -1,6 +1,8 @@
 // 可調欄寬的表格（純函式）：每欄有預設與最小寬度；使用者的寬度依表格存在這台瀏覽器（localStorage）。
 // 儲存值一律重新檢查（未知欄位忽略、非數字用預設、超出範圍夾回），讀寫失敗不影響表格。
 
+import { isRecord } from "@/lib/json";
+
 export interface ColumnSpec {
   id: string;
   /** 欄位名稱（調整把手的無障礙名稱用）。 */
@@ -46,10 +48,9 @@ export function parseStoredWidths(raw: string | null, specs: readonly ColumnSpec
   } catch {
     return widths;
   }
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return widths;
-  const record = parsed as Record<string, unknown>;
+  if (!isRecord(parsed)) return widths;
   for (const spec of specs) {
-    const value = record[spec.id];
+    const value = parsed[spec.id];
     if (typeof value === "number" && Number.isFinite(value)) widths[spec.id] = clampColumnWidth(spec, value);
   }
   return widths;

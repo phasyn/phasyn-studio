@@ -1,11 +1,11 @@
-"""NodeConfig 載入（contracts ``NodeConfig``）。
+"""NodeConfig 載入（contracts ``NodeConfig``）.
 
 設定檔是使用者給這台主機的 bootstrap 配置：node_id 持久、bind_host/port 給 uvicorn、
 advertise_url 是其他主機連到這個 Node 的位址。``components`` 只是 seed（InstanceDefinition，可帶
-``folder``／``autostart``）：只有在 ``data_dir/config/components/<id>.json`` 不存在、且沒有刪除記錄
+``folder``/``autostart``）：只有在 ``data_dir/config/components/<id>.json`` 不存在、且沒有刪除記錄
 ``data_dir/config/deleted-components/<id>.json`` 時寫入，之後以保存的定義（含 stored_revision）為準；
 改設定檔的 seed 不會改到已保存的定義（改顯示資訊用 PATCH /api/components/{id}/meta）。
-``admission``（選用）是這台主機的主機保護（:mod:`phasyn_node.admission`）；不設＝不取樣、不等待。
+``admission``（選用）是這台主機的主機保護（:mod:`phasyn_node.admission`）；不設=不取樣、不等待。
 """
 
 from __future__ import annotations
@@ -26,6 +26,9 @@ from phasyn_components.ids import require_uuid
 from phasyn_components.settings import normalize_recording
 from phasyn_server.http import DEFAULT_JSON_BODY_BYTES, DEFAULT_UPLOAD_BYTES
 
+from .work_cleanup import WorkCleanupConfig, work_cleanup_config
+
+
 DEFAULTS: dict[str, Any] = {
     "bind_host": "127.0.0.1",
     "port": 8090,
@@ -42,12 +45,12 @@ DEFAULTS: dict[str, Any] = {
 
 
 class ConfigError(Exception):
-    """設定檔無法使用（訊息為繁中，可直接顯示給使用者）。"""
+    """設定檔無法使用（訊息為繁中，可直接顯示給使用者）."""
 
 
 @dataclass(frozen=True)
 class RuntimeEntry:
-    """Node 本機的 runtime：python 直譯器與 provider 入口模組（不由 invoke 傳入）。"""
+    """Node 本機的 runtime：python 直譯器與 provider 入口模組（不由 invoke 傳入）."""
 
     runtime_id: str
     python: str
@@ -55,7 +58,13 @@ class RuntimeEntry:
     env: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"runtime_id": self.runtime_id, "python": self.python, "module": self.module, "env": dict(self.env)}
+        """Return the wire representation of these settings."""
+        return {
+            "runtime_id": self.runtime_id,
+            "python": self.python,
+            "module": self.module,
+            "env": dict(self.env),
+        }
 
 
 DEFAULT_CHIP_ZONE_GLOB = "/sys/class/thermal/thermal_zone*/temp"
@@ -100,6 +109,7 @@ class AdmissionConfig:
     memory: MemoryLimits | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        """Return the wire representation of these settings."""
         out: dict[str, Any] = {
             "gated": {
                 "exclusive_groups": list(self.gated.exclusive_groups),
@@ -115,6 +125,8 @@ class AdmissionConfig:
 
 @dataclass
 class NodeConfig:
+    """Resolved NodeGateway settings for this host."""
+
     node_id: str
     label: str
     bind_host: str
@@ -132,13 +144,22 @@ class NodeConfig:
     recording: dict[str, Any]
     max_json_body_bytes: int = DEFAULT_JSON_BODY_BYTES
     max_upload_bytes: int = DEFAULT_UPLOAD_BYTES
-    allowed_hosts: tuple[str, ...] | None = None  # None = the local default (phasyn_server.HostPolicy.local)
-    model_dirs: tuple[Path, ...] = ()  # extra directories weights may be downloaded into (see download_roots)
-    admission: AdmissionConfig | None = None  # None = no host protection (no sampling, no waits)
+    allowed_hosts: tuple[str, ...] | None = (
+        None  # None = the local default (phasyn_server.HostPolicy.local)
+    )
+    model_dirs: tuple[
+        Path, ...
+    ] = ()  # extra directories weights may be downloaded into (see download_roots)
+    unified_memory_devices: tuple[str, ...] = ()
+    admission: AdmissionConfig | None = (
+        None  # None = no host protection (no sampling, no waits)
+    )
+    work_cleanup: WorkCleanupConfig = dataclasses.field(
+        default_factory=WorkCleanupConfig
+    )
 
     def download_roots(self) -> tuple[Path, ...]:
-        """權重下載可以寫入的目錄：``model_dirs`` 加上設定檔內每個元件的 ``load.model_path``（都是這台主機的
-        設定檔寫的，不是經由 API 改的）。symlink 已展開；相對的 ``load.model_path`` 不算。"""
+        """權重下載可以寫入的目錄：``model_dirs`` 加上設定檔內每個元件的 ``load.model_path``（都是這台主機的 設定檔寫的，不是經由 API 改的）。symlink 已展開；相對的 ``load.model_path`` 不算."""
         roots = {Path(os.path.realpath(path)) for path in self.model_dirs}
         for comp in self.components:
             load = (comp.get("settings") or {}).get("load") or {}
@@ -150,6 +171,7 @@ class NodeConfig:
         return tuple(sorted(roots))
 
     def to_dict(self) -> dict[str, Any]:
+        """Return the wire representation of these settings."""
         return {
             "node_id": self.node_id,
             "label": self.label,
@@ -168,9 +190,22 @@ class NodeConfig:
             "recording": copy.deepcopy(self.recording),
             "max_json_body_bytes": self.max_json_body_bytes,
             "max_upload_bytes": self.max_upload_bytes,
-            **({"allowed_hosts": list(self.allowed_hosts)} if self.allowed_hosts is not None else {}),
-            **({"model_dirs": [str(path) for path in self.model_dirs]} if self.model_dirs else {}),
-            **({"admission": self.admission.to_dict()} if self.admission is not None else {}),
+            **(
+                {"allowed_hosts": list(self.allowed_hosts)}
+                if self.allowed_hosts is not None
+                else {}
+            ),
+            **(
+                {"model_dirs": [str(path) for path in self.model_dirs]}
+                if self.model_dirs
+                else {}
+            ),
+            **(
+                {"admission": self.admission.to_dict()}
+                if self.admission is not None
+                else {}
+            ),
+            "work_cleanup": self.work_cleanup.to_dict(),
         }
 
 
@@ -184,7 +219,9 @@ def _thermal_limits(doc: Mapping[str, Any] | None) -> ThermalLimits | None:
         cancel_gpu_at_c=float(doc["cancel_gpu_at_c"]),
         chip_zone_glob=str(doc.get("chip_zone_glob", DEFAULT_CHIP_ZONE_GLOB)),
         sample_seconds=float(doc.get("sample_seconds", ThermalLimits.sample_seconds)),
-        hot_sample_seconds=float(doc.get("hot_sample_seconds", ThermalLimits.hot_sample_seconds)),
+        hot_sample_seconds=float(
+            doc.get("hot_sample_seconds", ThermalLimits.hot_sample_seconds)
+        ),
     )
     if not limits.resume_below_c < limits.pause_at_c < limits.cancel_chip_at_c:
         raise ConfigError(
@@ -196,8 +233,10 @@ def _thermal_limits(doc: Mapping[str, Any] | None) -> ThermalLimits | None:
             f"admission.thermal.hot_sample_seconds（{limits.hot_sample_seconds:g}）不能大於 "
             f"sample_seconds（{limits.sample_seconds:g}）：溫度高時取樣只會更密"
         )
-    if not os.path.isabs(limits.chip_zone_glob):
-        raise ConfigError(f"admission.thermal.chip_zone_glob 必須是絕對路徑（目前是 {limits.chip_zone_glob}）")
+    if not Path(limits.chip_zone_glob).is_absolute():
+        raise ConfigError(
+            f"admission.thermal.chip_zone_glob 必須是絕對路徑（目前是 {limits.chip_zone_glob}）"
+        )
     return limits
 
 
@@ -223,7 +262,9 @@ def _admission_config(doc: Mapping[str, Any] | None) -> AdmissionConfig | None:
         return None
     gated_doc = doc["gated"]
     gated = GatedCalls(
-        exclusive_groups=tuple(str(item) for item in gated_doc.get("exclusive_groups") or ()),
+        exclusive_groups=tuple(
+            str(item) for item in gated_doc.get("exclusive_groups") or ()
+        ),
         provider_ids=tuple(str(item) for item in gated_doc.get("provider_ids") or ()),
     )
     if not gated.exclusive_groups and not gated.provider_ids:
@@ -232,7 +273,9 @@ def _admission_config(doc: Mapping[str, Any] | None) -> AdmissionConfig | None:
             "provider_ids：沒有呼叫會受到保護"
         )
     admission = AdmissionConfig(
-        gated=gated, thermal=_thermal_limits(doc.get("thermal")), memory=_memory_limits(doc.get("memory"))
+        gated=gated,
+        thermal=_thermal_limits(doc.get("thermal")),
+        memory=_memory_limits(doc.get("memory")),
     )
     if admission.thermal is None and admission.memory is None:
         raise ConfigError(
@@ -242,21 +285,24 @@ def _admission_config(doc: Mapping[str, Any] | None) -> AdmissionConfig | None:
 
 
 def _resolve_path(value: str, base_dir: Path | None) -> Path:
-    """相對路徑以設定檔目錄為基準；不展開 symlink（venv 的 bin/python 是 symlink，展開會失去 venv）。"""
+    """相對路徑以設定檔目錄為基準；不展開 symlink（venv 的 bin/python 是 symlink，展開會失去 venv）."""
     path = Path(value).expanduser()
     if not path.is_absolute() and base_dir is not None:
         path = base_dir / path
-    return Path(os.path.abspath(path))
+    return Path(os.path.normpath(Path(path).absolute()))
 
 
 def _resolve_python(value: str, base_dir: Path | None) -> str:
-    """含路徑分隔的相對路徑以設定檔目錄為基準；單純指令名（如 python3）保留給 PATH 解析。"""
+    """含路徑分隔的相對路徑以設定檔目錄為基準；單純指令名（如 python3）保留給 PATH 解析."""
     if "/" not in value:
         return value
     return str(_resolve_path(value, base_dir))
 
 
-def config_from_dict(doc: dict[str, Any], *, base_dir: Path | None = None) -> NodeConfig:
+def config_from_dict(
+    doc: dict[str, Any], *, base_dir: Path | None = None
+) -> NodeConfig:
+    """Validate a node configuration and resolve its paths."""
     if not isinstance(doc, dict):
         raise ConfigError("Node 設定必須是 JSON object")
     merged: dict[str, Any] = {**copy.deepcopy(DEFAULTS), **copy.deepcopy(doc)}
@@ -266,7 +312,9 @@ def config_from_dict(doc: dict[str, Any], *, base_dir: Path | None = None) -> No
         contracts.validate("NodeConfig", merged, what="Node 設定")
     except ComponentError as exc:
         problems = (exc.details or {}).get("errors") or [exc.message]
-        raise ConfigError("Node 設定不符合契約：" + "；".join(str(p) for p in problems[:5])) from exc
+        raise ConfigError(
+            "Node 設定不符合契約：" + "；".join(str(p) for p in problems[:5])
+        ) from exc
     runtimes: dict[str, RuntimeEntry] = {}
     for entry in merged["runtimes"]:
         rid = entry["runtime_id"]
@@ -302,18 +350,28 @@ def config_from_dict(doc: dict[str, Any], *, base_dir: Path | None = None) -> No
         recording=dict(merged["recording"]),
         max_json_body_bytes=int(merged["max_json_body_bytes"]),
         max_upload_bytes=int(merged["max_upload_bytes"]),
-        allowed_hosts=None if merged.get("allowed_hosts") is None else tuple(map(str, merged["allowed_hosts"])),
-        model_dirs=tuple(_resolve_path(str(item), base_dir) for item in merged.get("model_dirs") or ()),
+        allowed_hosts=None
+        if merged.get("allowed_hosts") is None
+        else tuple(map(str, merged["allowed_hosts"])),
+        model_dirs=tuple(
+            _resolve_path(str(item), base_dir)
+            for item in merged.get("model_dirs") or ()
+        ),
+        unified_memory_devices=tuple(merged.get("unified_memory_devices", ())),
         admission=_admission_config(merged.get("admission")),
+        work_cleanup=work_cleanup_config(merged.get("work_cleanup")),
     )
 
 
 def load_config(path: str | Path) -> NodeConfig:
+    """Read and validate the node configuration file."""
     config_path = Path(path).expanduser()
     try:
         text = config_path.read_text(encoding="utf-8")
     except OSError as exc:
-        raise ConfigError(f"無法讀取 Node 設定檔 {config_path}：{exc.strerror or exc}") from exc
+        raise ConfigError(
+            f"無法讀取 Node 設定檔 {config_path}：{exc.strerror or exc}"
+        ) from exc
     try:
         doc = json.loads(text)
     except ValueError as exc:

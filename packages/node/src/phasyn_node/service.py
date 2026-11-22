@@ -26,13 +26,16 @@ from phasyn_components.errors import ComponentError
 from phasyn_components.files import FileStore
 from phasyn_components.fs import atomic_write_json
 from phasyn_components.ids import new_id, require_local_id
+from phasyn_components.native_catalog import FILTERS, matches
 from phasyn_components.recorder import Recorder, environment_facts, merge_summaries
 from phasyn_components.settings import SettingsState, effective_context
 from phasyn_components.timeutil import utc_now
 from phasyn_components.typed import INLINE_MAX_BYTES
 from phasyn_server import DataDirLock
 
+from . import work_cleanup
 from .admission import AdmissionGuard
+from .calls import CallStore
 from .catalog import CatalogReporter
 from .config import NodeConfig
 from .describe import RuntimeCommands
@@ -41,7 +44,7 @@ from .invoke import cancel_call
 from .locks import ResourceLocks
 from .previews import PreviewNotifier
 from .publisher import TelemetryPublisher
-from .recordings import RecordingIndex
+from .recordings import RecordingIndex, RecordingOperation
 from .runtime import RuntimeProcess
 from .sampler import SamplerHub
 from .settings_check import check_settings
@@ -49,13 +52,19 @@ from .supervisor import ComponentInstance
 from .sysinfo import platform_tag, source_revision
 from .weights import WeightsManager
 
+
 log = logging.getLogger("phasyn_node.service")
 
 STREAM_ID = "node"
 FINAL_PUSH_TIMEOUT = httpx.Timeout(1.5, connect=0.5)
 
 
+CAPABILITY_FILTER_MAX = 256
+
+
 class NodeService:
+    """Own the node's component instances, files, recordings and runtime services."""
+
     def __init__(
         self,
         config: NodeConfig,
@@ -63,6 +72,7 @@ class NodeService:
         http_transport: httpx.AsyncBaseTransport | None = None,
         data_lock: DataDirLock | None = None,
     ) -> None:
+        """Prepare the node's private stores and component services."""
         self.config = config
         self.node_id = config.node_id
         self.process_instance_id = new_id()
@@ -70,7 +80,7 @@ class NodeService:
         self.recordings_root = self.data_dir / "recordings"
         self.components_dir = self.data_dir / "config" / "components"
         self.deleted_components_dir = self.data_dir / "config" / "deleted-components"
-        self._definitions_lock = asyncio.Lock()  # PUT（建立／替換）與 DELETE 不交錯
+        self._definitions_lock = asyncio.Lock()  # PUT（建立/替換）與 DELETE 不交錯
         self._http_transport = http_transport
         self._data_lock = data_lock
         self._owns_lock = False
@@ -81,7 +91,10 @@ class NodeService:
         self.started = False
         self.source_revision = "unknown"
         self._tasks: set[asyncio.Task[Any]] = set()
-        self._call_tasks: set[asyncio.Task[Any]] = set()  # invokes and their shutdown cancels: awaited on stop
+        self.last_work_sweep: work_cleanup.SweepResult | None = None
+        self._call_tasks: set[asyncio.Task[Any]] = (
+            set()
+        )  # invokes and their shutdown cancels: awaited on stop
         self._exclusive_locks: dict[str, asyncio.Lock] = {}
         self._stopped = False
         # The opt-in host protection of heavy calls (NodeConfig.admission). None: no sampling task and no waits. It
@@ -91,6 +104,8 @@ class NodeService:
         )
         # start() 之後才存在
         self.client: httpx.AsyncClient
+        self.call_admission_lock = asyncio.Lock()
+        self.calls: CallStore
         self.store: FileStore
         self.directory: Directory
         self.resolver: FileResolver
@@ -104,6 +119,7 @@ class NodeService:
 
     # ------------------------------------------------------------------ lifecycle
     async def start(self) -> None:
+        """Start the node services and configured autostart components."""
         if self._data_lock is None:
             self._data_lock = DataDirLock(self.data_dir)
             self._data_lock.acquire()
@@ -117,7 +133,9 @@ class NodeService:
             await self._abort_start()
             raise
         self.started = True
-        self.spawn_task(self._warmup(), name="warmup")
+        _ = self.spawn_task(self._warmup(), name="warmup")
+        if self.config.work_cleanup.enabled:
+            _ = self.spawn_task(self._work_cleanup_loop(), name="work-cleanup")
         log.info(
             "NodeGateway %s（%s）已啟動：data_dir=%s，source=%s，%d 個元件定義",
             self.config.label,
@@ -136,14 +154,23 @@ class NodeService:
             follow_redirects=False,
             timeout=httpx.Timeout(10.0, connect=3.0),
         )
-        self.store = FileStore(self.data_dir, self.node_id, buffer_bytes=self.config.file_buffer_bytes)
+        self.calls = await asyncio.to_thread(
+            CallStore,
+            self.data_dir / "calls.sqlite",
+            self.node_id,
+            self.process_instance_id,
+        )
+        self.store = FileStore(
+            self.data_dir, self.node_id, buffer_bytes=self.config.file_buffer_bytes
+        )
         self.directory = Directory(
-            node_id=self.node_id, advertise_url=self.config.advertise_url, controller_url=self.config.controller_url
+            node_id=self.node_id,
+            advertise_url=self.config.advertise_url,
+            controller_url=self.config.controller_url,
         )
         self.resolver = FileResolver(
             store=self.store,
             directory=self.directory,
-            node_id=self.node_id,
             client=self.client,
             buffer_bytes=self.config.file_buffer_bytes,
             concurrency=self.config.file_transfer_concurrency,
@@ -156,20 +183,29 @@ class NodeService:
         )
         self.publisher.start()
         self.preview_notifier = PreviewNotifier(
-            node_id=self.node_id, controller_url=self.config.controller_url, client=self.client, spawn=self.spawn_task
+            node_id=self.node_id,
+            controller_url=self.config.controller_url,
+            client=self.client,
+            spawn=self.spawn_task,
         )
-        self.sampler = SamplerHub(hz=float(self.config.recording.get("device_sample_hz", 2) or 0))
+        self.sampler = SamplerHub(
+            hz=float(self.config.recording.get("device_sample_hz", 2) or 0)
+        )
         if self.admission is not None:
             self.admission.start()
-        self.index = RecordingIndex(self.recordings_root, self.data_dir / "recording-index.sqlite")
+        self.index = RecordingIndex(
+            self.recordings_root, self.data_dir / "recording-index.sqlite"
+        )
         self.index.start()
         self.commands = RuntimeCommands(
-            work_dir=self.data_dir / "work" / "_describe", source_revision=self.source_revision
+            work_dir=self.data_dir / "work" / "_describe",
+            source_revision=self.source_revision,
         )
-        self.weights = WeightsManager(self, roots=self.config.download_roots(), transport=self._http_transport)
+        self.weights = WeightsManager(
+            self, roots=self.config.download_roots(), transport=self._http_transport
+        )
         await self._load_definitions()
         self.catalog = CatalogReporter(
-            node_id=self.node_id,
             controller_url=self.config.controller_url,
             client=self.client,
             directory=self.directory,
@@ -194,7 +230,7 @@ class NodeService:
         index: RecordingIndex | None = getattr(self, "index", None)
         if index is not None:
             with contextlib.suppress(Exception):
-                await index.close_store(timeout=5.0)
+                await index.close_store(grace_s=5.0)
         client: httpx.AsyncClient | None = getattr(self, "client", None)
         if client is not None:
             with contextlib.suppress(Exception):
@@ -213,6 +249,7 @@ class NodeService:
             path.mkdir(parents=True, exist_ok=True)
 
     def tombstone_path(self, component_id: str) -> Path:
+        """Return the persistent deletion marker for a component."""
         return self.deleted_components_dir / f"{component_id}.json"
 
     async def _load_definitions(self) -> None:
@@ -223,7 +260,11 @@ class NodeService:
                 if path.exists():
                     continue
                 if self.tombstone_path(cid).exists():
-                    log.info("元件 %s 已被使用者刪除（%s）；不依 Node 設定的 seed 重建", cid, self.tombstone_path(cid))
+                    log.info(
+                        "元件 %s 已被使用者刪除（%s）；不依 Node 設定的 seed 重建",
+                        cid,
+                        self.tombstone_path(cid),
+                    )
                     continue
                 atomic_write_json(path, {"definition": seed, "stored_revision": 1})
             found: list[tuple[dict[str, Any], int]] = []
@@ -232,10 +273,13 @@ class NodeService:
                     doc = read_json(path)
                     definition = doc["definition"]
                     revision = int(doc.get("stored_revision") or 1)
-                except (OSError, ValueError, KeyError, TypeError) as exc:
-                    log.error("無法讀取元件定義 %s（已略過）：%s", path, exc)
+                except (OSError, ValueError, KeyError, TypeError):
+                    log.exception("無法讀取元件定義 %s（已略過）", path)
                     continue
-                if not isinstance(definition, dict) or definition.get("component_id") != path.stem:
+                if (
+                    not isinstance(definition, dict)
+                    or definition.get("component_id") != path.stem
+                ):
                     log.error("元件定義 %s 的 component_id 與檔名不符（已略過）", path)
                     continue
                 found.append((definition, revision))
@@ -245,27 +289,41 @@ class NodeService:
             try:
                 settings = SettingsState(definition, revision)
             except ComponentError as exc:
-                log.error("元件定義 %s 不符合契約（已略過）：%s", definition.get("component_id"), exc.message)
+                log.exception(
+                    "元件定義 %s 不符合契約（已略過）：%s",
+                    definition.get("component_id"),
+                    exc.message,
+                )
                 continue
             instance = ComponentInstance(self, settings)
             self.instances[instance.component_id] = instance
 
     async def _warmup(self) -> None:
         instances = list(self.instances.values())
-        described = await asyncio.gather(*(inst.descriptor() for inst in instances), return_exceptions=True)
+        described = await asyncio.gather(
+            *(inst.descriptor() for inst in instances), return_exceptions=True
+        )
         for inst, desc in zip(instances, described, strict=True):
             error = desc.get("last_error") if isinstance(desc, dict) else None
-            if error and error.get("code") == "UNSUPPORTED_SETTING":  # e.g. a seed from the Node configuration
+            if (
+                error and error.get("code") == "UNSUPPORTED_SETTING"
+            ):  # e.g. a seed from the Node configuration
                 log.warning(
-                    "元件 %s 的設定不被 provider 接受（start 會被拒絕）：%s", inst.component_id, error.get("message")
+                    "元件 %s 的設定不被 provider 接受（start 會被拒絕）：%s",
+                    inst.component_id,
+                    error.get("message"),
                 )
         # autostart 只在服務啟動時處理一次；同一 resource_group 依序啟動（等前一個載入結束），不同 group 並行。
         groups: dict[str, list[ComponentInstance]] = {}
         for inst in list(self.instances.values()):
             if inst.settings.definition.get("autostart"):
                 device = inst.settings.stored["load"].get("device") or {}
-                groups.setdefault(str(device.get("resource_group") or inst.component_id), []).append(inst)
-        await asyncio.gather(*(self._autostart_group(members) for members in groups.values()))
+                groups.setdefault(
+                    str(device.get("resource_group") or inst.component_id), []
+                ).append(inst)
+        await asyncio.gather(
+            *(self._autostart_group(members) for members in groups.values())
+        )
         self.notify_change()
 
     async def _autostart_group(self, members: list[ComponentInstance]) -> None:
@@ -278,12 +336,16 @@ class NodeService:
                 await inst.start()
                 log.info("autostart：已啟動元件 %s", inst.component_id)
             except ComponentError as exc:
-                log.warning("autostart：元件 %s 無法啟動（不重試）：%s", inst.component_id, exc.message)
+                log.warning(
+                    "autostart：元件 %s 無法啟動（不重試）：%s",
+                    inst.component_id,
+                    exc.message,
+                )
                 continue
             await inst.wait_settled(deadline_s)
 
     def begin_shutdown(self) -> None:
-        """停止接受新的 call／start，並對進行中的 call 送 cooperative 取消（在 event loop 上呼叫）。"""
+        """停止接受新的 call/start，並對進行中的 call 送 cooperative 取消（在 event loop 上呼叫）."""
         if self.shutting_down:
             return
         self.shutting_down = True
@@ -291,11 +353,13 @@ class NodeService:
         for inst in list(self.instances.values()):
             call = inst.active_call
             if call is not None:
-                self.spawn_call_task(
-                    cancel_call(inst, call.call_id, reason="shutdown"), name=f"shutdown-cancel-{call.call_id}"
+                _ = self.spawn_call_task(
+                    cancel_call(inst, call.call_id, reason="shutdown"),
+                    name=f"shutdown-cancel-{call.call_id}",
                 )
 
     async def stop(self) -> None:
+        """Drain work and stop all owned components and background services."""
         if self._stopped:
             return
         self._stopped = True
@@ -306,12 +370,19 @@ class NodeService:
             if self._call_tasks:
                 await asyncio.wait(set(self._call_tasks), timeout=grace + 10)
             await asyncio.gather(
-                *(inst.shutdown(timeout=grace) for inst in list(self.instances.values())), return_exceptions=True
+                *(
+                    inst.shutdown(grace_s=grace)
+                    for inst in list(self.instances.values())
+                ),
+                return_exceptions=True,
             )
             if self.catalog is not None:
                 await self.catalog.stop()
                 with contextlib.suppress(Exception):
-                    await asyncio.wait_for(self.catalog.push_once(timeout=FINAL_PUSH_TIMEOUT), timeout=2.0)
+                    await asyncio.wait_for(
+                        self.catalog.push_once(request_timeout=FINAL_PUSH_TIMEOUT),
+                        timeout=2.0,
+                    )
             await self.publisher.close(flush_timeout=2.0)
             for task in list(self._tasks):
                 task.cancel()
@@ -326,14 +397,67 @@ class NodeService:
             self._data_lock.release()
         log.info("NodeGateway 已關閉")
 
+    # ------------------------------------------------------------------ work directories
+    def live_work_dirs(self) -> tuple[set[tuple[str, str]], set[str]]:
+        """Process directories in use, and components whose directories are all kept.
+
+        The first set holds (component, process instance) of every running process; the second the components whose
+        call still finishes, or that change state, without a process.
+        """
+        live: set[tuple[str, str]] = set()
+        held: set[str] = set()
+        for instance in list(self.instances.values()):
+            proc = instance.process
+            if proc is not None:
+                live.add((instance.component_id, proc.process_instance_id))
+            elif instance.active_call is not None or instance.state != "stopped":
+                held.add(instance.component_id)
+        return live, held
+
+    def sweep_work(self) -> work_cleanup.SweepResult:
+        """One cleanup pass of the finished processes' work directories (blocking; run it in a thread)."""
+        live, held = self.live_work_dirs()
+        root = self.data_dir / "work"
+        keep = live | {
+            (cid, pid) for cid, pid, _ in work_cleanup.process_dirs(root) if cid in held
+        }
+        result = work_cleanup.sweep(root, keep, self.config.work_cleanup.ttl_hours)
+        self.last_work_sweep = result
+        return result
+
+    async def _work_cleanup_loop(self) -> None:
+        interval = self.config.work_cleanup.interval_minutes * 60
+        await asyncio.sleep(min(300, interval))  # let autostart components spawn first
+        while True:
+            try:
+                await asyncio.to_thread(self.sweep_work)
+            except OSError as exc:
+                log.warning("工作目錄清理失敗：%s", exc)
+            await asyncio.sleep(interval)
+
+    def work_state(self) -> dict[str, Any]:
+        """StorageWork of this Node (blocking: it measures the work directory)."""
+        last = self.last_work_sweep
+        return {
+            **work_cleanup.usage(self.data_dir / "work"),
+            "enabled": self.config.work_cleanup.enabled,
+            "ttl_hours": self.config.work_cleanup.ttl_hours,
+            "last_sweep": last.wire() if last is not None else None,
+        }
+
     # ------------------------------------------------------------------ helpers
-    def spawn_task(self, coro: Coroutine[Any, Any, Any], *, name: str) -> asyncio.Task[Any]:
+    def spawn_task(
+        self, coro: Coroutine[Any, Any, Any], *, name: str
+    ) -> asyncio.Task[Any]:
+        """Track a background task until it exits."""
         task = asyncio.create_task(coro, name=name)
         self._tasks.add(task)
         task.add_done_callback(self._task_done)
         return task
 
-    def spawn_call_task(self, coro: Coroutine[Any, Any, Any], *, name: str) -> asyncio.Task[Any]:
+    def spawn_call_task(
+        self, coro: Coroutine[Any, Any, Any], *, name: str
+    ) -> asyncio.Task[Any]:
         """A task that belongs to a call (the invoke itself, its shutdown cancel): ``stop()`` waits for these."""
         task = self.spawn_task(coro, name=name)
         self._call_tasks.add(task)
@@ -353,35 +477,48 @@ class NodeService:
             log.error("背景工作 %s 失敗：%s", task.get_name(), exc, exc_info=exc)
 
     def notify_change(self) -> None:
+        """Notify the catalog reporter of a local change."""
         if self.catalog is not None:
             self.catalog.trigger()
 
     def ensure_accepting(self, what: str) -> None:
+        """Refuse new work while the node is draining."""
         if self.shutting_down:
-            raise ComponentError("NODE_SHUTTING_DOWN", f"Node 正在關閉，不接受新的 {what}")
+            raise ComponentError(
+                "NODE_SHUTTING_DOWN", f"Node 正在關閉，不接受新的 {what}"
+            )
 
     def instance(self, component_id: str) -> ComponentInstance:
+        """Find a registered component by ID."""
         inst = self.instances.get(component_id)
         if inst is None:
             raise ComponentError(
-                "NOT_FOUND", f"這個 Node 沒有元件 {component_id}", details={"component_id": component_id}
+                "NOT_FOUND",
+                f"這個 Node 沒有元件 {component_id}",
+                details={"component_id": component_id},
             )
         return inst
 
     def new_recording_id(self) -> str:
+        """Allocate a recording ID for a new operation."""
         rid = new_id()
         self.index.touch(rid)
         return rid
 
     # ------------------------------------------------------------------ catalog
     async def descriptors(self) -> list[dict[str, Any]]:
+        """Return the node's current component descriptors."""
         cached_only = self.shutting_down
         items = await asyncio.gather(
-            *(self.instances[cid].descriptor(cached_only=cached_only) for cid in sorted(self.instances))
+            *(
+                self.instances[cid].descriptor(cached_only=cached_only)
+                for cid in sorted(self.instances)
+            )
         )
         return list(items)
 
     async def node_snapshot(self) -> dict[str, Any]:
+        """Build the catalog snapshot advertised by this node."""
         return {
             "node_id": self.node_id,
             "process_instance_id": self.process_instance_id,
@@ -393,7 +530,10 @@ class NodeService:
             "observed_at": utc_now(),
         }
 
-    async def put_component(self, component_id: str, body: Mapping[str, Any]) -> dict[str, Any]:
+    async def put_component(
+        self, component_id: str, body: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Register or update a component from its validated definition."""
         require_local_id(component_id, "component_id")
         contracts.validate("InstanceDefinition", dict(body), what="元件定義")
         if body["component_id"] != component_id:
@@ -406,7 +546,10 @@ class NodeService:
             raise ComponentError(
                 "INVALID_ARGUMENT",
                 f"這個 Node 沒有 runtime_id「{body['runtime_id']}」；可用：{', '.join(sorted(self.config.runtimes)) or '（無）'}",
-                details={"runtime_id": body["runtime_id"], "known": sorted(self.config.runtimes)},
+                details={
+                    "runtime_id": body["runtime_id"],
+                    "known": sorted(self.config.runtimes),
+                },
             )
         # The provider checks the settings like a settings PATCH; one that cannot be described refuses them.
         runtime = self.config.runtimes[body["runtime_id"]]
@@ -425,7 +568,10 @@ class NodeService:
             else:
                 await inst.replace_definition(dict(body))
             if await asyncio.to_thread(self._clear_tombstone, component_id):
-                log.info("元件 %s 以 PUT 重新建立：已清除刪除記錄（seed 恢復正常）", component_id)
+                log.info(
+                    "元件 %s 以 PUT 重新建立：已清除刪除記錄（seed 恢復正常）",
+                    component_id,
+                )
         self.notify_change()
         return await inst.descriptor()
 
@@ -437,7 +583,7 @@ class NodeService:
         return True
 
     async def delete_component(self, component_id: str) -> dict[str, Any]:
-        """刪除 instance 定義（只允許 stopped／error；其餘 409 STATE_CONFLICT）。
+        """刪除 instance 定義（只允許 stopped/error；其餘 409 STATE_CONFLICT）.
 
         紀錄、log、已發布檔案與 work 目錄都保留；寫入刪除記錄，Node 設定檔同名 seed 之後不在重啟時重建。
         """
@@ -456,50 +602,90 @@ class NodeService:
         self.notify_change()
         return {"component_id": component_id, "deleted": True}
 
+    async def provider_capabilities(self, filters: Mapping[str, str]) -> dict[str, Any]:
+        """Discover compatible installed capabilities through each configured runtime."""
+        if set(filters) - set(FILTERS) or any(
+            len(value) > CAPABILITY_FILTER_MAX for value in filters.values()
+        ):
+            raise ComponentError(
+                "INVALID_ARGUMENT", "Invalid native capability filter."
+            )
+        runtimes = sorted(self.config.runtimes)
+        groups = await asyncio.gather(
+            *(
+                self.commands.native_capabilities(self.config.runtimes[rid])
+                for rid in runtimes
+            )
+        )
+        items: list[dict[str, Any]] = []
+        issues: list[dict[str, str]] = []
+        for rid, group in zip(runtimes, groups, strict=True):
+            if group["issue"]:
+                issues.append({"runtime_id": rid, "code": group["issue"]})
+            items.extend(
+                {**row, "runtime_id": rid}
+                for row in group["items"]
+                if matches(row, filters)
+            )
+        return {
+            "schema_version": "1.0",
+            "node_id": self.node_id,
+            "items": items,
+            "issues": issues,
+        }
+
     async def providers(self) -> dict[str, Any]:
+        """List providers available in configured runtimes."""
+
         async def one(runtime_id: str) -> list[dict[str, Any]]:
             runtime = self.config.runtimes[runtime_id]
-            configured = [i.provider_id for i in self.instances.values() if i.runtime_id == runtime_id]
+            configured = [
+                i.provider_id
+                for i in self.instances.values()
+                if i.runtime_id == runtime_id
+            ]
             return await self.commands.list_providers(runtime, configured=configured)
 
-        groups = await asyncio.gather(*(one(rid) for rid in sorted(self.config.runtimes)))
-        return {"node_id": self.node_id, "items": [item for group in groups for item in group]}
+        groups = await asyncio.gather(
+            *(one(rid) for rid in sorted(self.config.runtimes))
+        )
+        return {
+            "node_id": self.node_id,
+            "items": [item for group in groups for item in group],
+        }
 
     # ------------------------------------------------------------------ recorders / summaries
     async def new_recorder(
         self,
         instance: ComponentInstance,
         *,
-        operation: str,
-        recording_id: str,
         config: Mapping[str, Any] | None,
-        run_id: str | None = None,
-        call_id: str | None = None,
-        synthetic: bool = False,
+        activity: RecordingOperation,
     ) -> Recorder:
-        self.index.touch(recording_id)
+        """Create the recorder for an operation on this instance."""
+        self.index.touch(activity.recording_id)
 
         def make() -> Recorder:
             return Recorder(
                 recordings_root=self.recordings_root,
-                recording_id=recording_id,
+                recording_id=activity.recording_id,
                 stream_id=STREAM_ID,
                 node_id=self.node_id,
                 component_id=instance.component_id,
                 provider_id=instance.provider_id,
                 process_instance_id=self.process_instance_id,
-                operation=operation,
-                run_id=run_id,
-                call_id=call_id,
+                operation=activity.operation,
+                run_id=activity.run_id,
+                call_id=activity.call_id,
                 config=config,
                 publish=self._publish_node_record,
-                synthetic=synthetic,
+                synthetic=activity.synthetic,
             )
 
         return await asyncio.to_thread(make)
 
     def _publish_node_record(self, record: dict[str, Any]) -> bool:
-        """Node 端 Recorder 的 publish：summary 不在這裡送（Node 會與 runtime summary 合併後再發布一次）。"""
+        """Node 端 Recorder 的 publish：summary 不在這裡送（Node 會與 runtime summary 合併後再發布一次）."""
         if record.get("record") == "summary":
             return True
         return self.publisher.enqueue(record)
@@ -511,6 +697,7 @@ class NodeService:
         *,
         runtime_process_instance_id: str | None = None,
     ) -> dict[str, Any]:
+        """Describe the environment used by a component process."""
         env = environment_facts()
         env.update(
             {
@@ -528,7 +715,10 @@ class NodeService:
         )
         return env
 
-    def requested_context(self, settings: Mapping[str, Any], revision: int) -> dict[str, Any]:
+    def requested_context(
+        self, settings: Mapping[str, Any], revision: int
+    ) -> dict[str, Any]:
+        """Capture the requested settings and revision for the recording."""
         return effective_context(
             requested=settings,
             effective=settings,
@@ -541,27 +731,45 @@ class NodeService:
         )
 
     @staticmethod
-    def merge_summaries(node: Mapping[str, Any], runtime: Mapping[str, Any] | None, state: str) -> dict[str, Any]:
-        """Node stream 與 runtime stream 合併。Node 只交出路徑（no-op）的 disk_read／disk_write 不輸出 0 值
-        metric，以免以 0 覆蓋元件程序實際讀寫的計數（每個實際 I/O 只有一個計數 owner）。"""
-        primary = {k: (dict(v) if isinstance(v, Mapping) else v) for k, v in node.items()}
+    def merge_summaries(
+        node: Mapping[str, Any], runtime: Mapping[str, Any] | None, state: str
+    ) -> dict[str, Any]:
+        """Node stream 與 runtime stream 合併。Node 只交出路徑（no-op）的 disk_read/disk_write 不輸出 0 值 metric，以免以 0 覆蓋元件程序實際讀寫的計數（每個實際 I/O 只有一個計數 owner）."""
+        primary = {
+            k: (dict(v) if isinstance(v, Mapping) else v) for k, v in node.items()
+        }
         metrics = dict(primary.get("metrics") or {})
         totals = primary.get("transfer_totals") or {}
-        for category, name in (("disk_read", "logical_disk_read_bytes"), ("disk_write", "logical_disk_written_bytes")):
+        for category, name in (
+            ("disk_read", "logical_disk_read_bytes"),
+            ("disk_write", "logical_disk_written_bytes"),
+        ):
             total = totals.get(category) if isinstance(totals, Mapping) else None
-            if isinstance(total, Mapping) and not total.get("submitted_count") and total.get("no_op_count"):
+            if (
+                isinstance(total, Mapping)
+                and not total.get("submitted_count")
+                and total.get("no_op_count")
+            ):
                 metrics.pop(name, None)
         primary["metrics"] = metrics
         if runtime is not None and not contracts.is_valid("RecordingSummary", runtime):
             primary.setdefault("notes", [])
-            primary["notes"] = [*primary["notes"], "元件程序回報的 summary 不符合契約，未合併"]
+            primary["notes"] = [
+                *primary["notes"],
+                "元件程序回報的 summary 不符合契約，未合併",
+            ]
             runtime = None
         return merge_summaries(primary, runtime, state=state)
 
-    def placeholder_summary(self, recording_id: str, state: str, error: Mapping[str, Any] | None) -> dict[str, Any]:
+    def placeholder_summary(
+        self, recording_id: str, state: str, error: Mapping[str, Any] | None
+    ) -> dict[str, Any]:
+        """Build a minimal summary when complete recording data is unavailable."""
         notes = ["Node 端紀錄器無法建立；只有最小摘要"]
         if error:
-            notes.append(f"error：{error.get('code')}：{str(error.get('message'))[:500]}")
+            notes.append(
+                f"error：{error.get('code')}：{str(error.get('message'))[:500]}"
+            )
         return {
             "recording_id": recording_id,
             "state": state,
@@ -576,11 +784,15 @@ class NodeService:
             "context_available": False,
         }
 
-    async def publish_final_summary(self, recording_id: str, summary: dict[str, Any]) -> None:
-        """合併後的 summary 原子替換 summary.json，並送 publisher（元件程序自己的 summary 不轉送）。"""
+    async def publish_final_summary(
+        self, recording_id: str, summary: dict[str, Any]
+    ) -> None:
+        """合併後的 summary 原子替換 summary.json，並送 publisher（元件程序自己的 summary 不轉送）."""
 
         def work() -> None:
-            atomic_write_json(self.recordings_root / recording_id / "summary.json", summary)
+            atomic_write_json(
+                self.recordings_root / recording_id / "summary.json", summary
+            )
 
         try:
             await asyncio.to_thread(work)
@@ -589,22 +801,26 @@ class NodeService:
         self.publisher.enqueue({"record": "summary", "data": summary})
         self.index.close(recording_id)
 
-    async def inline_or_fileref_summary(self, recording_id: str, summary: dict[str, Any]) -> dict[str, Any]:
+    async def inline_or_fileref_summary(
+        self, recording_id: str, summary: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Return the summary inline or expose its immutable file reference."""
         data = canonical_json(summary)
         if len(data) <= INLINE_MAX_BYTES:
             return summary
 
         def work() -> dict[str, Any]:
             writer = self.store.new_writer(
-                "application/json", {"role": "recording_summary", "recording_id": recording_id}
+                "application/json",
+                {"role": "recording_summary", "recording_id": recording_id},
             )
             writer.write(data)
             return writer.commit()
 
         return await asyncio.to_thread(work)
 
-    def on_telemetry(self, proc: RuntimeProcess, record: dict[str, Any]) -> None:
-        """元件程序 telemetry pipe 的 record（背景執行緒呼叫）。summary 由 Node 合併後再發布，這裡不轉送。"""
+    def on_telemetry(self, _proc: RuntimeProcess, record: dict[str, Any]) -> None:
+        """元件程序 telemetry pipe 的 record（背景執行緒呼叫）。summary 由 Node 合併後再發布，這裡不轉送."""
         kind = record.get("record")
         if kind in ("context", "event"):
             self.publisher.enqueue(record)

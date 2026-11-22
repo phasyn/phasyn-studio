@@ -26,6 +26,6 @@ export function eventClockDomain(event: RecordingEvent): { domain: string; deriv
 /** clock domain 的精簡顯示：「node 前 8 碼 : process 前 8 碼」，完整值另以 title／複製提供。 */
 export function shortDomain(domain: string): string {
   const parts = domain.split(":");
-  if (parts.length === 2 && parts[0] && parts[1]) return `${parts[0].slice(0, 8)}:${parts[1].slice(0, 8)}`;
+  if (parts.length === 2 && (parts[0] != null && parts[0] !== "") && (parts[1] != null && parts[1] !== "")) return `${parts[0].slice(0, 8)}:${parts[1].slice(0, 8)}`;
   return domain.length > 24 ? `${domain.slice(0, 24)}…` : domain;
 }

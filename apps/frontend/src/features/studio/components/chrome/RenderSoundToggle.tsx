@@ -16,10 +16,10 @@ export function RenderSoundToggle() {
         id={id}
         label={t("完成時播放音效")}
         checked={on}
-        onChange={(event) => renderSoundSetting.set(event.target.checked)}
+        onChange={(event) => { renderSoundSetting.set(event.target.checked); }}
         className="min-w-0 flex-1 text-caption"
       />
-      <Button size="sm" variant="quiet" icon={<Volume2 aria-hidden />} title={t("試聽完成音效")} onClick={() => playRenderSound("done", true)}>
+      <Button size="sm" variant="quiet" icon={<Volume2 aria-hidden />} title={t("試聽完成音效")} onClick={() => { playRenderSound("done", true); }}>
         {t("試聽")}
       </Button>
     </div>

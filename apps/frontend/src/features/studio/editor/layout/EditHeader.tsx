@@ -16,15 +16,15 @@ import { useEditor } from "../editorContext";
 import { EDIT_LAYOUTS, type EditLayout, type EditLayoutId } from "./layouts";
 
 function LayoutSwitcher({ layout, onChange }: { layout: EditLayout; onChange: (id: EditLayoutId) => void }) {
-  const list = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
   const pick = (index: number) => {
     const next = EDIT_LAYOUTS[(index + EDIT_LAYOUTS.length) % EDIT_LAYOUTS.length];
     if (!next) return;
     onChange(next.id);
-    list.current?.querySelector<HTMLElement>(`[data-layout="${next.id}"]`)?.focus();
+    listRef.current?.querySelector<HTMLElement>(`[data-layout="${next.id}"]`)?.focus();
   };
   return (
-    <div ref={list} role="radiogroup" aria-label={t("工作配置")} className="relative flex h-9 shrink-0 items-stretch gap-0.5 rounded-lg border border-line-subtle bg-sunken/60 p-0.5">
+    <div ref={listRef} role="radiogroup" aria-label={t("工作配置")} className="relative flex h-9 shrink-0 items-stretch gap-0.5 rounded-lg border border-line-subtle bg-sunken/60 p-0.5">
       {EDIT_LAYOUTS.map((item, index) => {
         const selected = item.id === layout.id;
         return (
@@ -35,7 +35,7 @@ function LayoutSwitcher({ layout, onChange }: { layout: EditLayout; onChange: (i
             data-layout={item.id}
             aria-checked={selected}
             tabIndex={selected ? 0 : -1}
-            onClick={() => onChange(item.id)}
+            onClick={() => { onChange(item.id); }}
             onKeyDown={(event) => {
               if (event.key === "ArrowRight" || event.key === "ArrowDown") pick(index + 1);
               else if (event.key === "ArrowLeft" || event.key === "ArrowUp") pick(index - 1);
@@ -52,7 +52,7 @@ function LayoutSwitcher({ layout, onChange }: { layout: EditLayout; onChange: (i
           </button>
         );
       })}
-      <ActiveIndicator container={list} edge="bottom" inset={10} selector='[role="radio"][aria-checked="true"]' className="bg-brand-gradient forced-colors:bg-none" />
+      <ActiveIndicator container={listRef} edge="bottom" inset={10} selector='[role="radio"][aria-checked="true"]' className="bg-brand-gradient forced-colors:bg-none" />
     </div>
   );
 }
@@ -64,7 +64,7 @@ export function EditHeader({ layout, onLayout }: { layout: EditLayout; onLayout:
   const fps = timeline.fps.num / timeline.fps.den;
   const mod = modifierLabel("Mod", detectApplePlatform());
   return (
-    <div data-keep-focus="" className="flex h-12 shrink-0 items-center gap-3 px-2">
+    <div data-keep-focus="" className="flex h-12 shrink-0 items-center gap-3 px-2 max-md:relative max-md:overflow-x-auto max-md:overflow-y-hidden max-md:[scrollbar-width:none]">
       <LayoutSwitcher layout={layout} onChange={onLayout} />
       {/* The sequence name takes the room between the switcher and the actions and shortens before it would overlap them */}
       <p className="hidden min-w-0 flex-1 items-center justify-center gap-2 text-data text-fg-tertiary min-[1400px]:flex">

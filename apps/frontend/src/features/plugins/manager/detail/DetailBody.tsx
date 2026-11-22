@@ -1,3 +1,4 @@
+import { optionalField } from "@/lib/json";
 // 詳情的標題與四個分頁（概覽、內容、權限、檔案與版本）：已安裝的包與安裝預覽共用同一套，預覽時多一行「安裝預覽」、
 // 內容不能在專案選用、檔案只列出。分頁列是 44 px；選到的分頁會記住。
 import { FolderTree, Info, KeyRound, LayoutList } from "lucide-react";
@@ -44,7 +45,7 @@ export function DetailHeader({ plugin, eyebrow, version, actions }: { plugin: St
       <div className="flex min-w-0 items-start gap-3">
         <PluginTile plugin={plugin} size="lg" />
         <div className="grid min-w-0 flex-1 gap-0.5">
-          {eyebrow ? <p className="text-caption font-semibold text-brand-cyan">{eyebrow}</p> : null}
+          {(eyebrow != null && eyebrow !== "") ? <p className="text-caption font-semibold text-brand-cyan">{eyebrow}</p> : null}
           <div className="flex min-w-0 items-baseline gap-2">
             <h3 title={name} className="min-w-0 truncate text-section font-semibold text-fg">
               {name}
@@ -85,11 +86,11 @@ export function DetailBody({ plugin, tab, onTabChange, detail, state, preview, p
         idPrefix={ID_PREFIX}
         label={t("插件詳情")}
         value={tab}
-        onChange={(next) => onTabChange(isDetailTab(next) ? next : "overview")}
+        onChange={(next) => { onTabChange(isDetailTab(next) ? next : "overview"); }}
         tabs={[
           { id: "overview", label: t("概覽"), icon: Info },
-          { id: "contents", label: t("內容"), icon: LayoutList, count: contentCount(plugin) || undefined },
-          { id: "permissions", label: t("權限"), icon: KeyRound, count: plugin.permissions.length || undefined },
+          { id: "contents", label: t("內容"), icon: LayoutList, ...optionalField("count", contentCount(plugin) || undefined) },
+          { id: "permissions", label: t("權限"), icon: KeyRound, ...(plugin.permissions.length ? { count: plugin.permissions.length } : {}) },
           { id: "files", label: t("檔案與版本"), icon: FolderTree },
         ]}
       />

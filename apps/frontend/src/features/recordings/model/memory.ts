@@ -58,7 +58,7 @@ export interface MemorySeries {
   /** 連續段；段與段之間是缺口（不連線）。 */
   segments: MemoryPoint[][];
   /** 每個取樣時刻的值；null 表示該時刻缺值。 */
-  samples: Array<{ t: number; v: number | null }>;
+  samples: { t: number; v: number | null }[];
   quality: Quality | null;
   method: string | null;
   /** 全部為 null 時的原因（例如 NVML 不支援）。 */
@@ -91,7 +91,7 @@ function median(values: number[]): number | null {
  * @param sampleHz context.recording.device_sample_hz（有的話決定預期取樣間隔）。
  */
 export function buildMemoryModel(events: readonly RecordingEvent[], sampleHz?: number | null): MemoryModel {
-  const samples: Array<{ t: bigint; gapBefore: boolean; metrics: Record<string, Metric | undefined>; deviceId: string | null; processId: number | null }> = [];
+  const samples: { t: bigint; gapBefore: boolean; metrics: Record<string, Metric | undefined>; deviceId: string | null; processId: number | null }[] = [];
   let invalidTime = 0;
   let lastSeq: number | null = null;
   let pendingGap = false;
@@ -131,14 +131,14 @@ export function buildMemoryModel(events: readonly RecordingEvent[], sampleHz?: n
     const cur = rel[i];
     if (prev && cur && cur.ms > prev.ms) deltas.push(cur.ms - prev.ms);
   }
-  const expected = sampleHz && sampleHz > 0 ? 1000 / sampleHz : deltas.length >= 2 ? median(deltas) : null;
+  const expected = (sampleHz != null && Boolean(sampleHz)) && sampleHz > 0 ? 1000 / sampleHz : deltas.length >= 2 ? median(deltas) : null;
   const threshold = expected !== null ? expected * 2.5 : null;
 
   const seriesMap = new Map<string, MemorySeries & { lastT: number | null; open: MemoryPoint[] | null }>();
   const deviceTotal = new Map<string, number>();
   const ensure = (def: MemorySeriesDef, deviceId: string | null, processId: number | null) => {
     const usesProcess = def.panel === "nvml_process" || def.panel === "host_rss" || def.panel === "allocator";
-    const key = `${def.metric}|${deviceId ?? "-"}|${usesProcess ? (processId ?? "-") : "-"}`;
+    const key = `${def.metric}|${deviceId ?? "-"}|${String(usesProcess ? (processId ?? "-") : "-")}`;
     let series = seriesMap.get(key);
     if (!series) {
       series = {
@@ -163,8 +163,8 @@ export function buildMemoryModel(events: readonly RecordingEvent[], sampleHz?: n
   };
 
   for (const sample of rel) {
-    const total = sample.metrics.nvml_device_total_bytes;
-    if (total && total.value !== null && Number.isFinite(total.value)) deviceTotal.set(sample.deviceId ?? "-", total.value);
+    const total = sample.metrics["nvml_device_total_bytes"];
+    if (total?.value != null && Number.isFinite(total.value)) deviceTotal.set(sample.deviceId ?? "-", total.value);
     for (const def of MEMORY_SERIES) {
       const metric = sample.metrics[def.metric];
       // 這個 sample 沒有此 metric：只有在該系列已存在時才視為缺值（斷線）。
@@ -172,11 +172,11 @@ export function buildMemoryModel(events: readonly RecordingEvent[], sampleHz?: n
       const exists = [...seriesMap.keys()].some((existing) => existing.startsWith(`${key}|`));
       if (!metric && !exists) continue;
       const series = ensure(def, sample.deviceId, sample.processId);
-      const value = metric && metric.value !== null && Number.isFinite(metric.value) ? metric.value : null;
+      const value = metric?.value != null && Number.isFinite(metric.value) ? metric.value : null;
       if (metric) {
         series.quality = metric.quality;
         series.method = metric.method;
-        if (value === null && metric.reason) series.nullReason = metric.reason;
+        if (value === null && (metric.reason != null && metric.reason !== "")) series.nullReason = metric.reason;
       }
       series.samples.push({ t: sample.ms, v: value });
       const tooFar = threshold !== null && series.lastT !== null && sample.ms - series.lastT > threshold;

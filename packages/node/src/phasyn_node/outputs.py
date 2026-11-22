@@ -15,18 +15,24 @@ from phasyn_components.errors import ComponentError
 from phasyn_components.files import FileStore
 from phasyn_components.typed import check_typed_value
 
+
 log = logging.getLogger("phasyn_node.invoke")
 
 
-def publish_outputs(store: FileStore, done: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
-    """（在執行緒內）發布 run_done.files 的每個待發布檔，並把 pending_file 換成 FileRef。"""
+def publish_outputs(
+    store: FileStore, done: Mapping[str, Any]
+) -> dict[str, dict[str, Any]]:
+    """（在執行緒內）發布 run_done.files 的每個待發布檔，並把 pending_file 換成 FileRef."""
     published: dict[str, dict[str, Any]] = {}
 
     def publish(pending: Mapping[str, Any]) -> dict[str, Any]:
         file_id = str(pending["file_id"])
         if file_id not in published:
             if pending.get("sha256") is None:
-                raise ComponentError("RUNTIME_ERROR", f"元件程序回報的輸出檔 {file_id} 沒有 SHA-256（尚未完成寫入）")
+                raise ComponentError(
+                    "RUNTIME_ERROR",
+                    f"元件程序回報的輸出檔 {file_id} 沒有 SHA-256（尚未完成寫入）",
+                )
             published[file_id] = store.publish_reserved(
                 file_id,
                 media_type=str(pending.get("media_type") or "application/octet-stream"),
@@ -43,7 +49,10 @@ def publish_outputs(store: FileStore, done: Mapping[str, Any]) -> dict[str, dict
         if not isinstance(item, Mapping):
             raise ComponentError("RUNTIME_ERROR", f"元件程序回報的輸出 {port} 格式錯誤")
         if "pending_file" in item:
-            value: dict[str, Any] = {"type_id": item["type_id"], "file": publish(item["pending_file"])}
+            value: dict[str, Any] = {
+                "type_id": item["type_id"],
+                "file": publish(item["pending_file"]),
+            }
         else:
             value = {"type_id": item["type_id"], "value": item.get("value")}
         check_typed_value(value, where=f"輸出 {port}")
@@ -68,7 +77,9 @@ def withdraw_outputs(store: FileStore, done: Mapping[str, Any] | None) -> None:
             log.warning("無法清除呼叫未採用的輸出檔 %s", file_id, exc_info=True)
 
 
-def publish_or_withdraw(store: FileStore, done: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+def publish_or_withdraw(
+    store: FileStore, done: Mapping[str, Any]
+) -> dict[str, dict[str, Any]]:
     """(thread) ``publish_outputs``; when it fails partway the files published so far are withdrawn."""
     try:
         return publish_outputs(store, done)

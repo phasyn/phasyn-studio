@@ -138,7 +138,7 @@ export function ruleItemCheck(item: RuleItem): RuleItemCheck | null {
   if ("any_of" in item && typeof item.any_of === "string") return { kind: "regex", source: item.any_of };
   const terms: unknown = "terms" in item ? item.terms : "any_terms" in item ? item.any_terms : null;
   if (!isStrings(terms) || terms.length === 0) return null;
-  return { kind: "phrases", terms, word: "word" in item && item.word === true };
+  return { kind: "phrases", terms, word: "word" in item && item.word };
 }
 
 function compileItem(item: RuleItem, builtin: boolean): CompiledItem | string {
@@ -252,18 +252,18 @@ export function resolveSelection(registry: PluginRegistry, refs: readonly Studio
     }
     const rule = resolved.entry;
     const group = rule.rule.group;
-    const holder = group ? groups.get(group) : undefined;
-    if (group && holder) {
+    const holder = (group != null && group !== "") ? groups.get(group) : undefined;
+    if ((group != null && group !== "") && holder) {
       const text = t("插件「{a}」與「{b}」同一組，只能選一個", { a: ruleLabel(holder), b: label });
       problems.push({ code: "group_conflict", ref, text, details: { group, other: holder.ref } });
       continue;
     }
     const unusable = compiledRule(rule).problem;
-    if (unusable) {
+    if (unusable != null && unusable !== "") {
       problems.push({ code: "rule_unusable", ref, text: t("規則「{label}」無法評估：{problem}", { label, problem: unusable }), details: {} });
       continue;
     }
-    if (group) groups.set(group, rule);
+    if (group != null && group !== "") groups.set(group, rule);
     rules.push(rule);
   }
   const limit = registryLimits(registry)?.max_project_inject_bytes;
@@ -297,8 +297,8 @@ export interface RuleFinding {
 
 /** 逐鏡結果在 prompt 裡的寫法（[Shot 2]、<Subject 2>）；整份 prompt 的結果為 null。 */
 export function findingPlace(finding: Pick<RuleFinding, "shot" | "subject">): string | null {
-  if (finding.shot !== null) return `[Shot ${finding.shot}]`;
-  if (finding.subject !== null) return `<Subject ${finding.subject}>`;
+  if (finding.shot !== null) return `[Shot ${String(finding.shot)}]`;
+  if (finding.subject !== null) return `<Subject ${String(finding.subject)}>`;
   return null;
 }
 

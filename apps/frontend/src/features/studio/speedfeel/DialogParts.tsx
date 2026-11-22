@@ -55,7 +55,7 @@ function Reading({ clip, done, total }: { clip: "take" | "original"; done: numbe
         {total === 0 ? t("開啟影片…") : clip === "take" ? t("讀取生成影片的影格 {done}／{total}…", { done, total }) : t("讀取原片的影格 {done}／{total}…", { done, total })}
       </p>
       <span aria-hidden className="block h-1 overflow-hidden rounded-full bg-raised">
-        <span className="block h-full origin-left rounded-full bg-brand-gradient transition-transform duration-(--duration-base) ease-standard" style={{ transform: `scaleX(${share})` }} />
+        <span className="block h-full origin-left rounded-full bg-brand-gradient transition-transform duration-(--duration-base) ease-standard" style={{ transform: `scaleX(${String(share)})` }} />
       </span>
     </div>
   );

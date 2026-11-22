@@ -113,14 +113,14 @@ export function ControlBar({ entry }: { entry: ComponentEntry }) {
             {LABEL[action]}
           </ActionButton>
         ))}
-        {activeCall ? (
+        {(activeCall != null && activeCall !== "") ? (
           <ActionButton
             size="sm"
             variant="danger"
             icon={<Ban aria-hidden />}
             pending={cancel.isPending}
             disabledReason={entry.node.stale ? t("Node 離線或狀態過時：無法送出取消") : null}
-            onClick={() => cancel.mutate(activeCall)}
+            onClick={() => { cancel.mutate(activeCall); }}
           >
             {t("取消進行中的呼叫")}
           </ActionButton>
@@ -139,17 +139,17 @@ export function ControlBar({ entry }: { entry: ComponentEntry }) {
         </div>
       ) : null}
       {resident ? <p className="text-caption text-info">{t("{residentHint}。", { residentHint: RESIDENT_HINT })}</p> : null}
-      {conflict && !exclusiveReason && entry.descriptor.state !== "ready" && entry.descriptor.state !== "busy" ? (
+      {conflict && !(exclusiveReason != null && exclusiveReason !== "") && entry.descriptor.state !== "ready" && entry.descriptor.state !== "busy" ? (
         <p className="text-caption text-warning">{exclusiveReplaceNote(conflict)}</p>
       ) : null}
-      {exclusiveError ? <ErrorCallout error={exclusiveError} title={t("沒有啟動：互斥群組的其他元件正在使用")} /> : null}
-      {control.isSuccess && !control.isPending ? (
+      {(exclusiveError != null) ? <ErrorCallout error={exclusiveError} title={t("沒有啟動：互斥群組的其他元件正在使用")} /> : null}
+      {control.isSuccess ? (
         <p className="text-caption text-fg-secondary animate-rise-in" role="status">
           {/* The Node replies once it has taken the command: the stop or the load goes on after the reply */}
           {control.variables.action === "stop" ? (
-            <T source={"已送出「{variables}」：Node 回覆狀態 <0>{state}</0>；後續狀態由目錄輪詢更新，不代表程序已經結束。"} values={{ variables: LABEL.stop, state: control.data.state }} slots={[<code className="machine" />]} />
+            <T source={"已送出「{variables}」：Node 回覆狀態 <0>{state}</0>；後續狀態由目錄輪詢更新，不代表程序已經結束。"} values={{ variables: LABEL.stop, state: control.data.state }} slots={[<code key="slot-0" className="machine" />]} />
           ) : (
-            <T source={"已送出「{variables}」：Node 回覆狀態 <0>{state}</0>；後續狀態由目錄輪詢更新，不代表載入已完成。"} values={{ variables: LABEL[control.variables.action], state: control.data.state }} slots={[<code className="machine" />]} />
+            <T source={"已送出「{variables}」：Node 回覆狀態 <0>{state}</0>；後續狀態由目錄輪詢更新，不代表載入已完成。"} values={{ variables: LABEL[control.variables.action], state: control.data.state }} slots={[<code key="slot-0" className="machine" />]} />
           )}
         </p>
       ) : null}
@@ -178,7 +178,7 @@ export function ControlBar({ entry }: { entry: ComponentEntry }) {
             <LastLoadNote nodeId={nodeId} componentId={componentId} />
           </DialogBody>
           <DialogFooter>
-            <Button variant="quiet" onClick={() => setConfirmStop(false)}>
+            <Button variant="quiet" onClick={() => { setConfirmStop(false); }}>
               {t("保持常駐")}
             </Button>
             <Button

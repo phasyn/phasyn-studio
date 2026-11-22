@@ -1,4 +1,4 @@
-"""Qwen-Image 元件的權重計畫：Qwen-Image 2.1 pipeline 目錄與 Qwen3-VL-4B-Instruct。
+"""Qwen-Image 元件的權重計畫：Qwen-Image 2.1 pipeline 目錄與 Qwen3-VL-4B-Instruct.
 
 文字條件、VAE 與 DiT 共用同一個 Qwen-Image 2.1 目錄（``<model_path>/<base>``），計畫以整個目錄為單位；``base`` 不是
 內建的 qwen-image-2.1 時沒有固定版本的來源。GGUF 檔、LoRA／slider 與覆寫的 Transformer 由使用者提供，只寫成說明。
@@ -13,12 +13,21 @@ from pathlib import Path
 from typing import Any
 
 from phasyn_components.errors import ComponentError
-from phasyn_components.weights import WeightLicense, WeightManifest, WeightPlan, WeightSet, load_manifest
+from phasyn_components.weights import (
+    WeightLicense,
+    WeightManifest,
+    WeightPlan,
+    WeightSet,
+    load_manifest,
+)
 
 from .config import DEFAULT_BASE, RESEARCH_USE_NOTE, model_dir
 
+
 MANIFEST_DIR = Path(__file__).resolve().parent / "weight_manifests"
-CUSTOM_BASE_NOTE = "provider_options.base 不是 qwen-image-2.1：沒有固定版本的下載來源，請自行放好權重"
+CUSTOM_BASE_NOTE = (
+    "provider_options.base 不是 qwen-image-2.1：沒有固定版本的下載來源，請自行放好權重"
+)
 GGUF_NOTE = "GGUF 檔（provider_options.gguf_file）由使用者提供，不在下載清單內"
 ADAPTERS_NOTE = "LoRA／slider（provider_options.adapters）由使用者提供，不在下載清單內"
 OVERRIDE_NOTE = "覆寫的 Transformer 目錄（provider_options.transformer_override）由使用者提供，不在下載清單內"
@@ -32,7 +41,7 @@ def _manifest(name: str) -> WeightManifest:
 
 @functools.cache
 def image_set(base: str = DEFAULT_BASE) -> WeightSet:
-    """Qwen-Image 2.1 的完整 pipeline 目錄（transformer、text_encoder、processor、vae、scheduler…），放在 ``base``。"""
+    """Qwen-Image 2.1 的完整 pipeline 目錄（transformer、text_encoder、processor、vae、scheduler…），放在 ``base``."""
     manifest = _manifest("qwen-image-2.1")
     return WeightSet(
         set_id="qwen-image-2.1",
@@ -51,21 +60,23 @@ def image_set(base: str = DEFAULT_BASE) -> WeightSet:
 
 @functools.cache
 def vision_set() -> WeightSet:
-    """Qwen3-VL-4B-Instruct（範例設定 qimg-vision-* 用的模型），放在 ``load.model_path`` 本身。"""
+    """Qwen3-VL-4B-Instruct（範例設定 qimg-vision-* 用的模型），放在 ``load.model_path`` 本身."""
     manifest = _manifest("qwen3-vl-4b-instruct")
     return WeightSet(
         set_id="qwen3-vl-4b-instruct",
         label="Qwen3-VL-4B-Instruct",
         repo=manifest.repo,
         revision=manifest.revision,
-        license=WeightLicense(name="Apache-2.0", url="https://www.apache.org/licenses/LICENSE-2.0"),
+        license=WeightLicense(
+            name="Apache-2.0", url="https://www.apache.org/licenses/LICENSE-2.0"
+        ),
         dest="",
         files=manifest.files,
     )
 
 
 def image_plan(role: str, settings: Mapping[str, Any] | None) -> WeightPlan:
-    """文字條件、VAE encode／decode 與 DiT 的計畫。"""
+    """文字條件、VAE encode／decode 與 DiT 的計畫."""
     load = (settings or {}).get("load") or {}
     try:
         base = model_dir(load)
@@ -88,7 +99,7 @@ def image_plan(role: str, settings: Mapping[str, Any] | None) -> WeightPlan:
 
 
 def vision_plan(settings: Mapping[str, Any] | None) -> WeightPlan:
-    """qimg.vision：Qwen3-VL-4B-Instruct 放在 ``load.model_path``。"""
+    """qimg.vision：Qwen3-VL-4B-Instruct 放在 ``load.model_path``."""
     root = ((settings or {}).get("load") or {}).get("model_path")
     if not root:
         return WeightPlan(root=None, notes=(NO_VISION_PATH,))

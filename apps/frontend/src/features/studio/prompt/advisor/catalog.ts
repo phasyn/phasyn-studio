@@ -4,7 +4,8 @@
 //            MiniMax V2 OpenAPI）；已取回原文核對。
 //  code＝已安裝程式的行為（deploy/runtimes 內的 SGLang minimax_h3、runtimes/h3 的 phasyn_h3.recipe.adapter、Studio 前端）。
 //  guide＝製作建議，未經生成驗證。
-// 文件  的規則表與這裡一一對應。
+// 文件 的規則表與這裡一一對應。
+import { H3_RULES } from "../../model/providerTraits";
 import type { Basis, Severity } from "./types";
 import { t } from "@/i18n";
 
@@ -54,6 +55,7 @@ export const RULES = {
   "timeline.ends-early": { severity: "info", basis: "official", source: t("官方 skill（match the total duration of the description to the requested video length）"), trigger: t("時間軸描述比片長短 1 秒以上") },
   "timeline.duration-claim": { severity: "warning", basis: "official", source: t("官方 skill（match the total duration）；17n+5 對齊"), trigger: t("文字寫的秒數與實際片長不符") },
   "timeline.cuts-in-segment": { severity: "suggestion", basis: "official", source: t("{base} §4.2（每次切鏡是新的 [Shot n]）", { base: BASE }), trigger: t("一個時間段內描述多次切換畫面") },
+  "timeline.one-take-markers": { severity: "warning", basis: "code", source: t("Phasyn Studio：寫了時間戳或 [Shot n] 編號的一鏡到底容易硬切；改寫成一整句連續運鏡、不寫時間戳"), trigger: t("一鏡到底的鏡頭寫了時間戳或 [Shot n] 編號") },
   "timeline.trailing-text": { severity: "suggestion", basis: "official", source: t("{base} §4.1（風格寫在 [Shot 1] 開頭）；{ref} §5.2（風格開場在 [Shot 1] 之前）", { base: BASE, ref: REF }), trigger: t("時間軸最後一段之後還有整體說明") },
 
   "ref.unknown-mention": { severity: "error", basis: "code", source: t("Studio compilePrompt（找不到的 @ 名稱會擋下渲染）"), trigger: t("@ 名稱沒有對應的參考素材") },
@@ -68,6 +70,7 @@ export const RULES = {
   "ref.subject-undefined": { severity: "warning", basis: "official", source: t("{ref} §2（標籤在各段保持同一意義）", { ref: REF }), trigger: t("<Subject n> 沒有在 subject_definitions 定義") },
   "ref.retention-missing": { severity: "suggestion", basis: "official", source: t("{ref} §4（每個標籤一行）", { ref: REF }), trigger: t("定義過的標籤沒有 retention_analysis") },
   "ref.retention-format": { severity: "warning", basis: "official", source: t("{ref} §4.1、§4.2、§5.4", { ref: REF }), trigger: t("保留關係標記不是官方固定值，或寫了 (Sx)") },
+  "ref.style-plate-character": { severity: "warning", basis: "code", source: t("Phasyn Studio：畫了角色的畫風參考圖，姿勢、道具、構圖或人物容易被照搬；畫風參考只用風景圖"), trigger: t("當畫風參考的 @Image 那一行提到角色，或同一張圖也定義了 <Subject n>") },
   "ref.summary-prefix": { severity: "suggestion", basis: "official", source: `${REF} §3`, trigger: t("summary 沒有 [任務類型] 開頭或類型不在官方清單") },
   "ref.soundtrack": { severity: "info", basis: "code", source: t("phasyn_h3.recipe.adapter materials.py normalize_materials；SGLang stages/text_encoding.py；{ref} §2.5（<Video N> 與 <Audio N> 各自編號）", { ref: REF }), trigger: t("參考影片的原聲會成為一個 <Audio n>") },
   "ref.soundtrack-uncertain": { severity: "warning", basis: "code", source: t("phasyn_h3.recipe.adapter materials.py（ordinal_depends_on_probe）"), trigger: t("引用的 <Audio n> 編號要等 runtime probe 才確定") },
@@ -91,7 +94,7 @@ export const RULES = {
     trigger: t("[Shot N] 行裡有 no、not、without、never、none 等否定詞（台詞不算）"),
   },
 
-  "length.api-limit": { severity: "info", basis: "official", source: t("MiniMax V2 OpenAPI（每個 text ≤ 7000 characters）"), trigger: t("超過 7000 字元") },
+  "length.api-limit": { severity: "info", basis: "official", source: t("MiniMax V2 OpenAPI（每個 text ≤ {limit} characters）", { limit: H3_RULES.apiPromptCharacters }), trigger: t("超過 {limit} 字元", { limit: H3_RULES.apiPromptCharacters }) },
   "length.studio-limit": { severity: "error", basis: "code", source: "contracts StudioShot.prompt maxLength 16384", trigger: t("超過 16384 字元") },
   "length.detailed-words": { severity: "suggestion", basis: "official", source: t("{ref} §5.2（350–500 English words）", { ref: REF }), trigger: t("detailed_description 英文字數不在 350–500") },
   "length.short": { severity: "suggestion", basis: "guide", source: t("指南「每一鏡回答這六個問題」"), trigger: t("描述很短") },
@@ -118,10 +121,12 @@ export const RULES = {
   "wording.tempo-conflict": { severity: "suggestion", basis: "guide", source: t("指南「容易把節奏拉慢的需求組合」"), trigger: t("同時要求高速與慢動作／停留／定格") },
   "wording.bracket-camera": { severity: "suggestion", basis: "official", source: t("{base} §4.3（natural English action within the shot）；MiniMax 的通用 API 指南仍舉 [pan] 這類寫法（未取回原文核對）", { base: BASE }), trigger: t("[pan left] 這類括號運鏡指令") },
   "wording.multi-camera": { severity: "suggestion", basis: "guide", source: t("指南「一鏡先用一種主要運鏡」"), trigger: t("同一鏡頭有 3 種以上運鏡") },
+  "wording.camera-cue": { severity: "warning", basis: "code", source: t("Phasyn Studio：讓角色朝鏡頭移動或轉向鏡頭的寫法，會讓角色更常正面看鏡頭；動作寫成朝向對手"), trigger: t("朝鏡頭衝、面向鏡頭、繞到正面、眼睛特寫等讓角色朝鏡頭的寫法") },
+  "wording.wing-flapping": { severity: "warning", basis: "code", source: t("Phasyn Studio：寫了飛行與拍翅（wings beating）的鏡頭，翅膀容易在下拍時變形；寫張開、穩定、滑翔的翅膀"), trigger: t("寫了拍翅、flapping、wings beating（畫面或聲音欄位）") },
   "wording.chinese-only": { severity: "suggestion", basis: "official", source: t("{ref}（Write all six rewrite sections in English）；官方 skill", { ref: REF }), trigger: t("整份 prompt 主要是中文") },
   "wording.negation": { severity: "info", basis: "code", source: t("SGLang stages/text_encoding.py（every task emits exactly one positive embedding payload）；Diffusers MiniMax-H3 文件（no negative_prompt／guidance_scale）；官方加速 LoRA 範例在正文直接寫 No blood, …；ComfyUI 維護者提醒點名不想要的東西可能反而讓它出現（未驗證）"), trigger: t("「不要…」「avoid …」「No …, …」等否定寫法") },
 } as const satisfies Record<string, RuleMeta>;
 
 export type RuleId = keyof typeof RULES;
 
-export const RULE_IDS = Object.keys(RULES) as RuleId[];
+export const RULE_IDS = Object.keys(RULES).filter((key): key is RuleId => Object.hasOwn(RULES, key));

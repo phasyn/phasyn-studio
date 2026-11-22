@@ -1,0 +1,92 @@
+[project]
+name = "phasyn-wan-native"
+version = "1.0.0"
+description = "Offline native Wan2.2 speech and performance generation for Phasyn"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE", "PROVIDER-NOTICE.txt"]
+dependencies = ["phasyn-components", "phasyn-media"]
+# Quality overlay: preserve the owner's project/build-system and dependency groups.
+# The planner resolves these targets from the owner's minimum supported Python.
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+src = ["src"]
+extend-exclude = [".rewrite", "build", "dist"]
+force-exclude = true
+
+[project.entry-points."phasyn.providers"]
+"wan.speech" = "phasyn_wan_native.provider:SpeechProvider"
+"wan.performance" = "phasyn_wan_native.provider:PerformanceProvider"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = true
+
+[build-system]
+requires = ["hatchling>=1.33.0"]
+build-backend = "hatchling.build"
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "UP", "B", "SIM", "I", "N", "C90", "ARG", "S",
+    "T20", "RET", "ICN", "PIE", "PL", "TRY", "FLY", "PERF", "ANN", "D",
+    "PGH", "RUF", "ASYNC", "BLE", "C4", "DTZ", "EXE", "FA", "FURB", "G",
+    "INT", "LOG", "PTH", "PYI", "T10", "YTT", "ISC004", "TC004", "TC005",
+    "TC007", "TC010", "FAST", "A", "FBT", "NPY",
+]
+ignore = [
+    "E501", "TRY003", "PERF203", "ANN204", "ANN401",
+    "W191", "E111", "E114", "E117", "D206", "D300",
+]
+# Full-width punctuation that Traditional Chinese text uses (RUF001-RUF003).
+allowed-confusables = ["\uFF0C", "\uFF1A", "\uFF1B", "\uFF01", "\uFF1F", "\uFF08", "\uFF09"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/phasyn_wan_native"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+force-single-line = false
+lines-after-imports = 2
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["D", "S101", "PLR2004"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "tests"]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_calls = true
+disallow_any_generics = true
+no_implicit_optional = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+warn_unused_configs = true
+strict_equality_for_none = true
+show_error_codes = true
+enable_error_code = [
+    "ignore-without-code", "redundant-expr", "redundant-self", "truthy-bool",
+    "truthy-iterable", "possibly-undefined", "unused-awaitable", "deprecated",
+    "explicit-override", "mutable-override", "exhaustive-match", "unimported-reveal",
+]
+
+[tool.pytest.ini_options]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+filterwarnings = ["error"]

@@ -14,6 +14,7 @@ import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorCallout } from "@/components/common/ErrorCallout";
 import { GeneratingFrame } from "@/components/common/GeneratingFrame";
 import { JsonView } from "@/components/common/JsonView";
+import { NativeRunRecipePanel } from "@/features/inference-presets";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { SyntheticNotice } from "@/components/common/SyntheticNotice";
 import { IdText, TimeText } from "@/components/common/values";
@@ -52,12 +53,13 @@ import { T } from "@/i18n/T";
 /** What an interrupted run leaves behind (shown with its error, or alone when the run carries none). */
 const interruptedNote = () => t("沒有恢復功能：已完成的輸出仍可用，需要時以相同設定建立新 run。主控沒收到的紀錄可在「Node 本機紀錄」補抓。");
 
-type ViewId = "overview" | "steps" | "outputs" | "request";
-const VIEWS: ReadonlyArray<{ id: ViewId; label: string }> = [
+type ViewId = "overview" | "steps" | "outputs" | "request" | "recipe";
+const VIEWS: readonly { id: ViewId; label: string }[] = [
   { id: "overview", label: t("總覽") },
   { id: "steps", label: t("步驟") },
   { id: "outputs", label: t("輸出") },
   { id: "request", label: t("請求") },
+  { id: "recipe", label: t("推論配方") },
 ];
 
 function ComparePair({ preview, final, previewRunId }: { preview: Asset; final: Asset; previewRunId: string }) {
@@ -87,7 +89,7 @@ function ComparePair({ preview, final, previewRunId }: { preview: Asset; final: 
 function OriginComparison({ run }: { run: WireRun }) {
   const origin = run.request.origin;
   const sourceRun = useRun(origin?.source_run_id ?? null);
-  if (!origin?.source_run_id || !origin.preview_asset_id) return null;
+  if (!(origin?.source_run_id != null && origin.source_run_id !== "") || !(origin.preview_asset_id != null && origin.preview_asset_id !== "")) return null;
   const finals = runAssets(run).filter((asset) => asset.kind === "final");
   if (sourceRun.isPending) return <p className="text-caption text-fg-tertiary">{t("讀取來源 run 以對照草稿…")}</p>;
   if (sourceRun.isError) return <ErrorCallout error={sourceRun.error} title={t("無法讀取來源 run（無法並排草稿）")} />;
@@ -124,7 +126,7 @@ function RunDetail({ run }: { run: WireRun }) {
   const testRun = run.request.pipeline.steps.some((step) => lookup(step.node_id, step.component_id)?.provider_id.startsWith("test.") ?? false);
   const title = runDisplayName(run);
   const requestedView = params.get("view");
-  const view: ViewId = VIEWS.some((item) => item.id === requestedView) ? (requestedView as ViewId) : "overview";
+  const view: ViewId = VIEWS.find((item) => item.id === requestedView)?.id ?? "overview";
   const selectedStep = steps.find((step) => step.step_id === params.get("step")) ?? null;
   // What the Controller index holds for this run (deleting a recording keeps its id in the run): unknown until read
   const index = useRunRecordingIndex(run.run_id, !running && (run.recording_ids.length > 0 || steps.some((step) => step.recording_id !== null)));
@@ -135,17 +137,16 @@ function RunDetail({ run }: { run: WireRun }) {
   const historyNodes = history?.runId === run.run_id ? history.nodeIds : null;
   const showHistory = !running && (missing.length > 0 || historyNodes !== null);
   const comparable = indexed ? run.recording_ids.filter((id) => indexed.has(id)) : run.recording_ids;
-  const setParam = (key: string, value: string | null) =>
-    setParams(
+  const setParam = (key: string, value: string | null) => { setParams(
       (previous) => {
         const next = new URLSearchParams(previous);
-        if (value) next.set(key, value);
+        if (value != null && value !== "") next.set(key, value);
         else next.delete(key);
         return next;
       },
       { replace: true },
-    );
-  const selectStep = (stepId: string | null) => setParam("step", stepId);
+    ); };
+  const selectStep = (stepId: string | null) => { setParam("step", stepId); };
 
   const notices =
     testRun || run.state === "interrupted" || run.error || showHistory || archive.isError ? (
@@ -168,7 +169,7 @@ function RunDetail({ run }: { run: WireRun }) {
             missing={missing}
             indexed={indexed}
             requestedNodes={historyNodes}
-            onRequest={(nodeIds) => setHistory({ runId: run.run_id, nodeIds })}
+            onRequest={(nodeIds) => { setHistory({ runId: run.run_id, nodeIds }); }}
             labelOf={(nodeId) => nodeLabel(catalog.data, nodeId)}
           />
         ) : null}
@@ -200,10 +201,10 @@ function RunDetail({ run }: { run: WireRun }) {
         </thead>
         <tbody>
           {steps.map((step) => {
-            const kind = providerKind(step.node_id && step.component_id ? lookup(step.node_id, step.component_id)?.provider_id : null);
+            const kind = providerKind((step.node_id != null && step.node_id !== "") && (step.component_id != null && step.component_id !== "") ? lookup(step.node_id, step.component_id)?.provider_id : null);
             const selected = step.step_id === selectedStep?.step_id;
             return (
-              <Tr key={step.step_id} selected={selected} className="cursor-pointer [&>td]:align-middle" onClick={() => selectStep(step.step_id)}>
+              <Tr key={step.step_id} selected={selected} className="cursor-pointer [&>td]:align-middle" onClick={() => { selectStep(step.step_id); }}>
                 <Td className="py-1">
                   <button
                     type="button"
@@ -323,7 +324,7 @@ function RunDetail({ run }: { run: WireRun }) {
                 <span className="machine">{stepProgressText(progress)}</span>
               </span>
             ) : null}
-            {run.archived_at ? (
+            {(run.archived_at != null && run.archived_at !== "") ? (
               <span className="inline-flex items-center gap-1 rounded-sm border border-line bg-raised px-1.5 text-caption text-fg-secondary" title={t("封存於 {archived_at}", { archived_at: run.archived_at })}>
                 <Archive aria-hidden className="size-3" />
                 {t("已封存")}
@@ -331,28 +332,28 @@ function RunDetail({ run }: { run: WireRun }) {
             ) : null}
             <IdText value={run.run_id} length={12} />
             <span className="text-caption text-fg-tertiary">
-              <T source={"建立 <0/> · 耗時 {elapsedMs}{value}"} values={{ elapsedMs: <Elapsed start={run.created_at} end={run.finished_at} running={running} />, value: running ? t(" · 每 2 秒自動更新") : "" }} slots={[<TimeText iso={run.created_at} />]} />
+              <T source={"建立 <0/> · 耗時 {elapsedMs}{value}"} values={{ elapsedMs: <Elapsed start={run.created_at} end={run.finished_at} running={running} />, value: running ? t(" · 每 2 秒自動更新") : "" }} slots={[<TimeText key="slot-0" iso={run.created_at} />]} />
             </span>
           </>
         }
         actions={
           <>
             {running ? (
-              <ActionButton size="sm" variant="danger" icon={<Ban aria-hidden />} onClick={(event) => setCancelOpener(event.currentTarget)} title={t("中止進行中的步驟（只結束這個 run 呼叫的元件程序）；不會自動重跑")}>
+              <ActionButton size="sm" variant="danger" icon={<Ban aria-hidden />} onClick={(event) => { setCancelOpener(event.currentTarget); }} title={t("中止進行中的步驟（只結束這個 run 呼叫的元件程序）；不會自動重跑")}>
                 {t("取消 run…")}
               </ActionButton>
             ) : null}
             <ActionButton
               size="sm"
               icon={<RotateCcw aria-hidden />}
-              onClick={() =>
-                setRerun({
+              onClick={() => { setRerun({
                   pipeline: run.request.pipeline,
                   inputs: asTypedValueMap(run.request.inputs),
-                  label: run.request.label,
-                  origin: run.request.origin,
+                  ...(run.state === "succeeded" ? { measuredRunId: run.run_id } : {}),
+                  ...(run.request.label === undefined ? {} : { label: run.request.label }),
+                  ...(run.request.origin === undefined ? {} : { origin: run.request.origin }),
                   title: t("以相同設定建立新 run"),
-                })
+                }); }
               }
             >
               {t("以相同設定建立新 run")}
@@ -370,20 +371,20 @@ function RunDetail({ run }: { run: WireRun }) {
             <ActionButton
               size="sm"
               variant="quiet"
-              icon={run.archived_at ? <ArchiveRestore aria-hidden /> : <Archive aria-hidden />}
+              icon={(run.archived_at != null && run.archived_at !== "") ? <ArchiveRestore aria-hidden /> : <Archive aria-hidden />}
               pending={archive.isPending}
               disabledReason={running ? t("執行中的 run 不能封存") : null}
-              onClick={() => archive.mutate({ runId: run.run_id, archived: !run.archived_at })}
-              title={run.archived_at ? t("取消封存：回到一般清單") : t("封存：從一般清單隱藏，檔案與紀錄都保留")}
+              onClick={() => { archive.mutate({ runId: run.run_id, archived: !(run.archived_at != null && run.archived_at !== "") }); }}
+              title={(run.archived_at != null && run.archived_at !== "") ? t("取消封存：回到一般清單") : t("封存：從一般清單隱藏，檔案與紀錄都保留")}
             >
-              {run.archived_at ? t("取消封存") : t("封存")}
+              {(run.archived_at != null && run.archived_at !== "") ? t("取消封存") : t("封存")}
             </ActionButton>
             <ActionButton
               size="sm"
               variant="danger"
               icon={<Trash2 aria-hidden />}
               disabledReason={running ? t("執行中的 run 不能刪除：先取消或等它結束") : null}
-              onClick={() => setDeleteOpen(true)}
+              onClick={() => { setDeleteOpen(true); }}
             >
               {t("永久刪除")}
             </ActionButton>
@@ -395,14 +396,14 @@ function RunDetail({ run }: { run: WireRun }) {
         <div aria-hidden className="relative h-0.5 shrink-0 overflow-hidden bg-line-subtle">
           <span
             className="absolute inset-y-0 left-0 rounded-r-full bg-brand-gradient transition-[width] duration-(--duration-slow) ease-linear animate-shimmer"
-            style={{ width: `${Math.max(progress.fraction, 0.02) * 100}%` }}
+            style={{ width: `${String(Math.max(progress.fraction, 0.02) * 100)}%` }}
           />
         </div>
       ) : null}
       <PanelTabs
         tabs={VIEWS.map((item) => ({ ...item, count: item.id === "steps" ? steps.length : item.id === "outputs" ? outputs.length : null }))}
         value={view}
-        onChange={(id) => setParam("view", id === "overview" ? null : id)}
+        onChange={(id) => { setParam("view", id === "overview" ? null : id); }}
         idPrefix="run-view"
         label={t("run 檢視")}
         variant="underline"
@@ -418,7 +419,7 @@ function RunDetail({ run }: { run: WireRun }) {
               run={run}
               label={t("run「{title}」的節點圖", { title })}
               selection={selectedStep ? { kind: "step", id: selectedStep.step_id } : null}
-              onSelect={(next) => selectStep(next?.kind === "step" ? next.id : null)}
+              onSelect={(next) => { selectStep(next?.kind === "step" ? next.id : null); }}
               nodeLabel={(nodeId) => catalog.data?.directory.find((entry) => entry.node_id === nodeId)?.label ?? null}
               className="absolute inset-0"
             />
@@ -437,7 +438,7 @@ function RunDetail({ run }: { run: WireRun }) {
                 run={run}
                 lookup={lookup}
                 selectedStepId={selectedStep?.step_id ?? null}
-                onSelectStep={(stepId) => selectStep(stepId)}
+                onSelectStep={(stepId) => { selectStep(stepId); }}
                 nodeLabel={(nodeId) => catalog.data?.directory.find((entry) => entry.node_id === nodeId)?.label ?? null}
               />
             </div>
@@ -446,18 +447,18 @@ function RunDetail({ run }: { run: WireRun }) {
       ) : (
         <DockBody role="tabpanel" id={`run-view-panel-${view}`} aria-labelledby={`run-view-tab-${view}`}>
           {notices}
-          {view === "steps" ? stepsView : view === "outputs" ? outputsView : requestView}
+          {view === "recipe" ? <NativeRunRecipePanel runId={run.run_id} running={running} /> : view === "steps" ? stepsView : view === "outputs" ? outputsView : requestView}
         </DockBody>
       )}
-      <RunFormDialog seed={rerun} onOpenChange={(open) => (open ? undefined : setRerun(null))} />
+      <RunFormDialog seed={rerun} onOpenChange={(open) => { if (!(open)) { setRerun(null); } }} />
       {/* Mounted only while confirming, so every confirmation starts fresh (the same dialog as the top bar). It stays
           with its answer when the run ends; focus then goes to the page title, the Cancel button having left. */}
       {cancelOpener ? (
         <CancelRunDialog
           run={run}
           open
-          onOpenChange={(open) => (open ? undefined : setCancelOpener(null))}
-          onCloseAutoFocus={(event) => returnFocusOr(event, cancelOpener, pageFocusTarget())}
+          onOpenChange={(open) => { if (!(open)) { setCancelOpener(null); } }}
+          onCloseAutoFocus={(event) => { returnFocusOr(event, cancelOpener, pageFocusTarget()); }}
         />
       ) : null}
       <RunDeleteDialog
@@ -490,7 +491,7 @@ function RunDetail({ run }: { run: WireRun }) {
         dockLabel={t("輸出面板")}
         dockTabs={[{ id: "activity", label: t("活動"), icon: Activity, render: () => <ActivityLog runId={run.run_id} /> }]}
       />
-      <RunStepsOutliner steps={steps} lookup={lookup} selectedStepId={selectedStep?.step_id ?? null} onSelect={(stepId) => selectStep(stepId)} />
+      <RunStepsOutliner steps={steps} lookup={lookup} selectedStepId={selectedStep?.step_id ?? null} onSelect={(stepId) => { selectStep(stepId); }} />
     </>
   );
 }
@@ -535,9 +536,7 @@ export function RunDetailPage() {
             icon={<SearchX />}
             title={t("找不到這個 run")}
             description={
-              <>
-                <T source={"<0>{runId}</0> 不存在或已被清理。"} values={{ runId }} slots={[<code className="machine" />]} />
-              </>
+              <T source={"<0>{runId}</0> 不存在或已被清理。"} values={{ runId }} slots={[<code key="slot-0" className="machine" />]} />
             }
           />
         ) : (

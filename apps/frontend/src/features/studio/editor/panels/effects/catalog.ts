@@ -128,7 +128,7 @@ function videoClip({ timeline, clip, transitionClip }: EffectSelection): Timelin
 /** The sound a clip plays: the clip itself on an audio track, else its linked partner there. */
 function soundOf(timeline: StudioTimeline, clip: TimelineClip): TimelineClip | null {
   if (trackKind(timeline, clip) === "audio") return clip;
-  if (!clip.linked_id) return null;
+  if (!(clip.linked_id != null && clip.linked_id !== "")) return null;
   return timeline.clips.find((item) => item.linked_id === clip.linked_id && trackKind(timeline, item) === "audio") ?? null;
 }
 

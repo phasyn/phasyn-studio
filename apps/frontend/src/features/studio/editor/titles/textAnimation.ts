@@ -147,7 +147,7 @@ const OWN_BLUR = "textblur";
 /** The blur effect a preset animates: the one with that id, else the first blur effect that is switched on. */
 function blurEffect(clip: TimelineClip, blurId?: string | null): BlurEffect | null {
   const blurs = (clip.effect_stack ?? []).filter((effect): effect is BlurEffect => effect.kind === "blur");
-  return (blurId ? blurs.find((effect) => effect.effect_id === blurId) : blurs.find((effect) => effect.enabled)) ?? null;
+  return ((blurId != null && blurId !== "") ? blurs.find((effect) => effect.effect_id === blurId) : blurs.find((effect) => effect.enabled)) ?? null;
 }
 
 function channelKeys(clip: TimelineClip, channel: Channel, blurId?: string | null): readonly TimelineKeyframe[] {
@@ -163,19 +163,18 @@ function fixedValue(clip: TimelineClip, channel: Channel): number {
 /** The clip with other keys on a channel; a channel left without keys is dropped from the document. */
 function withChannelKeys(clip: TimelineClip, channel: Channel, keys: TimelineKeyframe[], blurId?: string | null): TimelineClip {
   if (channel !== "blur") {
-    const keyframes = { ...clip.motion.keyframes };
-    if (keys.length > 0) keyframes[channel] = keys;
-    else delete keyframes[channel];
+    const { [channel]: _prior, ...others } = clip.motion.keyframes;
+    const keyframes = keys.length > 0 ? { ...others, [channel]: keys } : others;
     return { ...clip, motion: { ...clip.motion, keyframes } };
   }
   const effect = blurEffect(clip, blurId);
-  if (!effect) return clip;
+  if (!effect || !clip.effect_stack) return clip;
   const keyframes = { ...effect.keyframes };
   if (keys.length > 0) keyframes.radius = keys;
   else delete keyframes.radius;
   const next: BlurEffect = { ...effect, keyframes };
   if (Object.keys(keyframes).length === 0) delete next.keyframes;
-  return { ...clip, effect_stack: clip.effect_stack?.map((item) => (item.effect_id === effect.effect_id ? next : item)) };
+  return { ...clip, effect_stack: clip.effect_stack.map((item) => (item.effect_id === effect.effect_id ? next : item)) };
 }
 
 /** Every value at a keyframe-timebase frame: on its curve where the channel is animated, else its fixed value. */
@@ -223,6 +222,9 @@ function reversed(easing: Easing): Easing {
       const [x1 = 0, y1 = 0, x2 = 1, y2 = 1] = easing.bezier ?? [];
       return { interpolation: "bezier", bezier: [1 - x2, 1 - y2, 1 - x1, 1 - y1] };
     }
+    case "ease_in_out":
+    case "hold":
+    case "linear":
     default:
       return easing;
   }
@@ -338,7 +340,7 @@ function sameKeys(actual: readonly TimelineKeyframe[], expected: readonly Timeli
     actual.length === expected.length &&
     expected.every((want, index) => {
       const have = actual[index];
-      if (!have || have.frame !== want.frame || Math.abs(have.value - want.value) > TOLERANCE) return false;
+      if (have?.frame !== want.frame || Math.abs(have.value - want.value) > TOLERANCE) return false;
       if (index === expected.length - 1) return true;
       return have.interpolation === want.interpolation && sameBezier(have.bezier, want.bezier) && have.curve_range === undefined;
     })
@@ -453,8 +455,8 @@ function withoutPreset(clip: TimelineClip, state: PresetState): TimelineClip {
 /** A blur effect a preset added goes again once nothing animates it (it would blur nothing); so does a stack it leaves empty. */
 function withoutIdleBlur(clip: TimelineClip): TimelineClip {
   const stack = clip.effect_stack;
-  const idle = (effect: ClipEffect) => effect.kind === "blur" && effect.effect_id.startsWith(OWN_BLUR) && effect.radius === 0 && !effect.keyframes?.radius?.length;
-  if (!stack?.some(idle)) return clip;
+  const idle = (effect: ClipEffect) => effect.kind === "blur" && effect.effect_id.startsWith(OWN_BLUR) && effect.radius === 0 && !(effect.keyframes?.radius?.length != null && Boolean(effect.keyframes.radius.length));
+  if (!(stack?.some(idle) === true)) return clip;
   const kept = stack.filter((effect) => !idle(effect));
   if (kept.length > 0) return { ...clip, effect_stack: kept };
   const { effect_stack: _stack, ...rest } = clip;
@@ -499,14 +501,14 @@ function place(
   if (preset === null) return { ok: true, value: withoutIdleBlur(next) };
   const other = detectTextAnimation(next, side === "in" ? "out" : "in", frame);
   const problem = framesProblem(next, frames, other);
-  if (problem) return { ok: false, error: problem };
+  if (problem != null && problem !== "") return { ok: false, error: problem };
   const window = windowBounds(next);
   const start = at ?? (side === "in" ? window.start_frame : window.end_frame - 1 - frames);
   const end = start + frames;
   if (other.kind === "preset" && end >= other.start && start <= other.start + other.frames) return { ok: false, error: t("進場與退場動畫不能重疊；請縮短其中一段") };
   if (SPECS[preset].blur && !blurEffect(next)) {
     const full = blurUnavailable(next);
-    if (full) return { ok: false, error: full };
+    if (full != null && full !== "") return { ok: false, error: full };
     // At rest it blurs nothing: only the animation's keys do
     const blur: BlurEffect = { effect_id: allocate(OWN_BLUR), enabled: true, kind: "blur", radius: 0 };
     next = { ...next, effect_stack: [...(next.effect_stack ?? []), blur] };

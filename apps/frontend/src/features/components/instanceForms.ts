@@ -1,9 +1,9 @@
 // 新建／複製 instance 的共用邏輯：device 與 model_path 表單 schema、預設 settings、ID 檢查。
 import type { ComponentEntry, NodeView } from "@/api/catalog";
 import type { InstanceSettings } from "@/api/generated/contracts";
-import { CONTRACT_ROOT } from "@/lib/contractSchemas";
+import { matchesSetting, CONTRACT_ROOT } from "@/lib/contractSchemas";
 import { localIdError } from "@/lib/ids";
-import { cloneJson, isRecord } from "@/lib/json";
+import { cloneJson } from "@/lib/json";
 import { propertySchema, type JsonSchema } from "@/lib/schema";
 import { t } from "@/i18n";
 
@@ -35,8 +35,8 @@ export function settingsFromDefaults(defaults: InstanceSettings | null): Instanc
 
 export function componentIdError(componentId: string, node: NodeView | null): string | null {
   const error = localIdError(componentId, "component_id ");
-  if (error) return error;
-  if (node?.snapshot?.components.some((component) => component.component_id === componentId)) {
+  if (error != null && error !== "") return error;
+  if (node?.snapshot?.components.some((component) => component.component_id === componentId) === true) {
     return t("Node「{label}」已有 component_id「{componentId}」：請改用其他 ID（要修改既有 instance 請在元件頁編輯）", { label: node.label, componentId });
   }
   return null;
@@ -45,14 +45,14 @@ export function componentIdError(componentId: string, node: NodeView | null): st
 /** load 只取 device 與 model_path 兩欄給表單編輯，其餘保留。 */
 export function deviceFormValue(settings: InstanceSettings): Record<string, unknown> {
   const out: Record<string, unknown> = { device: settings.load.device };
-  if (settings.load.model_path !== undefined) out.model_path = settings.load.model_path;
+  if (settings.load.model_path !== undefined) out["model_path"] = settings.load.model_path;
   return out;
 }
 
 export function withDeviceForm(settings: InstanceSettings, value: Record<string, unknown>): InstanceSettings {
   const load = { ...settings.load };
-  if (isRecord(value.device)) load.device = value.device as unknown as InstanceSettings["load"]["device"];
-  if (typeof value.model_path === "string") load.model_path = value.model_path;
+  if (matchesSetting("Device", value["device"])) load.device = value["device"];
+  if (typeof value["model_path"] === "string") load.model_path = value["model_path"];
   else delete load.model_path;
   return { ...settings, load };
 }
@@ -64,6 +64,6 @@ export function instanceLabel(label: string, componentId: string): string {
 
 export function cloneDefaults(source: ComponentEntry, takenOnTarget: ReadonlySet<string>): { componentId: string; label: string } {
   let componentId = `${source.descriptor.component_id}-copy`;
-  for (let index = 2; takenOnTarget.has(componentId) && index < 1000; index += 1) componentId = `${source.descriptor.component_id}-copy-${index}`;
+  for (let index = 2; takenOnTarget.has(componentId) && index < 1000; index += 1) componentId = `${source.descriptor.component_id}-copy-${String(index)}`;
   return { componentId, label: t("{value}（複製）", { value: source.descriptor.label || source.descriptor.component_id }) };
 }

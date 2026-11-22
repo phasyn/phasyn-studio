@@ -1,0 +1,37 @@
+{
+  "component_id": "clip-review-uma0",
+  "label": "LoRA 訓練片段自動反推（Qwen-VL，用到才載入）",
+  "provider_id": "qwen_vl.clip_review",
+  "runtime_id": "aarch64-sm121",
+  "autostart": false,
+  "folder": "訓練",
+  "load_policy": "on_demand",
+  "idle_unload_seconds": 300,
+  "settings": {
+    "load": {
+      "model_path": "/path/to/models/qwen3-vl-4b",
+      "device": {
+        "kind": "cuda",
+        "id": "GPU-REPLACE-UMA",
+        "resource_group": "gpu-uma"
+      },
+      "precision": {
+        "compute_dtype": "bf16",
+        "quantization": {
+          "scheme": "none"
+        }
+      },
+      "offload": {
+        "mode": "none"
+      },
+      "part_overrides": [],
+      "provider_options": {
+        "attn_implementation": "sdpa"
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "mode": "summary"
+    }
+  }
+}

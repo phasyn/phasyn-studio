@@ -126,8 +126,8 @@ export function buildReviseRun(input: {
   const reviseInputs: Record<string, WireBinding> = { image: fromInput("image"), scene: fromInput("scene") };
   if (input.comparison) {
     ports.push(port("comparison", TYPES.comparison, t("要依據的比較（前三個差異）"), true, "inline"));
-    values.comparison = { type_id: TYPES.comparison, value: input.comparison };
-    reviseInputs.comparison = fromInput("comparison");
+    values["comparison"] = { type_id: TYPES.comparison, value: input.comparison };
+    reviseInputs["comparison"] = fromInput("comparison");
   }
   return build(
     "prompt-study-revise",
@@ -247,13 +247,13 @@ export function outputValue(run: WireRun, name: string): unknown {
   return typed && "value" in typed ? typed.value : undefined;
 }
 
-const isScene = (value: unknown): value is PromptScene => isRecord(value) && isRecord(value.sections) && Array.isArray(value.observations) && (value.prompt_language === "en" || value.prompt_language === "zh-TW");
-const isCandidates = (value: unknown): value is PromptCandidates => isRecord(value) && Array.isArray(value.items) && value.items.length === 2 && typeof value.scene_sha256 === "string";
-const isComparison = (value: unknown): value is PromptComparison => isRecord(value) && isRecord(value.sections) && Array.isArray(value.differences);
-const isScore = (value: unknown): value is PromptScore => isRecord(value) && typeof value.unverified === "boolean" && isRecord(value.sections) && isRecord(value.rubric);
-const isPairwise = (value: unknown): value is PromptPairwise => isRecord(value) && (value.winner === "A" || value.winner === "B" || value.winner === "tie" || value.winner === "uncertain");
-const isConfirmation = (value: unknown): value is PromptConfirmation => isRecord(value) && typeof value.confirmed === "boolean" && Array.isArray(value.winners);
-const isVisionResult = (value: unknown): value is PromptVisionResult => isRecord(value) && typeof value.op === "string" && Array.isArray(value.attempts);
+const isScene = (value: unknown): value is PromptScene => isRecord(value) && isRecord(value["sections"]) && Array.isArray(value["observations"]) && (value["prompt_language"] === "en" || value["prompt_language"] === "zh-TW");
+const isCandidates = (value: unknown): value is PromptCandidates => isRecord(value) && Array.isArray(value["items"]) && value["items"].length === 2 && typeof value["scene_sha256"] === "string";
+const isComparison = (value: unknown): value is PromptComparison => isRecord(value) && isRecord(value["sections"]) && Array.isArray(value["differences"]);
+const isScore = (value: unknown): value is PromptScore => isRecord(value) && typeof value["unverified"] === "boolean" && isRecord(value["sections"]) && isRecord(value["rubric"]);
+const isPairwise = (value: unknown): value is PromptPairwise => isRecord(value) && (value["winner"] === "A" || value["winner"] === "B" || value["winner"] === "tie" || value["winner"] === "uncertain");
+const isConfirmation = (value: unknown): value is PromptConfirmation => isRecord(value) && typeof value["confirmed"] === "boolean" && Array.isArray(value["winners"]);
+const isVisionResult = (value: unknown): value is PromptVisionResult => isRecord(value) && typeof value["op"] === "string" && Array.isArray(value["attempts"]);
 
 export type Parsed<T> = { ok: true; value: T } | { ok: false; problem: StepErrorText };
 
@@ -325,14 +325,14 @@ function imageFrom(raw: unknown): RenderedImage | null {
   if (!typed) return null;
   if ("file" in typed) return { file: typed.file, asset: null };
   const value = typed.value;
-  if (isRecord(value) && isFileRef(value.file)) return { file: value.file, asset: value };
+  if (isRecord(value) && isFileRef(value["file"])) return { file: value["file"], asset: value };
   return null;
 }
 
 /** 生成 run 的白底版（給視覺模型與顯示）與透明版；白底版缺少時退回透明版（視覺模型會自己合成白底）。 */
 export function renderedImages(run: WireRun): { white: RenderedImage | null; rgba: RenderedImage | null } {
   const record = isRecord(run.outputs) ? run.outputs : {};
-  return { white: imageFrom(record.image_white), rgba: imageFrom(record.image) };
+  return { white: imageFrom(record["image_white"]), rgba: imageFrom(record["image"]) };
 }
 
 export interface RunPreview {
@@ -346,16 +346,16 @@ export interface RunPreview {
 /** 執行中步驟的最新預覽（run 的 steps[*].preview）；不是最終結果。 */
 export function runPreview(run: WireRun): RunPreview | null {
   for (const [stepId, raw] of Object.entries(run.steps)) {
-    if (!isRecord(raw) || !isRecord(raw.preview)) continue;
-    const preview = raw.preview;
+    if (!isRecord(raw) || !isRecord(raw["preview"])) continue;
+    const preview = raw["preview"];
     // 與 asRunStepPreview 同一條規則：只接受主控自己的 run 預覽路徑（"//host/…" 會被瀏覽器當成別的主機）。
-    if (typeof preview.url !== "string" || !preview.url.startsWith("/api/runs/")) continue;
+    if (typeof preview["url"] !== "string" || !preview["url"].startsWith("/api/runs/")) continue;
     return {
       stepId,
-      step: typeof preview.step === "number" ? preview.step : null,
-      total: typeof preview.total === "number" ? preview.total : null,
-      url: preview.url,
-      at: typeof preview.at === "string" ? preview.at : null,
+      step: typeof preview["step"] === "number" ? preview["step"] : null,
+      total: typeof preview["total"] === "number" ? preview["total"] : null,
+      url: preview["url"],
+      at: typeof preview["at"] === "string" ? preview["at"] : null,
     };
   }
   return null;

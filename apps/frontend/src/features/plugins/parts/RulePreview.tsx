@@ -46,7 +46,7 @@ function Words({ item, tone }: { item: RuleItem; tone: "forbid" | "require" }) {
       <ul aria-label={note} title={note} className="flex flex-wrap gap-1">
         {words.map((text, index) => (
           <li
-            key={`${index}:${text}`}
+            key={`${String(index)}:${text}`}
             className={cn(
               "machine max-w-full rounded-md border px-1.5 py-px text-caption",
               tone === "forbid" ? "border-danger/25 bg-danger/8 text-danger" : "border-success/25 bg-success/8 text-success",

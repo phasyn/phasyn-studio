@@ -1,0 +1,10 @@
+{
+  "runtime_id": "wan-edit-x86_64",
+  "python": "../runtimes/wan-edit-x86_64/.venv/bin/python",
+  "module": "phasyn_components.runtime_host",
+  "env": {
+    "HF_HUB_OFFLINE": "1",
+    "TRANSFORMERS_OFFLINE": "1",
+    "DIFFUSERS_OFFLINE": "1"
+  }
+}

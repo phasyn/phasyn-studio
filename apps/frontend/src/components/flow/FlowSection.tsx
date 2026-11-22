@@ -1,3 +1,4 @@
+import { hasSlotContent } from "@/lib/dom";
 // 反推頁的流程區段：輸入 → 分析 → 結果。左側一條細的流程線串起區段，每段有節點與「輸入／分析／結果」眉標，
 // 讓「放什麼進去、模型在做什麼、得到什麼」一眼分清。結果有內容時節點亮起（品牌漸層＋柔和光暈），其他維持中性；
 // 區段內容本身（表單、表格、圖片）維持清晰，不加光暈。
@@ -59,7 +60,7 @@ export function FlowSection({
         <h2 id={id} className="min-w-0 text-section font-semibold text-fg [overflow-wrap:anywhere]">
           {title}
         </h2>
-        {actions ? <div className="ml-auto flex flex-wrap items-center gap-2">{actions}</div> : null}
+        {hasSlotContent(actions) ? <div className="ml-auto flex flex-wrap items-center gap-2">{actions}</div> : null}
       </div>
       <div className="grid min-w-0 gap-3">{children}</div>
     </section>

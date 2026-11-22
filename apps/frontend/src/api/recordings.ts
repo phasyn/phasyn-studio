@@ -1,7 +1,7 @@
 // Recording reads (GET /api/recordings…): list pages, one recording, its event pages and streams. Feature query keys
 // extend qk.recordings(). Reads may be retried (retryRead); the only recording write (fetch-history) never is.
 import type { EventPage, FetchHistoryRequest, FetchHistoryResult, Recording, RecordingPage, RecordingStream } from "./generated/contracts";
-import { apiJson, isApiError } from "./http";
+import { contractJson, isApiError } from "./http";
 
 /** API path of one recording, optionally with a sub-path such as "/events" (not the UI route; see app/paths). */
 export function recordingApiPath(id: string, suffix = ""): string {
@@ -15,7 +15,7 @@ export function retryRead(failureCount: number, error: unknown): boolean {
 }
 
 export function fetchRecording(id: string, signal?: AbortSignal): Promise<Recording> {
-  return apiJson<Recording>(recordingApiPath(id), { signal });
+  return contractJson("Recording", recordingApiPath(id), { signal });
 }
 
 export interface RecordingEventsQuery {
@@ -26,7 +26,7 @@ export interface RecordingEventsQuery {
 
 /** One page of a stream's events (after_seq → next_seq). */
 export function fetchRecordingEvents(id: string, query: RecordingEventsQuery, signal?: AbortSignal): Promise<EventPage> {
-  return apiJson<EventPage>(recordingApiPath(id, "/events"), { query: { ...query }, signal });
+  return contractJson("EventPage", recordingApiPath(id, "/events"), { query: { ...query }, signal });
 }
 
 /** Display order of event streams; unknown streams follow, by id. Each stream numbers its events from 1 on its own. */
@@ -62,7 +62,7 @@ export interface RecordingQuery {
 }
 
 export function fetchRecordingPage(query: RecordingQuery = {}, signal?: AbortSignal): Promise<RecordingPage> {
-  return apiJson<RecordingPage>("/api/recordings", { query: { ...query }, signal });
+  return contractJson("RecordingPage", "/api/recordings", { query: { ...query }, signal });
 }
 
 /**
@@ -70,7 +70,7 @@ export function fetchRecordingPage(query: RecordingQuery = {}, signal?: AbortSig
  * calls whose recording the Controller never received, e.g. after it was interrupted. Read-only.
  */
 export function fetchNodeRecordingPage(nodeId: string, query: Omit<RecordingQuery, "node_id"> = {}, signal?: AbortSignal): Promise<RecordingPage> {
-  return apiJson<RecordingPage>(`/api/nodes/${encodeURIComponent(nodeId)}/recordings`, { query: { ...query }, signal });
+  return contractJson("RecordingPage", `/api/nodes/${encodeURIComponent(nodeId)}/recordings`, { query: { ...query }, signal });
 }
 
 /**
@@ -79,5 +79,5 @@ export function fetchNodeRecordingPage(nodeId: string, query: Omit<RecordingQuer
  * user re-reads the recording.
  */
 export function fetchRecordingHistory(recordingId: string, body: FetchHistoryRequest): Promise<FetchHistoryResult> {
-  return apiJson<FetchHistoryResult>(recordingApiPath(recordingId, "/fetch-history"), { method: "POST", json: body });
+  return contractJson("FetchHistoryResult", recordingApiPath(recordingId, "/fetch-history"), { method: "POST", json: body });
 }

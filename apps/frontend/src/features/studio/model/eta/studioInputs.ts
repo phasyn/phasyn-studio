@@ -7,7 +7,7 @@ import type { StudioLibraryItem, StudioProject, StudioShot, StudioTake } from "@
 import { heldReference } from "../../references";
 import { referenceImageShortEdge, referenceVideoShortEdge } from "../../swap/limits";
 import { continuityMode } from "../continuity";
-import { H3_FPS } from "../frames";
+import { h3Rules } from "../providerTraits";
 import { ditDefaults, findRoute, type RouteTask, type StudioRoute } from "../routes";
 import { approximateTextTokens } from "./h3Work";
 import type { SegmentEtaInput } from "./segment";
@@ -40,6 +40,10 @@ function clipSeconds(reference: ReferenceFacts): number | null {
   return end === null ? null : Math.max(0, end - (reference.start ?? 0));
 }
 
+function ditFacts(route: StudioRoute): unknown {
+  return route.steps.find((item) => item.step.step_id === route.ditStepId)?.slot.component?.facts;
+}
+
 function segmentInput(route: StudioRoute, values: SegmentValues): SegmentEtaInput | null {
   const images: { width: number; height: number }[] = [];
   const videos: { width: number; height: number; seconds: number; withAudio: boolean }[] = [];
@@ -53,7 +57,7 @@ function segmentInput(route: StudioRoute, values: SegmentValues): SegmentEtaInpu
         images.push({ width, height });
         continue;
       }
-      const seconds = reference.held ? values.frames / H3_FPS : clipSeconds(reference);
+      const seconds = reference.held ? values.frames / h3Rules(ditFacts(route)).fps : clipSeconds(reference);
       if (seconds === null) return null;
       if (reference.kind === "audio") {
         audios.push({ seconds });
@@ -88,7 +92,8 @@ function segmentInput(route: StudioRoute, values: SegmentValues): SegmentEtaInpu
 
 /** A shot as it would render now; null when it cannot be estimated (no route, a first frame on a non-fl2va route, unknown media). */
 export function shotEtaInput(project: StudioProject, shot: StudioShot, route: StudioRoute | null, continuesBatch = false): SegmentEtaInput | null {
-  if (!route) return null;
+  // The estimator models H3 work only; other families have no estimate (never an H3-shaped guess)
+  if (route?.family !== "h3") return null;
   const firstFrame = continuityMode(shot) !== "none";
   // The render plan refuses these combinations; there is nothing to estimate then
   if (firstFrame ? route.capability !== "fl2va" : route.capability === "fl2va") return null;
@@ -134,7 +139,7 @@ export function shotsEtaInputs(project: StudioProject, shots: readonly StudioSho
  * estimated with one extra audio encode — a slight overestimate of its time left, never an underestimate.
  */
 export function takeEtaInput(project: StudioProject, take: StudioTake, route: StudioRoute | null, continuesBatch = false): SegmentEtaInput | null {
-  if (!route) return null;
+  if (route?.family !== "h3" || take.prompt === null) return null;
   const items = new Map((project.library ?? []).map((item) => [item.file.file_id, item]));
   const references = (take.references ?? []).map((reference): ReferenceFacts => {
     const item = items.get(reference.file.file_id);

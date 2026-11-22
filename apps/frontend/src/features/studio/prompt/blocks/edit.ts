@@ -117,7 +117,7 @@ export function setBlockHeading(doc: PromptDocument, index: number, edit: Headin
     marker = `${edit.section}:`;
   } else if (edit.type === "range" && (style.type === "time" || (style.type === "shot" && style.form === "range"))) {
     const problem = validRange(edit.range);
-    if (problem) return { error: problem };
+    if (problem != null && problem !== "") return { error: problem };
     marker =
       style.type === "shot"
         ? shotMarker(block.shot ?? 1, edit.range)
@@ -135,6 +135,6 @@ export function setBlockHeading(doc: PromptDocument, index: number, edit: Headin
   }
   if (marker === null) return { error: t("這種標題不能這樣修改") };
   const reparsed = parsePrompt(marker + block.joiner + block.body).blocks[0];
-  if (!reparsed || reparsed.kind !== block.kind) return { error: t("修改後不再是同一種標題；請改用全文編輯") };
+  if (reparsed?.kind !== block.kind) return { error: t("修改後不再是同一種標題；請改用全文編輯") };
   return replaceBlock(doc, index, { ...reparsed, joiner: block.joiner, body: block.body });
 }

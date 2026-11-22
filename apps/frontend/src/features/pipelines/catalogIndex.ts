@@ -2,6 +2,7 @@
 import { componentEntries, providerFor, type NodeView, type ProviderIndex } from "@/api/catalog";
 import type { Catalog, ComponentDescriptor, ProviderInfo } from "@/api/generated/contracts";
 import { statusSpec } from "@/components/common/statusSpec";
+import { namesExperiment } from "@/lib/experimental";
 import { componentVariant } from "@/lib/h3Variant";
 import { isTestProvider } from "./instancePickerModel";
 import type { DescriptorLookup } from "./pipelineModel";
@@ -47,7 +48,7 @@ export function readinessText(option: Pick<ComponentOption, "descriptor" | "node
 }
 
 /** 依 Node 分組（<optgroup>）。 */
-export function groupOptions(options: readonly ComponentOption[]): Array<{ node: NodeView; options: ComponentOption[] }> {
+export function groupOptions(options: readonly ComponentOption[]): { node: NodeView; options: ComponentOption[] }[] {
   const groups = new Map<string, { node: NodeView; options: ComponentOption[] }>();
   for (const option of options) {
     const group = groups.get(option.node.node_id) ?? { node: option.node, options: [] };
@@ -68,8 +69,14 @@ export function readinessRank(option: Pick<ComponentOption, "descriptor" | "node
   return option.descriptor.state === "ready" || option.descriptor.state === "busy" ? 0 : 1;
 }
 
+/** Research and experiment components come after the main ones, so a template never defaults to them. */
+function experimentRank(option: ComponentOption): number {
+  return namesExperiment(option.descriptor.component_id, option.descriptor.label) ? 1 : 0;
+}
+
 /**
- * 範本某一步（或正式解碼）可選的元件，第一個就是預設：依 kinds 的順序（第一個是建議），同 kind 時就緒 → 在線 → 其他。
+ * 範本某一步（或正式解碼）可選的元件，第一個就是預設：依 kinds 的順序（第一個是建議），同 kind 時正式元件先於實驗／研究元件，
+ * 再依就緒 → 在線 → 其他。
  * 測試／合成元件不列出。`outputType`：元件還要宣告一個該 type_id 的輸出埠，用來分辨同一個 kind 的不同用途
  * （影像與聲音的參考編碼都是 reference.encode，差別只在輸出）。
  * `variant`：H3 元件需要的 checkpoint variant（fl2va／ref2va，例如參考生成的 DiT 必須是 ref2va）。符合的排在最前面
@@ -85,7 +92,7 @@ export function slotCandidates(options: readonly ComponentOption[], kinds: reado
         !isSyntheticOption(option) &&
         (outputType === undefined || option.descriptor.outputs.some((port) => port.type_id === outputType)),
     )
-    .sort((a, b) => variantRank(a) - variantRank(b) || kinds.indexOf(a.kind ?? "") - kinds.indexOf(b.kind ?? "") || readinessRank(a) - readinessRank(b));
+    .sort((a, b) => variantRank(a) - variantRank(b) || kinds.indexOf(a.kind ?? "") - kinds.indexOf(b.kind ?? "") || experimentRank(a) - experimentRank(b) || readinessRank(a) - readinessRank(b));
 }
 
 /** 某 kind 的元件：就緒者優先、離線 Node 殿後。 */

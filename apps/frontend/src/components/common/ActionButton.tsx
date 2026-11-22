@@ -1,4 +1,4 @@
-import { forwardRef, useId } from "react";
+import { type Ref, useId } from "react";
 import { Button, type ButtonProps } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 
@@ -11,9 +11,8 @@ export interface ActionButtonProps extends ButtonProps {
 const BLOCKED =
   "cursor-not-allowed border-line-subtle bg-raised bg-none text-fg-disabled shadow-none hover:border-line-subtle hover:bg-raised hover:text-fg-disabled hover:shadow-none hover:brightness-100 focus-visible:shadow-none active:bg-raised active:brightness-100";
 
-export const ActionButton = forwardRef<HTMLButtonElement, ActionButtonProps>(function ActionButton(
-  { disabledReason, onClick, className, pending, ...props },
-  ref,
+export function ActionButton(
+  { ref, disabledReason, onClick, className, pending, ...props }: ActionButtonProps & { ref?: Ref<HTMLButtonElement> | undefined },
 ) {
   const reasonId = useId();
   const blocked = Boolean(disabledReason);
@@ -22,13 +21,13 @@ export const ActionButton = forwardRef<HTMLButtonElement, ActionButtonProps>(fun
       <Button
         ref={ref}
         {...props}
-        pending={pending}
+        {...(pending === undefined ? {} : { pending })}
         aria-disabled={blocked || undefined}
         aria-describedby={blocked ? reasonId : props["aria-describedby"]}
         title={disabledReason ?? props.title}
         className={cn(className, blocked && BLOCKED)}
         onClick={(event) => {
-          if (blocked || pending) {
+          if (blocked || (pending === true)) {
             event.preventDefault();
             return;
           }
@@ -42,4 +41,4 @@ export const ActionButton = forwardRef<HTMLButtonElement, ActionButtonProps>(fun
       ) : null}
     </>
   );
-});
+}

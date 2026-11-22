@@ -13,9 +13,12 @@ import importlib
 from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING, Any
 
+
 try:
     VERSION = __version__ = version("phasyn-controller")
-except PackageNotFoundError:  # imported from a source tree that was never installed: say so, never guess
+except (
+    PackageNotFoundError
+):  # imported from a source tree that was never installed: say so, never guess
     VERSION = __version__ = "0+unknown"
 
 _LAZY = {
@@ -40,4 +43,13 @@ def __getattr__(name: str) -> Any:
     return getattr(importlib.import_module(module, __name__), name)
 
 
-__all__ = ["VERSION", "ConfigError", "ControllerConfig", "__version__", "create_app", "load_config", "run", "serve"]
+__all__ = [
+    "VERSION",
+    "ConfigError",
+    "ControllerConfig",
+    "__version__",
+    "create_app",
+    "load_config",
+    "run",
+    "serve",
+]

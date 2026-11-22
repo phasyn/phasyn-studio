@@ -5,6 +5,7 @@
 // statement with ✓／✗／? (failed first, the ones kept out of the score last) and the residue frame ranges with who.
 // The chip is presentational like the card's B control (an option holds no nested control); the card's label reads
 // the same summary. Motion: the chip fades in and swaps when its numbers change; the popover pops in from the chip.
+import { withOccurrenceKeys } from "@/lib/occurrenceKeys";
 import { useId } from "react";
 import type { StudioTakeReview, StudioTakeReviewStatement } from "@/api/generated/contracts";
 import { useChangeFade } from "@/components/ui/motion";
@@ -36,7 +37,7 @@ const VERDICT_MARK: Record<string, { mark: string; tone: string }> = {
 /** The chip on the card's frame; a click opens the detail (the card itself is not selected). */
 export function ReviewChip({ summary, onOpen }: { summary: TakeReviewSummary; onOpen: (anchor: HTMLElement) => void }) {
   const score = summary.adherence?.score ?? null;
-  const fade = useChangeFade<HTMLSpanElement>(`${summary.residue}:${score ?? ""}`);
+  const fade = useChangeFade<HTMLSpanElement>(`${summary.residue}:${String(score ?? "")}`);
   return (
     <span
       ref={fade}
@@ -77,7 +78,7 @@ function StatementRow({ statement }: { statement: StudioTakeReviewStatement }) {
 }
 
 function ReviewMeta({ review }: { review: StudioTakeReview }) {
-  const parts = [review.source, roleLabel(review.role ?? null), review.checked_by ? t("檢查者：{name}", { name: review.checked_by }) : null, review.created_at ? formatTimestamp(review.created_at) : null].filter(
+  const parts = [review.source, roleLabel(review.role ?? null), (review.checked_by != null && review.checked_by !== "") ? t("檢查者：{name}", { name: review.checked_by }) : null, (review.created_at != null && review.created_at !== "") ? formatTimestamp(review.created_at) : null].filter(
     (part): part is string => part !== null,
   );
   return (
@@ -101,8 +102,8 @@ function AdherenceSection({ review }: { review: StudioTakeReview }) {
       {unclear !== null && unclear > UNRELIABLE_UNCLEAR ? <p className="text-[11px] leading-4 text-warning">{t("{share} 的項目無法判斷，這個分數不可靠", { share: percent(unclear) })}</p> : null}
       {statements.length > 0 ? (
         <ul className="divide-y divide-line-subtle">
-          {statements.map((statement, index) => (
-            <StatementRow key={statement.id ?? index} statement={statement} />
+          {withOccurrenceKeys(statements, (statement) => statement.id ?? JSON.stringify([statement.kind, statement.shot, statement.text])).map(({ item: statement, key }) => (
+            <StatementRow key={key} statement={statement} />
           ))}
         </ul>
       ) : (
@@ -125,14 +126,14 @@ function ResidueSection({ review }: { review: StudioTakeReview }) {
       {ranges.length > 0 ? (
         <ul className="grid gap-0.5">
           {ranges.map((range, index) => (
-            <li key={`${range.start_frame}-${range.end_frame}-${index}`} className="text-caption leading-5 text-fg-secondary break-words">
+            <li key={`${String(range.start_frame)}-${String(range.end_frame)}-${String(index)}`} className="text-caption leading-5 text-fg-secondary break-words">
               <span className="machine text-fg">{t("影格 {start}–{end}", { start: range.start_frame, end: range.end_frame })}</span> {range.who}
-              {range.note ? <span className="text-fg-tertiary">{` · ${range.note}`}</span> : null}
+              {(range.note != null && range.note !== "") ? <span className="text-fg-tertiary">{` · ${range.note}`}</span> : null}
             </li>
           ))}
         </ul>
       ) : null}
-      {review.note ? <p className="text-caption text-fg-tertiary break-words">{review.note}</p> : null}
+      {(review.note != null && review.note !== "") ? <p className="text-caption text-fg-tertiary break-words">{review.note}</p> : null}
     </section>
   );
 }
@@ -157,11 +158,11 @@ export function ReviewPopover({ open, anchor, title, summary, onClose }: ReviewP
         {summary?.adherenceAll.map((review) => (
           <AdherenceSection key={`${review.source}:${review.role ?? ""}`} review={review} />
         ))}
-        {summary && summary.adherenceAll.length === 0 ? <p className="text-caption text-fg-tertiary">{t("還沒有遵從度審查")}</p> : null}
+        {summary?.adherenceAll.length === 0 ? <p className="text-caption text-fg-tertiary">{t("還沒有遵從度審查")}</p> : null}
         {summary?.residueAll.map((review) => (
           <ResidueSection key={review.source} review={review} />
         ))}
-        {summary && summary.residueAll.length === 0 ? (
+        {summary?.residueAll.length === 0 ? (
           <p className="inline-flex items-center gap-1.5 text-caption text-fg-tertiary">
             <span className={cn("size-2 shrink-0 rounded-full", RESIDUE_DOT.unchecked)} />
             {residueLabel("unchecked")}

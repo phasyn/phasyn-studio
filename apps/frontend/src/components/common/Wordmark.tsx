@@ -32,7 +32,7 @@ export function Wordmark({ width = 160, short = false, gradient = false, tagline
   return (
     <span className={cn("inline-grid justify-items-start gap-[0.35em] leading-none text-fg", className)}>
       <svg
-        viewBox={`0 0 ${VIEW_W} ${viewH}`}
+        viewBox={`0 0 ${String(VIEW_W)} ${String(viewH)}`}
         width={width}
         height={(width * viewH) / VIEW_W}
         role={decorative ? undefined : "img"}

@@ -29,9 +29,9 @@ function typedGain(text: string): number | null {
 }
 
 export function GainField({ label, value, onCommit, className }: GainFieldProps) {
-  const input = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   // Set while Enter or Esc has already settled the draft, so the blur that follows does not apply it again
-  const settled = useRef(false);
+  const settledRef = useRef(false);
   const [draft, setDraft] = useState<Draft | null>(null);
 
   /** Commits the draft; false (and the field marked) when it is not a valid gain. */
@@ -47,29 +47,29 @@ export function GainField({ label, value, onCommit, className }: GainFieldProps)
     return true;
   };
   const leave = () => {
-    settled.current = true;
-    input.current?.blur();
+    settledRef.current = true;
+    inputRef.current?.blur();
   };
-  useEditorDraft({ commit: apply, focus: () => input.current?.focus() });
+  useEditorDraft({ commit: apply, focus: () => inputRef.current?.focus() });
 
   return (
     <input
-      ref={input}
+      ref={inputRef}
       inputMode="decimal"
       autoComplete="off"
       spellCheck={false}
       aria-label={t("{label}（dB）", { label })}
-      aria-invalid={draft?.invalid ? true : undefined}
-      title={draft?.invalid ? t("請輸入 {min} 到 +{max} 之間的 dB 值", { min: formatDb(GAIN_MIN_DB), max: GAIN_MAX_DB }) : t("{label}：{value} dB（可直接輸入）", { label, value: formatDb(value) })}
+      aria-invalid={(draft?.invalid === true) ? true : undefined}
+      title={(draft?.invalid === true) ? t("請輸入 {min} 到 +{max} 之間的 dB 值", { min: formatDb(GAIN_MIN_DB), max: GAIN_MAX_DB }) : t("{label}：{value} dB（可直接輸入）", { label, value: formatDb(value) })}
       value={draft ? draft.text : formatDb(value)}
       onFocus={(event) => {
-        settled.current = false;
+        settledRef.current = false;
         setDraft({ text: formatDb(value).replace("−", "-"), invalid: false });
         event.currentTarget.select();
       }}
-      onChange={(event) => setDraft({ text: event.target.value, invalid: false })}
+      onChange={(event) => { setDraft({ text: event.target.value, invalid: false }); }}
       onBlur={() => {
-        if (settled.current) return;
+        if (settledRef.current) return;
         if (!apply()) setDraft(null);
       }}
       onKeyDown={(event) => {

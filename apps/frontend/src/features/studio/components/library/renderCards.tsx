@@ -49,7 +49,7 @@ export function renderAdapter(section: RenderEntry["kind"]): CollectionAdapter<R
         case "active":
           return entry.kind === "take" && entry.active ? <ActiveMark /> : <span className="text-fg-disabled">—</span>;
         case "seed":
-          return entry.kind === "take" ? <span className="machine">{entry.take.seed}</span> : null;
+          return entry.kind === "take" ? <span className="machine">{entry.take.seed ?? "—"}</span> : null;
         case "dimensions":
           return <span className="machine">{renderDimensions(entry)}</span>;
         case "duration":
@@ -69,14 +69,14 @@ export function renderAdapter(section: RenderEntry["kind"]): CollectionAdapter<R
             <RenderThumb entry={entry} className={THUMB_ZOOM} />
             <span className={cn(HUD_CHIP, "absolute top-1.5 left-1.5 inline-flex items-center gap-1 px-1.5 text-[11px]")}>
               {entry.kind === "take" ? <Clapperboard aria-hidden className="size-3" /> : <Film aria-hidden className="size-3" />}
-              {entry.kind === "take" ? `take ${entry.takeNumber}` : t("匯出")}
+              {entry.kind === "take" ? `take ${String(entry.takeNumber)}` : t("匯出")}
             </span>
             {entry.kind === "take" && entry.active ? <ActiveMark className={cn(HUD_CHIP, "absolute top-1.5 right-1.5 px-1.5 text-[11px]")} /> : null}
             <span className={cn(HUD_CHIP, "machine absolute right-1.5 bottom-1.5 px-1.5 text-[11px]")}>{renderDuration(entry)}</span>
           </span>
           <span className="truncate px-0.5 text-caption text-fg">{entry.kind === "take" ? shotLabel(entry) : renderEntryName(entry)}</span>
           <span className="machine truncate px-0.5 text-[11px] leading-4 text-fg-tertiary">
-            {entry.kind === "take" ? `seed ${entry.take.seed} · ${renderDimensions(entry)} · ${renderSize(entry)}` : `${renderDimensions(entry)} · ${renderSize(entry)}`}
+            {entry.kind === "take" && entry.take.seed !== null ? `seed ${String(entry.take.seed)} · ${renderDimensions(entry)} · ${renderSize(entry)}` : `${renderDimensions(entry)} · ${renderSize(entry)}`}
           </span>
         </>
       );

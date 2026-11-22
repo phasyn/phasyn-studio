@@ -54,7 +54,7 @@ function Details({ item, inUse }: { item: ImageLibraryItem; inUse: boolean }) {
         <h3 className="text-section font-semibold [overflow-wrap:anywhere] text-fg">{item.name}</h3>
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5 text-data">
           <dt className="text-fg-tertiary">{t("尺寸")}</dt>
-          <dd className="machine text-fg">{item.width !== null && item.height !== null ? `${item.width}×${item.height}` : t("尺寸未知")}</dd>
+          <dd className="machine text-fg">{item.width !== null && item.height !== null ? `${String(item.width)}×${String(item.height)}` : t("尺寸未知")}</dd>
           <dt className="text-fg-tertiary">{t("大小")}</dt>
           <dd className="machine text-fg-secondary">{formatBytes(item.file.size_bytes)}</dd>
           <dt className="text-fg-tertiary">{t("來源")}</dt>
@@ -64,9 +64,9 @@ function Details({ item, inUse }: { item: ImageLibraryItem; inUse: boolean }) {
           <dt className="text-fg-tertiary">{t("使用狀態")}</dt>
           <dd className={inUse ? "text-fg" : "text-fg-secondary"}>{inUse ? t("使用中") : t("沒有使用")}</dd>
         </dl>
-        {item.note ? <p className="text-caption text-fg-secondary [overflow-wrap:anywhere]">{item.note}</p> : null}
+        {(item.note != null && item.note !== "") ? <p className="text-caption text-fg-secondary [overflow-wrap:anywhere]">{item.note}</p> : null}
       </div>
-      {url ? (
+      {(url != null && url !== "") ? (
         <a href={url} download={downloadName(item)} className={cn(buttonVariants({ variant: "secondary", size: "sm" }), "justify-self-start no-underline")}>
           <Download aria-hidden />
           {t("下載")}
@@ -93,7 +93,7 @@ function Tile({ item, index, selected, focusable, onSelect, onKeyDown }: { item:
           <span className="truncate text-data text-fg" title={item.name}>
             {item.name}
           </span>
-          <span className="machine truncate text-caption text-fg-tertiary">{item.width !== null && item.height !== null ? `${item.width}×${item.height}` : t("尺寸未知")}</span>
+          <span className="machine truncate text-caption text-fg-tertiary">{item.width !== null && item.height !== null ? `${String(item.width)}×${String(item.height)}` : t("尺寸未知")}</span>
         </span>
       </button>
     </li>
@@ -103,7 +103,7 @@ function Tile({ item, index, selected, focusable, onSelect, onKeyDown }: { item:
 export function ImageLibrary() {
   const { project, dispatch } = useImageStudio();
   const id = useId();
-  const fileInput = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -153,11 +153,11 @@ export function ImageLibrary() {
               <DialogTitle>{t("素材庫")}</DialogTitle>
               <DialogDescription>{t("這個專案的圖片素材，與 Video Studio 共用。改名與移除在 Video Studio 的素材庫。")}</DialogDescription>
             </div>
-            <Button size="sm" variant="secondary" icon={<Upload aria-hidden />} onClick={() => fileInput.current?.click()}>
+            <Button size="sm" variant="secondary" icon={<Upload aria-hidden />} onClick={() => fileInputRef.current?.click()}>
               {t("上傳圖片")}
             </Button>
             <input
-              ref={fileInput}
+              ref={fileInputRef}
               type="file"
               accept={IMAGE_ACCEPT}
               multiple
@@ -171,7 +171,7 @@ export function ImageLibrary() {
           </div>
         </DialogHeader>
         <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_22rem]">
-          <section
+          <section /* eslint-disable-line jsx-a11y-x/no-noninteractive-element-interactions -- This drop target complements the keyboard-accessible file picker in the same panel. */
             aria-label={t("素材")}
             className={cn("flex min-h-0 min-w-0 flex-col border-line-subtle transition-[background-color] duration-(--duration-fast) lg:border-r", dragging && "bg-brand-gradient-soft")}
             onDragOver={(event) => {
@@ -180,15 +180,15 @@ export function ImageLibrary() {
               setDragging(true);
             }}
             onDragLeave={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false);
+              if (!(event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget))) setDragging(false);
             }}
             onDrop={onDrop}
           >
             <div className="flex shrink-0 flex-wrap items-center gap-2 px-6 py-3">
-              <label className="relative min-w-48 flex-1">
+              <div className="relative min-w-48 flex-1">
                 <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-fg-tertiary" />
-                <Input compact type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("搜尋檔名")} aria-label={t("搜尋素材庫檔名")} className="pl-8" />
-              </label>
+                <Input compact type="search" value={query} onChange={(event) => { setQuery(event.target.value); }} placeholder={t("搜尋檔名")} aria-label={t("搜尋素材庫檔名")} className="pl-8" />
+              </div>
               <Segmented
                 name={`${id}-source`}
                 label={t("來源")}
@@ -205,7 +205,7 @@ export function ImageLibrary() {
             {uploads.tasks.length > 0 ? (
               <ul className="mx-6 mb-2 grid shrink-0 gap-0.5 rounded-lg border border-line-subtle bg-canvas p-1" aria-label={t("上傳")} aria-live="polite">
                 {uploads.tasks.map((task) => (
-                  <UploadTaskRow key={task.key} task={task} icon={<Upload aria-hidden className="mt-0.5 size-3.5 text-entity" />} onRetry={() => uploads.retry(task.key)} onDismiss={() => uploads.dismiss(task.key)} />
+                  <UploadTaskRow key={task.key} task={task} icon={<Upload aria-hidden className="mt-0.5 size-3.5 text-entity" />} onRetry={() => { uploads.retry(task.key); }} onDismiss={() => { uploads.dismiss(task.key); }} />
                 ))}
               </ul>
             ) : null}
@@ -220,7 +220,7 @@ export function ImageLibrary() {
               ) : (
                 <ul ref={listRef} aria-label={t("素材庫圖片（{itemsCount}）", { itemsCount: items.length })} className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-2.5">
                   {items.map((item, index) => (
-                    <Tile key={item.item_id} item={item} index={index} selected={item.item_id === selected?.item_id} focusable={index === focusIndex} onSelect={() => setSelectedId(item.item_id)} onKeyDown={onTileKey(index)} />
+                    <Tile key={item.item_id} item={item} index={index} selected={item.item_id === selected?.item_id} focusable={index === focusIndex} onSelect={() => { setSelectedId(item.item_id); }} onKeyDown={onTileKey(index)} />
                   ))}
                 </ul>
               )}

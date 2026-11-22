@@ -1,3 +1,4 @@
+import { isListed, isRecord } from "@/lib/json";
 // The task layouts of the Edit workspace (Editing, Color, Effects, Audio, Captions and graphics): which panel docks
 // on the right and which tabs the two left groups open on. The chosen layout is remembered per project and travels
 // in the URL (?layout=); what the user opens, closes or selects inside a layout is remembered per layout.
@@ -31,7 +32,7 @@ export interface EditLayout {
 
 const OPEN = { topOpen: true, bottomOpen: true, dockOpen: true };
 
-export const EDIT_LAYOUTS: readonly EditLayout[] = [
+export const EDIT_LAYOUTS: readonly [EditLayout, ...EditLayout[]] = [
   { id: "edit", label: t("剪輯"), icon: Scissors, dock: null, initial: { ...OPEN, topTab: "source", bottomTab: "project" } },
   { id: "color", label: t("色彩"), icon: Palette, dock: "color", initial: { ...OPEN, topOpen: false, topTab: "controls", bottomTab: "project" } },
   { id: "effects", label: t("效果"), icon: Sparkles, dock: "effects", initial: { ...OPEN, topTab: "controls", bottomTab: "project" } },
@@ -40,8 +41,8 @@ export const EDIT_LAYOUTS: readonly EditLayout[] = [
 ];
 
 const LAYOUT_IDS = EDIT_LAYOUTS.map((layout) => layout.id);
-const TOP_TABS: readonly string[] = ["source", "controls", "mixer"] satisfies TopTabId[];
-const BOTTOM_TABS: readonly string[] = ["project", "effects", "markers", "captions", "history"] satisfies BottomTabId[];
+const TOP_TABS: readonly TopTabId[] = ["source", "controls", "mixer"] satisfies TopTabId[];
+const BOTTOM_TABS: readonly BottomTabId[] = ["project", "effects", "markers", "captions", "history"] satisfies BottomTabId[];
 
 function isLayoutId(value: unknown): value is EditLayoutId {
   return typeof value === "string" && (LAYOUT_IDS as readonly string[]).includes(value);
@@ -54,14 +55,14 @@ interface Stored {
 }
 
 function parseState(raw: unknown): Partial<LayoutState> {
-  if (typeof raw !== "object" || raw === null) return {};
-  const entry = raw as Record<string, unknown>;
+  if (!isRecord(raw)) return {};
+  const entry = raw;
   const out: Partial<LayoutState> = {};
-  if (typeof entry.topTab === "string" && TOP_TABS.includes(entry.topTab)) out.topTab = entry.topTab as TopTabId;
-  if (typeof entry.bottomTab === "string" && BOTTOM_TABS.includes(entry.bottomTab)) out.bottomTab = entry.bottomTab as BottomTabId;
-  if (typeof entry.topOpen === "boolean") out.topOpen = entry.topOpen;
-  if (typeof entry.bottomOpen === "boolean") out.bottomOpen = entry.bottomOpen;
-  if (typeof entry.dockOpen === "boolean") out.dockOpen = entry.dockOpen;
+  if (isListed(entry["topTab"], TOP_TABS)) out.topTab = entry["topTab"];
+  if (isListed(entry["bottomTab"], BOTTOM_TABS)) out.bottomTab = entry["bottomTab"];
+  if (typeof entry["topOpen"] === "boolean") out.topOpen = entry["topOpen"];
+  if (typeof entry["bottomOpen"] === "boolean") out.bottomOpen = entry["bottomOpen"];
+  if (typeof entry["dockOpen"] === "boolean") out.dockOpen = entry["dockOpen"];
   return out;
 }
 
@@ -69,9 +70,9 @@ const store = createPersistentStore<Stored>({
   key: "phasyn.studio.nle.layouts",
   initial: { projects: {}, layouts: {} },
   parse: (raw: unknown) => {
-    const entry = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
-    const projects = typeof entry.projects === "object" && entry.projects !== null ? Object.entries(entry.projects as Record<string, unknown>) : [];
-    const layouts = typeof entry.layouts === "object" && entry.layouts !== null ? (entry.layouts as Record<string, unknown>) : {};
+    const entry = isRecord(raw) ? raw : {};
+    const projects = isRecord(entry["projects"]) ? Object.entries(entry["projects"]) : [];
+    const layouts = isRecord(entry["layouts"]) ? (entry["layouts"]) : {};
     return {
       projects: Object.fromEntries(projects.filter((item): item is [string, EditLayoutId] => isLayoutId(item[1])).slice(-200)),
       layouts: Object.fromEntries(LAYOUT_IDS.map((id) => [id, parseState(layouts[id])])),
@@ -85,7 +86,7 @@ export function useEditLayout(projectId: string): [EditLayout, (id: EditLayoutId
   const stored = store.use();
   const requested = params.get("layout");
   const id = isLayoutId(requested) ? requested : (stored.projects[projectId] ?? "edit");
-  const layout = EDIT_LAYOUTS.find((item) => item.id === id) ?? EDIT_LAYOUTS[0]!;
+  const layout = EDIT_LAYOUTS.find((item) => item.id === id) ?? EDIT_LAYOUTS[0];
   const choose = (next: EditLayoutId) => {
     store.set((current) => {
       const { [projectId]: _previous, ...others } = current.projects;
@@ -107,6 +108,6 @@ export function useEditLayout(projectId: string): [EditLayout, (id: EditLayoutId
 export function useLayoutState(layout: EditLayout): [LayoutState, (patch: Partial<LayoutState>) => void] {
   const stored = store.use();
   const state = { ...layout.initial, ...stored.layouts[layout.id] };
-  const update = (patch: Partial<LayoutState>) => store.set((current) => ({ ...current, layouts: { ...current.layouts, [layout.id]: { ...current.layouts[layout.id], ...patch } } }));
+  const update = (patch: Partial<LayoutState>) => { store.set((current) => ({ ...current, layouts: { ...current.layouts, [layout.id]: { ...current.layouts[layout.id], ...patch } } })); };
   return [state, update];
 }

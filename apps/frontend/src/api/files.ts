@@ -1,11 +1,11 @@
 // 檔案：上傳（octet-stream，media_type 由 query 指定）、以 /api/media 讀 JSON 或播放。
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { FileRef } from "./generated/contracts";
-import { apiFetch, apiJson, mediaUrl } from "./http";
+import { apiFetch, contractJson, mediaUrl } from "./http";
 import { qk } from "./keys";
 
 export function uploadBlob(body: Blob, mediaType: string, signal?: AbortSignal): Promise<FileRef> {
-  return apiJson<FileRef>("/api/files", {
+  return contractJson("FileRef", "/api/files", {
     method: "POST",
     query: { media_type: mediaType },
     body,

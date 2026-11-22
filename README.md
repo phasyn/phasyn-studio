@@ -36,7 +36,25 @@ See the [website](https://phasyn.dev/en/) for features and screenshots.
 - Make pictures from text or from other pictures.
 - Put the shots in order and cut the film on a timeline, as in a video editor.
 - Add transitions, text, captions and music, then export the film.
+- Fix a finished take without starting over: restore detail, smooth motion, replace the sound or extend the shot.
+- Stack several LoRAs on the video model, and train your own style LoRA from your videos.
 - Works in English, Traditional Chinese and Japanese.
+
+## Train a style LoRA from your own videos (experimental)
+
+Open **Inference Studio → LoRA training**, add your videos and write the direction you want (for example
+"anime fight camera work and impact"). Phasyn then works through the job on its own:
+
+1. cuts the videos into clips, skipping cuts, still shots and unusable footage;
+2. captions every clip automatically and holds some clips out for evaluation;
+3. masks subtitles, logos and watermarks so the LoRA does not learn them;
+4. trains an H3 LoRA in chunks that resume after an interruption;
+5. renders the same prompts at several LoRA strengths, side by side, so you can see what it changed;
+6. lets you keep it (it is registered as a LoRA you can pick in your routes) or discard it.
+
+Training needs the H3 weights and a GPU node with a lot of memory (a unified-memory machine such as the DGX Spark
+works). Train on footage you have the rights to use. To use LoRAs, stack up to four of them on a video model in the
+component settings (at most one speed-up LoRA).
 
 ## What you need
 

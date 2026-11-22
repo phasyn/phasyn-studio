@@ -1,5 +1,5 @@
 import { ChevronDown } from "lucide-react";
-import { forwardRef, type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import type { Ref, InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
 
 // 輸入欄位：凹陷底＋控制邊界（line-control ≥ 3:1）；hover 邊框亮一階；焦點＝青色外框（取代邊框位置）＋淡淡的品牌藍光環。
@@ -12,18 +12,16 @@ export interface CompactProp {
   compact?: boolean;
 }
 
-export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement> & CompactProp>(function Input(
-  { className, compact = false, ...props },
-  ref,
+export function Input(
+  { ref, className, compact = false, ...props }: InputHTMLAttributes<HTMLInputElement> & CompactProp & { ref?: Ref<HTMLInputElement> | undefined },
 ) {
   return (
     <input ref={ref} className={cn(fieldBase, textEntry, compact ? "min-h-8 px-2.5 py-1 text-data" : "min-h-10 px-3 py-2", className)} {...props} />
   );
-});
+}
 
-export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement> & CompactProp>(function Textarea(
-  { className, compact = false, ...props },
-  ref,
+export function Textarea(
+  { ref, className, compact = false, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement> & CompactProp & { ref?: Ref<HTMLTextAreaElement> | undefined },
 ) {
   return (
     <textarea
@@ -32,11 +30,10 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
       {...props}
     />
   );
-});
+}
 
-export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement> & CompactProp>(function Select(
-  { className, children, compact = false, ...props },
-  ref,
+export function Select(
+  { ref, className, children, compact = false, ...props }: SelectHTMLAttributes<HTMLSelectElement> & CompactProp & { ref?: Ref<HTMLSelectElement> | undefined },
 ) {
   return (
     <div className="relative min-w-0">
@@ -53,7 +50,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
       />
     </div>
   );
-});
+}
 
 export interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "type"> {
   label: string;
@@ -61,9 +58,8 @@ export interface CheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement
 }
 
 /** 原生 checkbox；整個標籤列都是點擊目標（≥40px 高）。 */
-export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Checkbox(
-  { className, label, description, id, ...props },
-  ref,
+export function Checkbox(
+  { ref, className, label, description, id, ...props }: CheckboxProps & { ref?: Ref<HTMLInputElement> | undefined },
 ) {
   return (
     <label htmlFor={id} className={cn("flex min-h-10 cursor-pointer items-start gap-3 py-2 text-body text-fg-secondary", className)}>
@@ -76,11 +72,11 @@ export const Checkbox = forwardRef<HTMLInputElement, CheckboxProps>(function Che
       />
       <span className="min-w-0">
         <span className="text-fg">{label}</span>
-        {description ? <span className="block text-caption text-fg-tertiary">{description}</span> : null}
+        {(description != null && description !== "") ? <span className="block text-caption text-fg-tertiary">{description}</span> : null}
       </span>
     </label>
   );
-});
+}
 
 export interface SwitchProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "role"> {
   label: string;
@@ -90,9 +86,8 @@ export interface SwitchProps extends Omit<InputHTMLAttributes<HTMLInputElement>,
 }
 
 /** 以原生 checkbox 為基礎的開關（role="switch"）：開啟時軌道是深色操作漸層、白色滑塊以 snappy 彈簧滑過去（對比 ≥ 5:1）；停用且開啟時仍保留可見的滑塊。 */
-export const Switch = forwardRef<HTMLInputElement, SwitchProps>(function Switch(
-  { className, label, description, id, hideLabel = false, ...props },
-  ref,
+export function Switch(
+  { ref, className, label, description, id, hideLabel = false, ...props }: SwitchProps & { ref?: Ref<HTMLInputElement> | undefined },
 ) {
   return (
     <label
@@ -116,8 +111,8 @@ export const Switch = forwardRef<HTMLInputElement, SwitchProps>(function Switch(
       </span>
       <span className={cn("min-w-0", hideLabel && "sr-only")}>
         <span className="text-fg">{label}</span>
-        {description ? <span className="block text-caption text-fg-tertiary">{description}</span> : null}
+        {(description != null && description !== "") ? <span className="block text-caption text-fg-tertiary">{description}</span> : null}
       </span>
     </label>
   );
-});
+}

@@ -163,7 +163,7 @@ export function planSync({ timeline, clipId, length, lag }: SyncInput): SyncPlan
   const peers = linkedPeers(timeline, clip);
   const items = [clip, ...peers];
   const refusal = lockRefusal(timeline, clip, peers) ?? items.map(retimingReason).find((reason) => reason !== null) ?? soundRefusal(clip, peers);
-  if (refusal) return refusedSync(refusal);
+  if (refusal != null && refusal !== "") return refusedSync(refusal);
   if (clipDuration(clip) !== length) return refusedSync(t("片段在分析之後改變了，請重新分析"));
   if (lag === 0) return refusedSync(t("生成影片的動作節奏已經和原片同步，不需要調整。"));
   const first = clip.in_frame + windowBounds(clip).start_frame;
@@ -202,7 +202,7 @@ export function planSync({ timeline, clipId, length, lag }: SyncInput): SyncPlan
   const edited = document.clips.find((item) => item.clip_id === clipId);
   const placed = items.every((before) => {
     const after = document.clips.find((item) => item.clip_id === before.clip_id);
-    return after !== undefined && after.start_frame === before.start_frame && clipEnd(after) === clipEnd(before);
+    return after?.start_frame === before.start_frame && clipEnd(after) === clipEnd(before);
   });
   const plays = edited !== undefined && mapping.every((frame, offset) => frame < length && sourceFrameAtTimeline(edited, clip.start_frame + offset) === first + frame);
   const ids = new Set(items.map((item) => item.clip_id));

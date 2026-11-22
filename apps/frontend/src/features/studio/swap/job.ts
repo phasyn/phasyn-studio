@@ -59,30 +59,30 @@ const isInt = (value: unknown, min = 0): value is number => typeof value === "nu
 
 export function parseJobNote(note: string | undefined): SwapJob | null {
   const line = note?.split("\n").find((item) => item.startsWith(JOB_TAG));
-  if (!line) return null;
+  if (!(line != null && line !== "")) return null;
   let raw: unknown;
   try {
     raw = JSON.parse(line.slice(JOB_TAG.length));
   } catch {
     return null;
   }
-  if (typeof raw !== "object" || raw === null) return null;
-  const job = raw as Record<string, unknown>;
-  if (job.v !== 1 || !isInt(job.fps, 1) || !isInt(job.start_frame) || !isInt(job.end_frame, 1) || !isInt(job.max_frames, 1) || !isInt(job.crossfade_frames)) return null;
-  if (job.end_frame <= job.start_frame) return null;
-  if (job.audio !== "original" && job.audio !== "generated") return null;
+  if (!isRecord(raw)) return null;
+  const job = raw;
+  if (job["v"] !== 1 || !isInt(job["fps"], 1) || !isInt(job["start_frame"]) || !isInt(job["end_frame"], 1) || !isInt(job["max_frames"], 1) || !isInt(job["crossfade_frames"])) return null;
+  if (job["end_frame"] <= job["start_frame"]) return null;
+  if (job["audio"] !== "original" && job["audio"] !== "generated") return null;
   return {
     v: 1,
-    fps: job.fps,
-    start_frame: job.start_frame,
-    end_frame: job.end_frame,
-    max_frames: job.max_frames,
-    crossfade_frames: job.crossfade_frames,
-    audio: job.audio,
-    auto_export: job.auto_export === true,
-    segments: isInt(job.segments) ? job.segments : 0,
-    mid_shot_joins: isInt(job.mid_shot_joins) ? job.mid_shot_joins : 0,
-    created_at: typeof job.created_at === "string" ? job.created_at : "",
+    fps: job["fps"],
+    start_frame: job["start_frame"],
+    end_frame: job["end_frame"],
+    max_frames: job["max_frames"],
+    crossfade_frames: job["crossfade_frames"],
+    audio: job["audio"],
+    auto_export: job["auto_export"] === true,
+    segments: isInt(job["segments"]) ? job["segments"] : 0,
+    mid_shot_joins: isInt(job["mid_shot_joins"]) ? job["mid_shot_joins"] : 0,
+    created_at: typeof job["created_at"] === "string" ? job["created_at"] : "",
   };
 }
 
@@ -296,7 +296,7 @@ export function buildSwapProject(input: BuildSwapInput): StudioProject {
     const references: StudioReference[] = present.map((character, at) => ({
       ref_id: newLocalId("ref"),
       kind: "image",
-      alias: `Image${at + 1}`,
+      alias: `Image${String(at + 1)}`,
       item_id: modelItems.get(character.id) ?? "",
       start_seconds: null,
       end_seconds: null,
@@ -372,7 +372,7 @@ export interface SwapProgress {
 
 /** 這個 take 的 run 失敗在別的段落（批次 run 第一個失敗後其餘步驟不執行）。 */
 export function failedInOtherSegment(take: StudioTake): boolean {
-  const stepId = take.error?.details?.step_id;
+  const stepId = take.error?.details?.["step_id"];
   const suffix = branchSuffix(take.output_key);
   return typeof stepId === "string" && suffix !== "" && !stepId.endsWith(suffix);
 }
@@ -400,13 +400,13 @@ export const AUDIO_TRACK_MISSING = t("匯出結果沒有使用原影片音軌");
  * null＝沒有 concat 紀錄。
  */
 export function originalAudioApplied(asset: Asset | null | undefined, source: Pick<StudioLibraryItem, "file">): boolean | null {
-  const concat = asset?.actual_settings.concat;
+  const concat = asset?.actual_settings["concat"];
   if (!isRecord(concat)) return null;
-  if (concat.timeline === true) {
-    const sources: unknown[] = Array.isArray(concat.sources) ? concat.sources : [];
-    return sources.some((item) => isRecord(item) && item.file_id === source.file.file_id);
+  if (concat["timeline"] === true) {
+    const sources: unknown[] = Array.isArray(concat["sources"]) ? concat["sources"] : [];
+    return sources.some((item) => isRecord(item) && item["file_id"] === source.file.file_id);
   }
-  const record = concat.audio_track;
+  const record = concat["audio_track"];
   return record !== undefined && record !== null && record !== false;
 }
 
@@ -436,7 +436,7 @@ export function swapProgress(project: StudioProject, info?: Pick<SwapProjectInfo
   const original = info?.job.audio === "original";
   const exportProblem = latestExport?.state === "succeeded" && original && originalAudioApplied(latestExport.asset, info.source) !== true ? AUDIO_TRACK_MISSING : null;
   const exportCurrent = Boolean(
-    latestExport && latestExport.state === "succeeded" && latestExport.asset && !exportProblem && sameShots(latestExport) && takenAt.every((at) => at !== "" && at <= latestExport.created_at),
+    latestExport?.state === "succeeded" && latestExport.asset && !(exportProblem != null && exportProblem !== "") && sameShots(latestExport) && takenAt.every((at) => at !== "" && at <= latestExport.created_at),
   );
   const allPlayable = segments.length > 0 && playable === segments.length;
   let phase: SwapPhase;
@@ -444,7 +444,7 @@ export function swapProgress(project: StudioProject, info?: Pick<SwapProjectInfo
   else if (!allPlayable) phase = unfinishedSegments(counts) > 0 ? "failed" : "pending";
   else if (latestExport?.state === "rendering") phase = "exporting";
   else if (exportCurrent) phase = "exported";
-  else if (latestExport && (latestExport.state !== "succeeded" || exportProblem) && takenAt.every((at) => at <= latestExport.created_at)) phase = "export_failed";
+  else if (latestExport && (latestExport.state !== "succeeded" || (exportProblem != null && exportProblem !== "")) && takenAt.every((at) => at <= latestExport.created_at)) phase = "export_failed";
   else phase = "ready_to_export";
   return { segments, counts, playable, activeRunIds: [...runIds], remaining, latestExport, exportCurrent, exportProblem, phase };
 }

@@ -1,3 +1,5 @@
+import { AssetAudio, AssetVideo } from "@/components/common/AssetMedia";
+import { linkedCaptions } from "@/components/common/linkedCaptions";
 import { ImageOff } from "lucide-react";
 import { useState } from "react";
 import type { FileRef } from "@/api/generated/contracts";
@@ -44,7 +46,7 @@ export function AssetPlayer({
   const [failed, setFailed] = useState(false);
   const url = mediaUrl(file.node_id, file.file_id);
   const mediaType = (file.media_type.split(";")[0] ?? "").trim().toLowerCase();
-  const aspect = width && height ? `${width} / ${height}` : undefined;
+  const aspect = Boolean(width) && Boolean(height) ? `${String(width)} / ${String(height)}` : undefined;
   let player: React.ReactNode;
   if (failed) {
     player = (
@@ -55,33 +57,34 @@ export function AssetPlayer({
     );
   } else if (mediaType.startsWith("video/")) {
     player = (
-      <video
+      <AssetVideo
+        captions={linkedCaptions(file.metadata)}
         controls
         preload="metadata"
         src={url}
         aria-label={title}
-        onError={() => setFailed(true)}
+        onError={() => { setFailed(true); }}
         className="max-h-[60vh] w-full rounded-md border border-line-subtle bg-sunken object-contain"
-        style={aspect ? { aspectRatio: aspect } : undefined}
+        style={(aspect != null && aspect !== "") ? { aspectRatio: aspect } : undefined}
       />
     );
   } else if (mediaType.startsWith("audio/")) {
-    player = <audio controls preload="metadata" src={url} aria-label={title} onError={() => setFailed(true)} className="w-full" />;
+    player = <AssetAudio captions={linkedCaptions(file.metadata)} controls preload="metadata" src={url} aria-label={title} onError={() => { setFailed(true); }} className="w-full" />;
   } else if (mediaType.startsWith("image/")) {
     player = (
       <img
         src={url}
         alt={title}
         loading="lazy"
-        onError={() => setFailed(true)}
+        onError={() => { setFailed(true); }}
         className="max-h-[60vh] w-full rounded-md border border-line-subtle bg-sunken object-contain"
-        style={aspect ? { aspectRatio: aspect } : undefined}
+        style={(aspect != null && aspect !== "") ? { aspectRatio: aspect } : undefined}
       />
     );
   } else {
     player = (
       <p className="rounded-md border border-line-subtle bg-sunken p-3 text-caption text-fg-secondary">
-        <T source={"媒體型別 <0>{media_type}</0> 無法在瀏覽器預覽；請下載。"} values={{ media_type: file.media_type }} slots={[<code className="machine" />]} />
+        <T source={"媒體型別 <0>{media_type}</0> 無法在瀏覽器預覽；請下載。"} values={{ media_type: file.media_type }} slots={[<code key="slot-0" className="machine" />]} />
       </p>
     );
   }

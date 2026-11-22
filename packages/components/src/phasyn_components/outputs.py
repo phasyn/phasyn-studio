@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import os
 from collections.abc import Mapping
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -18,9 +19,9 @@ from .timeutil import mono_ns
 
 
 class OutputFile:
-    """寫到 Node 檔案庫的 `.part`，寫入同時計算 SHA-256；Node 在 call 結束後原子發布。"""
+    """寫到 Node 檔案庫的 `.part`，寫入同時計算 SHA-256；Node 在 call 結束後原子發布."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - Keep the published positional and keyword API.
         self,
         store: FileStore,
         *,
@@ -30,12 +31,19 @@ class OutputFile:
         metadata: Mapping[str, Any] | None,
         recorder: Recorder | None,
     ) -> None:
+        """Initialize output file with its configuration."""
         self.port = port
         self.type_id = type_id
         self.media_type = media_type
         self.metadata: dict[str, Any] = dict(metadata or {})
         self.file_id, self.path = store.reserve()
-        self._fh: Any = open(self.path, "wb")  # noqa: SIM115 - finish/abort 管理
+        if (
+            ".." in self.path.parts
+        ):  # Path traversal guard (CWE-22): the `.part` file always stays inside the store
+            raise ComponentError(
+                "INVALID_ARGUMENT", f"路徑不可包含 .. 分量：{self.path}"
+            )
+        self._fh: Any = self.path.open("wb")
         self._hasher = hashlib.sha256()
         self.size = 0
         self._recorder = recorder
@@ -44,11 +52,13 @@ class OutputFile:
         self.sha256: str | None = None
 
     def write(self, data: bytes | bytearray | memoryview) -> None:
+        """Append bytes to the current output."""
         self._fh.write(data)
         self._hasher.update(data)
         self.size += len(data)
 
     def finish(self) -> dict[str, Any]:
+        """Finish and return the completed operation."""
         if not self.finished:
             self._fh.flush()
             os.fsync(self._fh.fileno())
@@ -72,13 +82,13 @@ class OutputFile:
         return self.wire()
 
     def adopt_written(self) -> dict[str, Any]:
-        """外部工具（例如 FFmpeg）已直接寫到 ``self.path``：讀一次算 SHA-256（明確記錄為 hash readback）。"""
+        """外部工具（例如 FFmpeg）已直接寫到 ``self.path``：讀一次算 SHA-256（明確記錄為 hash readback）."""
         if not self.finished:
             self._fh.close()
             hasher = hashlib.sha256()
             size = 0
             t0 = mono_ns()
-            with open(self.path, "rb") as fh:
+            with self.path.open("rb") as fh:
                 while chunk := fh.read(8 * 1024 * 1024):
                     hasher.update(chunk)
                     size += len(chunk)
@@ -102,29 +112,29 @@ class OutputFile:
         return self.wire()
 
     def adopt_file(self, source: Path, *, sha256: str, size: int) -> dict[str, Any]:
-        """外部工具已寫好並雜湊過的完整檔（同 filesystem rename，不讀回）。"""
+        """外部工具已寫好並雜湊過的完整檔（同 filesystem rename，不讀回）."""
         if not self.finished:
             self._fh.close()
-            os.replace(source, self.path)
+            Path(source).replace(self.path)
             actual = self.path.stat().st_size
             if actual != size:
-                raise ComponentError("FILE_TRUNCATED", f"輸出檔大小 {actual} 與工具回報的 {size} 不同")
+                raise ComponentError(
+                    "FILE_TRUNCATED", f"輸出檔大小 {actual} 與工具回報的 {size} 不同"
+                )
             self.size = size
             self.sha256 = sha256
             self.finished = True
         return self.wire()
 
     def abort(self) -> None:
-        try:
+        """Discard this unfinished write."""
+        with suppress(OSError):
             self._fh.close()
-        except OSError:
-            pass
-        try:
+        with suppress(OSError):
             self.path.unlink(missing_ok=True)
-        except OSError:
-            pass
 
     def wire(self) -> dict[str, Any]:
+        """Return the output representation used by the protocol."""
         return {
             "type_id": self.type_id,
             "pending_file": {

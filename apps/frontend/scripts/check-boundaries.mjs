@@ -7,7 +7,7 @@ import { featureGraph, findCycles, formatCycles, listSources, moduleSpecifiers, 
 const SHARED = new Set(["api", "components", "compute", "lib", "i18n", "test"]);
 const EDITOR = "src/features/studio/editor/";
 // Explicit domain owners: UI, browser media, migration and export adapters stay outside this set.
-const DOMAIN = new Set(["model", "curves", "animation", "compositing", "adjustment", "validation", "slicing", "timing", "commands", "restoreTake", "transitionCut", "history", "historyLabels", "sourceDrop", "timelineGeometry"].map((name) => `${EDITOR}${name}.ts`));
+const DOMAIN = new Set(["model", "curves", "animation", "compositing", "adjustment", "validation", "slicing", "timing", "commands", "autoDuck", "restoreTake", "transitionCut", "history", "historyLabels", "sourceDrop", "timelineGeometry"].map((name) => `${EDITOR}${name}.ts`));
 
 function isEntry(specifier, file) {
   const rest = specifier.replace(/^@\/features\/[^/]+/, "");

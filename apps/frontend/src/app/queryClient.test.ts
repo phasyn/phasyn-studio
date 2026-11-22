@@ -35,13 +35,13 @@ describe("createQueryClient while the browser reports offline", () => {
       () => null,
       (error: unknown) => error,
     );
-    await vi.waitFor(() => expect(observer.getCurrentResult().status).toBe("error"));
+    await vi.waitFor(() => { expect(observer.getCurrentResult().status).toBe("error"); });
 
     expect(observer.getCurrentResult().isPaused).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const error = await settled;
     expect(error).toBeInstanceOf(ApiError);
-    expect((error as ApiError).code).toBe("NETWORK_ERROR");
+    expect(error).toMatchObject({ code: "NETWORK_ERROR" });
     expect(writeOutcomeUnknown(error)).toBe(true);
 
     onlineManager.setOnline(true);

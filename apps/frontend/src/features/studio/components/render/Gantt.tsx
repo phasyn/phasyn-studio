@@ -62,7 +62,7 @@ function groups(run: WireRun, item: QueueItem, end: number, lookup: ProviderLook
         const start = started === null ? null : started - origin;
         const length = started === null || finished === null ? null : Math.max(0, finished - started);
         const label = stepLabel(run, id, lookup, suffixes);
-        const node = step.node_id ? nodeShortName(nodeLabel(step.node_id)) : "";
+        const node = (step.node_id != null && step.node_id !== "") ? nodeShortName(nodeLabel(step.node_id)) : "";
         const state = step.state === "unknown" ? "pending" : step.state;
         const title = joinInline([t("{stage}：{state}", { stage: label, state: STEP_STATE_LABEL[state] ?? state }), length !== null ? formatSpanExact(length) : "", node, id].filter(Boolean));
         return { stepId: id, label, title, state, role: stepRole(run, id, lookup, suffixes), start, length };
@@ -79,10 +79,10 @@ function BarRow({ bar, span }: { bar: Bar; span: number }) {
           <span
             className={cn(
               "absolute inset-y-0 rounded-sm transition-[width] duration-(--duration-base) ease-linear",
-              (bar.role ? STAGE_BAR[bar.role] : undefined) ?? "bg-fg-tertiary/60",
+              ((bar.role != null && bar.role !== "") ? STAGE_BAR[bar.role] : undefined) ?? "bg-fg-tertiary/60",
               bar.state === "failed" && "bg-danger/70",
             )}
-            style={{ left: `${(bar.start / span) * 100}%`, width: `${Math.max(0.4, (bar.length / span) * 100)}%` }}
+            style={{ left: `${String((bar.start / span) * 100)}%`, width: `${String(Math.max(0.4, (bar.length / span) * 100))}%` }}
           />
         ) : null}
       </span>
@@ -113,7 +113,7 @@ export function Gantt({ run, item, now, lookup }: { run: WireRun; item: QueueIte
         </div>
       ))}
       <p className="text-right text-caption text-fg-tertiary" title={formatSpanExact(span)}>
-        <T source={"總計 <0>{span}</0>（以 run 建立時間為起點；同色並排表示不同主機同時在跑）"} values={{ span: formatSpan(span) }} slots={[<span className="machine" />]} />
+        <T source={"總計 <0>{span}</0>（以 run 建立時間為起點；同色並排表示不同主機同時在跑）"} values={{ span: formatSpan(span) }} slots={[<span key="slot-0" className="machine" />]} />
       </p>
     </div>
   );

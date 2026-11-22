@@ -31,10 +31,10 @@ export function draftOf(snippet: StudioPromptSnippet): SnippetDraft {
 export function snippetDraftError(draft: SnippetDraft): string | null {
   const title = draft.title.trim();
   if (title.length === 0) return t("名稱不可為空");
-  if ([...title].length > SNIPPET_LIMITS.title) return t("名稱最多 {title} 字", { title: SNIPPET_LIMITS.title });
+  if (Array.from(title).length > SNIPPET_LIMITS.title) return t("名稱最多 {title} 字", { title: SNIPPET_LIMITS.title });
   if (draft.text.trim().length === 0) return t("內容不可為空");
   if (draft.text.length > SNIPPET_LIMITS.text) return t("內容最多 {text} 字元", { text: SNIPPET_LIMITS.text });
-  if ([...draft.category.trim()].length > SNIPPET_LIMITS.category) return t("分類最多 {category} 字", { category: SNIPPET_LIMITS.category });
+  if (Array.from(draft.category.trim()).length > SNIPPET_LIMITS.category) return t("分類最多 {category} 字", { category: SNIPPET_LIMITS.category });
   return null;
 }
 
@@ -59,7 +59,7 @@ export function removeSnippet(library: StudioPromptLibrary, snippetId: string): 
 
 /** 已使用的分類（依名稱排序）。 */
 export function snippetCategories(snippets: readonly StudioPromptSnippet[]): string[] {
-  return [...new Set(snippets.flatMap((snippet) => (snippet.category ? [snippet.category] : [])))].sort((a, b) => a.localeCompare(b, "zh-Hant"));
+  return [...new Set(snippets.flatMap((snippet) => ((snippet.category != null && snippet.category !== "") ? [snippet.category] : [])))].sort((a, b) => a.localeCompare(b, "zh-Hant"));
 }
 
 /** 依分類篩選值與關鍵字（名稱、內容、分類，不分大小寫）篩選；依分類、名稱排序（未分類最後）。 */
@@ -90,6 +90,6 @@ export function newSnippetId(): string {
 /** 片段內容的單行摘要。 */
 export function excerpt(text: string, length = 80): string {
   const flat = text.replace(/\s+/g, " ").trim();
-  const chars = [...flat];
+  const chars = Array.from(flat);
   return chars.length > length ? `${chars.slice(0, length).join("")}…` : flat;
 }

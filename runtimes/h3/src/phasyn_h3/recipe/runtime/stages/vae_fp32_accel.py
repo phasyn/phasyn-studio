@@ -40,6 +40,10 @@ from typing import Any
 from .. import pins
 from ..errors import UnsupportedCombination
 
+
+_BATCHED_MATRIX_RANK = 3
+
+
 DEFAULT_TILE_BATCH = 4
 # Bit identity of the batched K=2048 GEMMs is a property of cuBLAS's kernel choice; it was
 # verified on sm_120 (cuBLAS 13.1) only.  Other GPUs keep one tile per call.
@@ -48,7 +52,9 @@ VALIDATED_CAPABILITIES = frozenset({(12, 0)})
 STRICT_FP32_CONV = False
 # measured peak growth per extra stacked FP32 tile (1797 tokens, dim 2048): 0.18-0.20 GiB
 TILE_ACTIVATION_BYTES = int(0.25 * 2**30)
-VRAM_MARGIN_BYTES = int(1.0 * 2**30)  # caching-allocator slack seen in production (reserved - allocated)
+VRAM_MARGIN_BYTES = int(
+    1.0 * 2**30
+)  # caching-allocator slack seen in production (reserved - allocated)
 
 
 def check_sources() -> None:
@@ -56,7 +62,9 @@ def check_sources() -> None:
     pins.check("vae_fp32_tile_batch", what="FP32 tile batching ")
 
 
-def choose_tile_batch(torch: Any, device: Any, *, requested: int, output_bytes: int) -> int:
+def choose_tile_batch(
+    torch: Any, device: Any, *, requested: int, output_bytes: int
+) -> int:
     """Largest tile batch <= ``requested`` whose extra activations fit the free VRAM.
 
     ``output_bytes`` is the FP32 frame buffer ``_decode_temporal_streaming`` allocates
@@ -76,11 +84,17 @@ def choose_tile_batch(torch: Any, device: Any, *, requested: int, output_bytes: 
 
 @contextlib.contextmanager
 def fp32_decode_scope(
-    vae: Any, *, tile_batch: int, w2_per_tile: bool = True, strict_fp32_conv: bool = False
+    vae: Any,
+    *,
+    tile_batch: int,
+    w2_per_tile: bool = True,
+    strict_fp32_conv: bool = False,
 ) -> Iterator[dict[str, Any]]:
     """Scope one FP32 decode: grouped tile batching and the cuDNN TF32 switch; always restores."""
     import torch
-    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae import base_module
+    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae import (  # type: ignore[import-untyped]
+        base_module,
+    )
 
     if torch.backends.cuda.matmul.allow_tf32:
         raise UnsupportedCombination(
@@ -103,28 +117,10 @@ def fp32_decode_scope(
         if strict_fp32_conv:
             torch.backends.cudnn.allow_tf32 = False
         if tile_batch > 1:
-            run_tile_tasks = vae._run_tile_tasks  # bound upstream method
-
-            def grouped(tiles, tile_indices, forward_fn, stack_tiling, cls_agg=None):
-                out = []
-                for start in range(0, len(tile_indices), tile_batch):
-                    out.extend(
-                        run_tile_tasks(tiles, tile_indices[start : start + tile_batch], forward_fn, True, cls_agg)
-                    )
-                return out
-
-            vae._run_tile_tasks = grouped
+            _install_tile_groups(vae, tile_batch)
             wrapped = True
             if w2_per_tile:
-
-                def per_tile(linear, hidden_states):
-                    if hidden_states.dim() == 3 and hidden_states.shape[0] > 1:
-                        return torch.cat(
-                            [saved_ubl(linear, hidden_states[i : i + 1]) for i in range(hidden_states.shape[0])], dim=0
-                        )
-                    return saved_ubl(linear, hidden_states)
-
-                base_module._unfused_bias_linear = per_tile
+                _install_per_tile_linear(torch, saved_ubl, base_module)
         yield facts
     finally:
         base_module._unfused_bias_linear = saved_ubl
@@ -141,3 +137,45 @@ __all__ = [
     "choose_tile_batch",
     "fp32_decode_scope",
 ]
+
+
+def _install_tile_groups(vae: Any, tile_batch: int) -> None:
+    run_tile_tasks = vae._run_tile_tasks  # bound upstream method
+
+    def grouped(
+        tiles: Any,
+        tile_indices: Any,
+        forward_fn: Any,
+        stack_tiling: Any,
+        cls_agg: Any = None,
+    ) -> list[Any]:
+        del stack_tiling  # The wrapper deliberately stacks each bounded group.
+        out: list[Any] = []
+        for start in range(0, len(tile_indices), tile_batch):
+            out.extend(
+                run_tile_tasks(
+                    tiles,
+                    tile_indices[start : start + tile_batch],
+                    forward_fn,
+                    stack_tiling=True,
+                    cls_agg=cls_agg,
+                )
+            )
+        return out
+
+    vae._run_tile_tasks = grouped
+
+
+def _install_per_tile_linear(torch: Any, saved_ubl: Any, base_module: Any) -> None:
+    def per_tile(linear: Any, hidden_states: Any) -> Any:
+        if hidden_states.dim() == _BATCHED_MATRIX_RANK and hidden_states.shape[0] > 1:
+            return torch.cat(
+                [
+                    saved_ubl(linear, hidden_states[i : i + 1])
+                    for i in range(hidden_states.shape[0])
+                ],
+                dim=0,
+            )
+        return saved_ubl(linear, hidden_states)
+
+    base_module._unfused_bias_linear = per_tile

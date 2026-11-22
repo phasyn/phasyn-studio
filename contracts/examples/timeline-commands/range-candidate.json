@@ -1,0 +1,470 @@
+{
+ "op": "range_candidate",
+ "about": "Conformance vectors of the range_candidate timeline command.",
+ "vectors": [
+  {
+   "name": "replace a picture range from a nonzero candidate in-point and preserve the original audio clip",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [
+     {"source_id": "original", "name": "Original", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true},
+     {
+      "source_id": "candidate",
+      "name": "Candidate",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-000000000001", "file_id": "00000000-0000-4000-8000-000000000002", "size_bytes": 512, "sha256": "abababababababababababababababababababababababababababababababab", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 24,
+      "width": 768,
+      "height": 448,
+      "has_audio": true
+     }
+    ],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {
+      "clip_id": "original-clip",
+      "source_id": "original",
+      "track_id": "video-1",
+      "name": "Original",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 8,
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "voice",
+      "source_id": "original",
+      "track_id": "audio-1",
+      "name": "Original",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 8,
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     }
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "command": {"op": "range_candidate", "mode": "replace_range", "track_id": "video-1", "start_frame": 0, "end_frame": 8, "candidate_in_frame": 3, "source_id": "candidate", "expected_source_sha256": "abababababababababababababababababababababababababababababababab"},
+   "after": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [
+     {"source_id": "original", "name": "Original", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true},
+     {
+      "source_id": "candidate",
+      "name": "Candidate",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-000000000001", "file_id": "00000000-0000-4000-8000-000000000002", "size_bytes": 512, "sha256": "abababababababababababababababababababababababababababababababab", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 24,
+      "width": 768,
+      "height": 448,
+      "has_audio": true
+     },
+     {
+      "source_id": "source-1",
+      "name": "Candidate",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-000000000001", "file_id": "00000000-0000-4000-8000-000000000002", "size_bytes": 512, "sha256": "abababababababababababababababababababababababababababababababab", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 24,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "candidate_origin": {"source_id": "candidate"}
+     }
+    ],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {
+      "clip_id": "voice",
+      "source_id": "original",
+      "track_id": "audio-1",
+      "name": "Original",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 8,
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "clip-3",
+      "source_id": "source-1",
+      "track_id": "video-1",
+      "name": "Candidate",
+      "start_frame": 0,
+      "in_frame": 3,
+      "out_frame": 11,
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}},
+      "linked_id": "link-2"
+     }
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   }
+  },
+  {
+   "name": "fill the full gap between adjacent picture clips without editing the audio track",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [
+     {"source_id": "original", "name": "Original", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true},
+     {
+      "source_id": "candidate",
+      "name": "Candidate",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-000000000001", "file_id": "00000000-0000-4000-8000-000000000002", "size_bytes": 512, "sha256": "abababababababababababababababababababababababababababababababab", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 24,
+      "width": 768,
+      "height": 448,
+      "has_audio": true
+     }
+    ],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {
+      "clip_id": "left",
+      "source_id": "original",
+      "track_id": "video-1",
+      "name": "Original",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 2,
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "right",
+      "source_id": "original",
+      "track_id": "video-1",
+      "name": "Original",
+      "start_frame": 6,
+      "in_frame": 6,
+      "out_frame": 8,
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "voice",
+      "source_id": "original",
+      "track_id": "audio-1",
+      "name": "Original",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 8,
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     }
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "command": {"op": "range_candidate", "mode": "fill_gap", "track_id": "video-1", "start_frame": 2, "end_frame": 6, "candidate_in_frame": 1, "source_id": "candidate", "expected_source_sha256": "abababababababababababababababababababababababababababababababab"},
+   "after": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [
+     {"source_id": "original", "name": "Original", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true},
+     {
+      "source_id": "candidate",
+      "name": "Candidate",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-000000000001", "file_id": "00000000-0000-4000-8000-000000000002", "size_bytes": 512, "sha256": "abababababababababababababababababababababababababababababababab", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 24,
+      "width": 768,
+      "height": 448,
+      "has_audio": true
+     },
+     {
+      "source_id": "source-1",
+      "name": "Candidate",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-000000000001", "file_id": "00000000-0000-4000-8000-000000000002", "size_bytes": 512, "sha256": "abababababababababababababababababababababababababababababababab", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 24,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "candidate_origin": {"source_id": "candidate"}
+     }
+    ],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {
+      "clip_id": "left",
+      "source_id": "original",
+      "track_id": "video-1",
+      "name": "Original",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 2,
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "right",
+      "source_id": "original",
+      "track_id": "video-1",
+      "name": "Original",
+      "start_frame": 6,
+      "in_frame": 6,
+      "out_frame": 8,
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "voice",
+      "source_id": "original",
+      "track_id": "audio-1",
+      "name": "Original",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 8,
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "clip-3",
+      "source_id": "source-1",
+      "track_id": "video-1",
+      "name": "Candidate",
+      "start_frame": 2,
+      "in_frame": 1,
+      "out_frame": 5,
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}},
+      "linked_id": "link-2"
+     }
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   }
+  },
+  {
+   "name": "replacing the sound track uses the candidate audio and preserves the original picture",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [
+     {"source_id": "original", "name": "Original", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true},
+     {
+      "source_id": "candidate",
+      "name": "Candidate",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-000000000001", "file_id": "00000000-0000-4000-8000-000000000002", "size_bytes": 512, "sha256": "abababababababababababababababababababababababababababababababab", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 24,
+      "width": 768,
+      "height": 448,
+      "has_audio": true
+     }
+    ],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {
+      "clip_id": "original-clip",
+      "source_id": "original",
+      "track_id": "video-1",
+      "name": "Original",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 8,
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "voice",
+      "source_id": "original",
+      "track_id": "audio-1",
+      "name": "Original",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 8,
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     }
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "command": {"op": "range_candidate", "mode": "replace_range", "track_id": "audio-1", "start_frame": 0, "end_frame": 8, "candidate_in_frame": 2, "source_id": "candidate", "expected_source_sha256": "abababababababababababababababababababababababababababababababab"},
+   "after": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [
+     {"source_id": "original", "name": "Original", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true},
+     {
+      "source_id": "candidate",
+      "name": "Candidate",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-000000000001", "file_id": "00000000-0000-4000-8000-000000000002", "size_bytes": 512, "sha256": "abababababababababababababababababababababababababababababababab", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 24,
+      "width": 768,
+      "height": 448,
+      "has_audio": true
+     },
+     {
+      "source_id": "source-1",
+      "name": "Candidate",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-000000000001", "file_id": "00000000-0000-4000-8000-000000000002", "size_bytes": 512, "sha256": "abababababababababababababababababababababababababababababababab", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 24,
+      "width": 768,
+      "height": 448,
+      "has_audio": true,
+      "candidate_origin": {"source_id": "candidate"}
+     }
+    ],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {
+      "clip_id": "original-clip",
+      "source_id": "original",
+      "track_id": "video-1",
+      "name": "Original",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 8,
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "clip-3",
+      "source_id": "source-1",
+      "track_id": "audio-1",
+      "name": "Candidate",
+      "start_frame": 0,
+      "in_frame": 2,
+      "out_frame": 10,
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}},
+      "linked_id": "link-2"
+     }
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   }
+  },
+  {
+   "name": "a candidate with changed bytes cannot replace a range",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [
+     {"source_id": "original", "name": "Original", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true},
+     {
+      "source_id": "candidate",
+      "name": "Candidate",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-000000000001", "file_id": "00000000-0000-4000-8000-000000000002", "size_bytes": 512, "sha256": "abababababababababababababababababababababababababababababababab", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 24,
+      "width": 768,
+      "height": 448,
+      "has_audio": true
+     }
+    ],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {
+      "clip_id": "original-clip",
+      "source_id": "original",
+      "track_id": "video-1",
+      "name": "Original",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 8,
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "voice",
+      "source_id": "original",
+      "track_id": "audio-1",
+      "name": "Original",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 8,
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     }
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "command": {"op": "range_candidate", "mode": "replace_range", "track_id": "video-1", "start_frame": 0, "end_frame": 8, "candidate_in_frame": 0, "source_id": "candidate", "expected_source_sha256": "0000000000000000000000000000000000000000000000000000000000000000"},
+   "reject_reason": "source_unavailable"
+  },
+  {
+   "name": "a gap containing original frames cannot be filled",
+   "before": {
+    "version": 2,
+    "fps": {"num": 24, "den": 1},
+    "sources": [
+     {"source_id": "original", "name": "Original", "kind": "video", "file": null, "duration_frames": 240, "width": 768, "height": 448, "has_audio": true},
+     {
+      "source_id": "candidate",
+      "name": "Candidate",
+      "kind": "video",
+      "file": {"node_id": "00000000-0000-4000-8000-000000000001", "file_id": "00000000-0000-4000-8000-000000000002", "size_bytes": 512, "sha256": "abababababababababababababababababababababababababababababababab", "media_type": "video/mp4", "metadata": {}},
+      "duration_frames": 24,
+      "width": 768,
+      "height": 448,
+      "has_audio": true
+     }
+    ],
+    "tracks": [
+     {"track_id": "video-1", "kind": "video", "name": "V1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0},
+     {"track_id": "audio-1", "kind": "audio", "name": "A1", "locked": false, "muted": false, "solo": false, "sync_lock": true, "gain_db": 0, "pan": 0}
+    ],
+    "clips": [
+     {
+      "clip_id": "original-clip",
+      "source_id": "original",
+      "track_id": "video-1",
+      "name": "Original",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 8,
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     },
+     {
+      "clip_id": "voice",
+      "source_id": "original",
+      "track_id": "audio-1",
+      "name": "Original",
+      "start_frame": 0,
+      "in_frame": 0,
+      "out_frame": 8,
+      "motion": {"x": 0, "y": 0, "scale": 1, "rotation": 0, "opacity": 1, "gain_db": 0, "pan": 0, "keyframes": {}}
+     }
+    ],
+    "captions": [],
+    "markers": [],
+    "master_gain_db": 0,
+    "placed_shot_ids": []
+   },
+   "command": {"op": "range_candidate", "mode": "fill_gap", "track_id": "video-1", "start_frame": 0, "end_frame": 8, "candidate_in_frame": 0, "source_id": "candidate", "expected_source_sha256": "abababababababababababababababababababababababababababababababab"},
+   "reject_reason": "overlap"
+  }
+ ]
+}

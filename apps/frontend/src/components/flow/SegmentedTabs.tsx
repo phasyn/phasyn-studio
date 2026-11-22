@@ -31,22 +31,22 @@ export function SegmentedTabs({
   label: string;
   className?: string;
 }) {
-  const refs = useRef(new Map<string, HTMLButtonElement>());
+  const refsRef = useRef(new Map<string, HTMLButtonElement>());
   const listRef = useRef<HTMLDivElement>(null);
   const thumbRef = useRef<HTMLSpanElement>(null);
-  const shown = useRef(value);
+  const shownRef = useRef(value);
   useThumb(listRef, thumbRef, '[role="tab"][aria-selected="true"]');
   // 選取改變時，對應的 tabpanel 短暫淡入（第一次出現不播放）
   useLayoutEffect(() => {
-    if (shown.current === value) return;
-    shown.current = value;
+    if (shownRef.current === value) return;
+    shownRef.current = value;
     playSwap(document.getElementById(`${idPrefix}-panel-${value}`));
   }, [value, idPrefix]);
   const focusAt = (index: number) => {
     const tab = tabs[(index + tabs.length) % tabs.length];
     if (!tab) return;
     onChange(tab.id);
-    refs.current.get(tab.id)?.focus();
+    refsRef.current.get(tab.id)?.focus();
   };
   return (
     <div ref={listRef} role="tablist" aria-label={label} className={cn("relative inline-flex min-w-0 shrink-0 rounded-lg border border-line-control/70 bg-sunken p-0.5", className)}>
@@ -61,8 +61,8 @@ export function SegmentedTabs({
           <button
             key={tab.id}
             ref={(node) => {
-              if (node) refs.current.set(tab.id, node);
-              else refs.current.delete(tab.id);
+              if (node) refsRef.current.set(tab.id, node);
+              else refsRef.current.delete(tab.id);
             }}
             type="button"
             role="tab"
@@ -71,7 +71,7 @@ export function SegmentedTabs({
             aria-controls={`${idPrefix}-panel-${tab.id}`}
             tabIndex={selected ? 0 : -1}
             title={tab.title}
-            onClick={() => onChange(tab.id)}
+            onClick={() => { onChange(tab.id); }}
             onKeyDown={(event) => {
               if (event.key === "ArrowRight") focusAt(index + 1);
               else if (event.key === "ArrowLeft") focusAt(index - 1);
@@ -85,7 +85,7 @@ export function SegmentedTabs({
               selected ? "text-fg" : "text-fg-tertiary hover:text-fg-secondary",
             )}
           >
-            <StableLabel weight="medium" className={selected ? "font-medium" : undefined}>
+            <StableLabel weight="medium" {...(selected ? { className: "font-medium" } : {})}>
               {tab.label}
             </StableLabel>
             {tab.count !== undefined && tab.count !== null ? <span className="machine rounded-full bg-overlay px-1.5 text-[11px] leading-4 text-fg-tertiary">{tab.count}</span> : null}

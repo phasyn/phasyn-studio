@@ -28,12 +28,12 @@ export function sectionSchemas(view: Pick<SettingsView, "settings_schema">): Rec
   const invoke = providerRoot ? propertySchema(providerRoot, "invoke", providerRoot) : null;
   const recording = providerRoot ? propertySchema(providerRoot, "recording", providerRoot) : null;
   return {
-    load: load
+    load: isRecord(load) || load === true
       ? { schema: load, root: providerRoot, fromProvider: true }
       : { schema: { $ref: "#/$defs/LoadSettings" }, root: CONTRACT_ROOT, fromProvider: false },
-    invoke: invoke ? { schema: invoke, root: providerRoot, fromProvider: true } : { schema: { type: "object" }, root: undefined, fromProvider: false },
+    invoke: isRecord(invoke) || invoke === true ? { schema: invoke, root: providerRoot, fromProvider: true } : { schema: { type: "object" }, root: undefined, fromProvider: false },
     recording:
-      recording && hasDeclaredProperties(recording, providerRoot) && objectProperties(recording, providerRoot).length > 0
+      (isRecord(recording) || recording === true) && hasDeclaredProperties(recording, providerRoot) && objectProperties(recording, providerRoot).length > 0
         ? { schema: recording, root: providerRoot, fromProvider: true }
         : { schema: RECORDER_CONFIG_SCHEMA, root: CONTRACT_ROOT, fromProvider: false },
   };
@@ -97,12 +97,12 @@ export function settingsIssues(view: Pick<SettingsView, "settings_schema">, part
   }
   const rules = draft.load.part_overrides ?? [];
   analyzeRules(parts, rules).forEach((analysis) => {
-    for (const message of ruleBlockingErrors(analysis)) issues.push({ path: `load.part_overrides[${analysis.index}]`, message });
+    for (const message of ruleBlockingErrors(analysis)) issues.push({ path: `load.part_overrides[${String(analysis.index)}]`, message });
     // 與 Node 端 validate_part_values 一致：命中 part 可接受的欄位，其值也要符合該 part 的 schema（enum／型別）。
     const settings = rules[analysis.index]?.settings;
     if (analysis.matched.length > 0 && isRecord(settings)) {
       const schema = { type: "object", properties: analysis.fieldSchemas };
-      issues.push(...validateValue(schema, settings, undefined, `load.part_overrides[${analysis.index}].settings`));
+      issues.push(...validateValue(schema, settings, undefined, `load.part_overrides[${String(analysis.index)}].settings`));
     }
   });
   return issues;
@@ -112,8 +112,8 @@ export function settingsIssues(view: Pick<SettingsView, "settings_schema">, part
 export function observedPrecision(observed: unknown, field: string): { present: boolean; value: unknown; reason: string | null } {
   if (!isRecord(observed)) return { present: false, value: undefined, reason: null };
   const candidates: unknown[] = [
-    isRecord(observed.load) && isRecord(observed.load.precision) ? observed.load.precision : undefined,
-    isRecord(observed.precision) ? observed.precision : undefined,
+    isRecord(observed["load"]) && isRecord(observed["load"]["precision"]) ? observed["load"]["precision"] : undefined,
+    isRecord(observed["precision"]) ? observed["precision"] : undefined,
     observed,
   ];
   let reason: string | null = null;
@@ -121,9 +121,9 @@ export function observedPrecision(observed: unknown, field: string): { present: 
   for (const source of candidates) {
     if (!isRecord(source)) continue;
     for (const key of reasonKeys) if (typeof source[key] === "string") reason = source[key];
-    if (isRecord(source.reasons) && typeof source.reasons[field] === "string") reason = source.reasons[field];
+    if (isRecord(source["reasons"]) && typeof source["reasons"][field] === "string") reason = source["reasons"][field];
   }
-  if (reason === null && typeof observed.reason === "string") reason = observed.reason;
+  if (reason === null && typeof observed["reason"] === "string") reason = observed["reason"];
   for (const source of candidates) {
     if (isRecord(source) && Object.hasOwn(source, field)) return { present: true, value: source[field], reason };
   }

@@ -18,6 +18,8 @@ export const PATHS = {
   recordings: "/records/recordings",
   comparisons: "/records/comparisons",
   tracking: "/records/tracking",
+  /** 儲存空間：磁碟用量、清理與固定。 */
+  storage: "/records/storage",
   /** 推理 Studio 的入口：導向首頁「反推」（semantics）。 */
   inference: "/inference",
   /** 推理 Studio・反推（語意與資料集）：推理 Studio 的首頁。 */
@@ -26,11 +28,13 @@ export const PATHS = {
   promptStudies: "/inference/prompt-studies",
   /** 推理 Studio・手動執行（選一個元件組合，上傳輸入後建立 run）：?pipeline=&run=。 */
   inferenceRun: "/inference/run",
+  /** 推理 Studio・LoRA 訓練（?training= 開啟一個訓練工作）。 */
+  training: "/inference/training",
 } as const;
 
 function withQuery(path: string, params: Record<string, string | null | undefined>): string {
   const query = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) if (value) query.set(key, value);
+  for (const [key, value] of Object.entries(params)) if (value != null && value !== "") query.set(key, value);
   const search = query.toString();
   return search ? `${path}?${search}` : path;
 }
@@ -65,6 +69,11 @@ export function comparisonPath(ids: readonly string[]): string {
 /** 推理 Studio・手動執行（執行元件組合）：?pipeline=&run=。 */
 export function inferencePath(params: { pipeline?: string | null; run?: string | null } = {}): string {
   return withQuery(PATHS.inferenceRun, { pipeline: params.pipeline, run: params.run });
+}
+
+/** LoRA 訓練工作（?training=）。 */
+export function trainingPath(trainingId: string): string {
+  return withQuery(PATHS.training, { training: trainingId });
 }
 
 /** 語意與資料集（?describe_run=&caption_run=&export_run=）。 */

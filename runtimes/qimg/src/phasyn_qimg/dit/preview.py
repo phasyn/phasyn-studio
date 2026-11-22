@@ -1,6 +1,6 @@
 """Intermediate denoise previews (best effort: never changes sampling, never fails a successful generation).
 
-Both modes work on the x0 estimate ``x0 = x_t − σ·v`` in the normalized latent space:
+Both modes work on the x0 estimate ``x0 = x_t - sigma·v`` in the normalized latent space:
 - ``vae_thumbnail``: a CPU FP32 VAE (loaded once with the component) decodes a *downscaled* x0 (area-resized
   to max_side/16 latent cells). This is not the final image.
 - ``linear_fit``: a 64→3 linear projection plus bias, bilinearly upscaled to max_side. Coefficients come only
@@ -15,6 +15,7 @@ Preview images are composited on white when they have alpha (as image_white), JP
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import math
@@ -30,6 +31,9 @@ from phasyn_components.model_identity import display_path, location
 from .. import VAE_SCALE_FACTOR
 from ..latents import unpack_latents
 
+
+_RGB_CHANNELS = 3
+
 PACKAGED_COEFFICIENTS = Path(__file__).with_name("preview_coefficients.json")
 COEFFICIENTS_SCHEMA = "phasyn_qimg.preview_linear_fit.v1"
 COEFFICIENTS_SOURCE = "phasyn_qimg.fit_preview_coefficients"
@@ -38,8 +42,8 @@ JPEG_QUALITY = 85
 PREVIEW_NOTE = "預覽（非最終結果）"
 
 
-class PreviewUnavailable(ValueError):
-    """要求的預覽模式在這個元件／環境不可用（呼叫端轉成 422）。"""
+class PreviewUnavailable(ValueError):  # noqa: N818 - Keep the published runtime API.
+    """要求的預覽模式在這個元件／環境不可用（呼叫端轉成 422）."""
 
 
 def preview_due(step: int, every: int, total: int) -> bool:
@@ -49,22 +53,34 @@ def preview_due(step: int, every: int, total: int) -> bool:
 
 @dataclass(frozen=True)
 class LinearCoefficients:
+    """Coefficients of the latent-to-RGB preview projection."""
+
     matrix: tuple[tuple[float, float, float], ...]
     bias: tuple[float, float, float]
     synthetic: bool
-    location: dict[str, str]  # relative to load.model_path, or the basename (never an absolute path)
+    location: dict[
+        str, str
+    ]  # relative to load.model_path, or the basename (never an absolute path)
     sha256: str
     fit: dict[str, Any]
 
     @property
     def channels(self) -> int:
+        """Return the latent channel count of this projection."""
         return len(self.matrix)
 
     def identity(self) -> dict[str, Any]:
-        return {**self.location, "sha256": self.sha256, "synthetic": self.synthetic, "fit": self.fit}
+        """Return provenance for the projection coefficients."""
+        return {
+            **self.location,
+            "sha256": self.sha256,
+            "synthetic": self.synthetic,
+            "fit": self.fit,
+        }
 
 
 def validate_coefficients(doc: Any, *, channels: int) -> list[str]:
+    """Validate the dimensions and provenance of preview coefficients."""
     problems: list[str] = []
     if not isinstance(doc, dict):
         return ["係數檔不是 JSON object"]
@@ -73,30 +89,47 @@ def validate_coefficients(doc: Any, *, channels: int) -> list[str]:
     if doc.get("latent_space") != LATENT_SPACE:
         problems.append(f"latent_space 必須是 {LATENT_SPACE}")
     provenance = doc.get("provenance")
-    if not isinstance(provenance, dict) or provenance.get("source") != COEFFICIENTS_SOURCE:
-        problems.append(f"provenance.source 必須是 {COEFFICIENTS_SOURCE}（只接受我們自己擬合的係數）")
+    if (
+        not isinstance(provenance, dict)
+        or provenance.get("source") != COEFFICIENTS_SOURCE
+    ):
+        problems.append(
+            f"provenance.source 必須是 {COEFFICIENTS_SOURCE}（只接受我們自己擬合的係數）"
+        )
     matrix = doc.get("matrix")
     if not isinstance(matrix, list) or len(matrix) != channels:
         problems.append(f"matrix 必須是 {channels}×3")
     else:
         for row in matrix:
-            if not isinstance(row, list) or len(row) != 3 or not all(_finite(v) for v in row):
+            if (
+                not isinstance(row, list)
+                or len(row) != _RGB_CHANNELS
+                or not all(_finite(v) for v in row)
+            ):
                 problems.append(f"matrix 必須是 {channels}×3 的有限數值")
                 break
     bias = doc.get("bias")
-    if not isinstance(bias, list) or len(bias) != 3 or not all(_finite(v) for v in bias):
+    if (
+        not isinstance(bias, list)
+        or len(bias) != _RGB_CHANNELS
+        or not all(_finite(v) for v in bias)
+    ):
         problems.append("bias 必須是 3 個有限數值")
     return problems
 
 
 def _finite(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(float(value))
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+    )
 
 
-def load_coefficients(path: Path, *, channels: int, root: Path | None = None) -> LinearCoefficients:
+def load_coefficients(
+    path: Path, *, channels: int, root: Path | None = None
+) -> LinearCoefficients:
     """Validated linear_fit coefficients; ``root`` (``load.model_path``) only shapes the recorded location."""
-    import hashlib
-
     if not path.is_file():
         raise PreviewUnavailable(
             f"linear_fit 尚無係數檔（{display_path(path, root)}）；"
@@ -120,7 +153,9 @@ def load_coefficients(path: Path, *, channels: int, root: Path | None = None) ->
     )
 
 
-def render_vae_thumbnail(vae: Any, packed: Any, *, width: int, height: int, max_side: int) -> Any:
+def render_vae_thumbnail(
+    vae: Any, packed: Any, *, width: int, height: int, max_side: int
+) -> Any:
     """Decode a downscaled x0 with the CPU FP32 VAE; returns a PIL image (RGBA when the VAE emits alpha)."""
     import torch
     from PIL import Image
@@ -133,24 +168,39 @@ def render_vae_thumbnail(vae: Any, packed: Any, *, width: int, height: int, max_
         ratio = min(1.0, max_latent / max(latent_h, latent_w))
         if ratio < 1.0:
             target = (max(1, round(latent_h * ratio)), max(1, round(latent_w * ratio)))
-            latents = functional.interpolate(latents[:, :, 0], size=target, mode="area").unsqueeze(2)
-        mean = torch.tensor(vae.config.latents_mean, dtype=latents.dtype).view(1, -1, 1, 1, 1)
-        std = torch.tensor(vae.config.latents_std, dtype=latents.dtype).view(1, -1, 1, 1, 1)
+            latents = functional.interpolate(
+                latents[:, :, 0], size=target, mode="area"
+            ).unsqueeze(2)
+        mean = torch.tensor(vae.config.latents_mean, dtype=latents.dtype).view(
+            1, -1, 1, 1, 1
+        )
+        std = torch.tensor(vae.config.latents_std, dtype=latents.dtype).view(
+            1, -1, 1, 1, 1
+        )
         decoded = vae.decode(latents * std + mean, return_dict=False)[0][0, :, 0]
         pixels = ((decoded.float().clamp(-1, 1) + 1) / 2 * 255).round().byte()
         array = pixels.permute(1, 2, 0).cpu().numpy()
     return Image.fromarray(array)
 
 
-def render_linear(coefficients: LinearCoefficients, packed: Any, *, width: int, height: int, max_side: int) -> Any:
-    """x0 (H,W,64) @ M + b → [0,1] RGB → 雙線性放大到最長邊 max_side。"""
+def render_linear(
+    coefficients: LinearCoefficients,
+    packed: Any,
+    *,
+    width: int,
+    height: int,
+    max_side: int,
+) -> Any:
+    """x0 (H,W,64) @ M + b → [0,1] RGB → 雙線性放大到最長邊 max_side."""
     import torch
     from PIL import Image
 
     if packed.shape[-1] != coefficients.channels:
         raise PreviewUnavailable("linear_fit 係數的 channel 數與 latent 不符")
     with torch.inference_mode():
-        latents = unpack_latents(packed, width=width, height=height)[0, :, 0]  # (C, H, W)
+        latents = unpack_latents(packed, width=width, height=height)[
+            0, :, 0
+        ]  # (C, H, W)
         matrix = torch.tensor(coefficients.matrix, dtype=torch.float32)
         bias = torch.tensor(coefficients.bias, dtype=torch.float32)
         rgb = latents.float().movedim(0, -1) @ matrix + bias
@@ -163,7 +213,7 @@ def render_linear(coefficients: LinearCoefficients, packed: Any, *, width: int, 
 
 
 def encode_preview(image: Any) -> tuple[bytes, int, int]:
-    """alpha 合成在白底 → JPEG（預覽與最終的白底版一致；透明區不會變黑）。"""
+    """Alpha 合成在白底 → JPEG（預覽與最終的白底版一致；透明區不會變黑）."""
     from PIL import Image
 
     if image.mode in ("RGBA", "LA"):
@@ -182,15 +232,20 @@ def load_preview_vae(vae_dir: Path) -> Any:
     import torch
     from diffusers import AutoencoderKLQwenImage21
 
-    vae = AutoencoderKLQwenImage21.from_pretrained(
-        str(vae_dir), local_files_only=True, torch_dtype=torch.float32, use_safetensors=True
+    load_pretrained: Callable[..., Any] = AutoencoderKLQwenImage21.from_pretrained
+
+    vae = load_pretrained(
+        str(vae_dir),
+        local_files_only=True,
+        torch_dtype=torch.float32,
+        use_safetensors=True,
     ).eval()
     vae.enable_tiling()
     return vae
 
 
 class PreviewWorker:
-    """一張執行中＋一張可被取代的待辦；只處理 CPU tensor 副本。錯誤只停用預覽，留給主執行緒報告。"""
+    """一張執行中+一張可被取代的待辦；只處理 CPU tensor 副本。錯誤只停用預覽，留給主執行緒報告."""
 
     def __init__(
         self,
@@ -201,6 +256,7 @@ class PreviewWorker:
         note: str = PREVIEW_NOTE,
         lock: threading.Lock | None = None,
     ) -> None:
+        """Initialize the state for this operation."""
         self._render = render
         self._publish = publish
         self._total = total
@@ -221,16 +277,19 @@ class PreviewWorker:
         self.render_ms = 0.0
         self.encode_ms = 0.0
         self.bytes_published = 0
-        self._thread = threading.Thread(target=self._run, name="qimg-dit-preview", daemon=True)
+        self._thread = threading.Thread(
+            target=self._run, name="qimg-dit-preview", daemon=True
+        )
         self._thread.start()
 
     @property
     def active(self) -> bool:
+        """Report whether previews are active for this call."""
         with self._cv:
             return not (self._disabled or self._closing)
 
     def submit(self, x0: Any, step: int) -> None:
-        """x0：裝置上的 (1,HW,C) float32；這裡複製成獨立的 CPU tensor（同步點，只在預覽步發生）。"""
+        """x0：裝置上的 (1,HW,C) float32；這裡複製成獨立的 CPU tensor（同步點，只在預覽步發生）."""
         if not self.active:
             return
         import torch
@@ -250,7 +309,9 @@ class PreviewWorker:
         try:
             while True:
                 with self._cv:
-                    self._cv.wait_for(lambda: self._pending is not None or self._closing)
+                    self._cv.wait_for(
+                        lambda: self._pending is not None or self._closing
+                    )
                     if self._discard or self._pending is None:
                         self._pending = None
                         return
@@ -284,14 +345,14 @@ class PreviewWorker:
                         self.bytes_published += len(data)
                     else:
                         self.dropped_by_platform += 1
-        except Exception as exc:  # 預覽失敗不影響生成
+        except Exception as exc:  # noqa: BLE001 - Optional instrumentation failures must not change generation.
             with self._cv:
                 self.error = f"{type(exc).__name__}: {exc}"[:500]
                 self._disabled = True
                 self._pending = None
 
     def close(self, *, discard: bool = True) -> None:
-        """結束：預設丟棄尚未開始的待辦（呼叫結束時 Node 會刪掉預覽）；等執行中的一張做完並發布。"""
+        """結束：預設丟棄尚未開始的待辦（呼叫結束時 Node 會刪掉預覽）；等執行中的一張做完並發布."""
         with self._cv:
             self._closing = True
             self._discard = discard
@@ -301,6 +362,7 @@ class PreviewWorker:
         self._thread.join()
 
     def statistics(self) -> dict[str, Any]:
+        """Return collected preview measurements."""
         with self._cv:
             return {
                 "submitted": self.submitted,

@@ -15,13 +15,21 @@ from typing import Any
 from .errors import Cancelled, ComponentError
 from .files import FileStore
 from .outputs import OutputFile
-from .preview import PREVIEW_MAX_BYTES, PREVIEW_NOTE_MAX, PreviewFrame, PreviewSink, checked_preview
+from .preview import (
+    PREVIEW_MAX_BYTES,
+    PREVIEW_NOTE_MAX,
+    PreviewFrame,
+    PreviewSink,
+    checked_preview,
+)
 from .recorder import Recorder
 from .timeutil import mono_ns
 
 
 @dataclass
 class InputValue:
+    """A typed value or a local file delivered to a provider."""
+
     type_id: str
     value: Any = None
     file: dict[str, Any] | None = None
@@ -30,9 +38,11 @@ class InputValue:
 
     @property
     def is_file(self) -> bool:
+        """Report whether the input is backed by a file."""
         return self.file is not None
 
     def require_path(self, port: str) -> Path:
+        """Return the required local input path."""
         if self.path is None:
             raise ComponentError("INVALID_ARGUMENT", f"輸入 {port} 需要 FileRef")
         return self.path
@@ -42,19 +52,27 @@ class CancelToken:
     """``is_set()`` view for tools that poll (phasyn_media, the vendored H3 recipe): cancel or deadline both count."""
 
     def __init__(self, ctx: RunContext) -> None:
+        """Initialize cancel token with its configuration."""
         self._ctx = ctx
 
     def is_set(self) -> bool:
+        """Report whether cancellation has been signalled."""
         return self._ctx.cancelled()
 
     @property
     def reason(self) -> str:
+        """Return the reason for the cancellation request."""
         return "超過呼叫期限" if mono_ns() >= self._ctx.deadline_ns else "使用者取消"
 
 
 class _BaseContext:
     def __init__(
-        self, *, recorder: Recorder, device: Mapping[str, Any], work_dir: Path, settings: Mapping[str, Any]
+        self,
+        *,
+        recorder: Recorder,
+        device: Mapping[str, Any],
+        work_dir: Path,
+        settings: Mapping[str, Any],
     ) -> None:
         self.recorder = recorder
         self.device = dict(device)
@@ -66,17 +84,25 @@ class _BaseContext:
 
 
 class LoadContext(_BaseContext):
-    def __init__(self, *, expanded_parts: Mapping[str, Mapping[str, Any]], **kw: Any) -> None:
+    """Settings and instrumentation for loading a provider."""
+
+    def __init__(
+        self, *, expanded_parts: Mapping[str, Mapping[str, Any]], **kw: Any
+    ) -> None:
+        """Initialize load context with its configuration."""
         super().__init__(**kw)
         self.expanded_parts = {k: dict(v) for k, v in expanded_parts.items()}
 
     @property
     def load(self) -> dict[str, Any]:
+        """Access the load settings for this operation."""
         return dict(self.settings.get("load") or {})
 
 
 class RunContext(_BaseContext):
-    def __init__(
+    """Typed inputs, outputs and lifecycle services for one provider invocation."""
+
+    def __init__(  # noqa: PLR0913 - Providers construct this context with the published keyword arguments.
         self,
         *,
         call_id: str,
@@ -92,6 +118,7 @@ class RunContext(_BaseContext):
         preview_sink: PreviewSink | None = None,
         **kw: Any,
     ) -> None:
+        """Initialize run context with its configuration."""
         super().__init__(**kw)
         self._resolver = resolver
         self.call_id = call_id
@@ -111,32 +138,38 @@ class RunContext(_BaseContext):
 
     # cancel／deadline ---------------------------------------------------------
     def cancelled(self) -> bool:
+        """Check whether the invocation has been cancelled."""
         return self._cancel.is_set() or mono_ns() >= self.deadline_ns
 
     def check_cancelled(self) -> None:
+        """Raise the provider cancellation exception when signalled."""
         if self._cancel.is_set():
             raise Cancelled("取消要求")
         if mono_ns() >= self.deadline_ns:
             raise ComponentError("CALL_TIMEOUT", "超過本次呼叫期限")
 
     def remaining_seconds(self) -> float:
+        """Return the remaining invoke budget in seconds."""
         return max(0.0, (self.deadline_ns - mono_ns()) / 1e9)
 
     @property
     def cancel_token(self) -> CancelToken:
+        """Return the cancellation protocol for this invoke."""
         return CancelToken(self)
 
     # inputs -------------------------------------------------------------------
     def input(self, name: str) -> InputValue:
+        """Look up a required input port."""
         if name not in self.inputs:
             raise ComponentError("INVALID_ARGUMENT", f"缺少輸入 {name}")
         return self.inputs[name]
 
     def optional_input(self, name: str) -> InputValue | None:
+        """Look up an optional input port."""
         return self.inputs.get(name)
 
     def resolve_file(self, ref: Mapping[str, Any]) -> Path:
-        """把任意 FileRef 物化成本機完整檔（同 Node 直接路徑、跨 Node 由 Node 直接下載並驗 size/SHA）。"""
+        """把任意 FileRef 物化成本機完整檔（同 Node 直接路徑、跨 Node 由 Node 直接下載並驗 size/SHA）."""
         if self._resolver is None:
             raise ComponentError("RUNTIME_ERROR", "此執行環境沒有檔案 resolver")
         return Path(self._resolver(dict(ref), self.remaining_seconds()))
@@ -145,9 +178,14 @@ class RunContext(_BaseContext):
     def _type_for(self, port: str, type_id: str | None) -> str:
         declared = self._output_types.get(port)
         if declared is None:
-            raise ComponentError("RUNTIME_ERROR", f"provider 嘗試寫入未宣告的輸出 {port}")
+            raise ComponentError(
+                "RUNTIME_ERROR", f"provider 嘗試寫入未宣告的輸出 {port}"
+            )
         if type_id is not None and type_id != declared:
-            raise ComponentError("RUNTIME_ERROR", f"輸出 {port} 宣告為 {declared}，provider 寫入 {type_id}")
+            raise ComponentError(
+                "RUNTIME_ERROR",
+                f"輸出 {port} 宣告為 {declared}，provider 寫入 {type_id}",
+            )
         return declared
 
     @property
@@ -173,6 +211,7 @@ class RunContext(_BaseContext):
         }
 
     def set_output(self, port: str, value: Any, *, type_id: str | None = None) -> None:
+        """Publish an inline value on an output port."""
         self.outputs[port] = {"type_id": self._type_for(port, type_id), "value": value}
 
     def new_file(
@@ -183,29 +222,40 @@ class RunContext(_BaseContext):
         *,
         type_id: str | None = None,
     ) -> OutputFile:
-        """port=None 時是附屬檔（例如 latent blob），之後放進主檔 metadata.links。"""
-        tid = self._type_for(port, type_id) if port is not None else (type_id or "file.attachment.v1")
+        """port=None 時是附屬檔（例如 latent blob），之後放進主檔 metadata.links."""
+        tid = (
+            self._type_for(port, type_id)
+            if port is not None
+            else (type_id or "file.attachment.v1")
+        )
         out = OutputFile(
-            self._store, port=port or "", type_id=tid, media_type=media_type, metadata=metadata, recorder=self.recorder
+            self._store,
+            port=port or "",
+            type_id=tid,
+            media_type=media_type,
+            metadata=metadata,
+            recorder=self.recorder,
         )
         self._files.append(out)
         return out
 
     def set_file_output(self, port: str, out: OutputFile) -> None:
+        """Publish a file on an output port."""
         if not out.finished:
             out.finish()
         self.outputs[port] = out.wire()
 
     def pending_files(self) -> list[OutputFile]:
+        """Return the file outputs awaiting publication."""
         return list(self._files)
 
     # intermediate previews ----------------------------------------------------
     @property
     def preview_enabled(self) -> bool:
-        """這次呼叫有預覽通道（runtime host 與 Node 都支援）且尚未取消。False 時 provider 可以不產生預覽。"""
+        """這次呼叫有預覽通道（runtime host 與 Node 都支援）且尚未取消。False 時 provider 可以不產生預覽."""
         return self._preview_sink is not None and not self.cancelled()
 
-    def publish_preview(
+    def publish_preview(  # noqa: PLR0913 - Keep the published positional and keyword API.
         self,
         *,
         step: int,
@@ -216,16 +266,22 @@ class RunContext(_BaseContext):
         height: int,
         note: str | None = None,
     ) -> bool:
-        """交出一張中間預覽（非最終結果；best-effort，不阻塞）。
+        """交出一張中間預覽（非最終結果；best-effort，不阻塞）.
 
-        True＝已交給 runtime host 轉送（之後仍可能被更新的預覽取代而不送出）；False＝這張被丟棄：
+        True=已交給 runtime host 轉送（之後仍可能被更新的預覽取代而不送出）；False=這張被丟棄：
         沒有預覽通道、呼叫已取消或超過期限、超過 2 MiB。背壓時只保留最新的一張待送，絕不因背壓拋例外。
         參數錯誤（型別、範圍、media_type 與內容不符、width×height 與影像標頭不同）是 provider 的
         程式錯誤 → ComponentError(RUNTIME_ERROR)。``step``／``total``：provider 的進度（例如已完成的
         去噪步數／總步數，0 ≤ step ≤ total）。不壓縮、不縮圖、不改寫影像內容。
         """
         payload, step, total, width, height = checked_preview(
-            step=step, total=total, data=data, media_type=media_type, width=width, height=height, note=note
+            step=step,
+            total=total,
+            data=data,
+            media_type=media_type,
+            width=width,
+            height=height,
+            note=note,
         )
         if self._preview_sink is None or self.cancelled():
             return False  # 沒有預覽通道（provider 可先看 preview_enabled）或呼叫正在結束：不計入丟棄
@@ -248,11 +304,15 @@ class RunContext(_BaseContext):
         )
         try:
             accepted = bool(self._preview_sink(frame))
-        except Exception as exc:  # 轉送端的問題不影響運算
-            self._preview_dropped("sink_error", f"中間預覽轉送失敗（已丟棄）：{type(exc).__name__}: {exc}")
+        except Exception as exc:  # noqa: BLE001 - A preview sink failure must not stop inference.
+            self._preview_dropped(
+                "sink_error", f"中間預覽轉送失敗（已丟棄）：{type(exc).__name__}: {exc}"
+            )
             return False
         if not accepted:
-            self._preview_dropped("not_accepted", "中間預覽通道已關閉或呼叫已結束：之後的預覽都會被丟棄")
+            self._preview_dropped(
+                "not_accepted", "中間預覽通道已關閉或呼叫已結束：之後的預覽都會被丟棄"
+            )
         return accepted
 
     def _preview_dropped(self, reason: str, message: str) -> None:
@@ -266,7 +326,7 @@ class RunContext(_BaseContext):
 
 
 class UnloadContext(_BaseContext):
-    pass
+    """Lifecycle context for unloading a provider."""
 
 
 __all__ = ["CancelToken", "InputValue", "LoadContext", "RunContext", "UnloadContext"]

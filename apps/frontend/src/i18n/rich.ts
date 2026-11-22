@@ -35,7 +35,7 @@ export function parseRich(message: string): RichNode[] | null {
       current = frame.children;
     } else if (close !== undefined) {
       const frame = stack.pop();
-      if (!frame || frame.index !== Number(close)) return null;
+      if (frame?.index !== Number(close)) return null;
       frame.parent.push({ kind: "slot", index: frame.index, children: frame.children });
       current = frame.parent;
     } else if (name !== undefined) {
@@ -56,13 +56,14 @@ function renderNodes(nodes: readonly RichNode[], values: Values, slots: readonly
     const slot = slots[node.index];
     const children = node.children ? renderNodes(node.children, values, slots) : [];
     if (!isValidElement(slot)) return children.length > 0 ? createElement(Fragment, null, ...children) : null;
+    // eslint-disable-next-line @eslint-react/no-clone-element -- The translator supplies children for an existing caller-owned slot while keeping its type, props, ref and key.
     return node.children ? cloneElement(slot, undefined, ...children) : slot;
   });
 }
 
 /** 依目前語言翻譯並組成 React 節點（<T> 的本體；也可在 .ts 檔直接使用）。 */
 export function renderRich(source: string, values: Values = {}, slots: readonly ReactElement[] = [], context?: string): ReactNode {
-  const message = translateRaw(source, values, { context });
+  const message = translateRaw(source, values, { ...(context === undefined ? {} : { context }) });
   const tree = parseRich(message) ?? parseRich(source);
   if (!tree) return message;
   return createElement(Fragment, null, ...renderNodes(tree, values, slots));

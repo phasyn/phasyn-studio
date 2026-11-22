@@ -12,4 +12,5 @@ It never imports or executes anything from a package, and the API cannot bring e
 from .api import PLUGIN_FILE_HEADERS, routes
 from .store import STORE_DIR, PluginStore
 
+
 __all__ = ["PLUGIN_FILE_HEADERS", "STORE_DIR", "PluginStore", "routes"]

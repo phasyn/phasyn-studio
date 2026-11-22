@@ -1,0 +1,23 @@
+{
+  "component_id": "segment-video",
+  "label": "SAM 2 互動影片遮罩",
+  "provider_id": "media.segment_video",
+  "runtime_id": "segmentation",
+  "autostart": false,
+  "folder": "後製/影片/遮罩",
+  "exclusive_group": "sam2-segmentation",
+  "settings": {
+    "load": {
+      "device": {
+        "kind": "cuda",
+        "id": "GPU-REPLACE-0",
+        "resource_group": "gpu-0"
+      },
+      "model_path": "/path/to/models/sam2.1-hiera-tiny"
+    },
+    "invoke": {},
+    "recording": {
+      "mode": "detailed"
+    }
+  }
+}

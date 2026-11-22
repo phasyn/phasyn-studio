@@ -18,7 +18,7 @@ export function useTakeProgress(run: WireRun | undefined, take: StudioImageTake 
   // 只在「DiT 執行中但還找不到它的 recording」時查（找到後沿用快取，不持續輪詢）
   const recordings = useQuery({
     ...runRecordingsOptions(run?.run_id ?? "", running),
-    enabled: (query) => Boolean(run && view && running && !view.recording_id && !findBranchRecording(view, query.state.data?.items ?? [])),
+    enabled: (query) => Boolean(run && view && running && !(view.recording_id != null && view.recording_id !== "") && !findBranchRecording(view, query.state.data?.items ?? [])),
   });
   const recording = view ? findBranchRecording(view, recordings.data?.items ?? []) : null;
   const recordingId = view?.recording_id ?? recording?.context.recording_id ?? null;

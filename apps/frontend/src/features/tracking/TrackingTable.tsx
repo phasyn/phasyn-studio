@@ -1,3 +1,4 @@
+import { isListed } from "@/lib/json";
 import {
   CircleCheck,
   CircleDashed,
@@ -33,7 +34,6 @@ import {
   TOGGLE_FIELDS,
   traceSummary,
   type Drafts,
-  type RecorderMode,
   type RowResult,
   type SelectionState,
   type TrackingGroup,
@@ -42,6 +42,7 @@ import {
 import { t, tServer } from "@/i18n";
 import { T } from "@/i18n/T";
 import { formatList } from "@/i18n/format";
+import { failureText } from "@/lib/errors";
 
 const COLUMNS = 10;
 
@@ -61,7 +62,7 @@ function TriCheckbox({ state, onChange, label, disabled, title }: { state: Selec
         className="size-4 cursor-pointer accent-action disabled:cursor-not-allowed"
         checked={state === "all"}
         disabled={disabled}
-        onChange={(event) => onChange(event.target.checked)}
+        onChange={(event) => { onChange(event.target.checked); }}
         aria-label={label}
       />
     </label>
@@ -71,7 +72,7 @@ function TriCheckbox({ state, onChange, label, disabled, title }: { state: Selec
 function Chip({ icon: Icon, className, spin, title, children }: { icon: LucideIcon; className?: string; spin?: boolean; title?: string; children: ReactNode }) {
   return (
     <span className={cn("inline-flex min-w-0 items-center gap-1 text-caption whitespace-nowrap", className)} title={title}>
-      <Icon aria-hidden className={cn("size-3.5 shrink-0", spin && "animate-spin")} />
+      <Icon aria-hidden className={cn("size-3.5 shrink-0", ((spin === true) ? "animate-spin" : spin))} />
       <span className="truncate">{children}</span>
     </span>
   );
@@ -120,7 +121,7 @@ export function ResultChip({ result }: { result: RowResult | undefined }) {
       );
     case "failed":
       return (
-        <Chip icon={CircleX} className="text-danger" title={t("{code}：{message}", { code: result.code, message: tServer(result.message) })}>
+        <Chip icon={CircleX} className="text-danger" title={failureText(result.code, result.message)}>
           {result.outcomeUnknown ? t("結果未知") : t("失敗")}
         </Chip>
       );
@@ -159,7 +160,7 @@ function ProblemRow({ row, result, hasDraft, onReload, reloadDisabled }: { row: 
               <code className="machine text-fg-tertiary">{result.code}</code>
               <span className="min-w-0 text-fg-secondary [overflow-wrap:anywhere]">{tServer(result.message)}</span>
               {result.outcomeUnknown ? <span className="text-warning">{t("Node 可能已套用：請重新讀取確認，不會自動重送。")}</span> : null}
-              {!result.outcomeUnknown && result.hint ? <span className="text-fg-tertiary">{result.hint}</span> : null}
+              {!result.outcomeUnknown && (result.hint != null && result.hint !== "") ? <span className="text-fg-tertiary">{result.hint}</span> : null}
             </>
           )}
           <ActionButton size="sm" variant="secondary" icon={<RotateCcw aria-hidden />} onClick={onReload} disabledReason={reloadDisabled} className="min-h-7">
@@ -219,7 +220,7 @@ export function TrackingTable({ groups, drafts, results, selected, inspectedKey,
             <Th scope="col" className="px-2 first:pl-2">
               <TriCheckbox
                 state={selectionState(selected, visibleKeys)}
-                onChange={(on) => onSelect(visibleKeys, on)}
+                onChange={(on) => { onSelect(visibleKeys, on); }}
                 label={t("選取所有顯示中的元件")}
                 disabled={visibleKeys.length === 0}
               />
@@ -256,10 +257,10 @@ export function TrackingTable({ groups, drafts, results, selected, inspectedKey,
                   <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <TriCheckbox
                       state={selectionState(selected, groupKeys)}
-                      onChange={(on) => onSelect(groupKeys, on)}
+                      onChange={(on) => { onSelect(groupKeys, on); }}
                       label={t("選取 {label} 的所有顯示中元件", { label: group.node.label })}
                       disabled={groupKeys.length === 0}
-                      title={group.node.stale ? t("Node 離線：無法寫入") : undefined}
+                      {...(group.node.stale ? { title: t("Node 離線：無法寫入") } : {})}
                     />
                     <Server aria-hidden className="size-4 text-fg-tertiary" />
                     <span>{group.node.label}</span>
@@ -285,8 +286,9 @@ export function TrackingTable({ groups, drafts, results, selected, inspectedKey,
                   const result = results[row.key];
                   const lockReason = row.stale ? t("Node 離線：無法寫入") : running ? t("儲存進行中，請稍候") : null;
                   const trace = traceSummary(values);
-                  const knownMode = (RECORDER_MODES as readonly string[]).includes(values.mode);
-                  const modeHint = knownMode ? MODE_INFO[values.mode as RecorderMode].hint : t("目前值不在允許清單");
+                  const mode = values.mode;
+                  const knownMode = isListed(mode, RECORDER_MODES);
+                  const modeHint = knownMode ? MODE_INFO[mode].hint : t("目前值不在允許清單");
                   const isSelected = selected.has(row.key);
                   const inspected = row.key === inspectedKey;
                   const outdated = draft !== undefined && row.revision > draft.baseRevision;
@@ -297,10 +299,10 @@ export function TrackingTable({ groups, drafts, results, selected, inspectedKey,
                         <Td className="px-2 py-1 first:pl-2">
                           <TriCheckbox
                             state={isSelected ? "all" : "none"}
-                            onChange={(on) => onSelect([row.key], on)}
+                            onChange={(on) => { onSelect([row.key], on); }}
                             label={t("選取 {label}", { label: row.label })}
                             disabled={row.stale}
-                            title={row.stale ? t("Node 離線：無法寫入") : undefined}
+                            {...(row.stale ? { title: t("Node 離線：無法寫入") } : {})}
                           />
                         </Td>
                         <Td className="py-1">
@@ -308,7 +310,7 @@ export function TrackingTable({ groups, drafts, results, selected, inspectedKey,
                             id={rowAnchorId(row.key)}
                             type="button"
                             aria-pressed={inspected}
-                            onClick={() => onInspect(row)}
+                            onClick={() => { onInspect(row); }}
                             className="flex min-h-8 w-full min-w-0 items-center gap-2 rounded-sm text-left hover:text-action-hover"
                             title={t("{label}（{componentId}）：在右側檢視器開啟錄製設定", { label: row.label, componentId: row.componentId })}
                           >
@@ -318,7 +320,7 @@ export function TrackingTable({ groups, drafts, results, selected, inspectedKey,
                             {row.test ? (
                               <span className="inline-flex shrink-0 items-center gap-1 text-caption text-warning" title={t("測試元件／合成示例")}>
                                 <FlaskConical aria-hidden className="size-3.5" />
-                                <T source={"測試<0>元件／合成示例</0>"} slots={[<span className="sr-only" />]} />
+                                <T source={"測試<0>元件／合成示例</0>"} slots={[<span key="slot-0" className="sr-only" />]} />
                               </span>
                             ) : null}
                           </button>
@@ -345,7 +347,7 @@ export function TrackingTable({ groups, drafts, results, selected, inspectedKey,
                             value={values.mode}
                             disabled={lockReason !== null}
                             title={lockReason ?? modeHint}
-                            onChange={(event) => onEdit(row, "mode", event.target.value)}
+                            onChange={(event) => { onEdit(row, "mode", event.target.value); }}
                             className="min-h-8 py-1 pr-7 pl-2 text-data"
                           >
                             {knownMode ? null : <option value={values.mode}>{t("目前值 {value}", { value: values.mode || t("（空）") })}</option>}
@@ -373,7 +375,7 @@ export function TrackingTable({ groups, drafts, results, selected, inspectedKey,
                                   className="size-4 cursor-pointer accent-action disabled:cursor-not-allowed"
                                   checked={values[toggle.key]}
                                   disabled={lockReason !== null}
-                                  onChange={(event) => onEdit(row, toggle.key, event.target.checked)}
+                                  onChange={(event) => { onEdit(row, toggle.key, event.target.checked); }}
                                   aria-label={t("{label}：{label2}{value}", { label: toggle.label, label2: row.label, value: changed.has(toggle.key) ? t("（未儲存）") : "" })}
                                 />
                               </label>
@@ -386,7 +388,7 @@ export function TrackingTable({ groups, drafts, results, selected, inspectedKey,
                             value={values.log_level}
                             disabled={lockReason !== null}
                             title={lockReason ?? t("只篩選文字 log；必要錯誤與 counter 不受影響")}
-                            onChange={(event) => onEdit(row, "log_level", event.target.value)}
+                            onChange={(event) => { onEdit(row, "log_level", event.target.value); }}
                             className="min-h-8 py-1 pr-7 pl-2 text-data"
                           >
                             {(LOG_LEVELS as readonly string[]).includes(values.log_level) ? null : <option value={values.log_level}>{t("目前值 {value}", { value: values.log_level || t("（空）") })}</option>}
@@ -422,7 +424,7 @@ export function TrackingTable({ groups, drafts, results, selected, inspectedKey,
                               variant="quiet"
                               aria-label={t("在檢視器開啟錄製設定：{label}", { label: row.label })}
                               title={t("在右側檢視器編輯全部 RecorderConfig 欄位")}
-                              onClick={() => onInspect(row)}
+                              onClick={() => { onInspect(row); }}
                             >
                               <SlidersHorizontal aria-hidden />
                             </Button>
@@ -436,7 +438,7 @@ export function TrackingTable({ groups, drafts, results, selected, inspectedKey,
                                   title={t("儲存（{changedCount} 個欄位）", { changedCount: changed.size })}
                                   pending={result?.status === "pending"}
                                   disabledReason={result?.status === "pending" ? null : lockReason}
-                                  onClick={() => onSave(row)}
+                                  onClick={() => { onSave(row); }}
                                 />
                                 <ActionButton
                                   size="icon-sm"
@@ -445,7 +447,7 @@ export function TrackingTable({ groups, drafts, results, selected, inspectedKey,
                                   aria-label={t("還原 {label} 的修改", { label: row.label })}
                                   title={t("還原為已保存值")}
                                   disabledReason={running ? t("儲存進行中，請稍候") : null}
-                                  onClick={() => onRevert(row)}
+                                  onClick={() => { onRevert(row); }}
                                 />
                               </>
                             ) : null}
@@ -454,7 +456,7 @@ export function TrackingTable({ groups, drafts, results, selected, inspectedKey,
                         </Td>
                       </Tr>
                       {result ? (
-                        <ProblemRow row={row} result={result} hasDraft={draft !== undefined} onReload={() => onReload(row)} reloadDisabled={running ? t("儲存進行中，請稍候") : null} />
+                        <ProblemRow row={row} result={result} hasDraft={draft !== undefined} onReload={() => { onReload(row); }} reloadDisabled={running ? t("儲存進行中，請稍候") : null} />
                       ) : null}
                     </Fragment>
                   );

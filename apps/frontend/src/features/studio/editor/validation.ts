@@ -1,5 +1,5 @@
 import type { StudioTimeline, TimelineClip, TimelineSource } from "@/api/generated/contracts";
-import { MAX_CAPTIONS, MAX_FPS, MAX_GAIN_DB, MAX_MARKERS, MAX_SEQUENCE_SECONDS, MAX_SOURCE_FRAMES, MAX_SOURCES, MIN_FPS, MIN_GAIN_DB } from "@/api/generated/timelineLimits";
+import { MAX_CAPTIONS, MAX_FPS, MAX_GAIN_DB, MAX_MARKERS, MAX_SEQUENCE_SECONDS, MAX_SOURCE_FRAMES, MAX_SOURCES, MAX_SPEED_PERCENT, MIN_FPS, MIN_GAIN_DB, MIN_SPEED_PERCENT } from "@/api/generated/timelineLimits";
 import { t } from "@/i18n";
 import { activeTransition, titleLayerState } from "../model/clipEffects";
 import { ADJUSTMENT_TRANSITION, adjustmentProblem } from "./adjustment";
@@ -25,12 +25,12 @@ function clipProblem(clip: TimelineClip): string | null {
   }
   if (!bounded(clip.motion.pan, -1, 1)) return t("聲像超出允許範圍");
   const fx = clip.effects;
-  if (!integer(fx?.speed_percent ?? 100, 50, 200) || !bounded(fx?.volume_db ?? 0, -60, 12) || !integer(fx?.hold?.start ?? 0, 0, 240) || !integer(fx?.hold?.end ?? 0, 0, 240) || !integer(fx?.frame_step ?? 1, 1, 4)) return t("片段效果超出允許範圍");
+  if (!integer(fx?.speed_percent ?? 100, MIN_SPEED_PERCENT, MAX_SPEED_PERCENT) || !bounded(fx?.volume_db ?? 0, -60, 12) || !integer(fx?.hold?.start ?? 0, 0, 240) || !integer(fx?.hold?.end ?? 0, 0, 240) || !integer(fx?.frame_step ?? 1, 1, 4)) return t("片段效果超出允許範圍");
   const fade = fx?.fade;
   if ([fade?.video_in ?? 0, fade?.video_out ?? 0, fade?.audio_in ?? 0, fade?.audio_out ?? 0].some((value) => !integer(value, 0, 1000)) || (fade?.video_in ?? 0) + (fade?.video_out ?? 0) > duration || (fade?.audio_in ?? 0) + (fade?.audio_out ?? 0) > duration || (fade?.video_out ?? 0) >= duration) return t("淡入淡出範圍超過片段長度");
   if (fx?.impact && (!integer(fx.impact.frames, 1, Math.min(12, duration)))) return t("衝擊格範圍超過片段長度");
   const style = fx?.title?.style;
-  if (style && (!(["sans", "serif", "mono"] as const).includes(style.font_family) || !bounded(style.font_size, 8, 300) || (style.font_weight !== 400 && style.font_weight !== 700) || !/^#[0-9a-f]{6}$/i.test(style.color) || !(["left", "center", "right"] as const).includes(style.align) || !bounded(style.x, 0, 1) || !bounded(style.y, 0, 1))) return t("文字樣式超出允許範圍");
+  if (style && (!(["sans", "serif", "mono"] as const).includes(style.font_family) || !bounded(style.font_size, 8, 300) || !([400, 700] as readonly number[]).includes(style.font_weight) || !/^#[0-9a-f]{6}$/i.test(style.color) || !(["left", "center", "right"] as const).includes(style.align) || !bounded(style.x, 0, 1) || !bounded(style.y, 0, 1))) return t("文字樣式超出允許範圍");
   if (fx?.title && (!fx.title.text.trim() || fx.title.text.length > 200)) return t("標題內容需為 1–200 個字元");
   if (fx?.title && (!integer(fx.title.start_frame, 0, duration - 1) || (fx.title.end_frame !== null && !integer(fx.title.end_frame, fx.title.start_frame + 1, duration)))) return t("文字範圍超過片段長度");
   const color = fx?.color;
@@ -64,11 +64,11 @@ export function timelineProblem(timeline: StudioTimeline): string | null {
     if (!track || !source) return t("片段參照的素材或軌道不存在");
     if (source.kind === "adjustment" && track.kind !== "video") return t("調整圖層只能放在影像軌");
     if ((track.kind === "video" && source.kind === "audio") || (track.kind === "audio" && !source.has_audio)) return t("素材種類與軌道不相容");
-    if (source.kind === "text" && (source.file !== null || source.has_audio || !clip.effects?.title || clip.effects.title.start_frame !== 0 || (clip.effects.title.end_frame !== null && clip.effects.title.end_frame !== processedDuration(clip)))) return t("獨立文字圖層必須保留完整片段文字，且不能引用媒體檔案或音訊");
+    if (source.kind === "text" && (source.file !== null || source.has_audio || clip.effects?.title?.start_frame !== 0 || (clip.effects.title.end_frame !== null && clip.effects.title.end_frame !== processedDuration(clip)))) return t("獨立文字圖層必須保留完整片段文字，且不能引用媒體檔案或音訊");
     if (clip.out_frame > source.duration_frames) return t("裁切範圍超過原始素材長度");
     if (processedDuration(clip) * timeline.fps.den / timeline.fps.num > MAX_SEQUENCE_SECONDS) return t("時間軸不得超過 100000 影格或一小時");
     const problem = (source.kind === "adjustment" ? adjustmentProblem(clip) : null) ?? clipProblem(clip);
-    if (problem) return problem;
+    if (problem != null && problem !== "") return problem;
   }
   for (const track of timeline.tracks) {
     if (!bounded(track.gain_db, -60, 12) || !bounded(track.pan, -1, 1)) return t("軌道混音參數超出允許範圍");

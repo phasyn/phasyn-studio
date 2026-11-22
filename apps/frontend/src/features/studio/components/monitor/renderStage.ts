@@ -7,7 +7,7 @@ import { runSteps } from "@/api/types";
 import { t } from "@/i18n";
 import { missingEtaDetail, missingEtaReason, queueCompletion } from "../../model/eta";
 import { runBranchSuffixes, splitRunStepId } from "../../model/pipelines";
-import { progressHeadline, stepLabel, type ProviderLookup } from "../../model/progress";
+import { componentLoadText, progressHeadline, stepLabel, stepsComponentLoad, type ProviderLookup } from "../../model/progress";
 import type { ActivityItem, RenderActivity } from "../../model/renderActivity";
 import { TAKE_END_LABELS } from "./monitorTakes";
 import type { TakeRender } from "./useTakeRender";
@@ -31,17 +31,30 @@ function waitingStage(activity: RenderActivity, item: ActivityItem, compact: boo
   return compact || ahead === 0 ? t("等待中") : t("等待中・前面還有 {count} 個", { count: ahead });
 }
 
+/** The component of the item's branch that loads on use right now (「載入模型中」), if any. */
+function itemLoad(activity: RenderActivity, item: ActivityItem): string | null {
+  const run = activity.run;
+  const suffixes = runBranchSuffixes(run);
+  const load = stepsComponentLoad(runSteps(run).filter((view) => splitRunStepId(run, view.step_id, suffixes).suffix === item.suffix));
+  return load ? componentLoadText(load) : null;
+}
+
 function itemStage(activity: RenderActivity, item: ActivityItem, lookup: ProviderLookup, compact: boolean): string {
+  const load = item.state === "running" || item.state === "waiting" ? itemLoad(activity, item) : null;
+  if (load !== null) return load;
   switch (item.state) {
     case "running": {
       if (item.dit?.state === "running") return `DiT ${progressHeadline(item.dit)}`;
       const label = runningStepLabel(activity, item, lookup);
-      return label ? t("{suffix}{stepLabel}執行中", { suffix: "", stepLabel: label }) : waitingStage(activity, item, compact);
+      return (label != null && label !== "") ? t("{suffix}{stepLabel}執行中", { suffix: "", stepLabel: label }) : waitingStage(activity, item, compact);
     }
     case "waiting":
       return waitingStage(activity, item, compact);
     case "succeeded":
       return t("完成，正在讀回結果");
+    case "cancelled":
+    case "failed":
+    case "interrupted":
     default:
       return TAKE_END_LABELS[item.state] ?? item.state;
   }
@@ -61,6 +74,8 @@ export function renderStage(take: StudioTake, activity: RenderActivity | null, l
   }
   if (!live.run) return t("讀取渲染進度…");
   if (live.run.state !== "running") return t("渲染已結束，正在讀回結果");
+  const load = stepsComponentLoad(runSteps(live.run));
+  if (load) return componentLoadText(load);
   return live.view?.state === "running" ? `DiT ${progressHeadline(live.view)}` : t("渲染中");
 }
 

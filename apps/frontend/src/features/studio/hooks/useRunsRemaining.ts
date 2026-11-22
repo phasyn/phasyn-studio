@@ -27,7 +27,7 @@ const branchIndex = (take: StudioTake) => {
   return suffix ? Number(suffix.slice(1)) : 0;
 };
 
-const cached = (runs: readonly { data?: WireRun }[]) => runs.map((result) => result.data);
+const cached = (runs: readonly { data: WireRun | undefined }[]) => runs.map((result) => result.data);
 
 /**
  * `clock`: a caller that already ticks (a live run view) passes its own `now`, so there is one timer and one render per

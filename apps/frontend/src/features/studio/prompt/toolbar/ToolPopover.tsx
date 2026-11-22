@@ -45,9 +45,9 @@ export function ToolPopover({
     const at = anchor.getBoundingClientRect();
     const top = at.bottom - box.top - parent.clientTop + GAP;
     const left = Math.min(Math.max(0, at.left - box.left - parent.clientLeft), Math.max(0, parent.clientWidth - panel.offsetWidth));
-    panel.style.top = `${Math.round(top)}px`;
-    panel.style.left = `${Math.round(left)}px`;
-    panel.style.maxHeight = `${Math.max(MIN_HEIGHT, Math.floor(parent.clientHeight - top - GAP))}px`;
+    panel.style.top = `${String(Math.round(top))}px`;
+    panel.style.left = `${String(Math.round(left))}px`;
+    panel.style.maxHeight = `${String(Math.max(MIN_HEIGHT, Math.floor(parent.clientHeight - top - GAP)))}px`;
   });
 
   // Focus moves in when it opens: to the content's own autofocus element, else the first control, else the panel
@@ -61,17 +61,17 @@ export function ToolPopover({
   const onOutsidePointer = useEffectEvent((event: PointerEvent) => {
     const target = event.target;
     // The button toggles the panel itself (its click closes it); everything else outside closes it here
-    if (!(target instanceof Node) || ref.current?.contains(target) || anchor.contains(target)) return;
+    if (!(target instanceof Node) || Boolean(ref.current?.contains(target)) || anchor.contains(target)) return;
     onClose(false);
   });
   useEffect(() => {
-    const pointer = (event: PointerEvent) => onOutsidePointer(event);
+    const pointer = (event: PointerEvent) => { onOutsidePointer(event); };
     document.addEventListener("pointerdown", pointer, true);
-    return () => document.removeEventListener("pointerdown", pointer, true);
+    return () => { document.removeEventListener("pointerdown", pointer, true); };
   }, []);
 
   return (
-    <div
+    <div /* eslint-disable-line jsx-a11y-x/no-noninteractive-element-interactions -- Keyboard events from this panel’s focusable controls bubble here so navigation and dismissal share one handler. */
       ref={ref}
       id={id}
       role="dialog"
@@ -89,7 +89,7 @@ export function ToolPopover({
         const next = event.relatedTarget;
         if (next instanceof Node && !event.currentTarget.contains(next) && !anchor.contains(next)) onClose(false);
       }}
-      style={{ width: `min(${width}px, 100%)` }}
+      style={{ width: `min(${String(width)}px, 100%)` }}
       className={cn(
         "material-popover absolute top-0 left-0 z-30 flex min-h-0 flex-col overflow-y-auto rounded-xl p-1.5 text-fg outline-none animate-pop-in forced-colors:border forced-colors:border-[CanvasText]",
         className,

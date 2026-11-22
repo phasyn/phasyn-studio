@@ -72,12 +72,12 @@ export function cancelThumbs(): void {
 /** The picture of `url` at `seconds`, read once `wanted` (the row was seen); null while there is nothing yet. */
 export function useSourceThumb(url: string | null, seconds: number, wanted: boolean): ThumbState | null {
   const states = useSyncExternalStore(store.subscribe, store.snapshot);
-  const state = url ? states.get(keyOf(url, seconds)) : undefined;
+  const state = (url != null && url !== "") ? states.get(keyOf(url, seconds)) : undefined;
   const missing = state === undefined;
   useEffect(() => {
-    if (url && wanted && missing) requestThumb(url, seconds);
+    if ((url != null && url !== "") && wanted && missing) requestThumb(url, seconds);
   }, [url, seconds, wanted, missing]);
   return state ?? null;
 }
 
-if (import.meta.hot) import.meta.hot.dispose(() => cancelThumbs());
+if (import.meta.hot) import.meta.hot.dispose(() => { cancelThumbs(); });

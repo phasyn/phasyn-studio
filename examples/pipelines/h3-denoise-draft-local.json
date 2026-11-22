@@ -1,0 +1,56 @@
+{
+  "pipeline_id": "h3-denoise-draft-local",
+  "label": "H3 草稿：從編碼產物執行 PAI 8 步",
+  "inputs": [
+    {
+      "name": "conditioning",
+      "type_id": "h3.conditioning.tap50.v1",
+      "required": true,
+      "transport": "file",
+      "description": "文字編碼階段產生的 conditioning。"
+    },
+    {
+      "name": "job",
+      "type_id": "h3.job.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "同一次文字編碼產生的 job。"
+    },
+    {
+      "name": "prepared",
+      "type_id": "h3.prepared-media.v1",
+      "required": true,
+      "transport": "file",
+      "description": "同一次文字編碼產生的 prepared。"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "dit",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "dit-fl2va-fp8-pai8",
+      "inputs": {
+        "conditioning": {
+          "from_input": "conditioning"
+        },
+        "job": {
+          "from_input": "job"
+        },
+        "prepared": {
+          "from_input": "prepared"
+        }
+      },
+      "parameters": {}
+    }
+  ],
+  "outputs": {
+    "video_latent": {
+      "from_step": "dit",
+      "output": "video_latent"
+    },
+    "audio_latent": {
+      "from_step": "dit",
+      "output": "audio_latent"
+    }
+  }
+}

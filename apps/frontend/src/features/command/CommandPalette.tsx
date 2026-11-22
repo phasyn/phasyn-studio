@@ -1,3 +1,5 @@
+import { withOccurrenceKeys } from "@/lib/occurrenceKeys";
+import { compositionKey } from "@/lib/dom";
 // 命令面板：只用鍵盤開啟（Ctrl＋K，Apple 平台 ⌘K；Video Studio 剪輯頁為 Ctrl／⌘＋Shift＋K）；app bar 不再放搜尋鈕。
 // Radix Dialog 內是 APG combobox／listbox。資料只在面板開啟時讀取（PaletteBody 隨 DialogContent 掛載、關閉即卸載），沿用既有 hooks 的快取。
 // 選取後：記入最近開啟 → 關閉 → 導覽；換頁時焦點交給新頁標題（routeFocus），同頁只改 query 時移到主要內容。
@@ -107,26 +109,26 @@ function itemVisual(item: CommandItem): { icon: LucideIcon; tone: Tone } {
 /** 目前是否有其他對話框（Radix Dialog、原生 dialog）開著；有的話快捷鍵不搶。 */
 function anotherDialogOpen(own: HTMLElement | null): boolean {
   for (const node of document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"], dialog[open]')) {
-    if (node === own || node.dataset.state === "closed") continue;
+    if (node === own || node.dataset["state"] === "closed") continue;
     return true;
   }
   return false;
 }
 
 function optionDomId(baseId: string, uid: number): string {
-  return `${baseId}-option-${uid}`;
+  return `${baseId}-option-${String(uid)}`;
 }
 
 /** 相符文字：粗體＋前景色（不只靠顏色）；其餘文字退一階。 */
 function Marked({ segments }: { segments: TextSegment[] }) {
   const searching = segments.some((segment) => segment.match);
-  return segments.map((segment, index) =>
+  return withOccurrenceKeys(segments, (segment) => JSON.stringify([segment.match, segment.text])).map(({ item: segment, key }) =>
     segment.match ? (
-      <span key={index} className="font-semibold text-fg">
+      <span key={key} className="font-semibold text-fg">
         {segment.text}
       </span>
     ) : (
-      <span key={index} className={searching ? "text-fg-secondary" : undefined}>
+      <span key={key} className={searching ? "text-fg-secondary" : undefined}>
         {segment.text}
       </span>
     ),
@@ -144,11 +146,11 @@ function RowTime({ time, now }: { time: NonNullable<CommandMeta["time"]>; now: n
 }
 
 function RowMeta({ meta, now }: { meta: CommandMeta | undefined; now: number | null }) {
-  if (!meta || (!meta.status && !meta.time && !meta.nodeState)) return null;
+  if (!meta || (!meta.status && !meta.time && !(meta.nodeState != null && meta.nodeState !== ""))) return null;
   return (
     <span className="flex shrink-0 items-center gap-2">
       {meta.time ? <RowTime time={meta.time} now={now} /> : null}
-      {meta.nodeState ? <StatusBadge kind="directory" value={meta.nodeState} /> : null}
+      {(meta.nodeState != null && meta.nodeState !== "") ? <StatusBadge kind="directory" value={meta.nodeState} /> : null}
       {meta.status ? <StatusBadge kind={meta.status.kind} value={meta.status.value} /> : null}
     </span>
   );
@@ -178,12 +180,12 @@ function OptionRow({
   const visual = itemVisual(option.item);
   const Icon = visual.icon;
   return (
-    <div
+    <div /* eslint-disable-line jsx-a11y-x/click-events-have-key-events, jsx-a11y-x/interactive-supports-focus -- The owning composite keeps keyboard focus and exposes the active option with aria-activedescendant. */
       id={domId}
       role="option"
       aria-selected={active}
       onPointerMove={onHover}
-      onMouseDown={(event) => event.preventDefault()}
+      onMouseDown={(event) => { event.preventDefault(); }}
       onClick={onChoose}
       ref={reveal(order)}
       className={cn("relative mx-1.5 flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg py-1 pr-3 pl-2.5 transition-[background-color] duration-(--duration-fast) animate-rise-in", first && "scroll-mt-9", active && ACTIVE_OPTION)}
@@ -229,7 +231,7 @@ function SourceIssues({ issues }: { issues: SourceIssue[] }) {
             <TriangleAlert aria-hidden className="size-3.5 shrink-0 text-warning" />
           )}
           <span className="shrink-0">{issueText(issue)}</span>
-          {issue.message ? (
+          {(issue.message != null && issue.message !== "") ? (
             <span className="machine min-w-0 flex-1 truncate text-fg-tertiary" title={issue.message}>
               {issue.message}
             </span>
@@ -283,7 +285,7 @@ function PaletteBody({ now, onChoose }: { now: number | null; onChoose: (item: C
   const keyboardMoved = found >= 0 && active?.via === "keyboard";
 
   useEffect(() => {
-    if (!activeDomId || !keyboardMoved) return;
+    if (!(activeDomId != null && activeDomId !== "") || !keyboardMoved) return;
     document.getElementById(activeDomId)?.scrollIntoView({ block: "nearest" });
   }, [activeDomId, keyboardMoved]);
 
@@ -303,7 +305,7 @@ function PaletteBody({ now, onChoose }: { now: number | null; onChoose: (item: C
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
     const native = event.nativeEvent;
-    if (native.isComposing || native.keyCode === 229) return;
+    if (compositionKey(native)) return;
     if (isNavKey(event.key)) {
       // 帶修飾鍵（Shift＋Home 選字等）交給輸入框本身。
       if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || options.length === 0) return;
@@ -344,7 +346,7 @@ function PaletteBody({ now, onChoose }: { now: number | null; onChoose: (item: C
           placeholder={PLACEHOLDER}
           value={query}
           onChange={onChange}
-          onCompositionEnd={(event) => updateSearch(event.currentTarget.value)}
+          onCompositionEnd={(event) => { updateSearch(event.currentTarget.value); }}
           onKeyDown={onKeyDown}
           className="h-full min-w-0 flex-1 bg-transparent text-section text-fg outline-hidden placeholder:text-fg-tertiary"
         />
@@ -378,7 +380,7 @@ function PaletteBody({ now, onChoose }: { now: number | null; onChoose: (item: C
                   onHover={() => {
                     if (active?.id !== option.item.id) setActive({ id: option.item.id, via: "pointer" });
                   }}
-                  onChoose={() => onChoose(option.item)}
+                  onChoose={() => { onChoose(option.item); }}
                 />
               ))}
             </div>
@@ -402,7 +404,7 @@ function PaletteBody({ now, onChoose }: { now: number | null; onChoose: (item: C
 
       <div className="flex h-9 shrink-0 items-center gap-3 border-t border-line-subtle px-3">
         <DialogDescription className="min-w-0 flex-1 truncate text-caption text-fg-tertiary">
-          <T source={"<0>↑↓</0> 移動・<1>Enter</1> 開啟・<2>Esc</2> 關閉"} slots={[<kbd className={KBD} />, <kbd className={KBD} />, <kbd className={KBD} />]} />
+          <T source={"<0>↑↓</0> 移動・<1>Enter</1> 開啟・<2>Esc</2> 關閉"} slots={[<kbd key="slot-0" className={KBD} />, <kbd key="slot-1" className={KBD} />, <kbd key="slot-2" className={KBD} />]} />
         </DialogDescription>
         <span role="status" className="shrink-0 text-caption text-fg-tertiary">
           {status}
@@ -453,9 +455,9 @@ export function CommandPalette() {
   });
 
   useEffect(() => {
-    const listener = (event: KeyboardEvent) => onShortcut(event);
+    const listener = (event: KeyboardEvent) => { onShortcut(event); };
     window.addEventListener("keydown", listener);
-    return () => window.removeEventListener("keydown", listener);
+    return () => { window.removeEventListener("keydown", listener); };
   }, []);
 
   // 路由提交後：換頁時 AppShell 已標記「焦點移到新頁標題」（PageHeader 會接手）；
@@ -468,7 +470,7 @@ export function CommandPalette() {
       const active = document.activeElement;
       if (!active || active === document.body) document.getElementById("main-content")?.focus({ preventScroll: true });
     });
-    return () => window.cancelAnimationFrame(frame);
+    return () => { window.cancelAnimationFrame(frame); };
   }, [location]);
 
   const choose = (item: CommandItem) => {
@@ -486,7 +488,7 @@ export function CommandPalette() {
   };
 
   return (
-    <Dialog open={open} onOpenChange={(next) => (next ? show(null) : setOpen(false))}>
+    <Dialog open={open} onOpenChange={(next) => { if (next) { show(null); } else { setOpen(false); } }}>
       <DialogContent
         ref={contentRef}
         // 浮層材質（material-popover）＋較快的彈簧進場（dialog-in 關鍵影格，snappy 彈簧 token）。
@@ -494,7 +496,7 @@ export function CommandPalette() {
         className="material-popover top-[12vh] max-h-[min(70vh,35rem)] max-w-160 translate-y-0 data-[state=open]:animate-[dialog-in_var(--duration-spring-snappy)_var(--ease-spring-snappy)_backwards]!"
         onEscapeKeyDown={(event) => {
           // Esc 在輸入法組字中是取消組字，不是關閉面板。
-          if (event.isComposing || event.keyCode === 229) event.preventDefault();
+          if (compositionKey(event)) event.preventDefault();
         }}
         onCloseAutoFocus={(event) => {
           // 沒有觸發鈕：一律自己決定焦點（Radix 預設會把焦點交給不存在的觸發鈕）。
@@ -505,7 +507,7 @@ export function CommandPalette() {
             closingForNavRef.current = false;
             return;
           }
-          if (previous?.isConnected) previous.focus({ preventScroll: true });
+          if (previous?.isConnected === true) previous.focus({ preventScroll: true });
         }}
       >
         <DialogTitle className="sr-only">{t("命令面板（{apple}）", { apple: shortcutLabel(APPLE, plain) })}</DialogTitle>

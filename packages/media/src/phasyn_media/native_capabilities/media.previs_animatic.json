@@ -1,0 +1,189 @@
+{
+  "schema_version": "1.0",
+  "provider_id": "media.previs_animatic",
+  "label": "Shot animatic",
+  "kind": "media.prepare",
+  "inputs": [
+    {
+      "name": "frames",
+      "type_id": "media.previs-frames.v1",
+      "required": true,
+      "transport": "file",
+      "description": "Frozen frame bundle, timed shot and layer sources"
+    },
+    {
+      "name": "audio",
+      "type_id": "media.audio.v1",
+      "required": false,
+      "transport": "file",
+      "description": "Optional temporary soundtrack"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "asset",
+      "type_id": "media.asset.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "Playable animatic and frozen source details"
+    },
+    {
+      "name": "video",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": "Rendered MP4"
+    }
+  ],
+  "parameters_schema": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": false
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "load": {
+        "type": "object",
+        "properties": {
+          "model_path": {
+            "type": "string",
+            "description": "Node 本機模型路徑（使用者提供，不由主控下載）"
+          },
+          "model_revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "device": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "cpu"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "maxLength": 16384,
+                "pattern": "^[^\\x00-\\x1f\\x7f]*$"
+              },
+              "resource_group": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id",
+              "resource_group"
+            ],
+            "additionalProperties": false
+          },
+          "precision": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          },
+          "offload": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          },
+          "part_overrides": {
+            "type": "array"
+          },
+          "provider_options": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "device"
+        ],
+        "additionalProperties": false
+      },
+      "invoke": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "recording": {
+        "type": "object"
+      }
+    },
+    "required": [
+      "load",
+      "invoke",
+      "recording"
+    ],
+    "additionalProperties": false
+  },
+  "default_settings": {
+    "load": {
+      "device": {
+        "kind": "cpu",
+        "id": "cpu",
+        "resource_group": "cpu-media"
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "device_sample_hz": 2,
+      "publish_interval_ms": 1000,
+      "batch_max_events": 256,
+      "batch_max_bytes": 262144,
+      "queue_max_events": 8192,
+      "queue_max_bytes": 16777216,
+      "segment_bytes": 67108864,
+      "max_detail_bytes_per_recording": 2147483648,
+      "cuda_pending_event_pairs": 4096,
+      "trace_steps": [
+        0,
+        1
+      ],
+      "trace_parts": [],
+      "record_shapes": false,
+      "with_stack": false,
+      "capture_prompt": true,
+      "tensor_dump": false,
+      "capture_stderr": true,
+      "finite_scan": false,
+      "gpu_event_timing": true,
+      "log_level": "info",
+      "parts": [],
+      "steps": [],
+      "mode": "detailed"
+    }
+  },
+  "entry_point": "phasyn_media.providers.animatic:PrevisAnimaticProvider",
+  "operations": [
+    "previs_animatic"
+  ],
+  "resources": {
+    "devices": [
+      "cpu"
+    ],
+    "required_modules": [],
+    "executables": [
+      "ffmpeg",
+      "ffprobe"
+    ],
+    "vram_bytes": 0,
+    "memory_basis": "One bounded frame at a time with temporary disk-backed PNGs and CPU H.264 encoding."
+  },
+  "execution": {
+    "cache": "none",
+    "retry": "verify_stopped_first",
+    "cancellation": "cooperative",
+    "progress": [
+      "stage"
+    ],
+    "error_contract": "ComponentError",
+    "retry_condition": "Execution produces new artifacts. Verify the previous attempt and outputs before retry."
+  },
+  "models": [],
+  "license": "Apache-2.0",
+  "capability_version": "1.0.0"
+}

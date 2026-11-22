@@ -43,7 +43,7 @@ export function CompareModeSwitch({ value, onChange }: { value: CompareMode; onC
             data-compare-mode={mode}
             tabIndex={selected ? 0 : -1}
             title={choice.title}
-            onClick={() => onChange(mode)}
+            onClick={() => { onChange(mode); }}
             onKeyDown={(event) => {
               if (event.key === "ArrowRight" || event.key === "ArrowDown") pick(index + 1);
               else if (event.key === "ArrowLeft" || event.key === "ArrowUp") pick(index - 1);
@@ -56,7 +56,7 @@ export function CompareModeSwitch({ value, onChange }: { value: CompareMode; onC
             )}
           >
             <choice.icon aria-hidden />
-            <StableLabel weight="medium" className={selected ? "font-medium" : undefined}>
+            <StableLabel weight="medium" {...(selected ? { className: "font-medium" } : {})}>
               {choice.label}
             </StableLabel>
           </button>

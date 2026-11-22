@@ -36,63 +36,63 @@ export const UPLOAD_ABORTED = t("已中止：上傳期間切換了專案或關�
 
 export function useUploadQueue<TInfo>(scopeId: string) {
   const [tasks, setTasks] = useState<UploadTask<TInfo>[]>([]);
-  const runs = useRef(new Map<string, UploadRun>());
-  const controllers = useRef(new Set<AbortController>());
-  const queue = useRef<Promise<void>>(Promise.resolve());
-  const scope = useRef(scopeId);
+  const runsRef = useRef(new Map<string, UploadRun>());
+  const controllersRef = useRef(new Set<AbortController>());
+  const queueRef = useRef<Promise<void>>(Promise.resolve());
+  const scopeRef = useRef(scopeId);
 
   useLayoutEffect(() => {
-    scope.current = scopeId;
+    scopeRef.current = scopeId;
   });
 
   // Leaving the project or unmounting aborts the uploads in flight (the controller may already have the file)
   useEffect(() => {
-    const owned = controllers.current;
+    const owned = controllersRef.current;
     return () => {
       for (const controller of owned) controller.abort();
       owned.clear();
     };
   }, [scopeId]);
 
-  const update = (key: string, patch: Partial<UploadTask<TInfo>>) => setTasks((list) => list.map((task) => (task.key === key ? { ...task, ...patch } : task)));
+  const update = (key: string, patch: Partial<UploadTask<TInfo>>) => { setTasks((list) => list.map((task) => (task.key === key ? { ...task, ...patch } : task))); };
 
   const process = async (key: string, taskScope: string, run: UploadRun) => {
-    if (scope.current !== taskScope) {
+    if (scopeRef.current !== taskScope) {
       update(key, { state: "failed", message: UPLOAD_ABORTED, error: null });
       return;
     }
     const controller = new AbortController();
-    controllers.current.add(controller);
+    controllersRef.current.add(controller);
     try {
-      const message = await run(controller.signal, (state) => update(key, { state }));
-      if (controller.signal.aborted || scope.current !== taskScope) {
+      const message = await run(controller.signal, (state) => { update(key, { state }); });
+      if (controller.signal.aborted || scopeRef.current !== taskScope) {
         update(key, { state: "failed", message: UPLOAD_ABORTED, error: null });
         return;
       }
-      runs.current.delete(key);
+      runsRef.current.delete(key);
       update(key, { state: "done", message, error: null });
     } catch (error) {
       if (controller.signal.aborted || isAbortError(error)) update(key, { state: "failed", message: UPLOAD_ABORTED, error: null });
       else if (error instanceof UploadProblem) update(key, { state: "failed", message: error.message, error: null });
       else update(key, { state: "failed", message: null, error });
     } finally {
-      controllers.current.delete(controller);
+      controllersRef.current.delete(controller);
     }
   };
 
   const enqueue = (key: string, taskScope: string, run: UploadRun) => {
-    queue.current = queue.current.then(() => process(key, taskScope, run));
+    queueRef.current = queueRef.current.then(() => process(key, taskScope, run));
   };
 
   return {
     /** This project's uploads (others are not shown). */
     tasks: tasks.filter((task) => task.scopeId === scopeId),
     add: (requests: readonly UploadRequest<TInfo>[]) => {
-      const taskScope = scope.current;
+      const taskScope = scopeRef.current;
       const added = requests.map((request): UploadTask<TInfo> => {
         const key = nextKey();
         if ("problem" in request) return { key, name: request.file.name, state: "failed", message: request.problem, error: null, scopeId: taskScope, retryable: false, info: request.info };
-        runs.current.set(key, request.run);
+        runsRef.current.set(key, request.run);
         enqueue(key, taskScope, request.run);
         return { key, name: request.file.name, state: "waiting", message: null, error: null, scopeId: taskScope, retryable: true, info: request.info };
       });
@@ -100,13 +100,13 @@ export function useUploadQueue<TInfo>(scopeId: string) {
     },
     /** Upload again after a failure (a new request: the controller stores a new file). */
     retry: (key: string) => {
-      const run = runs.current.get(key);
+      const run = runsRef.current.get(key);
       if (!run) return;
-      update(key, { state: "waiting", error: null, message: null, scopeId: scope.current });
-      enqueue(key, scope.current, run);
+      update(key, { state: "waiting", error: null, message: null, scopeId: scopeRef.current });
+      enqueue(key, scopeRef.current, run);
     },
     dismiss: (key: string) => {
-      runs.current.delete(key);
+      runsRef.current.delete(key);
       setTasks((existing) => existing.filter((task) => task.key !== key));
     },
   };

@@ -8,6 +8,7 @@ never paste ids from a real deployment into a test.
 
 from __future__ import annotations
 
+
 PREFIX = "00000000-0000-4000-8000-"
 
 CONTROLLER_ID = PREFIX + "0000000000c1"
@@ -35,4 +36,12 @@ def gpu_uuid(n: int) -> str:
     return "GPU-" + uid(n)
 
 
-__all__ = ["CONTROLLER_ID", "NODE_A_ID", "NODE_B_ID", "NODE_C_ID", "PREFIX", "gpu_uuid", "uid"]
+__all__ = [
+    "CONTROLLER_ID",
+    "NODE_A_ID",
+    "NODE_B_ID",
+    "NODE_C_ID",
+    "PREFIX",
+    "gpu_uuid",
+    "uid",
+]

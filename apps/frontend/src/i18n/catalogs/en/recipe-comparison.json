@@ -1,0 +1,23 @@
+{
+  "有差異": "Different",
+  "僅基準組": "Baseline only",
+  "僅比較組": "Comparison only",
+  "量測單位不同或缺漏": "Unit differs or is missing",
+  "量測範圍不同或缺漏": "Scope differs or is missing",
+  "量測方法不同或缺漏": "Method differs or is missing",
+  "執行元件不同或缺漏": "Provider differs or is missing",
+  "缺少實測值": "Missing measurement",
+  "差值超出數值範圍": "Difference exceeds numeric range",
+  "兩組皆無量測紀錄": "Neither run has measurements",
+  "基準組": "Baseline",
+  "比較組": "Comparison",
+  "差值為比較組減基準組。兩次執行只能比較紀錄值，無法單獨歸因於精度。可開啟來源任務檢視畫質。": "Deltas subtract the baseline from the comparison. Two runs alone cannot isolate the effect of precision. Open the source runs to review image quality.",
+  "凍結輸入比對": "Frozen inputs",
+  "模型、精度與取樣設定": "Model, precision and sampling settings",
+  "比較執行配方": "Compare run recipes",
+  "選擇比較的來源任務": "Choose a run to compare",
+  "載入較早的任務": "Load older runs",
+  "讀取兩組量測…": "Loading both measurements…",
+  "無法確認": "Unknown",
+  "類別量測不計算差值": "Categorical measurement"
+}

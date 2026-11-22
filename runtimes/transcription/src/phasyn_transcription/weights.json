@@ -1,0 +1,26 @@
+{
+  "repo": "Systran/faster-whisper-small",
+  "revision": "536b0662742c02347bc0e980a01041f333bce120",
+  "files": [
+    {
+      "path": "config.json",
+      "size": 2370,
+      "git_oid": "e5047537059bd8f182d9ca64c470201585015187"
+    },
+    {
+      "path": "model.bin",
+      "size": 483546902,
+      "sha256": "3e305921506d8872816023e4c273e75d2419fb89b24da97b4fe7bce14170d671"
+    },
+    {
+      "path": "tokenizer.json",
+      "size": 2203239,
+      "git_oid": "7818adb6de9fa3064d3ff81226fdd675be1f6344"
+    },
+    {
+      "path": "vocabulary.txt",
+      "size": 459861,
+      "git_oid": "c9074644d9d1205686f16d411564729461324b75"
+    }
+  ]
+}

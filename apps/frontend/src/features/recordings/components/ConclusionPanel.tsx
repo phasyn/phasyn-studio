@@ -37,11 +37,11 @@ export function ConclusionPanel({
           </h3>
           {conclusion.kind === "dominant" && dominant ? (
             <p className="text-section font-semibold text-fg">
-              <T source={"主要時間在「{label}」：<0>{ms}</0><1>（{share}）</1>"} values={{ label: dominant.label, ms: formatMs(dominant.ms), share: percent(dominant.share) }} slots={[<span className="machine" />, <span className="ml-2 text-data font-normal text-fg-secondary" />]} />
+              <T source={"主要時間在「{label}」：<0>{ms}</0><1>（{share}）</1>"} values={{ label: dominant.label, ms: formatMs(dominant.ms), share: percent(dominant.share) }} slots={[<span key="slot-0" className="machine" />, <span key="slot-1" className="ml-2 text-data font-normal text-fg-secondary" />]} />
             </p>
           ) : conclusion.kind === "wall_only" && wall ? (
             <p className="text-section font-semibold text-fg">
-              <T source={"只有整段 wall（<0>{formatMs}</0>），沒有分段量測，無法判斷主要時間區域。"} values={{ formatMs: formatMs(wall.value) }} slots={[<span className="machine" />]} />
+              <T source={"只有整段 wall（<0>{formatMs}</0>），沒有分段量測，無法判斷主要時間區域。"} values={{ formatMs: formatMs(wall.value) }} slots={[<span key="slot-0" className="machine" />]} />
             </p>
           ) : (
             <p className="text-section font-semibold text-warning">{t("此 recording 沒有可用的時間量測，無法判斷主要時間區域。")}</p>
@@ -75,7 +75,7 @@ export function ConclusionPanel({
                   {area.label}
                 </span>
                 <span aria-hidden className="relative h-2 min-w-0 overflow-hidden rounded-full bg-line-subtle">
-                  <span className="absolute inset-y-0 left-0 rounded-full bg-series-1" style={{ width: `${Math.min(100, Math.max(1, ratio * 100))}%` }} />
+                  <span className="absolute inset-y-0 left-0 rounded-full bg-series-1" style={{ width: `${String(Math.min(100, Math.max(1, ratio * 100)))}%` }} />
                 </span>
                 <span className="flex flex-wrap items-center justify-end gap-2">
                   <MetricValue metric={area.metric} />
@@ -95,7 +95,7 @@ export function ConclusionPanel({
           <p>
             <T source={"未量測區域：{map}。"} values={{ map: conclusion.unmeasured.map((area, index) => (
               <span key={area.key}>
-                <T source={"{value}{label}<0>（{metricName}</0>{value2}{value3}）"} values={{ value: index > 0 ? t("、") : "", label: area.label, metricName: area.metricName, value2: area.state === "not_applicable" ? t("，不適用") : area.state === "missing" ? t("，未回報") : t("，未量測"), value3: area.reason && area.state !== "missing" ? t("：{reason}", { reason: area.reason }) : "" }} slots={[<span className="machine" />]} />
+                <T source={"{value}{label}<0>（{metricName}</0>{value2}{value3}）"} values={{ value: index > 0 ? t("、") : "", label: area.label, metricName: area.metricName, value2: area.state === "not_applicable" ? t("，不適用") : area.state === "missing" ? t("，未回報") : t("，未量測"), value3: (area.reason != null && area.reason !== "") && area.state !== "missing" ? t("：{reason}", { reason: area.reason }) : "" }} slots={[<span key="slot-0" className="machine" />]} />
               </span>
             )) }} />
           </p>

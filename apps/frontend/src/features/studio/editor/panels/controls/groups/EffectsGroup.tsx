@@ -2,7 +2,7 @@
 // is a small section of its own that can be collapsed, switched off (its settings stay), put back to its defaults
 // (asked first when that removes keyframes), moved up or down and removed. Its numeric parameters are animatable rows.
 import { ArrowDown, ArrowUp, ChevronRight, Plus, RotateCcw, Trash2 } from "lucide-react";
-import { useContext, useId, useState } from "react";
+import { use, useId, useState } from "react";
 import type { TimelineClip } from "@/api/generated/contracts";
 import { ActionMenu, MenuTriggerButton } from "@/components/ui/action-menu";
 import { SPRING_SNAPPY } from "@/components/ui/look";
@@ -48,16 +48,16 @@ interface EffectSectionProps {
 
 function EffectSection({ clip, effect, index, last, open, properties, onToggle, onChange, onMove, onRemove }: EffectSectionProps) {
   const panel = useClipPanel();
-  const locked = useContext(FieldLockContext);
+  const locked = use(FieldLockContext);
   const [confirming, setConfirming] = useState(false);
   const name = effectTitle(effect, index);
-  const keys = Object.values(effect.keyframes ?? {}).reduce((count, list) => count + (list?.length ?? 0), 0);
-  const reset = () => onChange({ ...newEffect(effect.kind, effect.effect_id), enabled: effect.enabled });
+  const keys = Object.values(effect.keyframes ?? {}).reduce((count, list) => count + list.length, 0);
+  const reset = () => { onChange({ ...newEffect(effect.kind, effect.effect_id), enabled: effect.enabled }); };
   const enableTitle = effect.enabled ? t("「{name}」已啟用；按一下停用（設定會保留）", { name }) : t("「{name}」已停用；按一下啟用", { name });
-  const withColor = (color: string): TimelineClip => ({
+  const withColor = (color: string): TimelineClip => clip.effect_stack ? ({
     ...clip,
-    effect_stack: clip.effect_stack?.map((item) => (item.effect_id === effect.effect_id && item.kind === "chroma_key" ? { ...item, color } : item)),
-  });
+    effect_stack: clip.effect_stack.map((item) => (item.effect_id === effect.effect_id && item.kind === "chroma_key" ? { ...item, color } : item)),
+  }) : clip;
   return (
     <div role="group" aria-label={name}>
       <RowFrame variant="sub">
@@ -72,7 +72,7 @@ function EffectSection({ clip, effect, index, last, open, properties, onToggle, 
               setConfirming(false);
               reset();
             }}
-            onCancel={() => setConfirming(false)}
+            onCancel={() => { setConfirming(false); }}
           />
         ) : (
           <>
@@ -81,7 +81,7 @@ function EffectSection({ clip, effect, index, last, open, properties, onToggle, 
               title={enableTitle}
               pressed={effect.enabled}
               disabledReason={locked}
-              onClick={() => onChange({ ...effect, enabled: !effect.enabled })}
+              onClick={() => { onChange({ ...effect, enabled: !effect.enabled }); }}
             >
               <span aria-hidden className={cn("font-mono text-[11px] leading-none font-semibold italic", !effect.enabled && "line-through")}>
                 fx
@@ -90,20 +90,20 @@ function EffectSection({ clip, effect, index, last, open, properties, onToggle, 
             <span className={cn("min-w-0 flex-1 truncate text-data", effect.enabled ? "text-fg" : "text-fg-tertiary")} title={name}>
               {name}
             </span>
-            <IconButton label={t("重設「{name}」", { name })} disabledReason={locked} onClick={() => (keys > 0 ? setConfirming(true) : reset())}>
+            <IconButton label={t("重設「{name}」", { name })} disabledReason={locked} onClick={() => { if (keys > 0) { setConfirming(true); } else { reset(); } }}>
               <RotateCcw aria-hidden />
             </IconButton>
             <IconButton
               label={t("上移「{name}」", { name })}
               disabledReason={locked ?? (index === 0 ? t("已經是第一個效果") : null)}
-              onClick={() => onMove(-1)}
+              onClick={() => { onMove(-1); }}
             >
               <ArrowUp aria-hidden />
             </IconButton>
             <IconButton
               label={t("下移「{name}」", { name })}
               disabledReason={locked ?? (last ? t("已經是最後一個效果") : null)}
-              onClick={() => onMove(1)}
+              onClick={() => { onMove(1); }}
             >
               <ArrowDown aria-hidden />
             </IconButton>
@@ -136,8 +136,8 @@ export interface EffectsGroupProps {
 
 export function EffectsGroup({ clip, properties }: EffectsGroupProps) {
   const panel = useClipPanel();
-  const locked = useContext(FieldLockContext);
-  const groups = useContext(GroupsContext);
+  const locked = use(FieldLockContext);
+  const groups = use(GroupsContext);
   const menuId = useId();
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
@@ -162,13 +162,13 @@ export function EffectsGroup({ clip, properties }: EffectsGroupProps) {
     if (!next.delete(effectId)) next.add(effectId);
     setCollapsed(next);
   };
-  const items: MenuItem[] = KINDS.map((kind) => ({ id: kind, label: EFFECT_NAMES[kind], disabledReason: locked ?? full, onSelect: () => add(kind) }));
+  const items: MenuItem[] = KINDS.map((kind) => ({ id: kind, label: EFFECT_NAMES[kind], disabledReason: locked ?? full, onSelect: () => { add(kind); } }));
   const trigger = (from: OpenMenu["from"]) => ({
     menuId,
     open: menu?.from === from,
     label: t("新增效果"),
-    onOpen: (anchor: HTMLButtonElement) => setMenu({ from, anchor }),
-    onClose: () => setMenu(null),
+    onOpen: (anchor: HTMLButtonElement) => { setMenu({ from, anchor }); },
+    onClose: () => { setMenu(null); },
   });
 
   return (
@@ -188,7 +188,7 @@ export function EffectsGroup({ clip, properties }: EffectsGroupProps) {
               items={items}
               anchor={{ kind: "element", element: menu.anchor }}
               returnFocus={menu.anchor}
-              onClose={() => setMenu(null)}
+              onClose={() => { setMenu(null); }}
             />
           ) : null}
         </>
@@ -211,10 +211,10 @@ export function EffectsGroup({ clip, properties }: EffectsGroupProps) {
           last={index === effects.length - 1}
           open={!collapsed.has(effect.effect_id)}
           properties={properties}
-          onToggle={() => toggleCollapsed(effect.effect_id)}
-          onChange={(next) => setEffects(effects.map((item) => (item.effect_id === next.effect_id ? next : item)))}
-          onMove={(by) => move(index, by)}
-          onRemove={() => setEffects(effects.filter((item) => item.effect_id !== effect.effect_id))}
+          onToggle={() => { toggleCollapsed(effect.effect_id); }}
+          onChange={(next) => void setEffects(effects.map((item) => (item.effect_id === next.effect_id ? next : item)))}
+          onMove={(by) => { move(index, by); }}
+          onRemove={() => void setEffects(effects.filter((item) => item.effect_id !== effect.effect_id))}
         />
       ))}
     </Group>

@@ -80,7 +80,7 @@ function clipOf(timeline: StudioTimeline, clipId: string): TimelineClip | undefi
 
 /** Whether a clip on an audio track is linked to a picture: its sound then crossfades with the picture's transition. */
 function linkedPicture(timeline: StudioTimeline, clip: TimelineClip): boolean {
-  if (!clip.linked_id) return false;
+  if (!(clip.linked_id != null && clip.linked_id !== "")) return false;
   const video = new Set(timeline.tracks.filter((track) => track.kind === "video").map((track) => track.track_id));
   return timeline.clips.some((item) => item.clip_id !== clip.clip_id && item.linked_id === clip.linked_id && video.has(item.track_id));
 }

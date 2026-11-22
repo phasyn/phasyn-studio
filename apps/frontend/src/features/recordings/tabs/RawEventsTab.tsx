@@ -1,3 +1,4 @@
+import { isListed } from "@/lib/json";
 // 原始事件（底部 dock 的「原始事件」分頁）：依 stream 分頁讀取（after_seq → next_seq），缺段插入「缺段」列、不假裝連續；
 // 已載入範圍內文字搜尋、level／kind 篩選、換行切換、複製單列或 JSON、下載已載入事件。
 // 版面填滿 dock：上＝stream 分頁＋篩選列、中＝事件表（scroll owner、表頭固定）、下＝狀態與分頁讀取。
@@ -15,7 +16,7 @@ import { CopyButton, LoadingBlock, LoadMoreButton, QueryErrorCallout } from "../
 import { downloadText } from "@/lib/download";
 import { safeFilePart } from "../model/download";
 import { eventSummary } from "@/lib/recordingEvents";
-import { eventLine, eventListWithGaps, filterEventList, flattenPages, type EventFilter, type LevelFilter } from "../model/events";
+import { eventLine, eventListWithGaps, filterEventList, flattenPages, type EventFilter } from "../model/events";
 import { t } from "@/i18n";
 
 const RENDER_STEP = 500;
@@ -73,7 +74,7 @@ function StreamEvents({
     <>
       {!events.data ? (
         <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
-          {events.error ? (
+          {(events.error != null) ? (
             <QueryErrorCallout error={events.error} title={t("stream {stream_id} 讀取失敗", { stream_id: stream.stream_id })} onRetry={() => void events.refetch()} />
           ) : (
             <LoadingBlock label={t("讀取 stream {stream_id}…", { stream_id: stream.stream_id })} rows={4} className="py-3" />
@@ -190,7 +191,7 @@ function StreamEvents({
         </Button>
         {filtered.length > RENDER_STEP ? (
           <LoadMoreButton
-            onLoad={() => setRenderLimit((current) => current + RENDER_STEP)}
+            onLoad={() => { setRenderLimit((current) => current + RENDER_STEP); }}
             pending={false}
             hasMore={filtered.length > renderLimit}
             label={t("顯示更多已載入列（{min}）", { min: Math.min(RENDER_STEP, Math.max(0, filtered.length - renderLimit)) })}
@@ -200,7 +201,7 @@ function StreamEvents({
         <LoadMoreButton
           onLoad={() => void events.fetchNextPage()}
           pending={events.isFetchingNextPage}
-          hasMore={Boolean(events.hasNextPage)}
+          hasMore={events.hasNextPage}
           label={t("載入下一頁（after_seq）")}
           doneLabel={t("已到目前最後一筆")}
         />
@@ -223,7 +224,7 @@ export function RawEventsTab({
 }) {
   const id = recording.context.recording_id;
   const streams = useEventStreams(id);
-  const [filter, onFilterChange] = useState<EventFilter>(initialFilter);
+  const [filter, setFilter] = useState<EventFilter>(initialFilter);
   const [wrap, setWrap] = useState(true);
   const searchId = useId();
   const levelId = useId();
@@ -234,7 +235,7 @@ export function RawEventsTab({
   if (!streams.data) {
     return (
       <div className="min-h-0 flex-1 overflow-auto px-3 py-2">
-        {streams.error ? (
+        {(streams.error != null) ? (
           <QueryErrorCallout error={streams.error} title={t("無法列出事件 stream")} onRetry={() => void streams.refetch()} />
         ) : (
           <LoadingBlock label={t("列出事件 stream…")} className="py-3" />
@@ -268,7 +269,7 @@ export function RawEventsTab({
             id={searchId}
             type="search"
             value={filter.query}
-            onChange={(event) => onFilterChange({ ...filter, query: event.target.value })}
+            onChange={(event) => { setFilter({ ...filter, query: event.target.value }); }}
             placeholder={t("例如 GPU_OOM 或 transformer.blocks.3")}
             aria-label={t("搜尋已載入的事件（訊息、kind、seq、JSON 內容）")}
             aria-describedby={statusId}
@@ -280,7 +281,7 @@ export function RawEventsTab({
           <label htmlFor={levelId} className="text-caption text-fg-tertiary">
             level
           </label>
-          <Select compact id={levelId} value={filter.level} onChange={(event) => onFilterChange({ ...filter, level: event.target.value as LevelFilter })} className="w-auto min-w-28">
+          <Select compact id={levelId} value={filter.level} onChange={(event) => { const value = event.target.value; if (isListed(value, ["all", "warning+", "error", "warning", "info", "debug"] as const)) setFilter({ ...filter, level: value }); }} className="w-auto min-w-28">
             <option value="all">{t("全部")}</option>
             <option value="warning+">{t("warning 以上")}</option>
             <option value="error">error</option>
@@ -293,7 +294,7 @@ export function RawEventsTab({
           <label htmlFor={kindId} className="text-caption text-fg-tertiary">
             kind
           </label>
-          <Select compact id={kindId} value={filter.kind} onChange={(event) => onFilterChange({ ...filter, kind: event.target.value as EventFilter["kind"] })} className="w-auto min-w-24">
+          <Select compact id={kindId} value={filter.kind} onChange={(event) => { const value = event.target.value; if (isListed(value, ["all", "log", "notice", "span", "step", "transfer", "sample"] as const)) setFilter({ ...filter, kind: value }); }} className="w-auto min-w-24">
             <option value="all">{t("全部")}</option>
             <option value="log">log</option>
             <option value="notice">notice</option>
@@ -303,7 +304,7 @@ export function RawEventsTab({
             <option value="sample">sample</option>
           </Select>
         </div>
-        <Switch id={wrapId} label={t("自動換行")} checked={wrap} onChange={(event) => setWrap(event.target.checked)} className="min-h-8 gap-2 py-1 text-data" />
+        <Switch id={wrapId} label={t("自動換行")} checked={wrap} onChange={(event) => { setWrap(event.target.checked); }} className="min-h-8 gap-2 py-1 text-data" />
         {streams.data.ambiguous ? (
           <span className="text-caption text-fg-tertiary" title={t("這筆 recording 有多個 event stream（主控列出）")}>
             {t("{listCount} 個 stream：seq 各自從 1 開始，彼此沒有全序", { listCount: list.length })}

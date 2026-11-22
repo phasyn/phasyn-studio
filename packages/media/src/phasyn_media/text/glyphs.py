@@ -22,6 +22,7 @@ from .fonts import FontBook
 from .ft import Coverage, FreeType
 from .hb import synthetic_bold_strength
 
+
 UNSCALED = 0x10000
 _CACHE_BYTES = 128 * 1024 * 1024
 
@@ -49,18 +50,27 @@ class Mask:
 
 @dataclass(frozen=True)
 class GlyphMasks:
-    fill: Mask | None  # None: nothing to draw (a space, or a shape thinner than any pixel sample)
+    """Rasterized glyph coverage for the fill and outline."""
+
+    fill: (
+        Mask | None
+    )  # None: nothing to draw (a space, or a shape thinner than any pixel sample)
     stroke: Mask | None
 
     @property
     def nbytes(self) -> int:
-        return sum(mask.pixels.nbytes for mask in (self.fill, self.stroke) if mask is not None)
+        """Return the number of bytes retained by the glyph masks."""
+        return sum(
+            mask.pixels.nbytes for mask in (self.fill, self.stroke) if mask is not None
+        )
 
 
 def _mask(coverage: Coverage | None) -> Mask | None:
     if coverage is None:
         return None
-    pixels = np.frombuffer(coverage.buffer, dtype=np.uint8).reshape(coverage.rows, coverage.width)
+    pixels = np.frombuffer(coverage.buffer, dtype=np.uint8).reshape(
+        coverage.rows, coverage.width
+    )
     rows = np.flatnonzero(pixels.any(axis=1))
     if rows.size == 0:
         return None
@@ -74,12 +84,14 @@ class GlyphRasterizer:
     """Rasterises glyphs of the font book's faces and remembers the result."""
 
     def __init__(self, book: FontBook, freetype: FreeType) -> None:
+        """Initialize the glyph mask cache for the font collection."""
         self._book = book
         self._freetype = freetype
         self._cache: OrderedDict[GlyphKey, GlyphMasks] = OrderedDict()
         self._cached_bytes = 0
 
     def masks(self, key: GlyphKey) -> GlyphMasks:
+        """Rasterize the requested glyph and retrieve its masks."""
         masks = self._cache.get(key)
         if masks is not None:
             self._cache.move_to_end(key)

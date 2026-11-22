@@ -7,9 +7,12 @@ device sampling, recording upload and catalog reporting. Entry point: ``phasyn_n
 
 from importlib.metadata import PackageNotFoundError, version
 
+
 try:
     __version__ = version("phasyn-node")
-except PackageNotFoundError:  # imported from a source tree that was never installed: say so, never guess
+except (
+    PackageNotFoundError
+):  # imported from a source tree that was never installed: say so, never guess
     __version__ = "0+unknown"
 
 __all__ = ["__version__"]

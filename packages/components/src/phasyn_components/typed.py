@@ -1,4 +1,4 @@
-"""TypedValue 與 FileRef 的局部檢查。
+"""TypedValue 與 FileRef 的局部檢查.
 
 只檢查 wire 結構、inline 大小與 metadata 大小；型別語意（shape／latent space）由 consumer
 元件自行檢查，不在這裡猜轉換。
@@ -13,12 +13,14 @@ from . import contracts
 from .canonical import canonical_json
 from .errors import ComponentError
 
+
 INLINE_MAX_BYTES = 256 * 1024
 FILEREF_METADATA_MAX_BYTES = 64 * 1024
 LINKS_KEY = "links"
 
 
 def check_typed_value(value: Any, *, where: str) -> dict[str, Any]:
+    """Validate a typed input or output value."""
     contracts.validate("TypedValue", value, what=where)
     if "value" in value:
         size = len(canonical_json(value["value"]))
@@ -34,6 +36,7 @@ def check_typed_value(value: Any, *, where: str) -> dict[str, Any]:
 
 
 def check_fileref(ref: Any, *, where: str) -> dict[str, Any]:
+    """Validate an immutable file reference."""
     contracts.validate("FileRef", ref, what=where)
     meta_size = len(canonical_json(ref.get("metadata") or {}))
     if meta_size > FILEREF_METADATA_MAX_BYTES:
@@ -48,11 +51,17 @@ def check_fileref(ref: Any, *, where: str) -> dict[str, Any]:
 
 
 def is_fileref(value: Any) -> bool:
-    return isinstance(value, Mapping) and {"node_id", "file_id", "sha256", "size_bytes"} <= set(value)
+    """Check whether the value is a valid file reference."""
+    return isinstance(value, Mapping) and {
+        "node_id",
+        "file_id",
+        "sha256",
+        "size_bytes",
+    } <= set(value)
 
 
 def file_links(ref: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
-    """FileRef.metadata.links：同一份產物附帶的其他已發布檔（例如 latent manifest 的 blob）。"""
+    """FileRef.metadata.links：同一份產物附帶的其他已發布檔（例如 latent manifest 的 blob）."""
     links = (ref.get("metadata") or {}).get(LINKS_KEY) or {}
     if not isinstance(links, Mapping):
         return {}

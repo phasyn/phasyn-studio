@@ -6,14 +6,14 @@ export const MAX_PEAK_BUCKETS = 4096;
 export const PEAK_JOB_TIMEOUT_MS = 15_000;
 
 export type PeakErrorCode = "INPUT_BOUNDS" | "NON_FINITE" | "INITIALIZATION_FAILED" | "WORKER_FAILED" | "PROTOCOL_ERROR" | "CANCELLED" | "TIMEOUT" | "MEDIA_FAILED";
-export type PeakRequest = {
+export interface PeakRequest {
   protocol: typeof PEAK_PROTOCOL;
   requestId: number;
   generation: number;
   channels: number;
   buckets: number;
   samples: Float32Array<ArrayBuffer>;
-};
+}
 export type PeakReply = {
   protocol: typeof PEAK_PROTOCOL;
   requestId: number;
@@ -27,18 +27,22 @@ export function validDimensions(samples: number, channels: number, buckets: numb
     && Number.isSafeInteger(buckets) && buckets > 0 && buckets <= MAX_PEAK_BUCKETS;
 }
 
-export function record(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null ? value as Record<string, unknown> : null;
+export function isPeakRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function isOwnedPcm(value: unknown): value is Float32Array<ArrayBuffer> {
+  return value instanceof Float32Array && value.buffer instanceof ArrayBuffer;
 }
 
 export function readRequest(value: unknown): PeakRequest | null {
-  const data = record(value);
-  if (!data || data.protocol !== PEAK_PROTOCOL || !Number.isSafeInteger(data.requestId) || !Number.isSafeInteger(data.generation)
-    || typeof data.requestId !== "number" || data.requestId <= 0 || typeof data.generation !== "number" || data.generation <= 0
-    || typeof data.channels !== "number" || typeof data.buckets !== "number"
-    || !(data.samples instanceof Float32Array) || !(data.samples.buffer instanceof ArrayBuffer)
-    || !validDimensions(data.samples.length, data.channels, data.buckets)) return null;
-  return { protocol: PEAK_PROTOCOL, requestId: data.requestId, generation: data.generation, channels: data.channels, buckets: data.buckets, samples: data.samples as Float32Array<ArrayBuffer> };
+  const data = value;
+  if (!isPeakRecord(data) || data["protocol"] !== PEAK_PROTOCOL || !Number.isSafeInteger(data["requestId"]) || !Number.isSafeInteger(data["generation"])
+    || typeof data["requestId"] !== "number" || data["requestId"] <= 0 || typeof data["generation"] !== "number" || data["generation"] <= 0
+    || typeof data["channels"] !== "number" || typeof data["buckets"] !== "number"
+    || !isOwnedPcm(data["samples"])
+    || !validDimensions(data["samples"].length, data["channels"], data["buckets"])) return null;
+  return { protocol: PEAK_PROTOCOL, requestId: data["requestId"], generation: data["generation"], channels: data["channels"], buckets: data["buckets"], samples: data["samples"] };
 }
 
 export function isPeakErrorCode(value: unknown): value is PeakErrorCode {

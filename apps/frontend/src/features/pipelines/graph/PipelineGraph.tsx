@@ -67,7 +67,7 @@ interface Latest {
 export function PipelineGraph({ pipeline, lookup, run = null, issues, selection, onSelect, label, className, nodeLabel }: PipelineGraphProps) {
   const hintId = useId();
   const allIssues = issues ?? NO_ISSUES;
-  const model = useMemo(() => buildGraphModel(pipeline, lookup, { run, issues: allIssues, nodeLabel }), [pipeline, lookup, run, allIssues, nodeLabel]);
+  const model = useMemo(() => buildGraphModel(pipeline, lookup, { run, issues: allIssues, ...(nodeLabel === undefined ? {} : { nodeLabel }) }), [pipeline, lookup, run, allIssues, nodeLabel]);
   const layout = useMemo(() => layoutGraph(model), [model]);
   const edgeInfo = useMemo(() => new Map(model.edges.map((edge) => [edge.key, edge])), [model]);
   const [setViewport, viewport, size] = useMeasuredElement<HTMLElement>();
@@ -78,8 +78,8 @@ export function PipelineGraph({ pipeline, lookup, run = null, issues, selection,
   const [revealed, setRevealed] = useState(activeKey);
   const [tabKey, setTabKey] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
-  const drag = useRef<{ pointer: number; x: number; y: number; origin: ViewTransform; moved: boolean } | null>(null);
-  const nodeRefs = useRef(new Map<string, HTMLButtonElement>());
+  const dragRef = useRef<{ pointer: number; x: number; y: number; origin: ViewTransform; moved: boolean } | null>(null);
+  const nodeRefsRef = useRef(new Map<string, HTMLButtonElement>());
 
   // 視角：第一次量到尺寸、或 pipeline／run 換了 → 符合視窗；外部改變選取且節點在畫面外 → 最小平移讓它進入畫面。
   const sized = size.width > 0 && size.height > 0;
@@ -102,9 +102,9 @@ export function PipelineGraph({ pipeline, lookup, run = null, issues, selection,
   if (next !== null) setStored(next);
   const view = resolved;
 
-  const latest = useRef<Latest>({ view, size, identity, onSelect });
+  const latestRef = useRef<Latest>({ view, size, identity, onSelect });
   useLayoutEffect(() => {
-    latest.current = { view, size, identity, onSelect };
+    latestRef.current = { view, size, identity, onSelect };
   });
 
   const commit = (change: (base: ViewTransform) => ViewTransform) => {
@@ -114,8 +114,8 @@ export function PipelineGraph({ pipeline, lookup, run = null, issues, selection,
     });
   };
   const middle = () => ({ x: size.width / 2, y: size.height / 2 });
-  const zoomBy = (factor: number) => commit((base) => zoomAround(base, base.k * factor, middle()));
-  const resetZoom = () => commit((base) => zoomAround(base, 1, middle()));
+  const zoomBy = (factor: number) => { commit((base) => zoomAround(base, base.k * factor, middle())); };
+  const resetZoom = () => { commit((base) => zoomAround(base, 1, middle())); };
   const refit = () => {
     // 「符合視窗」：顯示整張圖（不套用初次顯示的最小縮放）
     if (sized) setStored({ identity, view: fitView(layout, size), auto: true, width: size.width, height: size.height, fitMin: 0 });
@@ -143,19 +143,19 @@ export function PipelineGraph({ pipeline, lookup, run = null, issues, selection,
   useEffect(() => {
     if (!viewport) return;
     // React 的 onWheel 是 passive，無法阻止頁面捲動／瀏覽器縮放，因此用原生 listener。
-    const listener = (event: WheelEvent) => onWheel(event);
+    const listener = (event: WheelEvent) => { onWheel(event); };
     viewport.addEventListener("wheel", listener, { passive: false });
-    return () => viewport.removeEventListener("wheel", listener);
+    return () => { viewport.removeEventListener("wheel", listener); };
   }, [viewport]);
 
   const onPointerDown = (event: PointerEvent<HTMLElement>) => {
     if (event.button !== 0 || !(event.target instanceof Element) || event.target.closest("[data-graph-node],[data-graph-tool]")) return;
     event.currentTarget.setPointerCapture(event.pointerId);
-    drag.current = { pointer: event.pointerId, x: event.clientX, y: event.clientY, origin: view, moved: false };
+    dragRef.current = { pointer: event.pointerId, x: event.clientX, y: event.clientY, origin: view, moved: false };
   };
   const onPointerMove = (event: PointerEvent<HTMLElement>) => {
-    const state = drag.current;
-    if (!state || state.pointer !== event.pointerId) return;
+    const state = dragRef.current;
+    if (state?.pointer !== event.pointerId) return;
     const dx = event.clientX - state.x;
     const dy = event.clientY - state.y;
     if (!state.moved && Math.hypot(dx, dy) < 4) return;
@@ -167,9 +167,9 @@ export function PipelineGraph({ pipeline, lookup, run = null, issues, selection,
     setStored({ identity, view: moved, auto: false, width: size.width, height: size.height, fitMin: AUTO_FIT_MIN });
   };
   const endDrag = (event: PointerEvent<HTMLElement>, cancelled: boolean) => {
-    const state = drag.current;
-    if (!state || state.pointer !== event.pointerId) return;
-    drag.current = null;
+    const state = dragRef.current;
+    if (state?.pointer !== event.pointerId) return;
+    dragRef.current = null;
     setDragging(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     // 點背景（沒有拖曳）＝取消選取。
@@ -206,17 +206,17 @@ export function PipelineGraph({ pipeline, lookup, run = null, issues, selection,
 
   // 節點卡的 callback 保持穩定（平移時節點卡不重繪）；需要最新視角的部分讀 latest。
   const registerRef = useCallback((key: string, element: HTMLButtonElement | null) => {
-    if (element) nodeRefs.current.set(key, element);
-    else nodeRefs.current.delete(key);
+    if (element) nodeRefsRef.current.set(key, element);
+    else nodeRefsRef.current.delete(key);
   }, []);
-  const onActivate = useCallback((node: GraphNode) => latest.current.onSelect(selectionOf(node)), []);
-  const onSelectExport = useCallback((name: string) => latest.current.onSelect({ kind: "output", id: name }), []);
+  const onActivate = useCallback((node: GraphNode) => { latestRef.current.onSelect(selectionOf(node)); }, []);
+  const onSelectExport = useCallback((name: string) => { latestRef.current.onSelect({ kind: "output", id: name }); }, []);
   const selectedExport = selection?.kind === "output" ? selection.id : null;
   const onNodeFocus = useCallback(
     (node: GraphNode) => {
       setTabKey(node.key);
       const box = layout.boxes.get(node.key);
-      const { view: base, size: area, identity: id } = latest.current;
+      const { view: base, size: area, identity: id } = latestRef.current;
       if (!box || area.width <= 0 || isBoxVisible(box, base, area)) return;
       setStored({ identity: id, view: clampView(revealBox(base, box, area), layout, area), auto: false, width: area.width, height: area.height, fitMin: AUTO_FIT_MIN });
     },
@@ -232,7 +232,7 @@ export function PipelineGraph({ pipeline, lookup, run = null, issues, selection,
       else return;
       event.preventDefault();
       event.stopPropagation();
-      if (target !== null) nodeRefs.current.get(target)?.focus({ preventScroll: true });
+      if (target !== null) nodeRefsRef.current.get(target)?.focus({ preventScroll: true });
     },
     [layout],
   );
@@ -257,12 +257,12 @@ export function PipelineGraph({ pipeline, lookup, run = null, issues, selection,
               d={path.d}
               fill="none"
               strokeLinecap="round"
-              strokeDasharray={edge?.mismatch ? "5 4" : undefined}
+              strokeDasharray={(edge?.mismatch === true) ? "5 4" : undefined}
               // 選取節點時：相關連線加粗、其他淡出（線寬與透明度以 CSS 過場）
               style={{ strokeWidth: hot ? 2.5 : 1.5 }}
               className={cn(
                 "transition-[opacity,stroke-width] duration-(--duration-fast) ease-standard",
-                edge?.mismatch ? "stroke-danger" : STROKE_TONE[edge?.tone ?? "neutral"],
+                (edge?.mismatch === true) ? "stroke-danger" : edge?.tone === undefined ? STROKE_TONE.neutral : STROKE_TONE[edge.tone],
                 activeKey !== null && !hot && "opacity-30",
               )}
             />
@@ -314,14 +314,14 @@ export function PipelineGraph({ pipeline, lookup, run = null, issues, selection,
 
   const percent = Math.round(view.k * 100);
   return (
-    <section
+    <section /* eslint-disable-line jsx-a11y-x/no-noninteractive-element-interactions -- This graph delegates pointer and keyboard navigation for its nodes to the graph surface. */
       ref={setViewport}
       aria-label={label}
       aria-describedby={hintId}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
-      onPointerUp={(event) => endDrag(event, false)}
-      onPointerCancel={(event) => endDrag(event, true)}
+      onPointerUp={(event) => { endDrag(event, false); }}
+      onPointerCancel={(event) => { endDrag(event, true); }}
       onKeyDown={onKeyDown}
       onScroll={(event) => {
         // 瀏覽器在 Tab 聚焦畫面外的節點時會捲動 overflow 容器；視角由 transform 負責，捲動一律歸零。
@@ -336,7 +336,7 @@ export function PipelineGraph({ pipeline, lookup, run = null, issues, selection,
       {/* 第一次量到尺寸時整張圖淡入（只動透明度：平移縮放的 transform 寫在 style，不能被進場動畫覆寫）。 */}
       <div
         className={cn("absolute top-0 left-0 origin-top-left", sized ? "animate-fade-in" : "invisible")}
-        style={{ width: layout.width, height: layout.height, transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})` }}
+        style={{ width: layout.width, height: layout.height, transform: `translate(${String(view.x)}px, ${String(view.y)}px) scale(${String(view.k)})` }}
       >
         {edgeLayer}
         {nodeLayer}
@@ -364,7 +364,7 @@ export function PipelineGraph({ pipeline, lookup, run = null, issues, selection,
         <ToolButton
           label={t("縮小（-）")}
           icon={<ZoomOut aria-hidden />}
-          onClick={() => zoomBy(1 / ZOOM_STEP)}
+          onClick={() => { zoomBy(1 / ZOOM_STEP); }}
           disabledReason={view.k <= ZOOM_MIN + 1e-6 ? t("已是最小縮放 {zoomMin}%", { zoomMin: ZOOM_MIN * 100 }) : null}
         />
         <ToolButton
@@ -378,7 +378,7 @@ export function PipelineGraph({ pipeline, lookup, run = null, issues, selection,
         <ToolButton
           label={t("放大（+）")}
           icon={<ZoomIn aria-hidden />}
-          onClick={() => zoomBy(ZOOM_STEP)}
+          onClick={() => { zoomBy(ZOOM_STEP); }}
           disabledReason={view.k >= ZOOM_MAX - 1e-6 ? t("已是最大縮放 {zoomMax}%", { zoomMax: ZOOM_MAX * 100 }) : null}
         />
         <ToolSeparator />
@@ -386,7 +386,7 @@ export function PipelineGraph({ pipeline, lookup, run = null, issues, selection,
       </div>
       {/* The minimap only where it leaves room for the graph: on a small canvas (the run overview) it would cover nodes */}
       {sized && size.width >= MINIMAP_ROOM.width && size.height >= MINIMAP_ROOM.height && contentOverflows(layout, view, size) ? (
-        <GraphMinimap layout={layout} view={view} viewport={size} selectedKey={activeKey} onCenter={(point) => commit((base) => centerOn(base, point, size))} />
+        <GraphMinimap layout={layout} view={view} viewport={size} selectedKey={activeKey} onCenter={(point) => { commit((base) => centerOn(base, point, size)); }} />
       ) : null}
     </section>
   );

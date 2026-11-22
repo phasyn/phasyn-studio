@@ -77,7 +77,7 @@ export function attributeChoices(timeline: StudioTimeline, clipboard: ClipClipbo
 
 /** A copied curve on the target: the same distance from the clip's start, cut at the target's ends when it runs past them. */
 function movedKeys(keys: readonly TimelineKeyframe[] | undefined, fallback: number, source: TimelineClip, target: TimelineClip): TimelineKeyframe[] {
-  if (!keys?.length) return [];
+  if (!(keys?.length != null && Boolean(keys.length))) return [];
   const offset = windowBounds(target).start_frame - windowBounds(source).start_frame;
   const limit = processedDuration(target);
   const moved = keys.map((key) => ({ ...structuredClone(key), frame: key.frame + offset }));
@@ -90,7 +90,10 @@ function motionWith(target: TimelineClip, source: TimelineClip, channels: readon
     motion[channel] = source.motion[channel];
     const keys = movedKeys(source.motion.keyframes[channel], source.motion[channel], source, target);
     if (keys.length > 0) motion.keyframes[channel] = keys;
-    else delete motion.keyframes[channel];
+    else {
+      const { [channel]: _prior, ...others } = motion.keyframes;
+      motion.keyframes = others;
+    }
   }
   return motion;
 }
@@ -129,8 +132,9 @@ function timeEffects(target: MediaClipEffects, source: MediaClipEffects, sound: 
 }
 
 /** Effects of a clip that may have none: an empty group is left out, as the panels leave it. */
-function effectsOrNone(effects: MediaClipEffects): Pick<TimelineClip, "effects"> {
-  return { effects: Object.keys(effects).length > 0 ? effects : undefined };
+function withEffects(clip: TimelineClip, effects: MediaClipEffects): TimelineClip {
+  const { effects: _previous, ...rest } = clip;
+  return Object.keys(effects).length > 0 ? { ...rest, effects } : rest;
 }
 
 /** The clip with the chosen attributes of the copied clips. */
@@ -144,16 +148,16 @@ function pastedOnto(target: TimelineClip, sound: boolean, sources: Sources, chos
       const { blend_mode: _blend, ...rest } = clip;
       clip = picture.blend_mode ? { ...rest, blend_mode: picture.blend_mode } : rest;
     }
-    if (chosen.has("effects")) clip = { ...clip, ...effectsOrNone(pictureEffects(clip.effects ?? {}, picture.effects ?? {})), ...compositingFor(picture, clip, allocate) };
+    if (chosen.has("effects")) clip = { ...withEffects(clip, pictureEffects(clip.effects ?? {}, picture.effects ?? {})), ...compositingFor(picture, clip, allocate) };
   }
   const heard = sources.sound;
   if (sound && heard && chosen.has("volume")) {
     clip = { ...clip, motion: motionWith(clip, heard, ["gain_db", "pan"]) };
     const { volume_db: _volume, mute: _mute, ...rest } = clip.effects ?? {};
-    clip = { ...clip, ...effectsOrNone({ ...rest, ...(heard.effects?.volume_db !== undefined ? { volume_db: heard.effects.volume_db } : {}), ...(heard.effects?.mute ? { mute: true } : {}) }) };
+    clip = withEffects(clip, { ...rest, ...(heard.effects?.volume_db !== undefined ? { volume_db: heard.effects.volume_db } : {}), ...((heard.effects?.mute === true) ? { mute: true } : {}) });
   }
   const timed = sound ? (heard ?? picture) : (picture ?? heard);
-  if (chosen.has("time") && timed) clip = { ...clip, ...effectsOrNone(timeEffects(clip.effects ?? {}, timed.effects ?? {}, sound)) };
+  if (chosen.has("time") && timed) clip = withEffects(clip, timeEffects(clip.effects ?? {}, timed.effects ?? {}, sound));
   return clip;
 }
 

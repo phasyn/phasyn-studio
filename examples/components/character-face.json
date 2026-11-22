@@ -1,0 +1,22 @@
+{
+  "component_id": "character-face",
+  "label": "角色表演・臉部",
+  "provider_id": "media.portrait_performance",
+  "runtime_id": "performance-cpu",
+  "autostart": false,
+  "folder": "製作/表演",
+  "settings": {
+    "load": {
+      "model_path": "/path/to/models/mediapipe/face_landmarker.task",
+      "device": {
+        "kind": "cpu",
+        "id": "cpu",
+        "resource_group": "cpu-performance"
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "mode": "detailed"
+    }
+  }
+}

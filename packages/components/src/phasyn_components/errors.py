@@ -19,11 +19,14 @@ import re
 import traceback
 from collections.abc import Mapping
 from dataclasses import dataclass
+from errno import ENOSPC
 from types import MappingProxyType
 from typing import Any, Literal
 
 from .pathscrub import mask_paths
 
+
+MAX_CODE_LENGTH = 160
 _CODE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:-]*$")
 MESSAGE_LIMIT = 16384
 
@@ -55,7 +58,10 @@ class ErrorCode:
 
 
 def _codes(*rows: tuple[str, int, ErrorKind, str]) -> Mapping[str, ErrorCode]:
-    table = {code: ErrorCode(status, kind, description) for code, status, kind, description in rows}
+    table = {
+        code: ErrorCode(status, kind, description)
+        for code, status, kind, description in rows
+    }
     if len(table) != len(rows):
         raise ValueError("duplicate error code in ERROR_CODES")
     return MappingProxyType(dict(sorted(table.items())))
@@ -66,17 +72,39 @@ def _codes(*rows: tuple[str, int, ErrorKind, str]) -> Mapping[str, ErrorCode]:
 # an unregistered literal code. Media codes (phasyn_media.errors) share this namespace.
 ERROR_CODES: Mapping[str, ErrorCode] = _codes(
     # -- the request itself
-    ("INVALID_ARGUMENT", 422, "client", "A field is missing, malformed or out of range."),
+    (
+        "INVALID_ARGUMENT",
+        422,
+        "client",
+        "A field is missing, malformed or out of range.",
+    ),
     ("BAD_REQUEST", 400, "client", "The HTTP request is malformed."),
-    ("AMBIGUOUS_STREAM", 400, "client", "The recording has several streams; name the stream_id."),
-    ("METHOD_NOT_ALLOWED", 405, "client", "The HTTP method is not supported on this path."),
-    ("PAYLOAD_TOO_LARGE", 413, "client", "The request body or upload exceeds the server's transport limit."),
+    (
+        "AMBIGUOUS_STREAM",
+        400,
+        "client",
+        "The recording has several streams; name the stream_id.",
+    ),
+    (
+        "METHOD_NOT_ALLOWED",
+        405,
+        "client",
+        "The HTTP method is not supported on this path.",
+    ),
+    (
+        "PAYLOAD_TOO_LARGE",
+        413,
+        "client",
+        "The request body or upload exceeds the server's transport limit.",
+    ),
     (
         "UNSUPPORTED_MEDIA_TYPE",
         415,
         "client",
-        "The body's Content-Type is not the one the endpoint needs (application/json for JSON endpoints, "
-        "application/octet-stream for a plugin package).",
+        (
+            "The body's Content-Type is not the one the endpoint needs (application/json for JSON endpoints, "
+            "application/octet-stream for a plugin package)."
+        ),
     ),
     (
         "BROWSER_REQUEST_REJECTED",
@@ -88,51 +116,140 @@ ERROR_CODES: Mapping[str, ErrorCode] = _codes(
         "HOST_NOT_ALLOWED",
         400,
         "client",
-        "The Host header is not one the server answers: its allowed_hosts, or without that setting IP addresses, "
-        "localhost and the server's own names.",
+        (
+            "The Host header is not one the server answers: its allowed_hosts, or without that setting IP addresses, "
+            "localhost and the server's own names."
+        ),
     ),
-    ("PROTOCOL_MISMATCH", 409, "client", "The peer speaks an incompatible protocol version."),
+    (
+        "PROTOCOL_MISMATCH",
+        409,
+        "client",
+        "The peer speaks an incompatible protocol version.",
+    ),
     # -- semantics of the inputs
     ("PROMPT_TOO_LONG", 422, "client", "The prompt exceeds the text encoder's limit."),
-    ("CONTEXT_BUDGET_EXCEEDED", 422, "client", "The inputs exceed the model's context budget."),
-    ("RUBRIC_MISMATCH", 422, "client", "The evaluation rubric does not match the study."),
-    ("PORT_MISMATCH", 422, "client", "A pipeline wire connects incompatible port types."),
+    (
+        "CONTEXT_BUDGET_EXCEEDED",
+        422,
+        "client",
+        "The inputs exceed the model's context budget.",
+    ),
+    (
+        "RUBRIC_MISMATCH",
+        422,
+        "client",
+        "The evaluation rubric does not match the study.",
+    ),
+    (
+        "PORT_MISMATCH",
+        422,
+        "client",
+        "A pipeline wire connects incompatible port types.",
+    ),
     ("CYCLIC_PIPELINE", 422, "client", "The pipeline graph contains a cycle."),
-    ("UNSUPPORTED_SETTING", 422, "client", "The component does not support this setting or combination."),
-    ("MODEL_INCOMPATIBLE", 422, "client", "The input or the weights do not match what the component expects."),
-    ("INPUT_TOO_LARGE", 422, "client", "An input exceeds a semantic limit (frames, pixels, characters...)."),
+    (
+        "UNSUPPORTED_SETTING",
+        422,
+        "client",
+        "The component does not support this setting or combination.",
+    ),
+    (
+        "MODEL_INCOMPATIBLE",
+        422,
+        "client",
+        "The input or the weights do not match what the component expects.",
+    ),
+    (
+        "INPUT_TOO_LARGE",
+        422,
+        "client",
+        "An input exceeds a semantic limit (frames, pixels, characters...).",
+    ),
     (
         "STUDIO_TIMELINE_REJECTED",
         422,
         "client",
         "A timeline command or export was refused and nothing was saved; details.reason is the stable reason.",
     ),
-    ("LATENT_SOURCE_MISMATCH", 422, "client", "A latent's linked blob or source differs from its manifest."),
-    ("LATENT_MISMATCH", 422, "client", "A latent's layout, shape or space is not what the consumer needs."),
+    (
+        "LATENT_SOURCE_MISMATCH",
+        422,
+        "client",
+        "A latent's linked blob or source differs from its manifest.",
+    ),
+    (
+        "LATENT_MISMATCH",
+        422,
+        "client",
+        "A latent's layout, shape or space is not what the consumer needs.",
+    ),
     ("FILE_TRUNCATED", 422, "client", "A file is shorter than its declared size."),
     ("FILE_HASH_MISMATCH", 422, "client", "A file's SHA-256 differs from its FileRef."),
-    ("MEDIA_INCOMPLETE", 422, "client", "A media asset is incomplete or failed its frame or sample verification."),
-    ("UNSUPPORTED_COMBINATION", 422, "client", "Media taxonomy: the requested media combination is not supported."),
-    ("INTEGRITY_MISMATCH", 422, "client", "Media taxonomy: a file changed or failed an integrity check."),
-    ("RESOURCE_EXHAUSTED", 422, "client", "Media taxonomy: the work would exceed a resource limit."),
+    (
+        "MEDIA_INCOMPLETE",
+        422,
+        "client",
+        "A media asset is incomplete or failed its frame or sample verification.",
+    ),
+    (
+        "UNSUPPORTED_COMBINATION",
+        422,
+        "client",
+        "Media taxonomy: the requested media combination is not supported.",
+    ),
+    (
+        "INTEGRITY_MISMATCH",
+        422,
+        "client",
+        "Media taxonomy: a file changed or failed an integrity check.",
+    ),
+    (
+        "RESOURCE_EXHAUSTED",
+        422,
+        "client",
+        "Media taxonomy: the work would exceed a resource limit.",
+    ),
     ("CANCELLED", 500, "client", "The call was cancelled on request."),
     # -- configuration and lookup
     ("NOT_FOUND", 404, "client", "The resource does not exist."),
     ("FILE_NOT_FOUND", 404, "client", "The file does not exist."),
     ("RECORDING_NOT_FOUND", 404, "client", "The recording does not exist."),
-    ("PREVIEW_NOT_FOUND", 404, "client", "No preview is available for that call or step."),
+    (
+        "PREVIEW_NOT_FOUND",
+        404,
+        "client",
+        "No preview is available for that call or step.",
+    ),
     ("TRACE_UNAVAILABLE", 404, "client", "The recording has no profiler trace."),
-    ("RANGE_NOT_SATISFIABLE", 416, "client", "The requested byte range is outside the file."),
-    ("PROVIDER_NOT_INSTALLED", 422, "client", "The runtime has no such provider (package missing or not enabled)."),
-    ("COMPONENT_NOT_CONFIGURED", 422, "client", "A required component setting or file is missing."),
+    (
+        "RANGE_NOT_SATISFIABLE",
+        416,
+        "client",
+        "The requested byte range is outside the file.",
+    ),
+    (
+        "PROVIDER_NOT_INSTALLED",
+        422,
+        "client",
+        "The runtime has no such provider (package missing or not enabled).",
+    ),
+    (
+        "COMPONENT_NOT_CONFIGURED",
+        422,
+        "client",
+        "A required component setting or file is missing.",
+    ),
     ("RUNTIME_NOT_CONFIGURED", 422, "client", "The Node has no runtime with this id."),
     # -- Studio plugin packages
     (
         "STUDIO_PLUGIN_INVALID",
         422,
         "client",
-        "The plugin package breaks a package rule (archive, paths, sizes, manifest or integrity); "
-        "details.errors lists up to 20 problems.",
+        (
+            "The plugin package breaks a package rule (archive, paths, sizes, manifest or integrity); "
+            "details.errors lists up to 20 problems."
+        ),
     ),
     (
         "STUDIO_PLUGIN_INSTALL_DISABLED",
@@ -143,7 +260,12 @@ ERROR_CODES: Mapping[str, ErrorCode] = _codes(
     # -- state conflicts
     ("COMPONENT_NOT_READY", 409, "conflict", "The component is not loaded."),
     ("COMPONENT_BUSY", 409, "conflict", "The component is already running a call."),
-    ("DEVICE_BUSY", 409, "conflict", "Another component holds the device's resource group."),
+    (
+        "DEVICE_BUSY",
+        409,
+        "conflict",
+        "Another component holds the device's resource group.",
+    ),
     (
         "GPU_MEMORY_INSUFFICIENT",
         409,
@@ -156,20 +278,56 @@ ERROR_CODES: Mapping[str, ErrorCode] = _codes(
         "conflict",
         "A memory pre-check found too little free host memory for this configuration; nothing was loaded or run.",
     ),
-    ("EXCLUSIVE_GROUP_BUSY", 409, "conflict", "A member of the exclusive group is loading, stopping or busy."),
+    (
+        "EXCLUSIVE_GROUP_BUSY",
+        409,
+        "conflict",
+        "A member of the exclusive group is loading, stopping or busy.",
+    ),
     (
         "EXCLUSIVE_GROUP_CONFLICT",
         409,
         "conflict",
         "An idle member holds the exclusive group; retry with replace_exclusive.",
     ),
-    ("SETTINGS_NOT_LOADED", 409, "conflict", "The saved settings differ from the loaded ones; restart to apply."),
-    ("REVISION_CONFLICT", 409, "conflict", "The document changed since it was read; reload and save again."),
+    (
+        "SETTINGS_NOT_LOADED",
+        409,
+        "conflict",
+        "The saved settings differ from the loaded ones; restart to apply.",
+    ),
+    (
+        "REVISION_CONFLICT",
+        409,
+        "conflict",
+        "The document changed since it was read; reload and save again.",
+    ),
     ("RUN_ACTIVE", 409, "conflict", "Another run is active."),
     ("CALL_ID_CONFLICT", 409, "conflict", "The call id is already in use."),
-    ("STATE_CONFLICT", 409, "conflict", "The resource's current state does not allow this operation."),
-    ("TASK_RUNNING", 409, "conflict", "A study task is still marked running; stop it or mark it interrupted first."),
-    ("DUPLICATE_NODE_ID", 409, "conflict", "Another live Node registered with the same node_id."),
+    (
+        "STUDIO_OUTPUT_MISMATCH",
+        409,
+        "conflict",
+        "The published video does not match the frame count or frame rate promised for this Take.",
+    ),
+    (
+        "STATE_CONFLICT",
+        409,
+        "conflict",
+        "The resource's current state does not allow this operation.",
+    ),
+    (
+        "TASK_RUNNING",
+        409,
+        "conflict",
+        "A study task is still marked running; stop it or mark it interrupted first.",
+    ),
+    (
+        "DUPLICATE_NODE_ID",
+        409,
+        "conflict",
+        "Another live Node registered with the same node_id.",
+    ),
     (
         "WEIGHTS_DESTINATION_CONFLICT",
         409,
@@ -183,12 +341,24 @@ ERROR_CODES: Mapping[str, ErrorCode] = _codes(
         "HOST_PROTECTION",
         503,
         "unavailable",
-        "The Node's host protection (admission in its configuration) held a call back until its deadline or cancelled "
-        "it while it ran: the chip or GPU was too hot, or free host memory fell below the floor; details.reason and "
-        "the message give the reading. Retry once the host has cooled down or freed memory.",
+        (
+            "The Node's host protection (admission in its configuration) held a call back until its deadline or cancelled "
+            "it while it ran: the chip or GPU was too hot, or free host memory fell below the floor; details.reason and "
+            "the message give the reading. Retry once the host has cooled down or freed memory."
+        ),
     ),
-    ("CONTROLLER_UNREACHABLE", 503, "unavailable", "The controller could not be reached."),
-    ("RUNTIME_UNAVAILABLE", 422, "unavailable", "The runtime environment cannot run this provider right now."),
+    (
+        "CONTROLLER_UNREACHABLE",
+        503,
+        "unavailable",
+        "The controller could not be reached.",
+    ),
+    (
+        "RUNTIME_UNAVAILABLE",
+        422,
+        "unavailable",
+        "The runtime environment cannot run this provider right now.",
+    ),
     (
         "WEIGHTS_SOURCE_UNAVAILABLE",
         503,
@@ -201,13 +371,43 @@ ERROR_CODES: Mapping[str, ErrorCode] = _codes(
         "remote",
         "The run was interrupted (e.g. the controller restarted); Node-side work may have continued.",
     ),
-    ("PROCESS_EXIT_UNCONFIRMED", 500, "remote", "The component process may still be running; its exit is unconfirmed."),
+    (
+        "PROCESS_EXIT_UNCONFIRMED",
+        500,
+        "remote",
+        "The component process may still be running; its exit is unconfirmed.",
+    ),
     # -- failures inside the system
-    ("PROTOCOL_ERROR", 500, "internal", "A component process received a control message it could not parse."),
-    ("RUNTIME_ERROR", 500, "internal", "The component or service failed while handling the request."),
-    ("NODE_INTERNAL_ERROR", 500, "internal", "The Node failed unexpectedly while handling the request."),
-    ("RUNTIME_EXITED", 500, "internal", "The component process exited during the operation."),
-    ("RUNTIME_START_FAILED", 500, "internal", "The component process could not be started."),
+    (
+        "PROTOCOL_ERROR",
+        500,
+        "internal",
+        "A component process received a control message it could not parse.",
+    ),
+    (
+        "RUNTIME_ERROR",
+        500,
+        "internal",
+        "The component or service failed while handling the request.",
+    ),
+    (
+        "NODE_INTERNAL_ERROR",
+        500,
+        "internal",
+        "The Node failed unexpectedly while handling the request.",
+    ),
+    (
+        "RUNTIME_EXITED",
+        500,
+        "internal",
+        "The component process exited during the operation.",
+    ),
+    (
+        "RUNTIME_START_FAILED",
+        500,
+        "internal",
+        "The component process could not be started.",
+    ),
     ("CALL_TIMEOUT", 500, "internal", "The call exceeded its deadline."),
     ("LOAD_TIMEOUT", 500, "internal", "Loading the component exceeded its deadline."),
     ("MEDIA_TOOL_FAILED", 500, "internal", "FFmpeg or ffprobe failed."),
@@ -217,7 +417,12 @@ ERROR_CODES: Mapping[str, ErrorCode] = _codes(
         "internal",
         "Media taxonomy: an encoder produced output that breaks its contract.",
     ),
-    ("MODEL_OUTPUT_INVALID", 422, "internal", "The model produced output that fails validation."),
+    (
+        "MODEL_OUTPUT_INVALID",
+        422,
+        "internal",
+        "The model produced output that fails validation.",
+    ),
     ("GPU_OOM", 500, "internal", "The GPU ran out of memory."),
     ("HOST_OOM", 500, "internal", "The host ran out of memory."),
     ("DISK_FULL", 507, "internal", "The disk is full."),
@@ -240,10 +445,13 @@ NOTICE_CODES: Mapping[str, str] = MappingProxyType(
 )
 
 # code -> HTTP status (an unregistered code is a 500)
-HTTP_STATUS: Mapping[str, int] = MappingProxyType({code: spec.status for code, spec in ERROR_CODES.items()})
+HTTP_STATUS: Mapping[str, int] = MappingProxyType(
+    {code: spec.status for code, spec in ERROR_CODES.items()}
+)
 
 
 def is_registered(code: str) -> bool:
+    """Check whether an error code is registered."""
     return code in ERROR_CODES
 
 
@@ -254,14 +462,15 @@ def error_registry() -> dict[str, Any]:
         "kinds_note": KINDS_NOTE,
         "kinds": dict(ERROR_KINDS),
         "codes": {
-            code: {"status": e.status, "kind": e.kind, "description": e.description} for code, e in ERROR_CODES.items()
+            code: {"status": e.status, "kind": e.kind, "description": e.description}
+            for code, e in ERROR_CODES.items()
         },
         "notices": dict(NOTICE_CODES),
     }
 
 
 class ComponentError(Exception):
-    """可序列化成 contract ``Error`` 的例外。"""
+    """可序列化成 contract ``Error`` 的例外."""
 
     def __init__(
         self,
@@ -272,7 +481,8 @@ class ComponentError(Exception):
         remote_outcome_unknown: bool = False,
         status: int | None = None,
     ) -> None:
-        if not _CODE_RE.match(code) or len(code) > 160:
+        """Initialize component error with its configuration."""
+        if not _CODE_RE.match(code) or len(code) > MAX_CODE_LENGTH:
             raise ValueError(f"invalid error code {code!r}")
         super().__init__(f"{code}: {message}")
         self.code = code
@@ -282,6 +492,7 @@ class ComponentError(Exception):
         self.status = status if status is not None else HTTP_STATUS.get(code, 500)
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize the object to its wire representation."""
         out: dict[str, Any] = {"code": self.code, "message": self.message}
         if self.details:
             out["details"] = self.details
@@ -290,29 +501,35 @@ class ComponentError(Exception):
         return out
 
     @classmethod
-    def from_dict(cls, doc: Mapping[str, Any], *, status: int | None = None) -> ComponentError:
+    def from_dict(
+        cls, doc: Mapping[str, Any], *, status: int | None = None
+    ) -> ComponentError:
+        """Construct an object from its wire representation."""
         code = str(doc.get("code") or "RUNTIME_ERROR")
         if not _CODE_RE.match(code):
             code = "RUNTIME_ERROR"
         return cls(
             code,
             str(doc.get("message") or ""),
-            details=doc.get("details") if isinstance(doc.get("details"), Mapping) else None,
+            details=doc.get("details")
+            if isinstance(doc.get("details"), Mapping)
+            else None,
             remote_outcome_unknown=bool(doc.get("remote_outcome_unknown", False)),
             status=status,
         )
 
 
-class Cancelled(Exception):
-    """cooperative 取消：provider 在檢查點拋出，runtime host 轉成 state=cancelled。"""
+class Cancelled(Exception):  # noqa: N818 - Public exception name is part of the SDK.
+    """cooperative 取消：provider 在檢查點拋出，runtime host 轉成 state=cancelled."""
 
 
 def error_dict(code: str, message: str, **details: Any) -> dict[str, Any]:
+    """Build a wire-format error record."""
     return ComponentError(code, message, details=details or None).to_dict()
 
 
 def classify_exception(exc: BaseException) -> str:
-    """把未知例外歸到最接近的 contract code；不猜測成功。"""
+    """把未知例外歸到最接近的 contract code；不猜測成功."""
     if isinstance(exc, ComponentError):
         return exc.code
     if isinstance(exc, Cancelled):
@@ -325,23 +542,25 @@ def classify_exception(exc: BaseException) -> str:
         or ("out of memory" in text.lower() and "cuda" in text.lower())
     ):
         return "GPU_OOM"
+    return _classify_system_exception(exc)
+
+
+def _classify_system_exception(exc: BaseException) -> str:
     if isinstance(exc, MemoryError):
         return "HOST_OOM"
     if isinstance(exc, FileNotFoundError):
         return "FILE_NOT_FOUND"
-    if isinstance(exc, OSError) and getattr(exc, "errno", None) == 28:
+    if isinstance(exc, OSError) and exc.errno == ENOSPC:
         return "DISK_FULL"
     return "RUNTIME_ERROR"
 
 
 def exception_message(exc: BaseException) -> str:
-    """``str(exc)`` without local paths: an ``OSError`` keeps only the file name, other messages go
-    through :func:`phasyn_components.pathscrub.mask_paths`. Use it whenever an exception's text is
-    put into a message or details that leave the process."""
+    """``str(exc)`` without local paths: an ``OSError`` keeps only the file name, other messages go through :func:`phasyn_components.pathscrub.mask_paths`. Use it whenever an exception's text is put into a message or details that leave the process."""
     if isinstance(exc, OSError) and exc.filename is not None:
         # A call on a descriptor (os.scandir(fd), os.open(..., dir_fd=fd)) reports the descriptor's number
         named = isinstance(exc.filename, str | bytes | os.PathLike)
-        name = (os.path.basename(os.fsdecode(exc.filename)) if named else "") or "?"
+        name = (os.path.split(os.fsdecode(exc.filename))[1] if named else "") or "?"
         errno = f"[Errno {exc.errno}] " if exc.errno is not None else ""
         return f"{errno}{exc.strerror or type(exc).__name__}: {name}"
     return mask_paths(str(exc))
@@ -383,7 +602,9 @@ def to_component_error(exc: BaseException, *, prefix: str = "") -> ComponentErro
     return ComponentError(code, msg, details=exception_summary(exc))
 
 
-def with_cleanup_report(error: Mapping[str, Any], report: Mapping[str, Any]) -> dict[str, Any]:
+def with_cleanup_report(
+    error: Mapping[str, Any], report: Mapping[str, Any]
+) -> dict[str, Any]:
     """A wire ``Error`` with the after-failure cleanup report of a component process attached.
 
     The report goes to ``details.cleanup``. When it says ``reload_required`` (the process could not be shown to be
@@ -410,20 +631,31 @@ HOST_MEMORY_INSUFFICIENT_TEXT = (
 )
 
 
-def gpu_memory_insufficient(finding: str, *, details: Mapping[str, Any]) -> ComponentError:
+def gpu_memory_insufficient(
+    finding: str, *, details: Mapping[str, Any]
+) -> ComponentError:
     """A memory pre-check refused a load or a call before anything ran (``GPU_MEMORY_INSUFFICIENT``).
 
     ``finding`` states what the check estimated and measured and starts the message; ``details`` carries the full
     estimate. Never ``GPU_OOM``: nothing ran out of memory, and the Controller's cost profiles count only real
     out-of-memory failures as an out-of-memory risk.
     """
-    return ComponentError("GPU_MEMORY_INSUFFICIENT", f"{finding}。{GPU_MEMORY_INSUFFICIENT_TEXT}", details=details)
+    return ComponentError(
+        "GPU_MEMORY_INSUFFICIENT",
+        f"{finding}。{GPU_MEMORY_INSUFFICIENT_TEXT}",
+        details=details,
+    )
 
 
-def host_memory_insufficient(finding: str, *, details: Mapping[str, Any]) -> ComponentError:
-    """The host-memory counterpart of :func:`gpu_memory_insufficient` (``HOST_MEMORY_INSUFFICIENT``, never
-    ``HOST_OOM``)."""
-    return ComponentError("HOST_MEMORY_INSUFFICIENT", f"{finding}。{HOST_MEMORY_INSUFFICIENT_TEXT}", details=details)
+def host_memory_insufficient(
+    finding: str, *, details: Mapping[str, Any]
+) -> ComponentError:
+    """The host-memory counterpart of :func:`gpu_memory_insufficient` (``HOST_MEMORY_INSUFFICIENT``, never ``HOST_OOM``)."""
+    return ComponentError(
+        "HOST_MEMORY_INSUFFICIENT",
+        f"{finding}。{HOST_MEMORY_INSUFFICIENT_TEXT}",
+        details=details,
+    )
 
 
 __all__ = [

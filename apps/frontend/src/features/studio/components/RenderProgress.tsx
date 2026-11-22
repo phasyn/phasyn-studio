@@ -20,7 +20,7 @@ export { DitProgressPanel } from "./render/DitProgress";
  */
 function gradientSlice(start: number, size: number): CSSProperties {
   if (size >= 1) return {};
-  return { backgroundSize: `${100 / size}% 100%`, backgroundPosition: `${(start / (1 - size)) * 100}% 0` };
+  return { backgroundSize: `${String(100 / size)}% 100%`, backgroundPosition: `${String((start / (1 - size)) * 100)}% 0` };
 }
 
 /** 階段矩陣中「DiT 去噪」格的進度（只在執行中顯示）。 */
@@ -86,13 +86,13 @@ export function RunQueueProgress({ run, views, noun, lookup, counts = true }: { 
               return (
                 <span
                   key={segment.stepId}
-                  className={cn("relative min-w-0 flex-1 overflow-hidden rounded-full", SEGMENT_TONE[segment.state] ?? SEGMENT_TONE.pending)}
+                  className={cn("relative min-w-0 flex-1 overflow-hidden rounded-full", SEGMENT_TONE[segment.state] ?? SEGMENT_TONE["pending"])}
                   style={segment.state === "succeeded" ? slice : undefined}
                 >
                   {running ? (
                     <span
                       className={cn("absolute inset-0 bg-brand-gradient transition-[clip-path] duration-(--duration-base) ease-linear", SHIMMER, fraction === null && "opacity-45")}
-                      style={{ ...slice, clipPath: fraction === null ? undefined : `inset(0 ${(1 - fraction) * 100}% 0 0)` }}
+                      style={{ ...slice, clipPath: fraction === null ? undefined : `inset(0 ${String((1 - fraction) * 100)}% 0 0)` }}
                     />
                   ) : null}
                 </span>
@@ -107,7 +107,7 @@ export function RunQueueProgress({ run, views, noun, lookup, counts = true }: { 
         </span>
         {counts ? (
           <span className="machine shrink-0" title={t("已完成的 pipeline 步驟")}>
-            <T source={"<0>已完成步驟 </0>{done}／{total}"} values={{ done: activity.done, total: activity.total }} slots={[<span className="sr-only" />]} />
+            <T source={"<0>已完成步驟 </0>{done}／{total}"} values={{ done: activity.done, total: activity.total }} slots={[<span key="slot-0" className="sr-only" />]} />
           </span>
         ) : null}
       </span>

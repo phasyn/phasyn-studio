@@ -8,14 +8,28 @@ the component runtime agree without depending on one another.
 
 from __future__ import annotations
 
+
 ENV_FFMPEG = "PHASYN_FFMPEG"  # absolute path (or PATH name) of the ffmpeg binary to use
 ENV_FFPROBE = "PHASYN_FFPROBE"  # same for ffprobe
-RUNTIME_ID_ENV = "PHASYN_RUNTIME_ID"  # set by the Node: the runtime entry that started the process
-SOURCE_REVISION_ENV = "PHASYN_SOURCE_REVISION"  # set by the Node: the code revision it runs
-PREVIEW_FD_ENV = "PHASYN_PREVIEW_FD"  # set by the Node: write end of the intermediate-preview pipe
+RUNTIME_ID_ENV = (
+    "PHASYN_RUNTIME_ID"  # set by the Node: the runtime entry that started the process
+)
+SOURCE_REVISION_ENV = (
+    "PHASYN_SOURCE_REVISION"  # set by the Node: the code revision it runs
+)
+PREVIEW_FD_ENV = (
+    "PHASYN_PREVIEW_FD"  # set by the Node: write end of the intermediate-preview pipe
+)
 
 # Copied from the Node's own environment into every component process (when present).
-PASSTHROUGH_ENV: tuple[str, ...] = ("PATH", "HOME", "LANG", "TZ", ENV_FFMPEG, ENV_FFPROBE)
+PASSTHROUGH_ENV: tuple[str, ...] = (
+    "PATH",
+    "HOME",
+    "LANG",
+    "TZ",
+    ENV_FFMPEG,
+    ENV_FFPROBE,
+)
 
 # Set by the Node for every component process: model libraries read local files only and report nothing.
 # Weights are fetched only by the Node's explicit download, never by a component.

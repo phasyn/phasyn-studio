@@ -3,6 +3,7 @@
 // 結果（原音軌模式要確認 concat 真的用了原音軌）。
 // 全部由專案推導，重新整理後一樣。
 // 外觀（Phasyn）：階段是狀態色的標記（不用品牌漸層表示成功）；進行中的批次 run 卡片以品牌細邊標示；段落表維持俐落、不發光。
+import { AssetVideo } from "@/components/common/AssetMedia";
 import { Ban, CircleAlert, CircleCheck, CircleDashed, CircleX, Clapperboard, Cpu, Download, ExternalLink, LoaderCircle, Plus, RotateCcw, Rows3, TriangleAlert, type LucideIcon } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
@@ -17,7 +18,7 @@ import { Select } from "@/components/ui/controls";
 import { DialogBody, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/cn";
 import { formatBytes } from "@/lib/format";
-import { isRecord } from "@/lib/json";
+import { isListed, isRecord } from "@/lib/json";
 import { elapsedMs, formatElapsed, useNow } from "@/lib/time";
 import { CARD } from "@/components/ui/look";
 import { RunQueueProgress } from "../components/RenderProgress";
@@ -26,7 +27,7 @@ import { formatDuration } from "../model/frames";
 import { catalogLookup } from "../model/progress";
 import { findRoute } from "../model/routes";
 import { useStudio } from "../studioContext";
-import { BATCH_SIZES, batchSizeLabel, type BatchSize } from "./batchSize";
+import { BATCH_SIZES, batchSizeLabel } from "./batchSize";
 import { Fact, Facts, NoteList, Section } from "./fields";
 import { HoldTailFact } from "./HoldTailDialog";
 import { AUDIO_TRACK_MISSING, originalAudioApplied, unfinishedSegments, type SwapPhase, type SwapProgress, type SwapProjectInfo } from "./job";
@@ -36,9 +37,10 @@ import { StaleRenderDialog } from "./StaleRenderDialog";
 import { cancelScope, PHASE_LABELS, primaryAction, type SummaryTone } from "./jobView";
 import { formatCueTime } from "./prompt";
 import type { SwapJobApi } from "./useSwapJob";
-import { t, tServer } from "@/i18n";
+import { t } from "@/i18n";
 import { T } from "@/i18n/T";
 import { RenderEta } from "../components/RenderEta";
+import { failureText } from "@/lib/errors";
 
 const PHASE_SPEC: Record<SwapPhase, { tone: SummaryTone; icon: LucideIcon; spin?: boolean }> = {
   pending: { tone: "neutral", icon: CircleDashed },
@@ -86,12 +88,12 @@ export function SwapJobPanel({ info, job, progress, onNewSwap, onNavigate, onOpe
             {t("一鍵換角")}
           </DialogTitle>
           <Badge tone={spec.tone} className="rounded-full px-2.5">
-            <spec.icon aria-hidden className={spec.spin ? "animate-spin" : undefined} />
+            <spec.icon aria-hidden className={(spec.spin === true) ? "animate-spin" : undefined} />
             {PHASE_LABELS[progress.phase]}
           </Badge>
         </div>
         <DialogDescription>
-          <T source={"來源「{name}」<0>{range}</0>・{total} 段（鏡頭中間的接縫 {mid_shot_joins} 個）・{value}。進度存在專案裡，關掉對話框或重新整理都不影響渲染。"} values={{ name: info.source.name, range, total, mid_shot_joins: info.job.mid_shot_joins, value: info.job.audio === "original" ? t("原影片音軌") : t("生成的聲音") }} slots={[<span className="machine" />]} />
+          <T source={"來源「{name}」<0>{range}</0>・{total} 段（鏡頭中間的接縫 {mid_shot_joins} 個）・{value}。進度存在專案裡，關掉對話框或重新整理都不影響渲染。"} values={{ name: info.source.name, range, total, mid_shot_joins: info.job.mid_shot_joins, value: info.job.audio === "original" ? t("原影片音軌") : t("生成的聲音") }} slots={[<span key="slot-0" className="machine" />]} />
         </DialogDescription>
       </DialogHeader>
       <DialogBody className="grid content-start gap-5">
@@ -123,7 +125,7 @@ export function SwapJobPanel({ info, job, progress, onNewSwap, onNavigate, onOpe
               variant="secondary"
               icon={<RotateCcw aria-hidden />}
               title={job.staleReason ?? undefined}
-              onClick={() => setStaleDialog((current) => ({ open: true, session: (current?.session ?? 0) + 1 }))}
+              onClick={() => { setStaleDialog((current) => ({ open: true, session: (current?.session ?? 0) + 1 })); }}
             >
               {t("重新渲染設定已改的段落（{staleCount}）…", { staleCount: job.stale.length })}
             </ActionButton>
@@ -147,7 +149,7 @@ export function SwapJobPanel({ info, job, progress, onNewSwap, onNavigate, onOpe
           batchOf={job.staleBatchOf}
           reasonOf={job.batchReason}
           onRender={job.renderStale}
-          onClose={() => setStaleDialog((current) => (current ? { ...current, open: false } : current))}
+          onClose={() => { setStaleDialog((current) => (current ? { ...current, open: false } : current)); }}
         />
       ) : null}
     </>
@@ -160,7 +162,7 @@ function BatchSizePicker({ job }: { job: SwapJobApi }) {
   return (
     <label htmlFor={id} className="flex items-center gap-1.5 text-caption text-fg-tertiary" title={t("每段完成就能比對原片；有偏離先改那一段，再送下一批")}>
       {t("每批")}
-      <Select id={id} compact value={job.batchSize === null ? "all" : String(job.batchSize)} onChange={(event) => job.setBatchSize(event.target.value === "all" ? null : (Number(event.target.value) as BatchSize))} className="w-auto">
+      <Select id={id} compact value={job.batchSize === null ? "all" : String(job.batchSize)} onChange={(event) => { const value = event.target.value === "all" ? null : Number(event.target.value); if (isListed(value, BATCH_SIZES)) job.setBatchSize(value); }} className="w-auto">
         {BATCH_SIZES.map((size) => (
           <option key={size ?? "all"} value={size === null ? "all" : String(size)}>
             {batchSizeLabel(size)}
@@ -265,7 +267,7 @@ function ActiveRun({ runId, progress, onNavigate }: { runId: string; progress: S
             <ExternalLink aria-hidden className="size-3.5" />
             {t("渲染詳情")}
           </Link>
-          <Button size="sm" variant="danger" icon={<Ban aria-hidden />} disabled={!run || !running} onClick={() => setConfirming(true)}>
+          <Button size="sm" variant="danger" icon={<Ban aria-hidden />} disabled={!run || !running} onClick={() => { setConfirming(true); }}>
             {t("取消渲染…")}
           </Button>
         </>
@@ -275,12 +277,12 @@ function ActiveRun({ runId, progress, onNavigate }: { runId: string; progress: S
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-caption text-fg-tertiary">
           <IdText value={runId} length={8} />
           <span>
-            <T source={"已執行 <0>{elapsed}</0>"} values={{ elapsed: formatElapsed(elapsed) }} slots={[<span className="machine text-fg-secondary" />]} />
+            <T source={"已執行 <0>{elapsed}</0>"} values={{ elapsed: formatElapsed(elapsed) }} slots={[<span key="slot-0" className="machine text-fg-secondary" />]} />
           </span>
           <span>{t("這個 run 有 {inRun} 段還在進行（同一張卡依序執行）", { inRun: scope.inRun })}</span>
         </div>
         {run ? <RunQueueProgress run={run} views={runProgress.views} noun={t("段")} lookup={lookup} /> : <p className="text-caption text-fg-tertiary">{t("讀取 run…")}</p>}
-        {runProgress.error ? <p className="text-caption text-fg-tertiary">{t("讀取逐步進度失敗（下一輪會再讀）：{error}", { error: runProgress.error })}</p> : null}
+        {(runProgress.error != null && runProgress.error !== "") ? <p className="text-caption text-fg-tertiary">{t("讀取逐步進度失敗（下一輪會再讀）：{error}", { error: runProgress.error })}</p> : null}
       </div>
       {run ? <CancelRunDialog run={run} open={confirming} onOpenChange={setConfirming} scope={scope.text} /> : null}
     </Section>
@@ -312,11 +314,11 @@ function ExportSection({ info, job, progress, onNavigate }: { info: SwapProjectI
   const original = info.job.audio === "original";
   const range = info.job.end_frame - info.job.start_frame;
   const hints: string[] = [];
-  if (preview && preview.problems.length === 0 && preview.totalFrames !== range) {
+  if (preview?.problems.length === 0 && preview.totalFrames !== range) {
     hints.push(t("時間軸是 {totalFrames} 影格，原影片範圍是 {range} 影格（剪輯改過長度）；原音軌片段的位置以時間軸為準", { totalFrames: preview.totalFrames, range }));
   }
-  const concatRecord = record?.asset?.actual_settings.concat;
-  const track = isRecord(concatRecord) ? audioTrackSummary(concatRecord.audio_track) : null;
+  const concatRecord = record?.asset?.actual_settings["concat"];
+  const track = isRecord(concatRecord) ? audioTrackSummary(concatRecord["audio_track"]) : null;
   const url = file ? mediaUrl(file.node_id, file.file_id) : null;
   const waitingAuto = info.job.auto_export && progress.phase === "ready_to_export" && project.exports.length === 0;
   return (
@@ -324,27 +326,27 @@ function ExportSection({ info, job, progress, onNavigate }: { info: SwapProjectI
       <Facts className="text-caption">
         <Fact label={t("聲音")}>{original ? t("原影片音軌（從範圍起點對齊，長度等於整段）") : t("各段生成的聲音")}</Fact>
         <Fact label={t("預期長度")}>
-          <T source={"<0>{expected}</0> 影格（{expected2}）"} values={{ expected, expected2: formatDuration(expected, info.job.fps) }} slots={[<span className="machine" />]} />
+          <T source={"<0>{expected}</0> 影格（{expected2}）"} values={{ expected, expected2: formatDuration(expected, info.job.fps) }} slots={[<span key="slot-0" className="machine" />]} />
         </Fact>
       </Facts>
       <NoteList tone="info" icon={<CircleAlert aria-hidden />} items={hints} />
       {!record ? (
         <p className="text-caption text-fg-tertiary">
-          {waitingAuto ? t("全部段落完成；{value}會自動匯出一次。", { value: job.exportReason ? t("等待可以匯出（{exportReason}）後", { exportReason: job.exportReason }) : "" }) : t("還沒匯出。全部段落完成後按「匯出」。")}
+          {waitingAuto ? t("全部段落完成；{value}會自動匯出一次。", { value: (job.exportReason != null && job.exportReason !== "") ? t("等待可以匯出（{exportReason}）後", { exportReason: job.exportReason }) : "" }) : t("還沒匯出。全部段落完成後按「匯出」。")}
         </p>
       ) : record.state === "rendering" ? (
         <p role="status" className="flex flex-wrap items-center gap-1.5 text-caption text-info">
           <LoaderCircle aria-hidden className="size-3.5 animate-spin" />
-          <T source={"匯出中（run <0>{run_id}</0>）<1>查看進度</1>"} values={{ run_id: record.run_id.slice(0, 8) }} slots={[<code className="machine" />, <Link to={`/studio/render?project=${encodeURIComponent(project.project_id)}&run=${encodeURIComponent(record.run_id)}`} onClick={onNavigate} />]} />
+          <T source={"匯出中（run <0>{run_id}</0>）<1>查看進度</1>"} values={{ run_id: record.run_id.slice(0, 8) }} slots={[<code key="slot-0" className="machine" />, <Link key="slot-1" to={`/studio/render?project=${encodeURIComponent(project.project_id)}&run=${encodeURIComponent(record.run_id)}`} onClick={onNavigate} />]} />
         </p>
       ) : record.state !== "succeeded" ? (
         <NoteList
           tone="danger"
           icon={<CircleX aria-hidden />}
           title={t("最近一次匯出沒有成功（不會自動重試）")}
-          items={[record.error ? t("{code}：{message}", { code: record.error.code, message: tServer(record.error.message) }) : t("狀態：{state}", { state: record.state })]}
+          items={[record.error ? failureText(record.error.code, record.error.message) : t("狀態：{state}", { state: record.state })]}
         />
-      ) : progress.exportProblem ? (
+      ) : (progress.exportProblem != null && progress.exportProblem !== "") ? (
         <NoteList
           tone="danger"
           icon={<CircleX aria-hidden />}
@@ -354,21 +356,21 @@ function ExportSection({ info, job, progress, onNavigate }: { info: SwapProjectI
       ) : progress.exportCurrent ? (
         <p role="status" className="flex flex-wrap items-center gap-1.5 text-caption text-success">
           <CircleCheck aria-hidden className="size-3.5" />
-          <T source={"已匯出整段影片：<0>{value}</0> 影格{value2}{value3}"} values={{ value: record.frames ?? "?", value2: record.frames !== null && record.frames !== expected ? <span className="text-warning">{t("（預期 {expected} 影格）", { expected })}</span> : null, value3: track ? <span className="text-fg-secondary">{t("・原音軌{track}", { track })}</span> : null }} slots={[<span className="machine" />]} />
+          <T source={"已匯出整段影片：<0>{value}</0> 影格{value2}{value3}"} values={{ value: record.frames ?? "?", value2: record.frames !== null && record.frames !== expected ? <span className="text-warning">{t("（預期 {expected} 影格）", { expected })}</span> : null, value3: (track != null && track !== "") ? <span className="text-fg-secondary">{t("・原音軌{track}", { track })}</span> : null }} slots={[<span key="slot-0" className="machine" />]} />
         </p>
       ) : (
         <NoteList tone="warning" icon={<TriangleAlert aria-hidden />} items={[t("最近的匯出比部分段落的 take 舊（或段落順序改過）：按「再匯出一次」才會包含目前的 take。")]} />
       )}
-      {url && file ? (
+      {(url != null && url !== "") && file ? (
         <div className="grid min-w-0 gap-2">
-          <video src={url} controls preload="metadata" aria-label={t("匯出結果：{title}", { title: project.title })} className="max-h-[40vh] w-full rounded-lg border border-line-subtle bg-stage object-contain animate-rise-in" />
+          <AssetVideo src={url} controls preload="metadata" aria-label={t("匯出結果：{title}", { title: project.title })} className="max-h-[40vh] w-full rounded-lg border border-line-subtle bg-stage object-contain animate-rise-in" />
           <div className="flex flex-wrap items-center gap-3 text-caption">
             <a href={url} download={`${project.title}.mp4`} className="pressable inline-flex min-h-7 items-center gap-1 rounded-md px-1.5 hover:bg-raised">
               <Download aria-hidden className="size-3.5" />
               {t("下載 MP4")}
             </a>
             <span className="text-fg-tertiary">
-              {t("{value}・{size_bytes}{value2}", { value: record?.frames ? formatDuration(record.frames) : "", size_bytes: formatBytes(file.size_bytes), value2: progress.exportProblem ? t("・聲音不是原影片音軌") : original && originalAudioApplied(record?.asset, info.source) === true ? t("・原影片音軌") : "" })}
+              {t("{value}・{size_bytes}{value2}", { value: (record?.frames != null && Boolean(record.frames)) ? formatDuration(record.frames) : "", size_bytes: formatBytes(file.size_bytes), value2: (progress.exportProblem != null && progress.exportProblem !== "") ? t("・聲音不是原影片音軌") : original && originalAudioApplied(record?.asset, info.source) === true ? t("・原影片音軌") : "" })}
             </span>
           </div>
         </div>

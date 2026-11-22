@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
+
 
 STAGE_MODULES = {
     "prepare_media": "prepare_media",
@@ -24,11 +25,12 @@ STAGE_MODULES = {
 
 
 def stage_runner(kind: str) -> Callable[[Any], Any]:
+    """Resolve the implementation of the named stage."""
     module_name = STAGE_MODULES.get(kind)
     if module_name is None:
         raise KeyError(kind)
     module = importlib.import_module(f"{__name__}.{module_name}")
-    return module.run
+    return cast("Callable[[Any], Any]", module.run)
 
 
 __all__ = ["STAGE_MODULES", "stage_runner"]

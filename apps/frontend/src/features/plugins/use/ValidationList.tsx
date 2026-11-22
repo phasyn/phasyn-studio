@@ -32,8 +32,8 @@ function FindingBody({ finding }: { finding: RuleFinding }) {
   return (
     <>
       <p className="flex min-w-0 flex-wrap items-center gap-1.5">
-        {place !== null ? <span className="machine rounded border border-line bg-raised/60 px-1 text-caption text-fg">{place}</span> : null}
-        {finding.match !== null ? <mark className="machine rounded bg-danger/15 px-1 text-danger">{finding.match}</mark> : null}
+        {place !== null ? <span className="machine rounded-sm border border-line bg-raised/60 px-1 text-caption text-fg">{place}</span> : null}
+        {finding.match !== null ? <mark className="machine rounded-sm bg-danger/15 px-1 text-danger">{finding.match}</mark> : null}
       </p>
       <p>{finding.message}</p>
     </>
@@ -42,7 +42,7 @@ function FindingBody({ finding }: { finding: RuleFinding }) {
 
 /** 同一個項目在不同鏡頭（或不同角色）各是一列。 */
 function findingKey(finding: RuleFinding): string {
-  return `finding:${finding.ref}:${finding.kind}:${finding.itemId}:${finding.shot ?? ""}:${finding.subject ?? ""}`;
+  return `finding:${finding.ref}:${finding.kind}:${finding.itemId}:${String(finding.shot ?? "")}:${String(finding.subject ?? "")}`;
 }
 
 function GenerationBody({ finding }: { finding: GenerationFinding }) {

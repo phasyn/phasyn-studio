@@ -7,8 +7,10 @@ import { AudioLines, Captions, Clapperboard, Flag, FolderOpen, History, Palette,
 import { useEffect, useEffectEvent, useRef, type ReactNode } from "react";
 import { notePanelToggle } from "@/components/ui/motion";
 import { PanelGroup, type PanelGroupTab } from "@/components/workbench/PanelGroup";
+import { NARROW_HIDDEN, NARROW_PANEL_ROW, panelColumns } from "@/components/workbench/narrowPanels";
 import { Splitter } from "@/components/workbench/Splitter";
 import { t } from "@/i18n";
+import { cn } from "@/lib/cn";
 import { useElementSize } from "@/lib/useElementSize";
 import { usePersistentSize } from "@/lib/usePersistentSize";
 import { useEditor, type EditorPanelId } from "./editorContext";
@@ -59,14 +61,14 @@ const dockLabel = (dock: DockId) => t("{name}面板", { name: DOCKS[dock].label 
 
 /** Marks the frame of a panel group for the key map and gives it the focus on a click or when focus moves inside. */
 function panelFrame(id: EditorPanelId, setPanel: (id: EditorPanelId) => void) {
-  return { "data-editor-panel": id, onPointerDownCapture: () => setPanel(id), onFocusCapture: () => setPanel(id) } as const;
+  return { "data-editor-panel": id, onPointerDownCapture: () => { setPanel(id); }, onFocusCapture: () => { setPanel(id); } } as const;
 }
 
 export function EditWorkspace() {
   const editor = useEditor();
   const { focus, ui } = editor;
-  const body = useRef<HTMLDivElement>(null);
-  const { width, height } = useElementSize(body);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const { width, height } = useElementSize(bodyRef);
   const [layout, setLayout] = useEditLayout(editor.project.project_id);
   const [state, setState] = useLayoutState(layout);
   const wide = width >= WIDE_FROM;
@@ -100,14 +102,14 @@ export function EditWorkspace() {
 
   // Selecting a clip may open its detail panel when that is collapsed, but never changes a tab or the layout
   const selectedId = editor.selected[0] ?? editor.selectedTransition;
-  const known = useRef(selectedId);
+  const knownRef = useRef(selectedId);
   const reveal = useEffectEvent(() => {
     if (dock && !state.dockOpen) setState({ dockOpen: true });
     else if (!dock && !state.topOpen) setState({ topOpen: true });
   });
   useEffect(() => {
-    if (selectedId && selectedId !== known.current) reveal();
-    known.current = selectedId;
+    if ((selectedId != null && selectedId !== "") && selectedId !== knownRef.current) reveal();
+    knownRef.current = selectedId;
   }, [selectedId]);
   // A command (match frame, reveal in project, rename, speed) brings its panel forward
   const intent = ui.intent;
@@ -145,9 +147,9 @@ export function EditWorkspace() {
       side="left"
       tabs={bottomTabs}
       value={bottomTab}
-      onChange={(id) => setState({ bottomTab: bottomTabs.find((tab) => tab.id === id)?.id ?? "project" })}
+      onChange={(id) => { setState({ bottomTab: bottomTabs.find((tab) => tab.id === id)?.id ?? "project" }); }}
       collapsed={!state.bottomOpen}
-      onCollapsedChange={(collapsed) => setState({ bottomOpen: !collapsed })}
+      onCollapsedChange={(collapsed) => { setState({ bottomOpen: !collapsed }); }}
       focused={focus.panel === "project"}
       frameProps={panelFrame("project", focus.setPanel)}
       className={overlay && state.bottomOpen ? "absolute inset-y-0 left-0 z-40 w-[min(26rem,80%)] shadow-popover" : "h-full"}
@@ -160,17 +162,24 @@ export function EditWorkspace() {
     <div className="flex min-h-0 flex-1 flex-col px-1.5 pb-1.5">
       <EditHeader layout={layout} onLayout={chooseLayout} />
       <MigrationNotice />
-      <div ref={body} className="grid min-h-0 flex-1" style={{ gridTemplateRows: `${topHeight}px ${GAP}px minmax(0,1fr)` }}>
-        <div className="grid min-h-0" style={{ gridTemplateRows: "minmax(0,1fr)", gridTemplateColumns: `${sourceWidth}px ${GAP}px minmax(0,1fr)${dock ? ` ${GAP}px ${dockSize}px` : ""}` }}>
+      <div ref={bodyRef} className="grid min-h-0 flex-1" style={{ gridTemplateColumns: "minmax(0,1fr)", gridTemplateRows: `${String(topHeight)}px ${String(GAP)}px minmax(0,1fr)` }}>
+        {/* On a phone the monitors and the dock each take the full width and scroll sideways inside this row (narrowPanels.ts) */}
+        <div
+          className={cn("grid min-h-0 grid-rows-[minmax(0,1fr)]", NARROW_PANEL_ROW)}
+          style={panelColumns(
+            `${String(sourceWidth)}px ${String(GAP)}px minmax(0,1fr)${dock ? ` ${String(GAP)}px ${String(dockSize)}px` : ""}`,
+            `${state.topOpen ? "100%" : `${String(RAIL)}px`} ${String(GAP)}px 100%${dock ? ` ${String(GAP)}px ${state.dockOpen ? "100%" : `${String(RAIL)}px`}` : ""}`,
+          )}
+        >
           <PanelGroup
             idPrefix="studio-edit-top"
             label={t("來源面板")}
             side="left"
             tabs={topTabs}
             value={topTab}
-            onChange={(id) => setState({ topTab: topTabs.find((tab) => tab.id === id)?.id ?? "controls" })}
+            onChange={(id) => { setState({ topTab: topTabs.find((tab) => tab.id === id)?.id ?? "controls" }); }}
             collapsed={!state.topOpen}
-            onCollapsedChange={(collapsed) => setState({ topOpen: !collapsed })}
+            onCollapsedChange={(collapsed) => { setState({ topOpen: !collapsed }); }}
             focused={focus.panel === (topTab === "source" ? "source" : "controls")}
             frameProps={panelFrame(topTab === "source" ? "source" : "controls", focus.setPanel)}
           >
@@ -184,8 +193,9 @@ export function EditWorkspace() {
               min={280}
               max={Math.max(280, monitorsWidth - 320)}
               defaultValue={Math.round(monitorsWidth / 2)}
-              onChange={(next) => setSourceRatio(next / Math.max(1, monitorsWidth))}
+              onChange={(next) => { setSourceRatio(next / Math.max(1, monitorsWidth)); }}
               label={t("調整來源與節目監看器的寬度")}
+              className={NARROW_HIDDEN}
             />
           ) : (
             <div aria-hidden />
@@ -194,7 +204,7 @@ export function EditWorkspace() {
           {dock && dockSpec ? (
             <>
               {state.dockOpen ? (
-                <Splitter grip="always" orientation="vertical" invert value={dockSize} min={320} max={560} defaultValue={dockSpec.width} onChange={setDockWidth} label={t("調整右側面板寬度")} />
+                <Splitter grip="always" orientation="vertical" invert value={dockSize} min={320} max={560} defaultValue={dockSpec.width} onChange={setDockWidth} label={t("調整右側面板寬度")} className={NARROW_HIDDEN} />
               ) : (
                 <div aria-hidden />
               )}
@@ -206,7 +216,7 @@ export function EditWorkspace() {
                 value={dock}
                 onChange={() => undefined}
                 collapsed={!state.dockOpen}
-                onCollapsedChange={(collapsed) => setState({ dockOpen: !collapsed })}
+                onCollapsedChange={(collapsed) => { setState({ dockOpen: !collapsed }); }}
                 focused={focus.panel === "dock"}
                 frameProps={panelFrame("dock", focus.setPanel)}
               >
@@ -222,12 +232,12 @@ export function EditWorkspace() {
           min={TOP_MIN}
           max={topMax}
           defaultValue={Math.round(Math.min(topMax, available * 0.52))}
-          onChange={(next) => setTopRatio(next / Math.max(1, available))}
+          onChange={(next) => { setTopRatio(next / Math.max(1, available)); }}
           label={t("調整監看器與時間軸的高度")}
         />
         <div
           className="relative grid min-h-0"
-          style={{ gridTemplateRows: "minmax(0,1fr)", gridTemplateColumns: `${projectSize}px ${GAP}px ${TOOLS}px ${GAP}px minmax(0,1fr) ${GAP}px ${wide || layout.id === "audio" ? 56 : 44}px` }}
+          style={{ gridTemplateRows: "minmax(0,1fr)", gridTemplateColumns: `${String(projectSize)}px ${String(GAP)}px ${String(TOOLS)}px ${String(GAP)}px minmax(0,1fr) ${String(GAP)}px ${String(wide || layout.id === "audio" ? 56 : 44)}px` }}
         >
           {overlay && state.bottomOpen ? <div aria-hidden /> : null}
           {projectGroup}

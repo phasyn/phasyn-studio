@@ -41,7 +41,7 @@ export function CaptionRow({ caption, index, fps, selected, tabbable, current, o
     if (event.target === event.currentTarget && event.currentTarget.matches(":focus-visible")) onSelect();
   };
   return (
-    <div
+    <div /* eslint-disable-line jsx-a11y-x/click-events-have-key-events -- The focused row delegates its keyboard actions to the parent grid or tree. */
       ref={reveal(index)}
       role="row"
       tabIndex={tabbable ? 0 : -1}

@@ -71,6 +71,7 @@ export const ERROR_CODE_KINDS: Readonly<Record<string, ErrorKind>> = {
   RUN_ACTIVE: "conflict",
   SETTINGS_NOT_LOADED: "conflict",
   STATE_CONFLICT: "conflict",
+  STUDIO_OUTPUT_MISMATCH: "conflict",
   STUDIO_PLUGIN_INSTALL_DISABLED: "conflict",
   STUDIO_PLUGIN_INVALID: "client",
   STUDIO_TIMELINE_REJECTED: "client",

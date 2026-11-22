@@ -14,7 +14,7 @@ export function leaveAfterDeleteError(error: unknown, pipelineId: string): { not
 }
 
 export function readListNotice(state: unknown): PipelineListNotice | null {
-  if (!isRecord(state) || !isRecord(state.notice)) return null;
-  const { kind, pipelineId } = state.notice;
+  if (!isRecord(state) || !isRecord(state["notice"])) return null;
+  const { kind, pipelineId } = state["notice"];
   return kind === "already-deleted" && typeof pipelineId === "string" ? { kind, pipelineId } : null;
 }

@@ -34,6 +34,8 @@ dependencies = [
     "phasyn-components",
     "phasyn-h3",
     "phasyn-captioner",
+    "phasyn-rife",
+    "phasyn-seedvr2",
     "phasyn-media",
 ]
 
@@ -59,6 +61,8 @@ phasyn-components = { path = "../../../packages/components", editable = true }
 phasyn-media = { path = "../../../packages/media", editable = true }
 phasyn-h3 = { path = "../../../runtimes/h3", editable = true }
 phasyn-captioner = { path = "../../../runtimes/captioner", editable = true }
+phasyn-rife = { path = "../../../runtimes/rife", editable = true }
+phasyn-seedvr2 = { path = "../../../runtimes/seedvr2", editable = true }
 
 [[tool.uv.index]]
 name = "pytorch-cu130"

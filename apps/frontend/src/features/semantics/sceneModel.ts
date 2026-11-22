@@ -21,14 +21,14 @@ export function sceneIssues(scene: SceneDocument): SceneIssue[] {
   const frameIds = new Set(scene.evidence.map((frame) => frame.frame_id));
   scene.entities.forEach((entity, index) => {
     const error = localIdError(entity.entity_id, "entity_id ");
-    if (error) issues.push({ path: `entities[${index}].entity_id`, message: error });
-    if (entityIds.indexOf(entity.entity_id) !== index) issues.push({ path: `entities[${index}].entity_id`, message: t("entity_id 重複：{entity_id}", { entity_id: entity.entity_id }) });
+    if (error != null && error !== "") issues.push({ path: `entities[${String(index)}].entity_id`, message: error });
+    if (entityIds.indexOf(entity.entity_id) !== index) issues.push({ path: `entities[${String(index)}].entity_id`, message: t("entity_id 重複：{entity_id}", { entity_id: entity.entity_id }) });
   });
   const eventIds = scene.events.map((event) => event.event_id);
   scene.events.forEach((event, index) => {
-    const base = `events[${index}]`;
+    const base = `events[${String(index)}]`;
     const error = localIdError(event.event_id, "event_id ");
-    if (error) issues.push({ path: `${base}.event_id`, message: error });
+    if (error != null && error !== "") issues.push({ path: `${base}.event_id`, message: error });
     if (eventIds.indexOf(event.event_id) !== index) issues.push({ path: `${base}.event_id`, message: t("event_id 重複：{event_id}", { event_id: event.event_id }) });
     if (!Number.isFinite(event.start_seconds) || event.start_seconds < 0) issues.push({ path: `${base}.start_seconds`, message: t("開始時間必須 ≥ 0") });
     if (!Number.isFinite(event.end_seconds) || event.end_seconds < event.start_seconds) issues.push({ path: `${base}.end_seconds`, message: t("結束時間不可早於開始") });
@@ -163,12 +163,12 @@ export interface SplitCounts {
 
 /** 匯出結果 manifest 的 split 統計與警告（空 split 或樣本很少只警告）。 */
 export function manifestSplitSummary(manifest: unknown): { counts: SplitCounts; total: number; warnings: string[] } | null {
-  if (!isRecord(manifest) || !Array.isArray(manifest.items)) return null;
+  if (!isRecord(manifest) || !Array.isArray(manifest["items"])) return null;
   const counts: SplitCounts = { train: 0, validation: 0, test: 0 };
-  for (const item of manifest.items) {
-    if (isRecord(item) && (item.split === "train" || item.split === "validation" || item.split === "test")) counts[item.split] += 1;
+  for (const item of manifest["items"]) {
+    if (isRecord(item) && (item["split"] === "train" || item["split"] === "validation" || item["split"] === "test")) counts[item["split"]] += 1;
   }
-  const total = manifest.items.length;
+  const total = manifest["items"].length;
   const warnings: string[] = [];
   if (counts.train === 0) warnings.push(t("train 為空"));
   if (counts.validation === 0) warnings.push(t("validation 為空"));

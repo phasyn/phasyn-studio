@@ -1,6 +1,6 @@
 // The Video Studio's one editor instance (provided by EditorProvider): the editing state, the transport, the timeline
 // view and which panel has the focus. Workspaces and panels read it with useEditor().
-import { createContext, useContext } from "react";
+import { createContext, use } from "react";
 import { t } from "@/i18n";
 import type { StudioContextValue } from "../studioContext";
 import type { createEditorDrafts } from "./drafts";
@@ -72,7 +72,7 @@ export interface Editor extends StudioContextValue, EditorState {
 export const EditorContext = createContext<Editor | null>(null);
 
 export function useEditor(): Editor {
-  const value = useContext(EditorContext);
+  const value = use(EditorContext);
   if (!value) throw new Error(t("useEditor 必須在 EditorProvider 內使用"));
   return value;
 }

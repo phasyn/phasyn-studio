@@ -12,7 +12,9 @@ from pathlib import Path
 from typing import Any
 
 from h3_examples import component
+
 from phasyn_h3 import providers
+
 
 MARKERS = {
     "text_encoder": "config.json",
@@ -38,7 +40,13 @@ ROLES = {
 }
 
 
-def snapshot(root: Path, variant: str, present: tuple[str, ...] = tuple(MARKERS), *, index: bool = True) -> None:
+def snapshot(
+    root: Path,
+    variant: str,
+    present: tuple[str, ...] = tuple(MARKERS),
+    *,
+    index: bool = True,
+) -> None:
     base = root / "MiniMax-H3" / variant
     base.mkdir(parents=True, exist_ok=True)
     if index:
@@ -49,7 +57,7 @@ def snapshot(root: Path, variant: str, present: tuple[str, ...] = tuple(MARKERS)
 
 
 def settings(doc: dict[str, Any], root: Path) -> dict[str, Any]:
-    out = copy.deepcopy(doc["settings"])
+    out: dict[str, Any] = copy.deepcopy(doc["settings"])
     out["load"]["model_path"] = str(root)
     adaln = (out["load"].get("provider_options") or {}).get("adaln") or {}
     if adaln.get("mode") == "fixed":  # a fixed AdaLN DiT also needs its sidecar file
@@ -60,14 +68,25 @@ def settings(doc: dict[str, Any], root: Path) -> dict[str, Any]:
 
 
 def reason(component_id: str, root: Path) -> str | None:
-    return providers._missing_files(ROLES[component_id], settings(component(component_id), root))
+    return providers._missing_files(
+        ROLES[component_id], settings(component(component_id), root)
+    )
 
 
-def test_a_text_encoder_node_with_a_partial_variant_dir_is_reported(tmp_path: Path) -> None:
+def test_a_text_encoder_node_with_a_partial_variant_dir_is_reported(
+    tmp_path: Path,
+) -> None:
     snapshot(tmp_path, "Ref2VA")
-    snapshot(tmp_path, "FL2VA", ("tokenizer", "processor"))  # a text-encoder-only copy that stopped at the tokenizer
+    snapshot(
+        tmp_path, "FL2VA", ("tokenizer", "processor")
+    )  # a text-encoder-only copy that stopped at the tokenizer
     text = reason("te-gpu0", tmp_path)
     assert text is not None
-    assert "MiniMax-H3/FL2VA" in text and "text_encoder、transformer、video_vae、audio_vae" in text
-    assert str(tmp_path) not in text  # paths in messages are relative to load.model_path
+    assert (
+        "MiniMax-H3/FL2VA" in text
+        and "text_encoder、transformer、video_vae、audio_vae" in text
+    )
+    assert (
+        str(tmp_path) not in text
+    )  # paths in messages are relative to load.model_path
     assert "hard link" in text

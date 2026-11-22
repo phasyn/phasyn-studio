@@ -62,7 +62,7 @@ export function withTextLayer(timeline: StudioTimeline, source: TimelineSource, 
   const tracks = timeline.tracks.some((item) => item.track_id === track.track_id) ? timeline.tracks : [...timeline.tracks, track];
   const next = { ...timeline, sources: [...timeline.sources, source], tracks, clips: [...timeline.clips, clip] };
   const problem = timelineProblem(next);
-  return problem ? { ok: false, error: problem } : { ok: true, value: { timeline: next, clipId: clip.clip_id } };
+  return (problem != null && problem !== "") ? { ok: false, error: problem } : { ok: true, value: { timeline: next, clipId: clip.clip_id } };
 }
 
 /** The frames a text layer of `seconds` takes from `at`: whole frames, at least one, inside the sequence's bound. */

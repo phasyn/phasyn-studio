@@ -28,7 +28,7 @@ export function EngineSheet({ title, description, loadFailed, children, toolbar,
   const { engineOpen, setEngineOpen } = useStudioShell();
   const client = useQueryClient();
   const [reloading, setReloading] = useState(false);
-  const close = () => setEngineOpen(false);
+  const close = () => { setEngineOpen(false); };
   return (
     <Dialog open={engineOpen} onOpenChange={setEngineOpen}>
       <SheetContent aria-describedby={DESCRIPTION_ID} className={wide ? "w-[min(40rem,96vw)]" : "w-[min(32rem,94vw)]"}>
@@ -47,7 +47,7 @@ export function EngineSheet({ title, description, loadFailed, children, toolbar,
               onClick={() => {
                 if (reloading) return;
                 setReloading(true);
-                void Promise.all([client.invalidateQueries({ queryKey: qk.pipelines() }), client.invalidateQueries({ queryKey: qk.catalog() })]).finally(() => setReloading(false));
+                void Promise.all([client.invalidateQueries({ queryKey: qk.pipelines() }), client.invalidateQueries({ queryKey: qk.catalog() })]).finally(() => { setReloading(false); });
               }}
             >
               {t("重新讀取")}

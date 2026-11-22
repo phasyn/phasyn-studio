@@ -1,4 +1,5 @@
 // 素材或渲染成品的放大預覽（Enter、空白鍵或按兩下）：蓋在素材庫上，←／→ 換上一個／下一個（篩選後的順序），Esc、Enter 或空白鍵關閉。
+import { AssetAudio } from "@/components/common/AssetMedia";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { motion } from "motion/react";
 import { useEffect, useRef } from "react";
@@ -63,19 +64,19 @@ export function LibraryPreview({ media, position, total, onStep, onClose }: { me
         ) : (
           <div className="grid w-[min(36rem,100%)] justify-items-center gap-4">
             <KindIcon kind="audio" className="size-16" />
-            <audio src={url} controls autoPlay className="w-full" />
+            <AssetAudio src={url} controls autoPlay className="w-full" />
           </div>
         )}
       </motion.div>
       <div className="flex min-w-0 items-center gap-3">
-        <button type="button" onClick={() => onStep(-1)} disabled={total < 2} aria-label={t("上一個素材")} className={cn(HUD_BUTTON, "size-9")}>
+        <button type="button" onClick={() => { onStep(-1); }} disabled={total < 2} aria-label={t("上一個素材")} className={cn(HUD_BUTTON, "size-9")}>
           <ChevronLeft aria-hidden />
         </button>
         <div className="grid min-w-0 flex-1 justify-items-center">
           <p className="max-w-full truncate text-data font-medium text-fg">{media.name}</p>
-          <p className="machine text-caption text-fg-tertiary">{joinInline([`${position + 1} / ${total}`, ...media.facts])}</p>
+          <p className="machine text-caption text-fg-tertiary">{joinInline([`${String(position + 1)} / ${String(total)}`, ...media.facts])}</p>
         </div>
-        <button type="button" onClick={() => onStep(1)} disabled={total < 2} aria-label={t("下一個素材")} className={cn(HUD_BUTTON, "size-9")}>
+        <button type="button" onClick={() => { onStep(1); }} disabled={total < 2} aria-label={t("下一個素材")} className={cn(HUD_BUTTON, "size-9")}>
           <ChevronRight aria-hidden />
         </button>
         <button type="button" onClick={onClose} aria-label={t("關閉預覽")} title={t("關閉預覽（Esc）")} className={cn(HUD_BUTTON, "size-9")}>

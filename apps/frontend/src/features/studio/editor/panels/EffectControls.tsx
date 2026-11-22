@@ -13,7 +13,7 @@ export function EffectControls() {
   const { timeline, selectedClip, selectedTransition } = editor;
   const request = useFieldRequest(editor);
   // A transition is selected by the id of its outgoing clip; one that was removed since (an undo) is no selection
-  const outgoing = selectedTransition ? timeline.clips.find((clip) => clip.clip_id === selectedTransition) : undefined;
+  const outgoing = (selectedTransition != null && selectedTransition !== "") ? timeline.clips.find((clip) => clip.clip_id === selectedTransition) : undefined;
   const transition = outgoing ? activeTransition(outgoing.effects) : null;
   if (outgoing && transition) return <TransitionControls key={outgoing.clip_id} clip={outgoing} transition={transition} />;
   if (!selectedClip) {

@@ -21,7 +21,7 @@ describe("下一批與取消範圍", () => {
     const project = newProject("p");
     const runId = "00000000-0000-4000-8000-0000000000aa";
     const done = { ...newShot(project), takes: [take({ run_id: runId, output_key: "final_0", state: "succeeded" })] };
-    const rendering = [1, 2].map((n) => ({ ...newShot(project), takes: [take({ run_id: runId, output_key: `final_${n}`, state: "rendering", asset: null })] }));
+    const rendering = [1, 2].map((n) => ({ ...newShot(project), takes: [take({ run_id: runId, output_key: `final_${String(n)}`, state: "rendering", asset: null })] }));
     const other = { ...newShot(project), takes: [take({ run_id: "other", state: "rendering", asset: null })] };
     const progress = progressOf({
       segments: [segment(done, 0, "done"), ...rendering.map((shot, index) => segment(shot, index + 1, "rendering")), segment(other, 3, "rendering")],

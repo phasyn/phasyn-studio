@@ -24,7 +24,7 @@ function PipelineUsage({ nodeId, componentId }: { nodeId: string; componentId: s
   if (pipelines.isError && !pipelines.data) {
     return <ErrorCallout error={pipelines.error} title={t("無法確認哪些元件組合使用它（刪除仍可進行）")} onRetry={() => void pipelines.refetch()} retrying={pipelines.isFetching} />;
   }
-  const uses = pipelinesUsing(pipelines.data?.items ?? [], nodeId, componentId);
+  const uses = pipelinesUsing(pipelines.data.items, nodeId, componentId);
   if (uses.length === 0) return <p className="text-caption text-fg-tertiary">{t("目前沒有元件組合使用它。")}</p>;
   return (
     <ul aria-label={t("使用它的元件組合")} className="grid gap-1 rounded-md border border-line-subtle bg-sunken px-3 py-2">
@@ -65,16 +65,16 @@ export function DeleteInstanceDialog({
   const name = descriptor.label || descriptor.component_id;
 
   const confirm = () => {
-    if (blocked || remove.isPending) return;
+    if ((blocked ?? "") || remove.isPending) return;
     // mutateAsync：即使檢視器在完成前因目錄更新而卸載，頁面仍會收到結果。
     void remove.mutateAsync().then(
-      () => onDeleted(node.node_id, descriptor.component_id),
+      () => { onDeleted(node.node_id, descriptor.component_id); },
       () => undefined,
     );
   };
 
   return (
-    <Dialog open={open} onOpenChange={(next) => (remove.isPending ? undefined : onOpenChange(next))}>
+    <Dialog open={open} onOpenChange={(next) => { if (!(remove.isPending)) { onOpenChange(next); } }}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("刪除 instance「{name}」？", { name })}</DialogTitle>
@@ -90,7 +90,7 @@ export function DeleteInstanceDialog({
             <li>{t("使用它的元件組合會顯示「未知元件」，要改選其他 instance 才能執行。")}</li>
           </ul>
           <PipelineUsage nodeId={node.node_id} componentId={descriptor.component_id} />
-          {blocked ? <p className="text-caption text-warning">{t("{blocked}。", { blocked })}</p> : null}
+          {(blocked != null && blocked !== "") ? <p className="text-caption text-warning">{t("{blocked}。", { blocked })}</p> : null}
           {remove.isError ? (
             <ErrorCallout error={remove.error} write title={t("沒有刪除")}>
               {gone ? <p className="text-caption text-fg-secondary">{t("Node 上已經沒有這個 instance（可能已在其他地方刪除）；目錄更新後就不會再列出。")}</p> : null}
@@ -98,7 +98,7 @@ export function DeleteInstanceDialog({
           ) : null}
         </DialogBody>
         <DialogFooter>
-          <Button variant="quiet" onClick={() => onOpenChange(false)} disabled={remove.isPending}>
+          <Button variant="quiet" onClick={() => { onOpenChange(false); }} disabled={remove.isPending}>
             {t("取消")}
           </Button>
           <Button variant="danger-confirm" icon={<Trash2 aria-hidden />} pending={remove.isPending} disabled={Boolean(blocked) || remove.isPending} title={blocked ?? undefined} onClick={confirm}>

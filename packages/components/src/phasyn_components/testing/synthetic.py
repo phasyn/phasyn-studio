@@ -28,6 +28,7 @@ from ..provider import BaseProvider, Description, Port, RunContext, settings_sch
 from ..recorder.metrics import metric
 from ..settings import normalize_recording
 
+
 LATENT_SPACE = "test.synthetic-rgbdiv8.v1"
 BINDING = "test.synthetic.identity.v1"
 MANIFEST_MEDIA_TYPE = "application/vnd.phasyn.latent-manifest+json"
@@ -44,7 +45,7 @@ LATENT_PARAMS: dict[str, dict[str, Any]] = {
 }
 
 
-def write_latent_manifest(
+def write_latent_manifest(  # noqa: PLR0913 - Keep the published positional and keyword API.
     ctx: RunContext,
     *,
     tensor: Any,
@@ -59,7 +60,7 @@ def write_latent_manifest(
     blob_media_type: str = "application/octet-stream",
     extra_metadata: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """寫 final latent：blob 寫入時算 SHA 一次；manifest canonical bytes 另算 SHA。回傳主檔 TypedValue。"""
+    """寫 final latent：blob 寫入時算 SHA 一次；manifest canonical bytes 另算 SHA。回傳主檔 TypedValue."""
     blob = ctx.new_file(
         None,
         blob_media_type,
@@ -121,35 +122,49 @@ def write_latent_manifest(
 
 
 def node_id_of(ctx: RunContext) -> str:
+    """Read the node identity associated with the fixture context."""
     return str(ctx.recorder.node_id)
 
 
-def read_latent_input(ctx: RunContext, port: str = "latent") -> tuple[dict[str, Any], str, Path, dict[str, Any]]:
-    """讀 final latent 輸入：回傳 (manifest, manifest_sha256, blob_path, latent_ref)。
+def read_latent_input(
+    ctx: RunContext, port: str = "latent"
+) -> tuple[dict[str, Any], str, Path, dict[str, Any]]:
+    """讀 final latent 輸入：回傳 (manifest, manifest_sha256, blob_path, latent_ref).
 
     來源身分檢查：manifest 內 blob 的 SHA 必須等於實際附檔 FileRef 的 SHA；否則 LATENT_SOURCE_MISMATCH。
     """
     item = ctx.input(port)
     if item.file is None or item.path is None:
-        raise ComponentError("INVALID_ARGUMENT", f"{port} 需要 final latent manifest 檔")
+        raise ComponentError(
+            "INVALID_ARGUMENT", f"{port} 需要 final latent manifest 檔"
+        )
     data = item.path.read_bytes()
     manifest_sha = hashlib.sha256(data).hexdigest()
     try:
         manifest = json.loads(data)
     except ValueError as exc:
-        raise ComponentError("LATENT_MISMATCH", f"latent manifest 不是有效 JSON：{exc}") from exc
+        raise ComponentError(
+            "LATENT_MISMATCH", f"latent manifest 不是有效 JSON：{exc}"
+        ) from exc
     if manifest.get("stage") != "final":
         raise ComponentError("LATENT_MISMATCH", "輸入不是 final latent manifest")
     link = item.links.get("blob")
     if link is None:
-        raise ComponentError("LATENT_SOURCE_MISMATCH", "latent manifest 沒有附帶 blob 檔")
+        raise ComponentError(
+            "LATENT_SOURCE_MISMATCH", "latent manifest 沒有附帶 blob 檔"
+        )
     blob_ref, blob_path = link
     declared = manifest.get("blob") or {}
-    if declared.get("sha256") != blob_ref.get("sha256") or declared.get("file_id") != blob_ref.get("file_id"):
+    if declared.get("sha256") != blob_ref.get("sha256") or declared.get(
+        "file_id"
+    ) != blob_ref.get("file_id"):
         raise ComponentError(
             "LATENT_SOURCE_MISMATCH",
             "manifest 宣告的 blob 與實際附檔不同（同源 final 不可誤用另一份 latent）",
-            details={"manifest_blob_sha256": declared.get("sha256"), "linked_blob_sha256": blob_ref.get("sha256")},
+            details={
+                "manifest_blob_sha256": declared.get("sha256"),
+                "linked_blob_sha256": blob_ref.get("sha256"),
+            },
         )
     latent_ref = {
         "latent_id": manifest.get("latent_id"),
@@ -172,38 +187,83 @@ def read_latent_input(ctx: RunContext, port: str = "latent") -> tuple[dict[str, 
 
 
 class SyntheticLatentProvider(BaseProvider):
+    """CPU fixture that publishes synthetic latent data."""
+
     provider_id = "test.synthetic_latent"
 
     @classmethod
-    def describe(cls, settings: Mapping[str, Any] | None) -> Description:
+    def describe(cls, settings: Mapping[str, Any] | None) -> Description:  # noqa: ARG003 - Provider lifecycle accepts this parameter by contract.
+        """Describe the provider and its supported inputs and outputs."""
         return Description(
             provider_id=cls.provider_id,
             kind="test.synthetic_latent",
             label="合成 final latent（test fixture；不是 DiT）",
-            inputs=[Port("prompt", "text.prompt.v1", False, "inline", "只記錄於 context，不影響內容")],
-            outputs=[Port("video_latent", "video.final-latent.v1", True, "file", "合成 latent manifest（附 blob）")],
-            settings_schema=settings_schema(invoke_properties=LATENT_PARAMS, device_kinds=("cpu",)),
-            parameters_schema={"type": "object", "properties": LATENT_PARAMS, "additionalProperties": False},
+            inputs=[
+                Port(
+                    "prompt",
+                    "text.prompt.v1",
+                    required=False,
+                    transport="inline",
+                    description="只記錄於 context，不影響內容",
+                )
+            ],
+            outputs=[
+                Port(
+                    "video_latent",
+                    "video.final-latent.v1",
+                    required=True,
+                    transport="file",
+                    description="合成 latent manifest（附 blob）",
+                )
+            ],
+            settings_schema=settings_schema(
+                invoke_properties=LATENT_PARAMS, device_kinds=("cpu",)
+            ),
+            parameters_schema={
+                "type": "object",
+                "properties": LATENT_PARAMS,
+                "additionalProperties": False,
+            },
             default_settings={
-                "load": {"device": {"kind": "cpu", "id": "cpu", "resource_group": "cpu-fixture"}},
+                "load": {
+                    "device": {
+                        "kind": "cpu",
+                        "id": "cpu",
+                        "resource_group": "cpu-fixture",
+                    }
+                },
                 "invoke": {},
                 "recording": normalize_recording({"mode": "detailed"}),
             },
             synthetic=True,
+            facts={
+                "studio_generation": {
+                    "version": 1,
+                    "parameters": {k: k for k in ("width", "height", "frames", "seed")},
+                }
+            },
         )
 
     def invoke(self, ctx: RunContext) -> None:
-        import numpy as np
+        """Perform one invocation using the supplied context."""
+        import numpy as np  # noqa: PLC0415 - NumPy is needed only for the synthetic latent provider.
 
-        p: dict[str, Any] = {k: v.get("default") for k, v in LATENT_PARAMS.items()} | dict(ctx.parameters)
+        p: dict[str, Any] = {
+            k: v.get("default") for k, v in LATENT_PARAMS.items()
+        } | dict(ctx.parameters)
         width, height, frames = int(p["width"]), int(p["height"]), int(p["frames"])
         if width % (2 * SPATIAL) or height % (2 * SPATIAL):
-            raise ComponentError("INVALID_ARGUMENT", f"合成 latent 的寬高需為 {2 * SPATIAL} 的倍數（不偷偷裁切）")
+            raise ComponentError(
+                "INVALID_ARGUMENT",
+                f"合成 latent 的寬高需為 {2 * SPATIAL} 的倍數（不偷偷裁切）",
+            )
         rng = np.random.default_rng(int(p["seed"]))
         shape = (1, int(p["channels"]), frames, height // SPATIAL, width // SPATIAL)
         with ctx.recorder.span("synthetic.generate", part="synthetic.latent"):
             base = rng.standard_normal(shape, dtype=np.float32)
-            ramp = np.linspace(-1.0, 1.0, frames, dtype=np.float32).reshape(1, 1, frames, 1, 1)
+            ramp = np.linspace(-1.0, 1.0, frames, dtype=np.float32).reshape(
+                1, 1, frames, 1, 1
+            )
             tensor = (base * 0.35 + ramp).astype("<f2")
         write_latent_manifest(
             ctx,
@@ -217,13 +277,26 @@ class SyntheticLatentProvider(BaseProvider):
                 "frames": frames,
                 "fps": {"num": int(p["fps_num"]), "den": int(p["fps_den"])},
             },
-            generator_identity={"provider_id": self.provider_id, "synthetic": True, "seed": int(p["seed"])},
-            binding={"binding_id": BINDING, "spatial_factor": SPATIAL, "temporal_factor": 1},
+            generator_identity={
+                "provider_id": self.provider_id,
+                "synthetic": True,
+                "seed": int(p["seed"]),
+            },
+            binding={
+                "binding_id": BINDING,
+                "spatial_factor": SPATIAL,
+                "temporal_factor": 1,
+            },
             domain="test.synthetic",
         )
         ctx.recorder.put_metric(
             "output_frame_count",
-            metric("output_frame_count", None, quality="not_applicable", reason="latent 尚未解碼成影格"),
+            metric(
+                "output_frame_count",
+                None,
+                quality="not_applicable",
+                reason="latent 尚未解碼成影格",
+            ),
         )
 
 

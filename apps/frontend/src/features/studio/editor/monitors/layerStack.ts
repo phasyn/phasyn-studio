@@ -120,7 +120,7 @@ function applyMask(layer: CanvasRenderingContext2D, mask: LookMask): void {
     const gradient = layer.createLinearGradient(line[0] ?? 0, line[1] ?? 0, line[2] ?? 0, line[3] ?? 0);
     const inside = mask.stops.filter(([position]) => position > 0 && position < 1);
     const stops: Stop[] = [[0, stopAlpha(mask.stops, 0, 1)], ...inside, [1, stopAlpha(mask.stops, 1, -1)]];
-    for (const [position, alpha] of stops) gradient.addColorStop(position, `rgba(0, 0, 0, ${clamp01(alpha)})`);
+    for (const [position, alpha] of stops) gradient.addColorStop(position, `rgba(0, 0, 0, ${String(clamp01(alpha))})`);
     layer.globalCompositeOperation = "destination-in";
     layer.fillStyle = gradient;
     layer.fillRect(0, 0, width, height);

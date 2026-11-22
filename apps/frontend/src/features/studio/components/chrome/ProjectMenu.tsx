@@ -1,7 +1,10 @@
-// Video Studio's project menu: the shell's project switcher, then the current project's settings and a new-project
-// form that also picks the video format. The same form is the project home's "new project" panel.
+// Video Studio's project menu: the shell's project switcher with, for the current project, only what belongs to the
+// project itself — its settings (name, frame format, defaults for new shots), the keyboard shortcuts and the plugin
+// manager — and a new-project form that also picks the video format (the project list page uses the same form). Work
+// (renders, fixes, exports…) lives in the 工作 list, delivery (export, interchange, portable package) in the export
+// dialog, production recipes in the shot's 修正 menu. Beside the pill sits the 影片｜圖片 Studio switch.
 import { useId, useState } from "react";
-import { FolderPlus, Keyboard, Puzzle, Replace } from "lucide-react";
+import { FolderPlus, Keyboard, PackageOpen, Puzzle, Replace } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/cn";
 import { useNavigate, useSearchParams } from "react-router";
@@ -11,16 +14,19 @@ import { usePipelines } from "@/api/pipelines";
 import { openPluginManager, PluginManagerHost } from "@/features/plugins";
 import { NewProjectForm, ProjectSwitcher, type NewProjectFormProps } from "@/features/studio-shell";
 import { formatTimestamp } from "@/lib/format";
+import { DEFAULT_FRAMES } from "../../model/frames";
+import { frameLimits } from "../../model/studioGenerationBinding";
 import { FORMAT_PRESETS, newProject } from "../../model/project";
 import { deriveStudioRoutes, pickDefaultRoute } from "../../model/routes";
 import { useStudio } from "../../studioContext";
 import { projectHref } from "../../workspaces";
-import { ExportDialog } from "../ExportDialog";
 import { FormatPicker } from "../FormatPicker";
+import { PortableImport } from "../PortableProject";
 import { ProjectSettings } from "../ProjectSettings";
 import { openShortcuts } from "../../model/shortcuts";
 import { SWAP_URL_PARAM } from "../../swap/job";
 import { t } from "@/i18n";
+import { useFilmProgress } from "../../hooks/useFilmProgress";
 
 export function VideoProjectForm({ onCreated, initialFocus }: { onCreated: (projectId: string) => void; initialFocus?: NewProjectFormProps["initialFocus"] }) {
   const pipelines = usePipelines();
@@ -29,16 +35,31 @@ export function VideoProjectForm({ onCreated, initialFocus }: { onCreated: (proj
   const [size, setSize] = useState(() => ({ width: FORMAT_PRESETS[0]?.width ?? 768, height: FORMAT_PRESETS[0]?.height ?? 448 }));
   const build = (title: string) => {
     // 新專案的預設路由：文字生成（t2va）優先、就緒優先；還讀不到元件組合時是「未指定」，之後在鏡頭的「生成」分頁選擇
-    const route = pickDefaultRoute(deriveStudioRoutes(pipelines.data?.items, catalog.data))?.id;
-    return newProject(title, { width: size.width, height: size.height, route });
+    const route = pickDefaultRoute(deriveStudioRoutes(pipelines.data?.items, catalog.data));
+    if (!route) return newProject(title, size);
+    const limits = frameLimits([route]);
+    let frames = DEFAULT_FRAMES;
+    if (!limits.allows(frames)) {
+      const bound = route.steps.flatMap(({ step, slot }) => (route.generationBinding?.byStep.get(step.step_id) ?? [])
+        .filter((field) => field.field === "frames").map(({ name, schema }) => step.parameters[name] ?? slot.component?.settings.stored.invoke[name] ?? schema["default"]));
+      const preferred = bound.find((value): value is number => typeof value === "number" && limits.allows(value));
+      if (preferred !== undefined) frames = preferred;
+      else {
+        for (let count = limits.min; count <= limits.max; count += 1) {
+          if (limits.allows(count)) { frames = count; break; }
+        }
+      }
+      if (!limits.allows(frames)) return newProject(title, size);
+    }
+    return newProject(title, { ...size, route: route.id, frames, fps: route.generationBinding?.fixedFps ?? { num: 24, den: 1 } });
   };
   return (
-    <NewProjectForm build={build} onCreated={onCreated} initialFocus={initialFocus} placeholder={t("例如：海岸短片")}>
+    <NewProjectForm build={build} onCreated={onCreated} {...(initialFocus === undefined ? {} : { initialFocus })} placeholder={t("例如：海岸短片")}>
       <div className="grid gap-1">
         <label htmlFor={formatId} className="text-caption font-medium text-fg-secondary">
           {t("畫面格式")}
         </label>
-        <FormatPicker id={formatId} compact={false} width={size.width} height={size.height} onChange={(width, height) => setSize({ width, height })} />
+        <FormatPicker id={formatId} compact={false} width={size.width} height={size.height} onChange={(width, height) => { setSize({ width, height }); }} />
       </div>
     </NewProjectForm>
   );
@@ -47,25 +68,27 @@ export function VideoProjectForm({ onCreated, initialFocus }: { onCreated: (proj
 const NO_PLUGIN_REFS: readonly string[] = [];
 
 const projectMeta = (item: StudioProjectSummary) =>
-  t("{shot_count} 個鏡頭・已渲染 {rendered_shot_count}・{updated_at}", { shot_count: item.shot_count, rendered_shot_count: item.rendered_shot_count, updated_at: formatTimestamp(item.updated_at) });
+  // The rendered count is the table's 已渲染 column (the Studio's own count); the tooltip does not repeat the summary's
+  t("{shot_count} 個鏡頭・{updated_at}", { shot_count: item.shot_count, updated_at: formatTimestamp(item.updated_at) });
 
-/** 新增專案：先選類型——一般專案（名稱與畫面格式）或一鍵換角專案（開啟換角精靈，完成後建立新專案）。 */
+/** 新增專案：先選類型——一般專案（名稱與畫面格式）、一鍵換角專案（開啟換角精靈，完成後建立新專案）或從可攜包匯入。 */
 function NewProjectChooser({ onCreated, onSwap }: { onCreated: (projectId: string) => void; onSwap: () => void }) {
-  const [kind, setKind] = useState<"plain" | "swap">("plain");
+  const [kind, setKind] = useState<"plain" | "swap" | "portable">("plain");
   const options = [
     { id: "plain" as const, icon: FolderPlus, label: t("一般專案"), hint: t("自己寫鏡頭的 prompt、渲染並剪輯。") },
     { id: "swap" as const, icon: Replace, label: t("一鍵換角專案"), hint: t("上傳一段影片，依切鏡自動分段，把片中的角色換成你的角色圖並接成一支影片。") },
+    { id: "portable" as const, icon: PackageOpen, label: t("匯入可攜包"), hint: t("把另一個工作站下載的專案可攜包（.zip）匯入成新專案。") },
   ];
   return (
     <div className="grid gap-4">
-      <div role="radiogroup" aria-label={t("專案類型")} className="grid gap-2 sm:grid-cols-2">
+      <div role="radiogroup" aria-label={t("專案類型")} className="grid gap-2">
         {options.map((item) => (
           <button
             key={item.id}
             type="button"
             role="radio"
             aria-checked={kind === item.id}
-            onClick={() => setKind(item.id)}
+            onClick={() => { setKind(item.id); }}
             className={cn(
               "pressable grid content-start gap-1.5 rounded-xl border p-3 text-left transition-colors duration-(--duration-fast)",
               kind === item.id ? "border-brand-blue/60 bg-brand-gradient-soft shadow-glow-sm" : "border-line-subtle hover:border-line-strong hover:bg-raised/60",
@@ -81,6 +104,8 @@ function NewProjectChooser({ onCreated, onSwap }: { onCreated: (projectId: strin
       </div>
       {kind === "plain" ? (
         <VideoProjectForm onCreated={onCreated} />
+      ) : kind === "portable" ? (
+        <PortableImport onImported={onCreated} />
       ) : (
         <Button variant="primary" icon={<Replace aria-hidden />} onClick={onSwap}>
           {t("開始設定一鍵換角")}
@@ -100,14 +125,13 @@ function ProjectManager({ workspace }: { workspace: string }) {
       description={t("每個專案是一組鏡頭與一條時間軸，保存在主控上（不同瀏覽器看到的是同一份）。")}
       // The pill truncates a long title (the toolbar is shared with the workspace tabs): the tooltip gives it in full
       hint={t("{title}\n切換專案、修改目前專案的設定或新增專案", { title: project.title })}
-      metaOf={projectMeta}
+      metaOf={projectMeta} useProgress={useFilmProgress}
       onSelect={open}
       renderDetails={(_item, current, close) =>
         current ? (
           <>
-            {/* 目前專案的動作：匯出成片與鍵盤快速鍵（時間軸工具列不再放這些按鈕） */}
+            {/* 目前專案自己的東西：快速鍵與插件管理（匯出在「匯出」對話框，工作紀錄在「工作」清單） */}
             <div className="flex flex-wrap items-center gap-2">
-              <ExportDialog />
               <Button
                 size="sm"
                 variant="secondary"
@@ -163,12 +187,12 @@ function ProjectPluginManager() {
   const { project, dispatch, notify } = useStudio();
   return (
     <PluginManagerHost
-      onNotice={(tone, title) => notify({ tone, title })}
+      onNotice={(tone, title) => { notify({ tone, title }); }}
       project={{
         projectId: project.project_id,
         title: project.title,
         refs: project.prompt_plugins ?? NO_PLUGIN_REFS,
-        onRefsChange: (plugins) => dispatch({ type: "setPromptPlugins", plugins }),
+        onRefsChange: (plugins) => { dispatch({ type: "setPromptPlugins", plugins }); },
       }}
     />
   );

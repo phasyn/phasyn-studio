@@ -52,16 +52,16 @@ export function SwapWizard(props: SwapWizardProps) {
   const { api, problems, create } = props;
   const step = api.draft.step;
   const index = STEP_IDS.indexOf(step);
-  const goto = (next: StepId) => api.update({ step: next });
+  const goto = (next: StepId) => { api.update({ step: next }); };
   const creating = create.phase !== "idle";
   const blockedStep = STEP_IDS.find((id) => problems[id].length > 0) ?? null;
   const createReason = blockedStep ? t("{blockedStep}：{value}", { blockedStep: STEP_LABELS[blockedStep], value: problems[blockedStep][0] ?? "" }) : null;
-  const startsRender = api.draft.startRender && !props.renderBlockedReason;
+  const startsRender = api.draft.startRender && !(props.renderBlockedReason != null && props.renderBlockedReason !== "");
   const swapMotion = useContentSwapMotion<HTMLDivElement>();
   // 步驟流程：目前步驟＝active；沒有待處理的問題＝done；還有問題＝pending（detail 是第一個問題，完整文字在 title 與底部提示）
   const flow: StepperStep[] = STEP_IDS.map((id) => {
     const issue = problems[id][0];
-    return { id, label: STEP_LABELS[id], state: id === step ? "active" : issue ? "pending" : "done", detail: id !== step && issue ? issue : undefined };
+    return { id, label: STEP_LABELS[id], state: id === step ? "active" : (issue != null && issue !== "") ? "pending" : "done", ...(id !== step && (issue != null && issue !== "") ? { detail: issue } : {}) };
   });
   const select = (id: string) => {
     const next = STEP_IDS.find((item) => item === id);
@@ -71,8 +71,8 @@ export function SwapWizard(props: SwapWizardProps) {
     <>
       <div className="flex min-h-0 flex-1 flex-col">
         {/* 方向鍵／Home／End 在步驟之間移動焦點（沿用舊的步驟清單）；Enter／Space 前往由按鈕本身處理 */}
-        <div className="shrink-0 border-b border-line-subtle px-6 py-3 max-md:px-4" onKeyDown={moveStepFocus}>
-          <Stepper label={t("換角步驟")} steps={flow} onSelect={creating ? undefined : select} />
+        <div /* eslint-disable-line jsx-a11y-x/no-static-element-interactions -- Keyboard events from this panel’s focusable controls bubble here so navigation and dismissal share one handler. */  className="shrink-0 border-b border-line-subtle px-6 py-3 max-md:px-4" onKeyDown={moveStepFocus}>
+          <Stepper label={t("換角步驟")} steps={flow} {...(creating ? {} : { onSelect: select })} />
         </div>
         {/* 捲動區以步驟為 key：換步驟時從頂端開始；外層偵測到內容被換掉時淡入 */}
         <div ref={swapMotion} className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -110,7 +110,7 @@ export function SwapWizard(props: SwapWizardProps) {
         ) : (
           <>
             <p className="min-w-0 flex-1 truncate text-caption text-warning" title={problems[step][0]}>
-              {problems[step][0] ? (
+              {(problems[step][0] != null && problems[step][0] !== "") ? (
                 <>
                   <TriangleAlert aria-hidden className="mr-1 inline size-3.5 align-[-2px]" />
                   {problems[step][0]}
@@ -119,11 +119,11 @@ export function SwapWizard(props: SwapWizardProps) {
             </p>
             <div className="flex items-center gap-2">
               {/* 停用時仍可聚焦（ActionButton）：回到第一步時焦點不會掉到頁面上 */}
-              <ActionButton variant="secondary" icon={<ArrowLeft aria-hidden />} disabledReason={index <= 0 ? t("已經是第一步") : null} onClick={() => goto(STEP_IDS[index - 1] ?? step)}>
+              <ActionButton variant="secondary" icon={<ArrowLeft aria-hidden />} disabledReason={index <= 0 ? t("已經是第一步") : null} onClick={() => { goto(STEP_IDS[index - 1] ?? step); }}>
                 {t("上一步")}
               </ActionButton>
               {index < STEP_IDS.length - 1 ? (
-                <ActionButton variant="secondary" icon={<ArrowRight aria-hidden />} disabledReason={problems[step][0] ?? null} onClick={() => goto(STEP_IDS[index + 1] ?? step)}>
+                <ActionButton variant="secondary" icon={<ArrowRight aria-hidden />} disabledReason={problems[step][0] ?? null} onClick={() => { goto(STEP_IDS[index + 1] ?? step); }}>
                   {t("下一步")}
                 </ActionButton>
               ) : (
@@ -174,7 +174,7 @@ const CREATE_FLOW: Record<CreateState["steps"][keyof CreateState["steps"]]["stat
 function CreateProgress({ state }: { state: CreateState }) {
   const flow: StepperStep[] = CREATE_STEPS.map((item) => {
     const step = state.steps[item.id];
-    return { id: item.id, label: item.label, state: CREATE_FLOW[step.state], detail: step.state === "skipped" ? t("略過") : undefined };
+    return { id: item.id, label: item.label, state: CREATE_FLOW[step.state], ...(step.state === "skipped" ? { detail: t("略過") } : {}) };
   });
   return (
     <div className="grid gap-4">
@@ -196,7 +196,7 @@ function CreateProgress({ state }: { state: CreateState }) {
                 <span className="min-w-0 [overflow-wrap:anywhere]">{item.label}</span>
                 <span className={cn("text-caption", spec.className)}>{spec.label}</span>
               </span>
-              {step.detail ? <span className={cn("text-caption [overflow-wrap:anywhere]", step.state === "failed" ? "text-danger" : "text-fg-tertiary")}>{step.detail}</span> : <span />}
+              {(step.detail != null && step.detail !== "") ? <span className={cn("text-caption [overflow-wrap:anywhere]", step.state === "failed" ? "text-danger" : "text-fg-tertiary")}>{step.detail}</span> : <span />}
             </li>
           );
         })}
@@ -213,7 +213,7 @@ function CreateProgress({ state }: { state: CreateState }) {
 }
 
 function CreateActions({ state, onRetry, onOpen, onBack }: { state: CreateState; onRetry: () => void; onOpen: () => void; onBack: () => void }) {
-  const failedStep = (Object.keys(state.steps) as (keyof CreateState["steps"])[]).find((id) => state.steps[id].state === "failed");
+  const failedStep = CREATE_STEPS.find(({ id }) => state.steps[id].state === "failed")?.id;
   // 連線中斷的 run 建立結果未知：不提供重送（避免重複的 GPU 工作），先開啟專案或到紀錄確認
   const canRetry = state.phase === "failed" && !(failedStep === "render" && state.unknown);
   return (

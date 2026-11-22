@@ -12,12 +12,13 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from functools import cache, lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import ValidationError, best_match
 from referencing import Registry, Resource
 from referencing.jsonschema import DRAFT202012
+
 
 BASE_URI = "https://contracts.phasyn-studio.invalid/"
 SCHEMA_DIR = Path(__file__).resolve().parent / "schemas"
@@ -27,17 +28,22 @@ _MARKER = "tensor-bundle.schema.json"
 
 @lru_cache(maxsize=1)
 def contracts_dir() -> Path:
+    """Locate the contract directory used by the runtime."""
     if not (SCHEMA_DIR / _MARKER).is_file():
-        raise FileNotFoundError(f"H3 recipe 契約目錄缺少 {_MARKER}（套件資料不完整，請重新安裝 phasyn-h3）")
+        raise FileNotFoundError(
+            f"H3 recipe 契約目錄缺少 {_MARKER}（套件資料不完整，請重新安裝 phasyn-h3）"
+        )
     return SCHEMA_DIR
 
 
 def schema_names() -> list[str]:
+    """List the registered contract schema names."""
     return sorted(p.name for p in contracts_dir().glob("*.schema.json"))
 
 
 @cache
 def load_contract(name: str) -> Any:
+    """Read the requested contract from the schema directory."""
     path = contracts_dir() / name
     if path.parent != contracts_dir() or not path.is_file():
         raise FileNotFoundError(name)
@@ -48,7 +54,9 @@ def load_contract(name: str) -> Any:
 def registry() -> Registry:
     reg: Registry = Registry()
     for name in schema_names():
-        resource = Resource.from_contents(load_contract(name), default_specification=DRAFT202012)
+        resource = Resource.from_contents(
+            load_contract(name), default_specification=DRAFT202012
+        )
         reg = reg.with_resource(BASE_URI + name, resource)
     return reg
 
@@ -60,6 +68,8 @@ def _validator_for_name(name: str) -> Draft202012Validator:
 
 @dataclass(frozen=True)
 class Issue:
+    """Locate a validation issue in an H3 contract."""
+
     field_path: str
     message: str
     validator: str
@@ -75,41 +85,37 @@ def dotted_path(parts: Iterable[Any]) -> str:
     return out
 
 
+_VALIDATION_MESSAGES = {
+    "additionalProperties": "不允許未知欄位",
+    "type": "型別錯誤，需要 {value}",
+    "pattern": "格式不符合規則",
+    "minimum": "數值低於下限 {value}",
+    "exclusiveMinimum": "數值低於下限 {value}",
+    "maximum": "數值超過上限 {value}",
+    "exclusiveMaximum": "數值超過上限 {value}",
+    "minLength": "字串長度至少 {value}",
+    "maxLength": "字串長度最多 {value}",
+    "minItems": "項目至少 {value} 個",
+    "maxItems": "項目最多 {value} 個",
+    "uniqueItems": "項目不可重複",
+    "multipleOf": "必須是 {value} 的倍數",
+    "oneOf": "不符合任何允許的格式",
+    "anyOf": "不符合任何允許的格式",
+}
+
+
 def _messages_zh(error: ValidationError) -> str:
     kind = error.validator
     value = error.validator_value
     if kind == "required":
         missing = error.message.split("'")[1] if "'" in error.message else ""
         return f"缺少必要欄位 {missing}"
-    if kind == "additionalProperties":
-        return "不允許未知欄位"
     if kind == "enum":
-        return f"值不在允許清單：{', '.join(map(str, value))}"
+        return f"值不在允許清單：{', '.join(map(str, cast(Iterable[Any], value)))}"
     if kind == "const":
         return f"值必須是 {json.dumps(value, ensure_ascii=False)}"
-    if kind == "type":
-        return f"型別錯誤，需要 {value}"
-    if kind == "pattern":
-        return "格式不符合規則"
-    if kind in ("minimum", "exclusiveMinimum"):
-        return f"數值低於下限 {value}"
-    if kind in ("maximum", "exclusiveMaximum"):
-        return f"數值超過上限 {value}"
-    if kind == "minLength":
-        return f"字串長度至少 {value}"
-    if kind == "maxLength":
-        return f"字串長度最多 {value}"
-    if kind == "minItems":
-        return f"項目至少 {value} 個"
-    if kind == "maxItems":
-        return f"項目最多 {value} 個"
-    if kind == "uniqueItems":
-        return "項目不可重複"
-    if kind == "multipleOf":
-        return f"必須是 {value} 的倍數"
-    if kind in ("oneOf", "anyOf"):
-        return "不符合任何允許的格式"
-    return error.message
+    template = _VALIDATION_MESSAGES.get(str(kind))
+    return template.format(value=value) if template is not None else error.message
 
 
 def _flatten(error: ValidationError) -> list[ValidationError]:
@@ -123,21 +129,41 @@ def _flatten(error: ValidationError) -> list[ValidationError]:
 
 
 def issues_from_errors(errors: Iterable[ValidationError]) -> list[Issue]:
+    """Convert schema validation errors into located issues."""
     issues: list[Issue] = []
     for raw in errors:
         for error in _flatten(raw):
             base = list(error.absolute_path)
-            if error.validator == "additionalProperties" and isinstance(error.instance, dict):
-                allowed = set((error.schema or {}).get("properties", {}))
+            if error.validator == "additionalProperties" and isinstance(
+                error.instance, dict
+            ):
+                schema = error.schema
+                allowed = (
+                    set(schema.get("properties", {}))
+                    if isinstance(schema, Mapping)
+                    else set()
+                )
                 unexpected = sorted(k for k in error.instance if k not in allowed)
-                for key in unexpected or [""]:
-                    issues.append(Issue(dotted_path([*base, key]), "不允許未知欄位", "additionalProperties"))
+                issues.extend(
+                    Issue(
+                        dotted_path([*base, key]),
+                        "不允許未知欄位",
+                        "additionalProperties",
+                    )
+                    for key in unexpected or [""]
+                )
                 continue
             if error.validator == "required" and "'" in error.message:
                 missing = error.message.split("'")[1]
-                issues.append(Issue(dotted_path([*base, missing]), _messages_zh(error), "required"))
+                issues.append(
+                    Issue(
+                        dotted_path([*base, missing]), _messages_zh(error), "required"
+                    )
+                )
                 continue
-            issues.append(Issue(dotted_path(base), _messages_zh(error), str(error.validator)))
+            issues.append(
+                Issue(dotted_path(base), _messages_zh(error), str(error.validator))
+            )
     # deterministic order, de-duplicated
     seen: set[tuple[str, str]] = set()
     unique: list[Issue] = []
@@ -173,7 +199,7 @@ def schema_default(schema_name: str) -> dict[str, Any]:
                 value = collect(sub)
                 if value is not _MISSING:
                     out[key] = value
-            return out if out else _MISSING
+            return out or _MISSING
         return _MISSING
 
     result = collect(load_contract(schema_name))

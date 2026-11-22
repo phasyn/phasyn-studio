@@ -21,6 +21,7 @@ from phasyn_components.plugin_manifest import LIMITS
 from phasyn_components.settings import normalize_recording
 from phasyn_server.http import DEFAULT_JSON_BODY_BYTES, DEFAULT_UPLOAD_BYTES
 
+
 DEFAULT_PORT = 8080
 DEFAULT_BIND_HOST = "127.0.0.1"
 DEFAULT_NODE_STALE_SECONDS = 15
@@ -47,6 +48,7 @@ class PluginsConfig:
 
     @classmethod
     def from_dict(cls, doc: Mapping[str, Any], base: Path) -> PluginsConfig:
+        """Resolve configuration defaults and paths from parsed JSON."""
         values = {**contracts.defaults_of("ControllerPluginsConfig"), **doc}
         return cls(
             install=str(values["install"]),
@@ -55,6 +57,7 @@ class PluginsConfig:
         )
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize the effective plugin configuration for the API."""
         return {
             "install": self.install,
             "dev_dirs": [str(path) for path in self.dev_dirs],
@@ -64,6 +67,8 @@ class PluginsConfig:
 
 @dataclass(frozen=True)
 class ControllerConfig:
+    """Validated settings for a single Controller process."""
+
     instance_id: str
     label: str
     bind_host: str
@@ -76,11 +81,15 @@ class ControllerConfig:
     max_active_runs: int = MAX_ACTIVE_RUNS
     max_json_body_bytes: int = DEFAULT_JSON_BODY_BYTES
     max_upload_bytes: int = DEFAULT_UPLOAD_BYTES
-    allowed_hosts: tuple[str, ...] | None = None  # None = the local default (phasyn_server.HostPolicy.local)
+    allowed_hosts: tuple[str, ...] | None = (
+        None  # None = the local default (phasyn_server.HostPolicy.local)
+    )
     plugins: PluginsConfig = field(default_factory=PluginsConfig)
+    import_roots: tuple[Path, ...] = ()
 
     @classmethod
     def from_dict(cls, doc: Any, *, base_dir: Path | None = None) -> ControllerConfig:
+        """Resolve configuration defaults and paths from parsed JSON."""
         if not isinstance(doc, dict):
             raise ConfigError("主控設定必須是 JSON object")
         data = copy.deepcopy(doc)
@@ -94,13 +103,18 @@ class ControllerConfig:
         data.setdefault("max_upload_bytes", DEFAULT_UPLOAD_BYTES)
         if isinstance(data.get("recording"), dict) or data.get("recording") is None:
             data["recording"] = normalize_recording(data.get("recording"))
-        if "advertise_url" not in data and str(data.get("bind_host")) not in _WILDCARD_HOSTS:
+        if (
+            "advertise_url" not in data
+            and str(data.get("bind_host")) not in _WILDCARD_HOSTS
+        ):
             data["advertise_url"] = f"http://{data['bind_host']}:{data['port']}"
         if isinstance(data.get("advertise_url"), str):
             data["advertise_url"] = data["advertise_url"].strip().rstrip("/")
         problems = contracts.errors("ControllerConfig", data)
         if problems:
-            raise ConfigError("主控設定不符合 ControllerConfig 契約：" + "；".join(problems[:5]))
+            raise ConfigError(
+                "主控設定不符合 ControllerConfig 契約：" + "；".join(problems[:5])
+            )
         if not str(data["data_dir"]).strip():
             raise ConfigError("data_dir 不可為空")
         base = base_dir or Path.cwd()
@@ -111,7 +125,9 @@ class ControllerConfig:
             port=int(data["port"]),
             advertise_url=str(data["advertise_url"]).rstrip("/"),
             data_dir=_resolve(str(data["data_dir"]), base),
-            static_dir=_resolve(str(data["static_dir"]), base) if str(data["static_dir"] or "").strip() else None,
+            static_dir=_resolve(str(data["static_dir"]), base)
+            if str(data["static_dir"] or "").strip()
+            else None,
             node_stale_seconds=int(data["node_stale_seconds"]),
             recording=dict(data["recording"]),
             max_active_runs=int(data["max_active_runs"]),
@@ -119,6 +135,9 @@ class ControllerConfig:
             max_upload_bytes=int(data["max_upload_bytes"]),
             allowed_hosts=_hosts(data.get("allowed_hosts")),
             plugins=PluginsConfig.from_dict(data.get("plugins") or {}, base),
+            import_roots=tuple(
+                _resolve(str(p), base) for p in data.get("import_roots") or []
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -136,8 +155,17 @@ class ControllerConfig:
             "recording": copy.deepcopy(self.recording),
             "max_json_body_bytes": self.max_json_body_bytes,
             "max_upload_bytes": self.max_upload_bytes,
-            **({"allowed_hosts": list(self.allowed_hosts)} if self.allowed_hosts is not None else {}),
+            **(
+                {"allowed_hosts": list(self.allowed_hosts)}
+                if self.allowed_hosts is not None
+                else {}
+            ),
             "plugins": self.plugins.to_dict(),
+            **(
+                {"import_roots": [str(p) for p in self.import_roots]}
+                if self.import_roots
+                else {}
+            ),
         }
 
 
@@ -146,16 +174,19 @@ def _hosts(value: Any) -> tuple[str, ...] | None:
 
 
 def _resolve(value: str, base: Path) -> Path:
-    path = Path(os.path.expanduser(value.strip()))
+    path = Path(value.strip()).expanduser()
     return (path if path.is_absolute() else base / path).resolve()
 
 
 def load_config(path: str | os.PathLike[str]) -> ControllerConfig:
+    """Read and validate the Controller configuration file."""
     config_path = Path(path).expanduser()
     try:
         text = config_path.read_text(encoding="utf-8")
     except OSError as exc:
-        raise ConfigError(f"無法讀取主控設定檔 {config_path}：{exc.strerror or exc}") from exc
+        raise ConfigError(
+            f"無法讀取主控設定檔 {config_path}：{exc.strerror or exc}"
+        ) from exc
     try:
         doc = json.loads(text)
     except ValueError as exc:

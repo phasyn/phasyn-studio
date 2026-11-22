@@ -7,7 +7,7 @@ describe("最近開啟", () => {
 
   it("新項目放最前面、依 to 去重、最多 8 筆", () => {
     let list: RecentEntry[] = [];
-    for (let index = 0; index < 10; index += 1) list = addRecent(list, entry(`/records/runs/r${index}`));
+    for (let index = 0; index < 10; index += 1) list = addRecent(list, entry(`/records/runs/r${String(index)}`));
     expect(list).toHaveLength(RECENTS_MAX);
     expect(list[0]?.to).toBe("/records/runs/r9");
     list = addRecent(list, entry("/records/runs/r5", "再次開啟"));

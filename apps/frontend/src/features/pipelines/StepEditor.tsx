@@ -1,3 +1,5 @@
+import { withOccurrenceKeys } from "@/lib/occurrenceKeys";
+import { isWireBindings } from "@/api/types";
 import { ArrowDown, ArrowUp, ArrowUpRight, CircleAlert, Plus, Trash } from "lucide-react";
 import { useId, useState } from "react";
 import type { Port } from "@/api/generated/contracts";
@@ -13,7 +15,7 @@ import { CHIP_TONE, type Tone } from "@/components/workbench/tones";
 import { typeTone } from "@/components/workbench/kinds";
 import { DIT_PROVIDER, formatSampling, SAMPLING_KEYS, storedSampling } from "@/lib/ditSampling";
 import { localIdError } from "@/lib/ids";
-import { isRecord } from "@/lib/json";
+import { isListed, withRecordValue, isRecord } from "@/lib/json";
 import { cn } from "@/lib/cn";
 import { validateValue } from "@/lib/schema";
 import type { ComponentEntry } from "@/api/catalog";
@@ -86,7 +88,7 @@ function BindingRow({
       </p>
       {port.description ? <p className="text-caption text-fg-tertiary">{port.description}</p> : null}
       <div className={cn("grid gap-2", !stacked && "sm:grid-cols-[11rem_minmax(0,1fr)]")}>
-        <Select id={`${baseId}-kind`} aria-label={t("{stepId}.{name} 的來源類型", { stepId, name: port.name })} value={kind} onChange={(event) => switchKind(event.target.value as SourceKind)}>
+        <Select id={`${baseId}-kind`} aria-label={t("{stepId}.{name} 的來源類型", { stepId, name: port.name })} value={kind} onChange={(event) => { const value = event.target.value; if (isListed(value, ["none", "input", "step", "literal"] as const)) switchKind(value); }}>
           <option value="none">{port.required ? t("未接（必填）") : t("不接（選填）")}</option>
           <option value="input">{t("pipeline 輸入")}</option>
           <option value="step">{t("步驟輸出")}</option>
@@ -99,7 +101,7 @@ function BindingRow({
                 id={`${baseId}-input`}
                 aria-label={t("{stepId}.{name} 接到哪個 pipeline 輸入", { stepId, name: port.name })}
                 value={binding.from_input}
-                onChange={(event) => onChange({ from_input: event.target.value })}
+                onChange={(event) => { onChange({ from_input: event.target.value }); }}
               >
                 {!sources.inputs.some((option) => option.value === binding.from_input) ? (
                   <option value={binding.from_input}>{t("{value}（不存在）", { value: binding.from_input || t("（未選擇）") })}</option>
@@ -107,12 +109,12 @@ function BindingRow({
                 {sources.inputs.map((option) => (
                   <option key={option.value} value={option.value} disabled={!option.compatible && option.value !== binding.from_input}>
                     {option.label} · {option.typeId}
-                    {option.reason ? t("（不可用：{reason}）", { reason: option.reason }) : ""}
+                    {(option.reason != null && option.reason !== "") ? t("（不可用：{reason}）", { reason: option.reason }) : ""}
                   </option>
                 ))}
               </Select>
             </div>
-            <Button size="sm" variant="quiet" icon={<Plus aria-hidden />} onClick={() => onChange({ from_input: onAddInput(port) })}>
+            <Button size="sm" variant="quiet" icon={<Plus aria-hidden />} onClick={() => { onChange({ from_input: onAddInput(port) }); }}>
               {t("新增同型別輸入")}
             </Button>
           </div>
@@ -132,8 +134,8 @@ function BindingRow({
             {sources.outputs.map((option) => (
               <option key={option.value} value={option.value} disabled={!option.compatible && option.value !== currentStepValue}>
                 {option.label}
-                {option.typeId ? ` · ${option.typeId}` : ""}
-                {option.reason ? t("（不可用：{reason}）", { reason: option.reason }) : ""}
+                {(option.typeId != null && option.typeId !== "") ? ` · ${option.typeId}` : ""}
+                {(option.reason != null && option.reason !== "") ? t("（不可用：{reason}）", { reason: option.reason }) : ""}
               </option>
             ))}
           </Select>
@@ -153,7 +155,7 @@ function BindingRow({
           transport={port.transport}
           required
           value={binding.literal}
-          onChange={(next) => onChange({ literal: next ?? { type_id: port.type_id, value: null } })}
+          onChange={(next) => { onChange({ literal: next ?? { type_id: port.type_id, value: null } }); }}
         />
       ) : null}
       {mismatch ? (
@@ -192,7 +194,7 @@ function OutputPorts({ ports, exports, stepId }: { ports: readonly Port[]; expor
                   <button
                     key={name}
                     type="button"
-                    onClick={() => exports.onSelect(name)}
+                    onClick={() => { exports.onSelect(name); }}
                     title={t("流程輸出 {name}：點選可改名、改來源或移除", { name })}
                     className="pressable inline-flex items-center gap-1 rounded-full border border-line-strong bg-surface px-1.5 text-fg-secondary hover:border-brand-blue/60 hover:bg-raised hover:text-fg"
                   >
@@ -203,7 +205,7 @@ function OutputPorts({ ports, exports, stepId }: { ports: readonly Port[]; expor
                 ))
               : null}
             {exports && names.length === 0 ? (
-              <Button size="sm" variant="quiet" icon={<Plus aria-hidden />} className="min-h-6 px-1.5 text-caption" onClick={() => exports.onAdd(port)}>
+              <Button size="sm" variant="quiet" icon={<Plus aria-hidden />} className="min-h-6 px-1.5 text-caption" onClick={() => { exports.onAdd(port); }}>
                 {t("設為流程輸出")}
               </Button>
             ) : null}
@@ -259,7 +261,7 @@ export function StepEditor({
   // The selected step is edited both in the step list and in the inspector: element ids (and the labels pointing at
   // them) must be unique per editor, not per step.
   const editorId = useId();
-  const idBase = `${editorId}step-${index}`;
+  const idBase = `${editorId}step-${String(index)}`;
   const [swapNote, setSwapNote] = useState<string | null>(null);
   const descriptor = step.node_id && step.component_id ? lookup(step.node_id, step.component_id) : null;
   const current = step.node_id && step.component_id ? optionValue(step.node_id, step.component_id) : "";
@@ -297,10 +299,10 @@ export function StepEditor({
         </div>
         {!inspector ? <span aria-hidden className="flex-1" /> : null}
         <span className={cn("flex items-center gap-1", inspector ? "col-start-2 row-start-1 pt-5" : "pt-6")}>
-          <Button size="icon-sm" variant="quiet" aria-label={t("步驟 {step_id} 上移", { step_id: step.step_id })} disabled={index === 0} onClick={() => onMove(index - 1)}>
+          <Button size="icon-sm" variant="quiet" aria-label={t("步驟 {step_id} 上移", { step_id: step.step_id })} disabled={index === 0} onClick={() => { onMove(index - 1); }}>
             <ArrowUp aria-hidden />
           </Button>
-          <Button size="icon-sm" variant="quiet" aria-label={t("步驟 {step_id} 下移", { step_id: step.step_id })} disabled={index === count - 1} onClick={() => onMove(index + 1)}>
+          <Button size="icon-sm" variant="quiet" aria-label={t("步驟 {step_id} 下移", { step_id: step.step_id })} disabled={index === count - 1} onClick={() => { onMove(index + 1); }}>
             <ArrowDown aria-hidden />
           </Button>
           <Button size="icon-sm" variant="danger" aria-label={t("刪除步驟 {step_id}", { step_id: step.step_id })} onClick={onRemove}>
@@ -317,15 +319,15 @@ export function StepEditor({
         entries={entries}
         onChoose={chooseComponent}
       />
-      {swapNote ? (
+      {(swapNote != null && swapNote !== "") ? (
         <p role="status" className="text-caption text-info">
           {swapNote}
         </p>
       ) : null}
       {stepIssues.length > 0 ? (
         <ul className="grid gap-1" aria-label={t("步驟 {step_id} 的接線問題", { step_id: step.step_id })}>
-          {stepIssues.map((issue, position) => (
-            <li key={position} className={issue.severity === "error" ? "text-caption text-danger" : "text-caption text-warning"}>
+          {withOccurrenceKeys(stepIssues, (issue) => issue.message).map(({ item: issue, key }) => (
+            <li key={key} className={issue.severity === "error" ? "text-caption text-danger" : "text-caption text-warning"}>
               {issue.message}
             </li>
           ))}
@@ -349,33 +351,29 @@ export function StepEditor({
                 onAddInput={onAddInput}
                 stacked={inspector}
                 onChange={(next) => {
-                  const inputs = { ...step.inputs };
-                  if (next) inputs[port.name] = next;
-                  else delete inputs[port.name];
-                  onChange({ ...step, inputs });
+                  onChange({ ...step, inputs: withRecordValue(step.inputs, port.name, next ?? undefined) });
                 }}
               />
             ))}
             {strayPorts.length > 0 ? (
               <p className="flex flex-wrap items-center gap-2 text-caption text-danger">
-                <T source={"元件沒有這些輸入：{strayPorts}<0>移除</0>"} values={{ strayPorts: formatList(strayPorts) }} slots={[<Button
+                <T source={"元件沒有這些輸入：{strayPorts}<0>移除</0>"} values={{ strayPorts: formatList(strayPorts) }} slots={[<Button key="slot-0"
                   size="sm"
                   variant="quiet"
                   onClick={() => {
-                    const inputs = { ...step.inputs };
-                    for (const port of strayPorts) delete inputs[port];
+                    const inputs = Object.fromEntries(Object.entries(step.inputs).filter(([name]) => !strayPorts.includes(name)));
                     onChange({ ...step, inputs });
                   }} />]} />
               </p>
             ) : null}
             <h4 className="mt-1 text-data font-semibold text-fg">{t("輸出（{outputsCount}）", { outputsCount: descriptor.outputs.length })}</h4>
-            <OutputPorts ports={descriptor.outputs} exports={exports} stepId={step.step_id} />
+            <OutputPorts ports={descriptor.outputs} {...(exports === undefined ? {} : { exports })} stepId={step.step_id} />
           </section>
           <section className="grid min-w-0 content-start gap-2" aria-label={t("{step_id} 的呼叫參數", { step_id: step.step_id })}>
             <ParametersEditor
               schema={paramsSchema}
               value={step.parameters}
-              onChange={(next) => onChange({ ...step, parameters: next })}
+              onChange={(next) => { onChange({ ...step, parameters: next }); }}
               idPrefix={`${idBase}-params`}
               issues={paramIssues}
               label={t("呼叫參數（parameters_schema）")}
@@ -389,8 +387,8 @@ export function StepEditor({
             id={`${idBase}-inputs-json`}
             label={t("inputs（JSON）")}
             value={step.inputs}
-            accept={(next) => (isRecord(next) ? null : t("inputs 必須是 object"))}
-            onChange={(next) => onChange({ ...step, inputs: next as Record<string, WireBinding> })}
+            accept={(next) => (isWireBindings(next) ? null : t("schema 不允許此值"))}
+            onChange={(next) => { if (isWireBindings(next)) onChange({ ...step, inputs: next }); }}
             rows={4}
           />
           <JsonEditor
@@ -398,7 +396,7 @@ export function StepEditor({
             label={t("parameters（JSON）")}
             value={step.parameters}
             accept={(next) => (isRecord(next) ? null : t("parameters 必須是 object"))}
-            onChange={(next) => onChange({ ...step, parameters: next as Record<string, unknown> })}
+            onChange={(next) => { if (isRecord(next)) onChange({ ...step, parameters: next }); }}
             rows={4}
           />
         </div>
@@ -416,7 +414,7 @@ export function StepEditor({
               className="machine"
               inputMode="numeric"
               value={step.load_revision === null || step.load_revision === undefined ? "" : String(step.load_revision)}
-              placeholder={descriptor?.settings.loaded_revision ? t("目前載入 #{loaded_revision}", { loaded_revision: descriptor.settings.loaded_revision }) : t("不指定")}
+              placeholder={(descriptor?.settings.loaded_revision != null && Boolean(descriptor.settings.loaded_revision)) ? t("目前載入 #{loaded_revision}", { loaded_revision: descriptor.settings.loaded_revision }) : t("不指定")}
               onChange={(event) => {
                 const raw = event.target.value.trim();
                 const next = { ...step };
@@ -448,7 +446,7 @@ export function StepEditor({
             />
           </div>
         </div>
-        {localIdError(step.step_id) ? <p className="mt-2 text-caption text-danger">{localIdError(step.step_id, "step_id ")}</p> : null}
+        {((localIdError(step.step_id) ?? "") !== "") ? <p className="mt-2 text-caption text-danger">{localIdError(step.step_id, "step_id ")}</p> : null}
       </Disclosure>
     </Root>
   );

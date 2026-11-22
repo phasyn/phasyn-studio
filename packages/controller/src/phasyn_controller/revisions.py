@@ -1,5 +1,4 @@
-"""Optimistic concurrency of the controller's documents (Studio projects, prompt studies, the prompt library and
-the pipeline layout).
+"""Optimistic concurrency of the controller's documents (Studio projects, prompt studies, the prompt library and the pipeline layout).
 
 A write names the revision it read (0 when the document was never saved). On a match the document is saved
 with revision + 1; otherwise the answer is 409 REVISION_CONFLICT and nothing is merged, overwritten or retried:
@@ -34,12 +33,16 @@ def require_revision(stored: int, expected: Any, *, what: str, suffix: str) -> i
     return stored
 
 
-def saved_form(body: Mapping[str, Any], current: Mapping[str, Any] | None, *, now: str) -> dict[str, Any]:
+def saved_form(
+    body: Mapping[str, Any], current: Mapping[str, Any] | None, *, now: str
+) -> dict[str, Any]:
     """An accepted save of a document with ``created_at``: revision + 1, ``updated_at`` now, ``created_at`` kept."""
     doc = dict(body)
     doc["revision"] = stored_revision(current) + 1
     doc["updated_at"] = now
-    doc["created_at"] = current["created_at"] if current else body.get("created_at") or now
+    doc["created_at"] = (
+        current["created_at"] if current else body.get("created_at") or now
+    )
     return doc
 
 

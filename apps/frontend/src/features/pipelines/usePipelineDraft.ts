@@ -26,13 +26,12 @@ export function usePipelineDraft(initial: WirePipeline, isNew: boolean) {
     return name;
   };
 
-  const updateStep = (index: number, next: WireStep) =>
-    setDraft((previous) => ({ ...previous, steps: previous.steps.map((item, position) => (position === index ? next : item)) }));
+  const updateStep = (index: number, next: WireStep) => { setDraft((previous) => ({ ...previous, steps: previous.steps.map((item, position) => (position === index ? next : item)) })); };
 
   /** Renames the step at `index`; returns why it cannot (invalid or duplicate id) or null. */
   const renameAt = (index: number, current: string, next: string): string | null => {
     const error = localIdError(next, "step_id ");
-    if (error) return error;
+    if (error != null && error !== "") return error;
     if (draft.steps.some((other, position) => position !== index && other.step_id === next)) return t("step_id 重複");
     setDraft(renameStep(draft, current, next));
     return null;
@@ -59,7 +58,7 @@ export function usePipelineDraft(initial: WirePipeline, isNew: boolean) {
     return stepId;
   };
 
-  const exportPort = (stepId: string, port: Port) => setDraft((previous) => addExport(previous, stepId, port.name).pipeline);
+  const exportPort = (stepId: string, port: Port) => { setDraft((previous) => addExport(previous, stepId, port.name).pipeline); };
 
   const discard = () => {
     if (baseline) setDraft(cloneJson(baseline));

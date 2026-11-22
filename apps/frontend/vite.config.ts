@@ -50,7 +50,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       "/api": {
-        target: process.env.PHASYN_CONTROLLER_URL ?? "http://127.0.0.1:8080",
+        target: process.env["PHASYN_CONTROLLER_URL"] ?? "http://127.0.0.1:8080",
         changeOrigin: false,
         ws: false,
       },

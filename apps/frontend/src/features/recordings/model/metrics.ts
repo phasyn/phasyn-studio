@@ -71,7 +71,7 @@ export function parseTransferMetricName(name: string): { category: string; phase
   const match = TRANSFER_METRIC_RE.exec(name);
   if (!match) return null;
   const [, category, phase, measure] = match;
-  if (!category || (phase !== "submitted" && phase !== "completed") || (measure !== "count" && measure !== "bytes")) return null;
+  if (!(category != null && category !== "") || (phase !== "submitted" && phase !== "completed") || (measure !== "count" && measure !== "bytes")) return null;
   return { category, phase, measure };
 }
 
@@ -155,7 +155,7 @@ const LABELS: Record<string, string> = {
 
 export function metricLabel(name: string): string {
   const direct = LABELS[name];
-  if (direct) return direct;
+  if (direct != null && direct !== "") return direct;
   const transfer = parseTransferMetricName(name);
   if (transfer) {
     return `${transfer.category} ${transfer.phase === "submitted" ? t("已提交") : t("已完成")}${transfer.measure === "count" ? t("次數") : " bytes"}`;
@@ -341,7 +341,7 @@ export function formatMetricValue(metric: Metric): string {
 export function exactMetricValue(metric: Metric): string | null {
   if (metric.value === null || !Number.isFinite(metric.value)) return null;
   if (metric.unit === "bytes") return `${metric.value.toLocaleString("en-US")} bytes`;
-  return `${metric.value} ${metric.unit}`.trim();
+  return `${String(metric.value)} ${metric.unit}`.trim();
 }
 
 export const QUALITY_TONE: Record<Quality, "neutral" | "info" | "entity" | "warning"> = {

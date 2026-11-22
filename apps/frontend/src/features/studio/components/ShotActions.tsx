@@ -46,33 +46,34 @@ function OpenShotMenu({ menuId, menu, onClose, onRequestDelete }: ShotMenuProps 
   const placed = filmOrder(project, timeline).placed;
   const position = placed.findIndex((item) => item.shot_id === shotId);
   const query = `project=${encodeURIComponent(project.project_id)}`;
+  const selectMenuTake = (entry: ShotMenuEntry) => {
+    if (entry.takeId != null && entry.takeId !== "") actions.selectTake(shotId, entry.takeId);
+  };
   const handlers: Record<ShotActionId, (entry: ShotMenuEntry) => void> = {
-    openSource: () => actions.openInSource(shotId),
+    openSource: () => { actions.openInSource(shotId); },
     openInEdit: () => void navigate(`/studio/edit?${query}&shot=${encodeURIComponent(shotId)}`),
     duplicate: () => void actions.duplicate(shotId),
     moveEarlier: () => void actions.move(shotId, -1),
     moveLater: () => void actions.move(shotId, 1),
     toggleTimeline: () => void actions.setInTimeline(shotId, position < 0),
-    useTake: (entry) => {
-      if (entry.takeId) actions.useTake(shotId, entry.takeId);
-    },
+    useTake: selectMenuTake,
     moreTakes: (entry) => {
-      const run = entry.runId ? `&run=${encodeURIComponent(entry.runId)}` : "";
+      const run = (entry.runId != null && entry.runId !== "") ? `&run=${encodeURIComponent(entry.runId)}` : "";
       void navigate(`/studio/render?${query}${run}`);
     },
-    delete: () => onRequestDelete(shotId),
+    delete: () => { onRequestDelete(shotId); },
   };
   const entries = shotMenuEntries({ project, shotId, position, placedCount: placed.length, alt: modifierLabel("Alt", detectApplePlatform()) });
   const items: MenuItem[] = entries.map((entry) => ({
-    id: entry.takeId ? `${entry.id}:${entry.takeId}` : entry.id,
+    id: (entry.takeId != null && entry.takeId !== "") ? `${entry.id}:${entry.takeId}` : entry.id,
     label: entry.label,
-    shortcut: entry.shortcut,
+    ...(entry.shortcut === undefined ? {} : { shortcut: entry.shortcut }),
     disabledReason: entry.disabledReason,
-    tone: entry.tone,
-    separatorBefore: entry.separatorBefore,
+    ...(entry.tone === undefined ? {} : { tone: entry.tone }),
+    ...(entry.separatorBefore === undefined ? {} : { separatorBefore: entry.separatorBefore }),
     // The row's eye: an eye to put the shot on the timeline, a crossed-out eye to take it off
     icon: entry.id === "toggleTimeline" && position < 0 ? Eye : ICONS[entry.id],
-    onSelect: () => handlers[entry.id](entry),
+    onSelect: () => { handlers[entry.id](entry); },
   }));
   return (
     <ActionMenu
@@ -99,7 +100,7 @@ export function ShotActionMenu({ menu, ...rest }: ShotMenuProps & { menu: ShotMe
 export function DeleteShotDialog({ shotId, onClose, onFocusList }: { shotId: string | null; onClose: () => void; onFocusList: () => void }) {
   const { project, timeline, fps, deleteRuns } = useEditor();
   const actions = useShotActions();
-  const shot = shotId ? project.shots.find((item) => item.shot_id === shotId) : undefined;
+  const shot = (shotId != null && shotId !== "") ? project.shots.find((item) => item.shot_id === shotId) : undefined;
   const clips = shot ? shotClips(timeline, shot.shot_id) : [];
   const frames = clips.filter((clip) => timeline.tracks.find((track) => track.track_id === clip.track_id)?.kind === "video").reduce((sum, clip) => sum + clipDuration(clip), 0);
   // A locked track keeps its clips: say so before anything is removed
@@ -111,12 +112,12 @@ export function DeleteShotDialog({ shotId, onClose, onFocusList }: { shotId: str
     ? project.shots.filter((other) => other.shot_id !== shot.shot_id && other.takes.some((take) => runIds.includes(take.run_id))).map((other) => other.title || other.shot_id)
     : [];
   const removeOnly = () => {
-    if (!shot || blocked) return;
+    if (!shot || (blocked != null && blocked !== "")) return;
     actions.remove(shot.shot_id);
     onClose();
   };
   const removeWithMedia = () => {
-    if (!shot || blocked) return;
+    if (!shot || (blocked != null && blocked !== "")) return;
     const order = filmOrder(project, timeline).placed;
     const at = order.findIndex((item) => item.shot_id === shot.shot_id);
     const next = (at >= 0 ? (order[at + 1] ?? order[at - 1])?.shot_id : undefined) ?? neighbourShotId(project, shot.shot_id);
@@ -132,7 +133,7 @@ export function DeleteShotDialog({ shotId, onClose, onFocusList }: { shotId: str
     >
       {shot ? (
         <DialogContent
-          onKeyDown={(event) => event.stopPropagation()}
+          onKeyDown={(event) => { event.stopPropagation(); }}
           // Opened from the list (its menu or Delete): the focus goes back there, also when the shot is gone
           onCloseAutoFocus={(event) => {
             event.preventDefault();
@@ -170,7 +171,7 @@ export function DeleteShotDialog({ shotId, onClose, onFocusList }: { shotId: str
                 </>
               ) : null}
             </dl>
-            {blocked ? <p className="text-data text-warning">{blocked}</p> : null}
+            {(blocked != null && blocked !== "") ? <p className="text-data text-warning">{blocked}</p> : null}
           </DialogBody>
           <DialogFooter>
             <DialogClose asChild>

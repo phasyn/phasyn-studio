@@ -1,0 +1,50 @@
+{
+  "pipeline_id": "segment-video",
+  "label": "點選物件並產生逐幀遮罩",
+  "inputs": [
+    {
+      "name": "video",
+      "type_id": "media.video.v1",
+      "transport": "file",
+      "description": "Source video in presentation order",
+      "required": true
+    },
+    {
+      "name": "annotations",
+      "type_id": "media.mask-annotations.v1",
+      "transport": "inline",
+      "description": "Versioned source-bound object hints in native pixel coordinates",
+      "required": true
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "segment",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "segment-video",
+      "inputs": {
+        "video": {
+          "from_input": "video"
+        },
+        "annotations": {
+          "from_input": "annotations"
+        }
+      },
+      "parameters": {}
+    }
+  ],
+  "outputs": {
+    "asset": {
+      "from_step": "segment",
+      "output": "asset"
+    },
+    "mask_video": {
+      "from_step": "segment",
+      "output": "mask_video"
+    },
+    "mapping": {
+      "from_step": "segment",
+      "output": "mapping"
+    }
+  }
+}

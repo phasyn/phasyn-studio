@@ -23,6 +23,7 @@ import os
 import struct
 import unicodedata
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 from .chars import is_cjk, needs_glyph
@@ -31,9 +32,16 @@ from .ft import FaceHandle, FreeType
 from .hb import HarfBuzz
 from .model import MAX_SKIPPED_FONTS, TextFailure
 
+
 # TITLE_FONT_FAMILIES of the editor (titleLayout.ts); the last name of each stack is the generic family.
 FONT_STACKS: Mapping[str, tuple[str, ...]] = {
-    "sans": ("PingFang TC", "Noto Sans TC", "Microsoft JhengHei", "system-ui", "sans-serif"),
+    "sans": (
+        "PingFang TC",
+        "Noto Sans TC",
+        "Microsoft JhengHei",
+        "system-ui",
+        "sans-serif",
+    ),
     "serif": ("Noto Serif TC", "Songti TC", "PMingLiU", "serif"),
     "mono": ("ui-monospace", "Noto Sans Mono", "Cascadia Mono", "monospace"),
 }
@@ -58,7 +66,9 @@ def _parse_variations(text: str) -> dict[str, float]:
         try:
             settings[tag.strip()] = float(value)
         except ValueError as exc:
-            raise TextFailure("text_render_failed", "unreadable font variations") from exc
+            raise TextFailure(
+                "text_render_failed", "unreadable font variations"
+            ) from exc
     return settings
 
 
@@ -77,7 +87,15 @@ def _em_split(handle: FaceHandle, freetype: FreeType) -> tuple[int, int]:
 class Face:
     """An open font face with its HarfBuzz font; one object serves every size."""
 
-    def __init__(self, face_id: int, record: FontRecord, handle: FaceHandle, freetype: FreeType, harfbuzz: HarfBuzz):
+    def __init__(
+        self,
+        face_id: int,
+        record: FontRecord,
+        handle: FaceHandle,
+        freetype: FreeType,
+        harfbuzz: HarfBuzz,
+    ):
+        """Open the requested typeface and initialize its native handles."""
         self.id = face_id
         self.record = record
         self.handle = handle
@@ -86,7 +104,9 @@ class Face:
         self._size = 0
         self._glyphs: dict[str, bool] = {}
         self._em = _em_split(handle, freetype)
-        self.font = harfbuzz.font(handle, embolden=record.embolden)  # last: nothing after it can fail
+        self.font = harfbuzz.font(
+            handle, embolden=record.embolden
+        )  # last: nothing after it can fail
 
     def at_size(self, size: int) -> None:
         """Make ``size`` (pixels per em, 26.6) the size of the next shaping and glyph loads."""
@@ -96,9 +116,12 @@ class Face:
             self._size = size
 
     def has_glyph(self, char: str) -> bool:
+        """Check whether this face contains a glyph for the requested code point."""
         known = self._glyphs.get(char)
         if known is None:
-            known = self._glyphs[char] = self._freetype.char_index(self.handle, ord(char)) != 0
+            known = self._glyphs[char] = (
+                self._freetype.char_index(self.handle, ord(char)) != 0
+            )
         return known
 
     def em_ascent(self, size: int) -> int:
@@ -112,7 +135,7 @@ class Face:
         return {
             "family": record.family,
             "style": record.style,
-            "file": os.fsdecode(os.path.basename(record.file)),
+            "file": Path(os.fsdecode(record.file)).name,
             "index": record.index,
             "synthetic_bold": record.embolden,
             "variations": record.variations,
@@ -122,7 +145,10 @@ class Face:
 class FontBook:
     """The fonts of one worker run: sorted lists per family and weight, faces opened on first use."""
 
-    def __init__(self, freetype: FreeType, harfbuzz: HarfBuzz, fontconfig: Fontconfig) -> None:
+    def __init__(
+        self, freetype: FreeType, harfbuzz: HarfBuzz, fontconfig: Fontconfig
+    ) -> None:
+        """Initialize font resolution and the face cache."""
         self._freetype = freetype
         self._harfbuzz = harfbuzz
         self._fontconfig = fontconfig
@@ -131,7 +157,9 @@ class FontBook:
         self._choices: dict[tuple[str, bool, str], Face] = {}
         self._primaries: dict[tuple[str, bool], Face] = {}
         self._faces: list[Face] = []
-        self._used: dict[int, None] = {}  # face ids in the order they first drew a cluster
+        self._used: dict[
+            int, None
+        ] = {}  # face ids in the order they first drew a cluster
         self._skipped: dict[bytes, str] = {}  # font file -> too_large | unusable
 
     def close(self) -> None:
@@ -145,58 +173,76 @@ class FontBook:
         self._primaries.clear()
 
     def face(self, face_id: int) -> Face:
+        """Return the font face selected for the request."""
         return self._faces[face_id]
 
     def used_fonts(self) -> list[dict[str, Any]]:
+        """Return the fonts selected during layout."""
         return [self._faces[face_id].description() for face_id in self._used]
 
     def skipped_fonts(self) -> list[dict[str, str]]:
         """Fonts fontconfig offered that were not opened, base names only (at most ``MAX_SKIPPED_FONTS``)."""
         named = list(self._skipped.items())[:MAX_SKIPPED_FONTS]
-        return [{"file": os.fsdecode(os.path.basename(file)), "reason": reason} for file, reason in named]
+        return [
+            {"file": Path(os.fsdecode(file)).name, "reason": reason}
+            for file, reason in named
+        ]
 
-    def primary(self, family: str, bold: bool) -> Face:
+    def primary(self, family: str, *, bold: bool) -> Face:
         """The face whose em box positions the baseline (the first usable font of the plain list)."""
         key = (family, bold)
         face = self._primaries.get(key)
         if face is None:
-            opened = (self._open(record) for record in self._records(family, bold, cjk=False))
-            face = next((candidate for candidate in opened if candidate is not None), None)
+            opened = (
+                self._open(record)
+                for record in self._records(family, bold=bold, cjk=False)
+            )
+            face = next(
+                (candidate for candidate in opened if candidate is not None), None
+            )
             if face is None:
                 raise TextFailure("text_font_missing", f"no usable font for {family}")
             self._primaries[key] = face
         return face
 
-    def face_for(self, family: str, bold: bool, cluster: str) -> Face:
+    def face_for(self, family: str, *, bold: bool, cluster: str) -> Face:
         """The face that draws a cluster: the first of the matching list with glyphs for all of it."""
         key = (family, bold, cluster)
         face = self._choices.get(key)
         if face is None:
-            face = self._choices[key] = self._choose(family, bold, cluster)
+            face = self._choices[key] = self._choose(family, bold=bold, cluster=cluster)
         self._used.setdefault(face.id)
         return face
 
-    def _choose(self, family: str, bold: bool, cluster: str) -> Face:
+    def _choose(self, family: str, *, bold: bool, cluster: str) -> Face:
         needed = "".join(char for char in cluster if needs_glyph(char))
         if not needed:
-            return self.primary(family, bold)
+            return self.primary(family, bold=bold)
         # HarfBuzz composes or decomposes a cluster when the font only has the other form.
-        forms = dict.fromkeys((needed, unicodedata.normalize("NFC", needed), unicodedata.normalize("NFD", needed)))
-        for record in self._records(family, bold, cjk=is_cjk(needed[0])):
+        forms = dict.fromkeys(
+            (
+                needed,
+                unicodedata.normalize("NFC", needed),
+                unicodedata.normalize("NFD", needed),
+            )
+        )
+        for record in self._records(family, bold=bold, cjk=is_cjk(needed[0])):
             for form in forms:
                 if all(self._fontconfig.has_char(record, ord(char)) for char in form):
                     face = self._open(record)
                     if face is not None and all(face.has_glyph(char) for char in form):
                         return face
         # No usable font covers the cluster: the primary face draws its .notdef, which the shaper names.
-        return self.primary(family, bold)
+        return self.primary(family, bold=bold)
 
-    def _records(self, family: str, bold: bool, *, cjk: bool) -> list[FontRecord]:
+    def _records(self, family: str, *, bold: bool, cjk: bool) -> list[FontRecord]:
         key = (family, bold, cjk)
         records = self._lists.get(key)
         if records is None:
             language = CJK_LANGUAGE if cjk else None
-            records = self._fontconfig.sorted_fonts(FONT_STACKS[family], bold=bold, language=language)
+            records = self._fontconfig.sorted_fonts(
+                FONT_STACKS[family], bold=bold, language=language
+            )
             self._lists[key] = records
         return records
 
@@ -209,11 +255,13 @@ class FontBook:
 
     def _open_face(self, record: FontRecord) -> Face | None:
         try:
-            size = os.stat(record.file).st_size
+            size = Path(os.fsdecode(record.file)).stat().st_size
         except OSError:
             size = None
         if size is None or size > MAX_FONT_FILE_BYTES:
-            self._skipped.setdefault(record.file, "unusable" if size is None else "too_large")
+            self._skipped.setdefault(
+                record.file, "unusable" if size is None else "too_large"
+            )
             return None
         handle = self._freetype.open_face(record.file, record.index)
         if handle is None:
@@ -221,8 +269,12 @@ class FontBook:
             return None
         try:
             if record.variations:
-                self._freetype.set_design_coordinates(handle, _parse_variations(record.variations))
-            face = Face(len(self._faces), record, handle, self._freetype, self._harfbuzz)
+                self._freetype.set_design_coordinates(
+                    handle, _parse_variations(record.variations)
+                )
+            face = Face(
+                len(self._faces), record, handle, self._freetype, self._harfbuzz
+            )
         except BaseException:
             self._freetype.close_face(handle)
             raise

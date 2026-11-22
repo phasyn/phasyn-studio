@@ -1,3 +1,4 @@
+import { hasSlotContent } from "@/lib/dom";
 // Field label with an optional hint line, used by every wizard step.
 import type { ReactNode } from "react";
 
@@ -7,7 +8,7 @@ export function Label({ htmlFor, children, hint }: { htmlFor: string; children: 
       <label htmlFor={htmlFor} className="text-caption font-medium text-fg-secondary">
         {children}
       </label>
-      {hint ? <span className="text-caption text-fg-tertiary">{hint}</span> : null}
+      {hasSlotContent(hint) ? <span className="text-caption text-fg-tertiary">{hint}</span> : null}
     </span>
   );
 }

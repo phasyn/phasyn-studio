@@ -18,17 +18,21 @@ from .templates import model_schema, template
 
 @dataclass(frozen=True)
 class ViewLabel:
+    """A named input view and the crop it represents."""
+
     view_id: str
     crop: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
 class Repair:
+    """The failed response and reasons for a repair attempt."""
+
     raw: str
     errors: tuple[str, ...]
 
 
-def task_payload(
+def task_payload(  # noqa: PLR0913 - Keep the published runtime API.
     *,
     language: str,
     caption: str = "",
@@ -120,24 +124,25 @@ def build_messages(
     *,
     omit_previous_output: bool = False,
 ) -> list[dict[str, Any]]:
+    """Build the ordered multimodal messages for the selected task."""
     if omit_previous_output and repair is None:
         raise ValueError("只有修復輸入可以省略前次輸出")
     if fmt.op == "caption" and repair is not None:
         raise ValueError("caption 不接受 JSON schema 修復")
     language = str(payload["prompt_language"])
-    system = template(fmt.template_name) + _language_rules(fmt, language)
-    if fmt.schema_name is not None:
-        system += "\nRequired JSON schema:\n" + canonical_text(model_schema(fmt.schema_name))
-    if repair is not None:
-        assert fmt.repair_template_name is not None
-        system += "\n" + template(fmt.repair_template_name)
+    system = _system_prompt(fmt, language, repair)
     content: list[dict[str, Any]] = []
     for view in views:
         label = view.view_id
         if view.crop is not None:
             label += " bbox=" + canonical_text(crop_label(view.crop))
         content.extend([{"type": "text", "text": label}, {"type": "image"}])
-    content.append({"type": "text", "text": "Untrusted task data:\n" + canonical_text(dict(payload))})
+    content.append(
+        {
+            "type": "text",
+            "text": "Untrusted task data:\n" + canonical_text(dict(payload)),
+        }
+    )
     if fmt.compact_scene and fmt.op == "revise":
         content.append(
             {
@@ -177,6 +182,19 @@ def build_messages(
         content.append({"type": "text", "text": notice + canonical_text(repair_data)})
         content.append({"type": "text", "text": _final_repair_instruction(fmt)})
     return [{"role": "system", "content": system}, {"role": "user", "content": content}]
+
+
+def _system_prompt(fmt: OpFormat, language: str, repair: Repair | None) -> str:
+    system = template(fmt.template_name) + _language_rules(fmt, language)
+    if fmt.schema_name is not None:
+        system += "\nRequired JSON schema:\n" + canonical_text(
+            model_schema(fmt.schema_name)
+        )
+    if repair is not None:
+        if fmt.repair_template_name is None:
+            raise AssertionError
+        system += "\n" + template(fmt.repair_template_name)
+    return system
 
 
 __all__ = ["Repair", "ViewLabel", "build_messages", "crop_label", "task_payload"]

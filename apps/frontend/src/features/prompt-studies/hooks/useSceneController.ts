@@ -26,7 +26,7 @@ export function useSceneController({
   const version = findVersion(study, selectedVersionId) ?? latest;
   const [draftState, setDraftState] = useState<EditorDraft | null>(null);
   const baseDraft = useMemo(() => (version ? draftFromVersion(version) : null), [version]);
-  const ownDraft = draftState && version && draftState.versionId === version.version_id ? draftState : null;
+  const ownDraft = draftState && draftState.versionId === version?.version_id ? draftState : null;
   const editorDraft = ownDraft ?? baseDraft;
   const dirty = draftDirty(ownDraft);
   const [variant, setVariant] = useState<PromptVariant>("core");
@@ -62,7 +62,7 @@ export function useSceneController({
     changed: draftChanged(ownDraft),
     issues: editorDraft ? sceneIssues(editorDraft.scene, editorDraft.intentional, editorDraft.note) : [],
     selectVersion,
-    revert: () => setDraftState(null),
+    revert: () => { setDraftState(null); },
     variant,
     setVariant,
     instruction,
@@ -108,5 +108,5 @@ export function useSceneController({
     },
   };
 
-  return { scene, dirty, selectVersion, setVariant, switchTo, cancelSwitch: () => setSwitchTo(null), confirmSwitch };
+  return { scene, dirty, selectVersion, setVariant, switchTo, cancelSwitch: () => { setSwitchTo(null); }, confirmSwitch };
 }

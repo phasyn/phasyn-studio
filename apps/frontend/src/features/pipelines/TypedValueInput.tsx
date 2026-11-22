@@ -10,8 +10,9 @@ import { JsonEditor } from "@/components/common/JsonEditor";
 import { Button } from "@/components/ui/button";
 import { Select, Textarea } from "@/components/ui/controls";
 import { cn } from "@/lib/cn";
+import { valuesEqual } from "@/lib/json";
 import { formatBytes, formatTimestamp, shortId } from "@/lib/format";
-import { acceptFor, collectFileCandidates, defaultMode, mediaMismatch } from "./fileRefs";
+import { acceptFor, collectFileCandidates, inlineOutputs, defaultMode, mediaMismatch, type InlineCandidate } from "./fileRefs";
 import { t } from "@/i18n";
 
 /** 上傳檔案（POST /api/files，octet-stream）：上傳中顯示檔名與大小；失敗保留可重選。 */
@@ -38,7 +39,7 @@ export function FileUploadField({
         htmlFor={id}
         className={cn(
           "relative inline-flex min-h-10 w-fit max-w-full cursor-pointer items-center gap-2 overflow-hidden rounded-lg border border-line-control bg-raised px-3 text-body text-fg hover:border-fg-tertiary hover:bg-overlay focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus",
-          disabled || pending ? "cursor-not-allowed text-fg-disabled hover:border-line-control hover:bg-raised" : "pressable",
+          (disabled ?? false) || pending ? "cursor-not-allowed text-fg-disabled hover:border-line-control hover:bg-raised" : "pressable",
         )}
       >
         {pending ? <LoaderCircle aria-hidden className="size-4 shrink-0 text-action-fg animate-spin" /> : <FileUp aria-hidden className="size-4 shrink-0" />}
@@ -51,7 +52,7 @@ export function FileUploadField({
           type="file"
           className="sr-only"
           accept={acceptFor(typeId)}
-          disabled={disabled || pending !== null}
+          disabled={(disabled ?? false) || pending !== null}
           onChange={(event) => {
             const file = event.target.files?.[0];
             event.target.value = "";
@@ -60,8 +61,8 @@ export function FileUploadField({
             setPending({ name: file.name, size: file.size });
             const end = trackUpload?.();
             uploadFile(file)
-              .then((ref) => onUploaded({ type_id: typeId, file: ref }))
-              .catch((cause: unknown) => setError(cause))
+              .then((ref) => { onUploaded({ type_id: typeId, file: ref }); })
+              .catch((cause: unknown) => { setError(cause); })
               .finally(() => {
                 setPending(null);
                 end?.();
@@ -69,7 +70,7 @@ export function FileUploadField({
           }}
         />
       </label>
-      {error ? <ErrorCallout error={error} write title={t("上傳失敗；可重新選擇檔案")} /> : null}
+      {(error != null) ? <ErrorCallout error={error} write title={t("上傳失敗；可重新選擇檔案")} /> : null}
     </div>
   );
 }
@@ -97,7 +98,7 @@ export function FileRefPicker({
       <Select
         id={id}
         value=""
-        disabled={disabled || candidates.length === 0}
+        disabled={(disabled ?? false) || candidates.length === 0}
         onChange={(event) => {
           const found = candidates.find((candidate) => candidate.key === event.target.value);
           if (found) onPick(found.value);
@@ -109,11 +110,64 @@ export function FileRefPicker({
         {candidates.map((candidate) => (
           <option key={candidate.key} value={candidate.key}>
             {candidate.runLabel} · {candidate.where} · {candidate.value.file.media_type} · {formatBytes(candidate.value.file.size_bytes)} · sha {shortId(candidate.value.file.sha256, 8)} · {formatTimestamp(candidate.createdAt)}
-            {candidate.note ? t("（{note}）", { note: candidate.note }) : ""}
+            {(candidate.note != null && candidate.note !== "") ? t("（{note}）", { note: candidate.note }) : ""}
           </option>
         ))}
       </Select>
     </div>
+  );
+}
+
+/** The selected run identifies the exact value the picker contributed; editing JSON returns to manual input. */
+function InlineOutputInput({ id, label, typeId, value, onChange, disabled }: {
+  id: string;
+  label: string;
+  typeId: string;
+  value: WireTypedValue | null;
+  onChange: (value: WireTypedValue) => void;
+  disabled: boolean;
+}) {
+  const [picked, setPicked] = useState<InlineCandidate | null>(null);
+  const runs = useRunList(50);
+  const candidates = inlineOutputs(runs.data?.pages.flatMap((page) => page.items) ?? [], typeId);
+  const active = picked?.typed.type_id === typeId && (picked.typed === value || valuesEqual(picked.typed, value)) ? picked : null;
+  const options = active && !candidates.some((candidate) => candidate.key === active.key) ? [active, ...candidates] : candidates;
+  const selectId = `${id}-output`;
+  return (
+    <>
+      <div className="grid gap-1">
+        <label htmlFor={selectId} className="text-caption text-fg-secondary">
+          {t("使用已完成任務的輸出（{typeId}）", { typeId })}
+        </label>
+        <Select
+          id={selectId}
+          value={active?.key ?? ""}
+          title={active ? `${active.label} · ${active.runId}` : undefined}
+          disabled={disabled || candidates.length === 0}
+          onChange={(event) => {
+            const selected = options.find((candidate) => candidate.key === event.target.value) ?? null;
+            setPicked(selected);
+            if (selected) onChange(selected.typed);
+          }}
+        >
+          <option value="">{runs.isPending ? t("讀取近期 run…") : runs.isError ? t("無法讀取 run 列表") : candidates.length === 0 ? t("近期任務沒有相容的輸出") : t("選擇（{candidatesCount} 個）", { candidatesCount: candidates.length })}</option>
+          {options.map((candidate) => <option key={candidate.key} value={candidate.key}>{candidate.label}</option>)}
+        </Select>
+      </div>
+      <JsonEditor
+        id={id}
+        label={t("{label}（inline JSON）", { label })}
+        hideLabel
+        value={value && "value" in value ? value.value : null}
+        onChange={(next) => {
+          setPicked(null);
+          onChange({ type_id: typeId, value: next });
+        }}
+        rows={5}
+        disabled={disabled}
+        description={t("inline JSON 上限 256 KiB；大內容請改用檔案。")}
+      />
+    </>
   );
 }
 
@@ -177,19 +231,10 @@ export function TypedValueInput({
             value={value && "value" in value && typeof value.value === "string" ? value.value : ""}
             disabled={disabled}
             rows={4}
-            onChange={(event) => onChange(event.target.value === "" && !required ? null : { type_id: typeId, value: event.target.value })}
+            onChange={(event) => { onChange(event.target.value === "" && !required ? null : { type_id: typeId, value: event.target.value }); }}
           />
         ) : (
-          <JsonEditor
-            id={id}
-            label={t("{label}（inline JSON）", { label })}
-            hideLabel
-            value={value && "value" in value ? value.value : null}
-            onChange={(next) => onChange({ type_id: typeId, value: next })}
-            rows={5}
-            disabled={disabled}
-            description={t("inline JSON 上限 256 KiB；大內容請改用檔案。")}
-          />
+          <InlineOutputInput id={id} label={label} typeId={typeId} value={value} disabled={disabled} onChange={onChange} />
         )
       ) : (
         <div className="grid gap-3">
@@ -197,16 +242,16 @@ export function TypedValueInput({
             <div className="grid gap-2 rounded-md border border-line-subtle bg-sunken/60 p-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-caption text-fg-secondary">{t("已選擇的檔案")}</span>
-                <Button size="sm" variant="quiet" icon={<X aria-hidden />} disabled={disabled} onClick={() => onChange(null)}>
+                <Button size="sm" variant="quiet" icon={<X aria-hidden />} disabled={disabled} onClick={() => { onChange(null); }}>
                   {t("清除")}
                 </Button>
               </div>
               <FileRefView file={value.file} downloadLabel={label} />
-              {mismatch ? <p className="text-caption text-warning">{mismatch}</p> : null}
+              {(mismatch != null && mismatch !== "") ? <p className="text-caption text-warning">{mismatch}</p> : null}
             </div>
           ) : null}
           <div className="flex flex-wrap items-end gap-3">
-            <FileUploadField id={`${id}-upload`} typeId={typeId} disabled={disabled} onUploaded={onChange} trackUpload={trackUpload} />
+            <FileUploadField id={`${id}-upload`} typeId={typeId} disabled={disabled} onUploaded={onChange} {...(trackUpload === undefined ? {} : { trackUpload })} />
             <div className="min-w-64 flex-1">
               <FileRefPicker id={`${id}-pick`} typeId={typeId} disabled={disabled} onPick={onChange} />
             </div>

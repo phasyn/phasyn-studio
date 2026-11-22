@@ -37,7 +37,7 @@ const CARD_ROW = "grid h-[4.375rem] grid-cols-[1rem_minmax(0,1fr)] items-start g
  */
 function useLaneSpeeds(routes: readonly StudioRoute[]): ReadonlyMap<string, LaneSpeed> {
   const { project, selectedShotId } = useStudio();
-  const nodes = [...new Set(routes.flatMap((route) => (route.ditNodeId ? [route.ditNodeId] : [])))].sort();
+  const nodes = [...new Set(routes.flatMap((route) => ((route.ditNodeId != null && route.ditNodeId !== "") ? [route.ditNodeId] : [])))].sort();
   const lists = useQueries({ queries: nodes.map((nodeId) => costProfilesQueryOptions({ node_id: nodeId })) });
   const shot = project.shots.find((item) => item.shot_id === selectedShotId);
   const asked = shot
@@ -49,13 +49,13 @@ function useLaneSpeeds(routes: readonly StudioRoute[]): ReadonlyMap<string, Lane
   const { results } = useSegmentEstimates(asked.map((item) => item.input));
   return new Map(
     routes.map((route): [string, LaneSpeed] => {
-      const list = route.ditNodeId ? lists[nodes.indexOf(route.ditNodeId)] : undefined;
+      const list = (route.ditNodeId != null && route.ditNodeId !== "") ? lists[nodes.indexOf(route.ditNodeId)] : undefined;
       if (!list || list.isPending) return [route.id, { state: "reading" }];
       if (list.isError) return [route.id, { state: "unreadable", reason: errorText(list.error) }];
       const records = ditRecords(route, profileFits([list.data]));
       if (records === 0) return [route.id, { state: "unmeasured" }];
       const at = asked.findIndex((item) => item.routeId === route.id);
-      const seconds = at >= 0 && route.ditStepId ? results?.[at]?.steps?.[route.ditStepId] : undefined;
+      const seconds = at >= 0 && (route.ditStepId != null && route.ditStepId !== "") ? results?.[at]?.steps?.[route.ditStepId] : undefined;
       return [route.id, { state: "measured", records, shotSeconds: typeof seconds === "number" && Number.isFinite(seconds) && seconds > 0 ? seconds : null }];
     }),
   );
@@ -91,7 +91,7 @@ function SpeedLine({ id, route, speed }: { id: string; route: StudioRoute; speed
   const Icon = face.icon;
   return (
     <span id={id} ref={fade} title={face.title} className={cn("flex min-w-0 items-center gap-1.5 text-caption", face.tone)}>
-      <Icon aria-hidden className={cn("size-3.5 shrink-0", face.busy && "animate-spin")} />
+      <Icon aria-hidden className={cn("size-3.5 shrink-0", (face.busy === true) && "animate-spin")} />
       <span className="min-w-0 truncate">{face.text}</span>
     </span>
   );
@@ -111,7 +111,7 @@ function LaneCard({ route, speed, checked, onToggle, index }: { route: StudioRou
         id={`${id}-input`}
         type="checkbox"
         checked={checked}
-        onChange={(event) => onToggle(event.target.checked)}
+        onChange={(event) => { onToggle(event.target.checked); }}
         aria-labelledby={`${id}-machine ${id}-name`}
         aria-describedby={`${id}-speed`}
         className="mt-0.5 size-4 cursor-pointer accent-action outline-none"
@@ -120,7 +120,7 @@ function LaneCard({ route, speed, checked, onToggle, index }: { route: StudioRou
         <span className="flex h-5 min-w-0 items-center gap-2">
           <ReadyDot ready={route.ready} />
           <span id={`${id}-machine`} className="min-w-0 truncate text-data font-semibold text-fg">
-            {device && face.machine ? t("{label}・{value}", { label: machine, value: device }) : machine}
+            {(device != null && device !== "") && (face.machine != null && face.machine !== "") ? t("{label}・{value}", { label: machine, value: device }) : machine}
           </span>
           <CapabilityBadge task={route.capability} className="ml-auto" />
         </span>
@@ -138,8 +138,8 @@ function LaneCard({ route, speed, checked, onToggle, index }: { route: StudioRou
 function GoneCard({ routeId, onToggle, index }: { routeId: string; onToggle: (on: boolean) => void; index: number }) {
   const id = useId();
   return (
-    <label ref={reveal(index)} htmlFor={id} title={routeId} className={cn(OPTION_CARD, CARD_ROW, "cursor-pointer", OPTION_SELECTED)}>
-      <input id={id} type="checkbox" checked onChange={(event) => onToggle(event.target.checked)} className="mt-0.5 size-4 cursor-pointer accent-action outline-none" />
+    <label aria-label={routeId} ref={reveal(index)} htmlFor={id} title={routeId} className={cn(OPTION_CARD, CARD_ROW, "cursor-pointer", OPTION_SELECTED)}>
+      <input id={id} type="checkbox" checked onChange={(event) => { onToggle(event.target.checked); }} className="mt-0.5 size-4 cursor-pointer accent-action outline-none" />
       <span className="grid min-w-0">
         <code className="machine h-5 truncate text-data text-fg">{routeId}</code>
         <span className="flex min-w-0 items-center gap-1.5 text-caption text-warning">
@@ -177,11 +177,11 @@ export function LaneChoices({
           route={route}
           speed={speeds.get(route.id) ?? { state: "reading" }}
           checked={selected.includes(route.id)}
-          onToggle={(on) => onToggle(route.id, on)}
+          onToggle={(on) => { onToggle(route.id, on); }}
         />
       ))}
       {unknown.map((routeId, index) => (
-        <GoneCard key={routeId} index={listed.length + index} routeId={routeId} onToggle={(on) => onToggle(routeId, on)} />
+        <GoneCard key={routeId} index={listed.length + index} routeId={routeId} onToggle={(on) => { onToggle(routeId, on); }} />
       ))}
     </fieldset>
   );

@@ -88,7 +88,7 @@ function labelRules(ctx: RuleContext): Finding[] {
   const outOfRange = scan.labels.filter((label) => label.tag !== "Subject" && (label.ordinal < 1 || label.ordinal > limit[label.tag]));
   const firstOut = outOfRange[0];
   if (firstOut) {
-    const audio = plan.audioLabels.min === plan.audioLabels.max ? String(plan.audioLabels.min) : `${plan.audioLabels.min}–${plan.audioLabels.max}`;
+    const audio = plan.audioLabels.min === plan.audioLabels.max ? String(plan.audioLabels.min) : `${String(plan.audioLabels.min)}–${String(plan.audioLabels.max)}`;
     out.push(
       finding("ref.label-range", {
         title: t("{labelText} 超過送出的素材數", { labelText: listSome(outOfRange.map(labelText)) }),

@@ -27,11 +27,8 @@ export function useProjectLanes(projectId: string): readonly string[] {
 
 export function setProjectLanes(projectId: string, laneIds: readonly string[]): void {
   lanePrefs.set((current) => {
-    const next: Record<string, readonly string[]> = { ...current };
-    delete next[projectId];
-    if (laneIds.length > 0) next[projectId] = [...laneIds];
-    const keys = Object.keys(next);
-    for (const key of keys.slice(0, Math.max(0, keys.length - MAX_PROJECTS))) delete next[key];
-    return next;
+    const { [projectId]: _prior, ...others } = current;
+    const next = laneIds.length > 0 ? { ...others, [projectId]: [...laneIds] } : others;
+    return Object.fromEntries(Object.entries(next).slice(-MAX_PROJECTS));
   });
 }

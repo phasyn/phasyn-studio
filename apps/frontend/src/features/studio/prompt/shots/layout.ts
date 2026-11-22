@@ -121,7 +121,7 @@ export function parseShotLayout(prompt: string): ShotLayout | null {
       shots.push({
         number: Number(shot[1]),
         prefix: lead + shot[0],
-        start: shot[2] ? cueSeconds(shot[2]) : shots.length === 0 ? 0 : null,
+        start: (shot[2] != null && shot[2] !== "") ? cueSeconds(shot[2]) : shots.length === 0 ? 0 : null,
         text: prompt.slice(textStart, textEnd).replace(/\r\n?/g, "\n"),
         textStart,
         textEnd,
@@ -138,7 +138,7 @@ export function parseShotLayout(prompt: string): ShotLayout | null {
       continue;
     }
     const video: RegExpExecArray | null = motion ? null : MOTION_RE.exec(content);
-    if (video) motion = video[1] ? { alias: video[1] } : { tag: Number(video[2]) };
+    if (video) motion = (video[1] != null && video[1] !== "") ? { alias: video[1] } : { tag: Number(video[2]) };
   }
   if (shots.length === 0 || shots.some((shot) => INLINE_CUT_RE.test(shot.text))) return null;
   return { shots, subjects: [...subjects.values()].sort((a, b) => a.number - b.number), motion };

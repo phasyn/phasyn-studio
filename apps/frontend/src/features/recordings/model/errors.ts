@@ -27,7 +27,7 @@ export function describeError(error: unknown): RecordingErrorView {
   if (error instanceof SyntaxError) {
     return { code: "PARSE_ERROR", status: null, headline: t("回應不是有效的 JSON"), serverMessage: error.message, remoteUnknown: false, details: {} };
   }
-  if (!isApiError(error) && !(isRecord(error) && typeof error.code === "string")) {
+  if (!isApiError(error) && !(isRecord(error) && typeof error["code"] === "string")) {
     const message = error instanceof Error ? error.message : String(error);
     return { code: "CLIENT_ERROR", status: null, headline: message || t("未知錯誤"), serverMessage: null, remoteUnknown: false, details: {} };
   }

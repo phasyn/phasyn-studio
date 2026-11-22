@@ -1,0 +1,74 @@
+{
+  "pipeline_id": "wan-performance-disk-blocks",
+  "label": "Wan2.2 表演影片驅動角色（磁碟分塊）",
+  "inputs": [
+    {
+      "name": "character",
+      "type_id": "media.image.v1",
+      "required": true,
+      "transport": "file",
+      "description": "角色參考圖"
+    },
+    {
+      "name": "driving",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": "單人驅動表演影片"
+    },
+    {
+      "name": "prompt",
+      "type_id": "text.prompt.v1",
+      "required": false,
+      "transport": "inline",
+      "description": "選用的畫面描述"
+    },
+    {
+      "name": "prepared",
+      "type_id": "wan.animate-conditioning.v1",
+      "required": false,
+      "transport": "file",
+      "description": "相同來源與前處理版本的表演條件"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "generate",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "wan-performance-disk-blocks",
+      "inputs": {
+        "character": {
+          "from_input": "character"
+        },
+        "driving": {
+          "from_input": "driving"
+        },
+        "prompt": {
+          "from_input": "prompt"
+        },
+        "prepared": {
+          "from_input": "prepared"
+        }
+      },
+      "parameters": {
+        "size": "256*256",
+        "chunk_frames": 9
+      },
+      "timeout_seconds": 7200
+    }
+  ],
+  "outputs": {
+    "asset": {
+      "from_step": "generate",
+      "output": "asset"
+    },
+    "video_file": {
+      "from_step": "generate",
+      "output": "video_file"
+    },
+    "conditioning": {
+      "from_step": "generate",
+      "output": "conditioning"
+    }
+  }
+}

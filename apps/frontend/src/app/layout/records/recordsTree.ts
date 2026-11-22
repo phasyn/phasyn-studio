@@ -1,5 +1,6 @@
-// 「紀錄」左欄資源樹：執行紀錄（近期 run 子樹）、效能紀錄、比較、追蹤設定。計數只用已在快取中的資料（不另外發請求）。
-import { Gauge, GitCompareArrows, ListVideo, ScrollText } from "lucide-react";
+import { optionalField } from "@/lib/json";
+// 「紀錄」左欄資源樹：執行紀錄（近期 run 子樹）、效能紀錄、比較、追蹤設定、儲存空間。計數只用已在快取中的資料（不另外發請求）。
+import { Gauge, GitCompareArrows, HardDrive, ListVideo, ScrollText } from "lucide-react";
 import type { WireRun } from "@/api/types";
 import { PATHS, runPath } from "@/app/paths";
 import { statusSpec } from "@/components/common/statusSpec";
@@ -13,6 +14,7 @@ export const RECORDS_SECTIONS: readonly AreaSection[] = [
   { id: "recordings", path: PATHS.recordings, label: t("效能紀錄"), icon: ScrollText, hint: t("load／invoke 的量測、事件與匯出") },
   { id: "comparisons", path: PATHS.comparisons, label: t("比較"), icon: GitCompareArrows, hint: t("recording 的設定差異與指標") },
   { id: "tracking", path: PATHS.tracking, label: t("追蹤設定"), icon: Gauge, hint: t("各元件的 recorder 模式、取樣與 trace") },
+  { id: "storage", path: PATHS.storage, label: t("儲存空間"), icon: HardDrive, hint: t("磁碟用量、清理沒有引用的 run 與檔案、固定要保留的項目") },
 ];
 
 /** 樹上列出的近期 run 數（完整清單在執行紀錄頁）。 */
@@ -57,7 +59,7 @@ function runItem(run: WireRun): TreeItem {
   return {
     id: runTreeId(run.run_id),
     label: runTreeLabel(label),
-    detail: clockLabel(run.created_at),
+    ...optionalField("detail", clockLabel(run.created_at)),
     icon: ListVideo,
     to: runPath(run.run_id),
     title: `${label}\n${run.run_id} · ${state.label}`,
@@ -69,16 +71,16 @@ function runItem(run: WireRun): TreeItem {
 
 export function buildRecordsTree(input: RecordsTreeInput): TreeItem[] {
   return RECORDS_SECTIONS.map((section) => {
-    const base: TreeItem = { id: sectionTreeId(section.id), label: section.label, icon: section.icon, to: section.path, title: section.hint };
+    const base = { id: sectionTreeId(section.id), label: section.label, icon: section.icon, to: section.path, title: section.hint };
     if (section.id === "runs") {
       if (!input.runs) return base;
       const running = input.runs.filter((run) => run.state === "running").length;
       return {
         ...base,
         // 只有一頁時是確切總數；還有下一頁時只標「至少 N」，不冒充總數。
-        ...(input.moreRuns ? { detail: `${input.runs.length}+`, title: t("{hint}\n已載入最近 {runsCount} 個（還有更多）", { hint: section.hint, runsCount: input.runs.length }) } : { count: input.runs.length }),
+        ...(input.moreRuns ? { detail: `${String(input.runs.length)}+`, title: t("{hint}\n已載入最近 {runsCount} 個（還有更多）", { hint: section.hint, runsCount: input.runs.length }) } : { count: input.runs.length }),
         dot: running > 0 ? "info" : null,
-        dotLabel: running > 0 ? t("{running} 個執行中", { running }) : undefined,
+        ...(running > 0 ? { dotLabel: t("{running} 個執行中", { running }) } : {}),
         children: input.runs.slice(0, TREE_RUN_LIMIT).map(runItem),
       };
     }
@@ -91,7 +93,7 @@ export function buildRecordsTree(input: RecordsTreeInput): TreeItem[] {
         ...base,
         count: input.componentCount,
         dot: input.degradedCount > 0 ? "warning" : null,
-        dotLabel: input.degradedCount > 0 ? t("{degradedCount} 個元件紀錄降級", { degradedCount: input.degradedCount }) : undefined,
+        ...(input.degradedCount > 0 ? { dotLabel: t("{degradedCount} 個元件紀錄降級", { degradedCount: input.degradedCount }) } : {}),
       };
     }
     return base;
@@ -104,7 +106,7 @@ export function recordsSelection(pathname: string): string[] {
   if (parts[0] !== "records") return [];
   const page = parts[1] ?? "runs";
   const candidates: string[] = [];
-  if (page === "runs" && parts[2]) candidates.push(runTreeId(decodeSafe(parts[2])));
+  if (page === "runs" && (parts[2] != null && parts[2] !== "")) candidates.push(runTreeId(decodeSafe(parts[2])));
   candidates.push(sectionTreeId(page));
   return candidates;
 }

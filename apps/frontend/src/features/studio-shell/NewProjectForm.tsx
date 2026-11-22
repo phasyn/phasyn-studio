@@ -72,7 +72,7 @@ export function NewProjectForm({ build, onCreated, placeholder, initialFocus, ch
           <Input
             ref={titleRef}
             value={title}
-            onChange={(event) => setTitle(event.target.value)}
+            onChange={(event) => { setTitle(event.target.value); }}
             onKeyDown={(event) => {
               // Enter submits the form: with no title it would create an untitled project from a key press that may
               // have been meant for something else. An untitled project takes the button.
@@ -89,7 +89,7 @@ export function NewProjectForm({ build, onCreated, placeholder, initialFocus, ch
         </p>
       </div>
       {children}
-      {error ? (
+      {(error != null && error !== "") ? (
         <p role="alert" className="text-caption text-danger">
           {error}
         </p>

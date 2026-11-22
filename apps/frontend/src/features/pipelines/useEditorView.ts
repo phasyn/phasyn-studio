@@ -7,7 +7,7 @@ import { t } from "@/i18n";
 
 export type ViewId = "graph" | "steps" | "json";
 
-export const VIEWS: ReadonlyArray<{ id: ViewId; label: string }> = [
+export const VIEWS: readonly { id: ViewId; label: string }[] = [
   { id: "graph", label: t("節點圖") },
   { id: "steps", label: t("步驟與接線") },
   { id: "json", label: "JSON" },
@@ -25,7 +25,7 @@ export function useEditorView(isNew: boolean) {
     setParams(
       (previous) => {
         const next = new URLSearchParams(previous);
-        if (value) next.set(key, value);
+        if (value != null && value !== "") next.set(key, value);
         else next.delete(key);
         return next;
       },
@@ -33,11 +33,11 @@ export function useEditorView(isNew: boolean) {
     );
   };
   const requested = get("view");
-  const view: ViewId = VIEWS.some((item) => item.id === requested) ? (requested as ViewId) : "graph";
+  const view: ViewId = VIEWS.find((item) => item.id === requested)?.id ?? "graph";
   return {
     view,
-    setView: (id: ViewId) => set("view", id === "graph" ? null : id),
+    setView: (id: ViewId) => { set("view", id === "graph" ? null : id); },
     selection: parseSelection(get("sel")),
-    select: (next: PipelineSelection | null) => set("sel", selectionValue(next)),
+    select: (next: PipelineSelection | null) => { set("sel", selectionValue(next)); },
   };
 }

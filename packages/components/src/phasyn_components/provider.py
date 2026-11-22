@@ -30,14 +30,19 @@ from .preview import (
     preview_image_size,
 )
 
+
 FACTS_MAX_BYTES = 16 * 1024
 
 
-DEVICE_ID_PATTERN = "^[^\\x00-\\x1f\\x7f]*$"  # a device id never holds control characters
+DEVICE_ID_PATTERN = (
+    "^[^\\x00-\\x1f\\x7f]*$"  # a device id never holds control characters
+)
 
 
 @dataclass
 class Port:
+    """A named and typed provider input or output."""
+
     name: str
     type_id: str
     required: bool = True
@@ -45,6 +50,7 @@ class Port:
     description: str = ""
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize the object to its wire representation."""
         return {
             "name": self.name,
             "type_id": self.type_id,
@@ -56,14 +62,19 @@ class Port:
 
 @dataclass
 class Part:
+    """A provider part that can report its instrumentation coverage."""
+
     path: str
     kind: str
-    settings_schema: dict[str, Any] = field(default_factory=lambda: {"type": "object", "properties": {}})
+    settings_schema: dict[str, Any] = field(
+        default_factory=lambda: {"type": "object", "properties": {}}
+    )
     observable: list[str] = field(default_factory=list)
     coverage: str = "full"
     reason: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize the object to its wire representation."""
         return {
             "path": self.path,
             "kind": self.kind,
@@ -76,6 +87,8 @@ class Part:
 
 @dataclass
 class Description:
+    """The description of a component and its runtime capabilities."""
+
     provider_id: str
     kind: str
     label: str
@@ -94,8 +107,11 @@ class Description:
     facts: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        """Validate and normalize the declared fields."""
         if not isinstance(self.facts, Mapping):
-            raise ComponentError("RUNTIME_ERROR", "provider describe 的 facts 必須是 JSON object")
+            raise ComponentError(
+                "RUNTIME_ERROR", "provider describe 的 facts 必須是 JSON object"
+            )
         size = len(canonical_json(dict(self.facts)))
         if size > FACTS_MAX_BYTES:
             raise ComponentError(
@@ -105,6 +121,7 @@ class Description:
             )
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize the object to its wire representation."""
         return {
             "provider_id": self.provider_id,
             "kind": self.kind,
@@ -126,7 +143,7 @@ class Description:
 
 @dataclass
 class LoadResult:
-    """load 後實際生效的設定與觀測事實。"""
+    """load 後實際生效的設定與觀測事實."""
 
     effective_load: dict[str, Any]
     observed: dict[str, Any] = field(default_factory=dict)
@@ -137,9 +154,9 @@ class LoadResult:
 
 
 class ProviderHost:
-    """provider 建構時取得的程序環境（非控制面物件）。"""
+    """provider 建構時取得的程序環境（非控制面物件）."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - Keep the published positional and keyword API.
         self,
         *,
         node_id: str,
@@ -149,6 +166,7 @@ class ProviderHost:
         device: Mapping[str, Any],
         process_instance_id: str,
     ) -> None:
+        """Initialize provider host with its configuration."""
         self.node_id = node_id
         self.component_id = component_id
         self.data_dir = data_dir
@@ -158,34 +176,47 @@ class ProviderHost:
 
 
 class Provider(Protocol):
+    """The runtime lifecycle contract a provider implements."""
+
     provider_id: ClassVar[str]
 
     @classmethod
-    def describe(cls, settings: Mapping[str, Any] | None) -> Description: ...
+    def describe(cls, settings: Mapping[str, Any] | None) -> Description:
+        """Describe the provider and its supported inputs and outputs."""
+        ...
 
-    def load(self, ctx: LoadContext) -> LoadResult: ...
+    def load(self, ctx: LoadContext) -> LoadResult:
+        """Access the load settings for this operation."""
+        ...
 
-    def invoke(self, ctx: RunContext) -> None: ...
+    def invoke(self, ctx: RunContext) -> None:
+        """Perform one invocation using the supplied context."""
+        ...
 
-    def unload(self, ctx: UnloadContext) -> None: ...
+    def unload(self, ctx: UnloadContext) -> None:
+        """Release the resources held by the loaded provider."""
+        ...
 
 
 class BaseProvider:
-    """方便的基底類別：預設 unload 不做事、load 回傳原設定。"""
+    """方便的基底類別：預設 unload 不做事、load 回傳原設定."""
 
     provider_id: ClassVar[str] = ""
 
     def __init__(self, host: ProviderHost) -> None:
+        """Initialize base provider with its configuration."""
         self.host = host
 
     def load(self, ctx: LoadContext) -> LoadResult:
+        """Access the load settings for this operation."""
         return LoadResult(effective_load=ctx.load, expanded_parts=ctx.expanded_parts)
 
-    def unload(self, ctx: UnloadContext) -> None:
-        return None
+    def unload(self, ctx: UnloadContext) -> None:  # noqa: ARG002 - Provider lifecycle accepts this parameter by contract.
+        """Release the resources held by the loaded provider."""
+        return
 
 
-def settings_schema(
+def settings_schema(  # noqa: PLR0913 - Keep the published positional and keyword API.
     *,
     load_properties: Mapping[str, Any] | None = None,
     invoke_properties: Mapping[str, Any] | None = None,
@@ -195,16 +226,23 @@ def settings_schema(
     require_model_path: bool = False,
     device_kinds: tuple[str, ...] = ("cpu", "cuda"),
 ) -> dict[str, Any]:
-    """組合 provider 的 InstanceSettings schema：未宣告的欄位一律 422（additionalProperties=false）。"""
+    """組合 provider 的 InstanceSettings schema：未宣告的欄位一律 422（additionalProperties=false）."""
     load_props: dict[str, Any] = {
-        "model_path": {"type": "string", "description": "Node 本機模型路徑（使用者提供，不由主控下載）"},
+        "model_path": {
+            "type": "string",
+            "description": "Node 本機模型路徑（使用者提供，不由主控下載）",
+        },
         "model_revision": {"type": ["string", "null"]},
         "device": {
             "type": "object",
             "properties": {
                 "kind": {"enum": list(device_kinds)},
                 # it becomes CUDA_VISIBLE_DEVICES of the component process: no control characters
-                "id": {"type": "string", "maxLength": 16384, "pattern": DEVICE_ID_PATTERN},
+                "id": {
+                    "type": "string",
+                    "maxLength": 16384,
+                    "pattern": DEVICE_ID_PATTERN,
+                },
                 "resource_group": {"type": "string"},
             },
             "required": ["kind", "id", "resource_group"],
@@ -215,7 +253,10 @@ def settings_schema(
             "properties": dict(precision_properties or {}),
             "additionalProperties": False,
         },
-        "offload": dict(offload_schema or {"type": "object", "properties": {}, "additionalProperties": False}),
+        "offload": dict(
+            offload_schema
+            or {"type": "object", "properties": {}, "additionalProperties": False}
+        ),
         "part_overrides": {"type": "array"},
         "provider_options": {
             "type": "object",
@@ -228,8 +269,17 @@ def settings_schema(
     return {
         "type": "object",
         "properties": {
-            "load": {"type": "object", "properties": load_props, "required": required, "additionalProperties": False},
-            "invoke": {"type": "object", "properties": dict(invoke_properties or {}), "additionalProperties": False},
+            "load": {
+                "type": "object",
+                "properties": load_props,
+                "required": required,
+                "additionalProperties": False,
+            },
+            "invoke": {
+                "type": "object",
+                "properties": dict(invoke_properties or {}),
+                "additionalProperties": False,
+            },
             "recording": {"type": "object"},
         },
         "required": ["load", "invoke", "recording"],

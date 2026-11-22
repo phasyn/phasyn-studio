@@ -2,6 +2,7 @@
 // end), a preview that plays only the part that is sent, and for a video whether its last frame is held after the end
 // (hold_last_frame) and whether its own sound is sent as an audio reference (off for a new reference, with a warning
 // when on). Every field commits on Enter or leaving it; a rejected value stays with its reason.
+import { AssetAudio, AssetVideo } from "@/components/common/AssetMedia";
 import { Play, TriangleAlert } from "lucide-react";
 import { useId, useState } from "react";
 import type { StudioLibraryItem, StudioReference } from "@/api/generated/contracts";
@@ -41,7 +42,7 @@ export function ReferenceClip({
 
   const commitStart = (text: string): string | null => {
     const parsed = parseSecondsInput(text);
-    if (parsed.error) return parsed.error;
+    if (parsed.error != null && parsed.error !== "") return parsed.error;
     const value = parsed.value;
     if (value !== null) {
       if (value < 0) return t("起點不可小於 0");
@@ -53,7 +54,7 @@ export function ReferenceClip({
   };
   const commitEnd = (text: string): string | null => {
     const parsed = parseSecondsInput(text);
-    if (parsed.error) return parsed.error;
+    if (parsed.error != null && parsed.error !== "") return parsed.error;
     const value = parsed.value;
     if (value !== null) {
       if (value <= (start ?? 0)) return t("終點必須大於起點");
@@ -62,7 +63,7 @@ export function ReferenceClip({
     onChange({ end_seconds: value });
     return null;
   };
-  const src = item ? `${mediaUrl(item.file.node_id, item.file.file_id)}#t=${start ?? 0}${end !== null ? `,${end}` : ""}` : null;
+  const src = item ? `${mediaUrl(item.file.node_id, item.file.file_id)}#t=${String(start ?? 0)}${end !== null ? `,${String(end)}` : ""}` : null;
 
   return (
     <div className="grid gap-1.5 rounded-md border border-line-subtle bg-sunken/60 p-2 animate-reveal">
@@ -78,19 +79,18 @@ export function ReferenceClip({
         <span className="pt-1 text-caption text-fg-tertiary">
           <T source={"秒 · 使用 {span}"} values={{ span: <span className="machine">{clip === null ? t("長度未知") : t("{max} 秒", { max: formatSeconds(Math.max(0, clip), 1) })}</span> }} />
         </span>
-        {src ? (
-          <Button size="sm" variant="quiet" className={cn("ml-auto min-h-7 px-2", previewOpen && TOOL_BUTTON_ON)} icon={<Play aria-hidden />} aria-expanded={previewOpen} onClick={() => setPreviewOpen((open) => !open)}>
+        {(src != null && src !== "") ? (
+          <Button size="sm" variant="quiet" className={cn("ml-auto min-h-7 px-2", previewOpen && TOOL_BUTTON_ON)} icon={<Play aria-hidden />} aria-expanded={previewOpen} onClick={() => { setPreviewOpen((open) => !open); }}>
             {t("預覽片段")}
           </Button>
         ) : null}
       </div>
-      {src && previewOpen ? (
-        // 媒體片段（#t=起點,終點）：只播放實際送出的範圍
+      {(src != null && src !== "") && previewOpen ? (
         <div className="animate-reveal">
           {reference.kind === "video" ? (
-            <video key={src} src={src} controls preload="metadata" aria-label={t("{alias} 片段預覽", { alias })} className="max-h-48 w-full rounded-md bg-stage" />
+            <AssetVideo key={src} src={src} controls preload="metadata" aria-label={t("{alias} 片段預覽", { alias })} className="max-h-48 w-full rounded-md bg-stage" />
           ) : (
-            <audio key={src} src={src} controls preload="metadata" aria-label={t("{alias} 片段預覽", { alias })} className="w-full" />
+            <AssetAudio key={src} src={src} controls preload="metadata" aria-label={t("{alias} 片段預覽", { alias })} className="w-full" />
           )}
         </div>
       ) : null}
@@ -103,7 +103,7 @@ export function ReferenceClip({
             description={t("參考影片只用到終點，之後重複最後一格、聲音補靜音，補滿生成長度；模型不會提早畫出終點之後的鏡頭。換角時建議打開。")}
             checked={heldReference(reference)}
             disabled={disabled}
-            onChange={(event) => onChange({ hold_last_frame: event.target.checked ? true : null })}
+            onChange={(event) => { onChange({ hold_last_frame: event.target.checked ? true : null }); }}
             className="min-h-8 py-1"
           />
           {item?.has_audio === false ? (
@@ -124,7 +124,7 @@ export function ReferenceClip({
                 }
                 checked={embedded}
                 disabled={disabled}
-                onChange={(event) => onChange({ use_embedded_audio: event.target.checked })}
+                onChange={(event) => { onChange({ use_embedded_audio: event.target.checked }); }}
                 className="min-h-8 py-1"
               />
               {embedded ? (

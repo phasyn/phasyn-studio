@@ -20,7 +20,7 @@ function emit(): void {
 
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  return () => void listeners.delete(listener);
 }
 
 function publish(owner: string, ids: readonly string[] | null): void {
@@ -41,9 +41,9 @@ function withdraw(owner: string): void {
 
 /** The list publishes its multi-selection (null without one) for as long as it is mounted. */
 export function usePublishShotSelection(ids: readonly string[] | null): void {
-  const owner = useId();
-  useLayoutEffect(() => publish(owner, ids), [owner, ids]);
-  useLayoutEffect(() => () => withdraw(owner), [owner]);
+  const ownerId = useId();
+  useLayoutEffect(() => { publish(ownerId, ids); }, [ownerId, ids]);
+  useLayoutEffect(() => () => { withdraw(ownerId); }, [ownerId]);
 }
 
 /** The selected shots' ids (list order) while the shot list has a multi-selection; null otherwise. */

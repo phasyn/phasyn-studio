@@ -1,3 +1,4 @@
+import { hasSlotContent } from "@/lib/dom";
 import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
 import type { HTMLAttributes, ReactNode } from "react";
 import { cn } from "@/lib/cn";
@@ -27,7 +28,7 @@ export function Callout({ tone = "info", title, icon, className, children, ...pr
         {icon ?? <Icon />}
       </span>
       <div className="min-w-0 space-y-1">
-        {title ? <p className="font-semibold text-fg">{title}</p> : null}
+        {hasSlotContent(title) ? <p className="font-semibold text-fg">{title}</p> : null}
         {children}
       </div>
     </div>

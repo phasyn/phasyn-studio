@@ -72,7 +72,7 @@ export function RequiredComponents({
       : pendingStart.length === 0
         ? Object.keys(phase).length > 0
           ? t("啟動進行中")
-          : unknownText
+          : (unknownText != null && unknownText !== "")
             ? t("{unknownText}：無法判斷要啟動哪些元件", { unknownText })
             : summary.ready === summary.total
               ? t("所有元件都已就緒")
@@ -86,13 +86,13 @@ export function RequiredComponents({
           variant="secondary"
           icon={<Power aria-hidden />}
           disabledReason={allReason}
-          onClick={() => onStart(pendingStart)}
+          onClick={() => { onStart(pendingStart); }}
           title={t("只啟動這個元件組合中已停止或錯誤的元件；同一張卡依序、不同卡並行")}
         >
           {pendingStart.length > 0 ? t("啟動全部需要的元件（{pendingStartCount}）", { pendingStartCount: pendingStart.length }) : t("啟動全部需要的元件")}
         </ActionButton>
         <span className="flex min-w-0 flex-wrap items-center gap-2 text-caption text-fg-tertiary" aria-live="polite">
-          {unknownText ? (
+          {(unknownText != null && unknownText !== "") ? (
             <span className={catalogStatus === "error" ? "text-warning" : undefined}>{`${unknownText}${catalogStatus === "loading" ? "…" : ""}`}</span>
           ) : (
             <>
@@ -143,7 +143,7 @@ export function RequiredComponents({
                     <Td className="py-1.5">
                       <Link to={componentPath(item.nodeId, item.componentId)} className="flex min-w-0 items-center gap-2 no-underline hover:underline" title={t("在元件頁開啟 {componentId}", { componentId: item.componentId })}>
                         <kind.icon aria-hidden className={cn("size-4 shrink-0", TEXT_TONE[kind.tone])} />
-                        <span className="min-w-0 truncate text-fg">{item.descriptor?.label || item.componentId}</span>
+                        <span className="min-w-0 truncate text-fg">{(item.descriptor?.label ?? "") || item.componentId}</span>
                       </Link>
                       <code className="machine block truncate text-caption text-fg-tertiary">{item.componentId}</code>
                     </Td>
@@ -176,17 +176,17 @@ export function RequiredComponents({
                       )}
                     </Td>
                     <Td className="py-1.5">
-                      <ActionCell item={item} phase={phase[item.key]} onStart={() => onStart([item])} />
+                      <ActionCell item={item} phase={phase[item.key]} onStart={() => { onStart([item]); }} />
                     </Td>
                   </Tr>
                   {failure ? (
                     <tr className="bg-sunken/50">
                       <td colSpan={COLUMNS} className="border-b border-line-subtle px-4 py-1.5">
                         <span role="alert" className="flex flex-wrap items-center gap-x-2 gap-y-1 text-caption">
-                          <span className={cn("font-medium", failure.skipped ? "text-warning" : "text-danger")}>{failure.skipped ? t("沒有送出") : failure.unknown ? t("遠端結果未知") : t("啟動失敗")}</span>
+                          <span className={cn("font-medium", (failure.skipped === true) ? "text-warning" : "text-danger")}>{(failure.skipped === true) ? t("沒有送出") : failure.unknown ? t("遠端結果未知") : t("啟動失敗")}</span>
                           <span className="min-w-0 text-fg-secondary [overflow-wrap:anywhere]">{failure.message}</span>
                           {failure.unknown ? <span className="text-warning">{t("Node 可能仍在載入：請看狀態欄，不會自動重送。")}</span> : null}
-                          <ToolButton label={t("關閉這則訊息")} icon={<X aria-hidden />} onClick={() => onDismiss(item.key)} className="ml-auto" />
+                          <ToolButton label={t("關閉這則訊息")} icon={<X aria-hidden />} onClick={() => { onDismiss(item.key); }} className="ml-auto" />
                         </span>
                       </td>
                     </tr>

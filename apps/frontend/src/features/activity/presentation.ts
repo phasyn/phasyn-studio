@@ -26,7 +26,7 @@ export function sourceSpec(source: LogSource): SourceSpec {
     case "component":
     case "step": {
       const kind = providerKind(source.providerId);
-      const provider = source.providerId ? t("（{providerId}・{label}）", { providerId: source.providerId, label: kind.label }) : "";
+      const provider = (source.providerId != null && source.providerId !== "") ? t("（{providerId}・{label}）", { providerId: source.providerId, label: kind.label }) : "";
       return { icon: kind.icon, tone: kind.tone, title: t("{kind}：{label}{provider}", { kind: SOURCE_KIND_LABEL[source.kind], label: source.label, provider }) };
     }
     case "run":

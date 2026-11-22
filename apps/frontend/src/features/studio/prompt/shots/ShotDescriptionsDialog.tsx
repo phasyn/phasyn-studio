@@ -69,7 +69,7 @@ function ThumbReads() {
 
 export function ShotDescriptionsDialog({ open, onOpenChange, value, references, library, durationSeconds, disabled = false, onSave }: ShotDescriptionsDialogProps) {
   const id = useId();
-  const fieldId = (index: number) => `${id}-shot-${index}`;
+  const fieldId = (index: number) => `${id}-shot-${String(index)}`;
   const [opened] = useState<ShotLayout | null>(() => parseShotLayout(value));
   const [texts, setTexts] = useState<string[]>(() => opened?.shots.map((shot) => shot.text) ?? []);
   const [phrases, setPhrases] = useState<string[]>(() => opened?.subjects.map((subject) => signaturePhrase(subject.text)) ?? []);
@@ -114,7 +114,7 @@ export function ShotDescriptionsDialog({ open, onOpenChange, value, references, 
     (warned > 0
       ? t("{count} 個鏡頭有提醒，仍可儲存", { count: warned })
       : unnamed.length > 0
-        ? t("{subjects} 沒有出現在任何鏡頭，仍可儲存", { subjects: formatList(unnamed.map((number) => `<Subject ${number}>`)) })
+        ? t("{subjects} 沒有出現在任何鏡頭，仍可儲存", { subjects: formatList(unnamed.map((number) => `<Subject ${String(number)}>`)) })
         : subjects.length > 0
           ? t("每個鏡頭都寫了景別、視角與角色特徵")
           : t("每個鏡頭都寫了景別"));
@@ -134,7 +134,7 @@ export function ShotDescriptionsDialog({ open, onOpenChange, value, references, 
   };
   const save = () => {
     // The footer already says why; the description to fix gets the focus
-    if (blockedReason !== null || !result?.ok) {
+    if (blockedReason !== null || !(result?.ok === true)) {
       if (blockedAt >= 0) focusField(blockedAt);
       return;
     }
@@ -191,7 +191,7 @@ export function ShotDescriptionsDialog({ open, onOpenChange, value, references, 
               references={references}
               library={library}
               disabled={disabled}
-              onPhrase={(index, phrase) => setPhrases((current) => current.map((item, at) => (at === index ? phrase : item)))}
+              onPhrase={(index, phrase) => { setPhrases((current) => current.map((item, at) => (at === index ? phrase : item))); }}
             />
           ) : null}
           {!source.ok ? (
@@ -206,7 +206,7 @@ export function ShotDescriptionsDialog({ open, onOpenChange, value, references, 
                 const timing = timings[index] ?? { start: shot.start, end: null };
                 return (
                   <ShotRow
-                    key={index}
+                    key={shot.number}
                     index={index + 1}
                     fieldId={fieldId(index)}
                     shot={shot}
@@ -216,7 +216,7 @@ export function ShotDescriptionsDialog({ open, onOpenChange, value, references, 
                     issues={issues[index] ?? []}
                     subjects={subjects}
                     disabled={disabled}
-                    onText={(next) => setText(index, next)}
+                    onText={(next) => { setText(index, next); }}
                   />
                 );
               })}

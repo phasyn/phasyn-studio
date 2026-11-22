@@ -75,13 +75,13 @@ function rangeProblem(value: number, min: number, max: number, label: string, in
 }
 
 /** 生成參數的問題（不含參考圖、運算路由與元件狀態）；空陣列＝參數都合法。 */
-export function paramProblems(shot: StudioImageShot): string[] {
+export function paramProblems(shot: StudioImageShot, alignment?: number): string[] {
   const problems: string[] = [];
   if (!shot.prompt.trim()) problems.push(t("先輸入 prompt"));
   if (shot.prompt.length > LIMITS.prompt) problems.push(t("prompt 最多 {prompt} 個字元", { prompt: LIMITS.prompt }));
   if (shot.negative_prompt.length > LIMITS.prompt) problems.push(t("負面提示詞最多 {prompt} 個字元", { prompt: LIMITS.prompt }));
-  const size = sizeProblem(shot.width, shot.height);
-  if (size) problems.push(size);
+  const size = sizeProblem(shot.width, shot.height, alignment);
+  if (size != null && size !== "") problems.push(size);
   const checks = [
     rangeProblem(shot.steps, LIMITS.steps.min, LIMITS.steps.max, t("採樣步數"), true),
     rangeProblem(shot.guidance, LIMITS.guidance.min, LIMITS.guidance.max, "Guidance", false),
@@ -91,13 +91,13 @@ export function paramProblems(shot: StudioImageShot): string[] {
     seedProblem(shot.seed),
     batchProblem(shot.batch),
   ];
-  for (const problem of checks) if (problem) problems.push(problem);
+  for (const problem of checks) if (problem != null && problem !== "") problems.push(problem);
   return problems;
 }
 
 /** 使用中的 take：明確選取的那個；沒有選取時用最新的成功 take。 */
 export function activeImageTake(shot: StudioImageShot): StudioImageTake | null {
-  const chosen = shot.active_take_id ? shot.takes.find((take) => take.take_id === shot.active_take_id) : undefined;
+  const chosen = (shot.active_take_id != null && shot.active_take_id !== "") ? shot.takes.find((take) => take.take_id === shot.active_take_id) : undefined;
   if (chosen) return chosen;
   for (let index = shot.takes.length - 1; index >= 0; index -= 1) {
     const take = shot.takes[index];

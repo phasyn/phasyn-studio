@@ -1,13 +1,14 @@
+import { hasSlotContent } from "@/lib/dom";
 // The fields of the editor's property panels: numbers and text that commit on blur or Enter (and with Save, through
 // the draft registry), choices, switches, segmented controls and colors, in the density of the panel they stand in.
 // A field of a locked track is read-only and says why in its tooltip. A refused value keeps its text; the reason
 // takes a line of its own under the row (the fields render it as a sibling, so the row's flex or grid places it).
-import { useContext, useEffect, useEffectEvent, useId, useRef, useState, type ReactNode, type RefObject } from "react";
+import { use, useEffect, useEffectEvent, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Input, Select, Switch, Textarea } from "@/components/ui/controls";
 import { t } from "@/i18n";
 import { cn } from "@/lib/cn";
 import { DensityContext, FieldLockContext, type Density } from "./controlsContext";
-import { handleNumberKey, useNumberDraft, useTextDraft, type CommitResult } from "./useFieldDraft";
+import { handleNumberKey, useNumberDraft, useTextDraft, type CommitHandler } from "./useFieldDraft";
 
 /** Quieter than a form field: rows of these sit close together. */
 const QUIET = "border-line-strong";
@@ -25,7 +26,7 @@ function FieldError({ id, error }: { id: string; error: string }) {
 }
 
 function tooltip(label: string, reason: string | null, hint: string | undefined): string {
-  return reason ?? (hint ? t("{label}：{hint}", { label, hint }) : label);
+  return reason ?? ((hint != null && hint !== "") ? t("{label}：{hint}", { label, hint }) : label);
 }
 
 export interface NumberFieldProps {
@@ -40,7 +41,7 @@ export interface NumberFieldProps {
   step?: number;
   /** The unit after the field; "" keeps its place empty so a column of fields stays aligned. */
   suffix?: string;
-  onCommit: (value: number) => CommitResult;
+  onCommit: CommitHandler<number>;
   disabledReason?: string | null;
   /** A fact about the field, shown in its tooltip. */
   hint?: string;
@@ -51,10 +52,10 @@ export interface NumberFieldProps {
 
 export function NumberField({ label, value, min, max, decimals = 0, step = 1, suffix, onCommit, disabledReason, hint, inputRef, className }: NumberFieldProps) {
   const id = useId();
-  const density = useContext(DensityContext);
-  const locked = useContext(FieldLockContext);
+  const density = use(DensityContext);
+  const locked = use(FieldLockContext);
   const reason = locked ?? disabledReason ?? null;
-  const [fieldRef, draft] = useNumberDraft({ value, min, max, decimals, step, onCommit, disabledReason: reason, inputRef });
+  const [fieldRef, draft] = useNumberDraft({ value, min, max, decimals, step, onCommit, disabledReason: reason, ...(inputRef === undefined ? {} : { inputRef }) });
   return (
     <>
       <span className="inline-flex shrink-0 items-center gap-1">
@@ -65,14 +66,14 @@ export function NumberField({ label, value, min, max, decimals = 0, step = 1, su
           title={tooltip(label, reason, hint)}
           inputMode={decimals === 0 ? "numeric" : "decimal"}
           value={draft.text}
-          className={cn("machine text-right", QUIET, INPUT_SIZE[density], NUMBER_WIDTH[density], reason && "cursor-not-allowed", className)}
+          className={cn("machine text-right", QUIET, INPUT_SIZE[density], NUMBER_WIDTH[density], ((reason != null && reason !== "") ? "cursor-not-allowed" : reason), className)}
           readOnly={reason !== null}
-          aria-disabled={reason ? true : undefined}
-          aria-invalid={draft.error ? true : undefined}
-          aria-describedby={draft.error ? `${id}-error` : undefined}
-          onChange={(event) => draft.setText(event.target.value)}
-          onBlur={draft.commit}
-          onKeyDown={(event) => handleNumberKey(draft, event)}
+          aria-disabled={(reason != null && reason !== "") ? true : undefined}
+          aria-invalid={(draft.error != null && draft.error !== "") ? true : undefined}
+          aria-describedby={(draft.error != null && draft.error !== "") ? `${id}-error` : undefined}
+          onChange={(event) => { draft.setText(event.target.value); }}
+          onBlur={() => { draft.commit(); }}
+          onKeyDown={(event) => { handleNumberKey(draft, event); }}
         />
         {suffix !== undefined ? (
           <span aria-hidden className={SUFFIX}>
@@ -80,7 +81,7 @@ export function NumberField({ label, value, min, max, decimals = 0, step = 1, su
           </span>
         ) : null}
       </span>
-      {draft.error ? <FieldError id={`${id}-error`} error={draft.error} /> : null}
+      {(draft.error != null && draft.error !== "") ? <FieldError id={`${id}-error`} error={draft.error} /> : null}
     </>
   );
 }
@@ -90,7 +91,7 @@ export interface TextFieldProps {
   value: string;
   /** Why the text cannot be committed; null when it can. */
   validate?: (text: string) => string | null;
-  onCommit: (text: string) => CommitResult;
+  onCommit: CommitHandler<string>;
   inputRef?: RefObject<HTMLInputElement | null>;
   mono?: boolean;
   className?: string;
@@ -98,9 +99,9 @@ export interface TextFieldProps {
 
 export function TextField({ label, value, validate, onCommit, inputRef, mono = false, className }: TextFieldProps) {
   const id = useId();
-  const density = useContext(DensityContext);
-  const locked = useContext(FieldLockContext);
-  const [fieldRef, draft] = useTextDraft<HTMLInputElement>({ value, validate, onCommit, disabledReason: locked, inputRef });
+  const density = use(DensityContext);
+  const locked = use(FieldLockContext);
+  const [fieldRef, draft] = useTextDraft<HTMLInputElement>({ value, ...(validate === undefined ? {} : { validate }), onCommit, disabledReason: locked, ...(inputRef === undefined ? {} : { inputRef }) });
   return (
     <>
       <Input
@@ -109,13 +110,13 @@ export function TextField({ label, value, validate, onCommit, inputRef, mono = f
         aria-label={label}
         title={locked ?? label}
         value={draft.text}
-        className={cn("min-w-0 flex-1", QUIET, INPUT_SIZE[density], mono && "machine", locked && "cursor-not-allowed", className)}
+        className={cn("min-w-0 flex-1", QUIET, INPUT_SIZE[density], mono && "machine", ((locked != null && locked !== "") ? "cursor-not-allowed" : locked), className)}
         readOnly={locked !== null}
-        aria-disabled={locked ? true : undefined}
-        aria-invalid={draft.error ? true : undefined}
-        aria-describedby={draft.error ? `${id}-error` : undefined}
-        onChange={(event) => draft.setText(event.target.value)}
-        onBlur={draft.commit}
+        aria-disabled={(locked != null && locked !== "") ? true : undefined}
+        aria-invalid={(draft.error != null && draft.error !== "") ? true : undefined}
+        aria-describedby={(draft.error != null && draft.error !== "") ? `${id}-error` : undefined}
+        onChange={(event) => { draft.setText(event.target.value); }}
+        onBlur={() => { draft.commit(); }}
         onKeyDown={(event) => {
           if (event.key === "Enter") {
             event.preventDefault();
@@ -126,7 +127,7 @@ export function TextField({ label, value, validate, onCommit, inputRef, mono = f
           }
         }}
       />
-      {draft.error ? <FieldError id={`${id}-error`} error={draft.error} /> : null}
+      {(draft.error != null && draft.error !== "") ? <FieldError id={`${id}-error`} error={draft.error} /> : null}
     </>
   );
 }
@@ -135,15 +136,15 @@ export interface TextAreaFieldProps {
   label: string;
   value: string;
   validate?: (text: string) => string | null;
-  onCommit: (text: string) => CommitResult;
+  onCommit: CommitHandler<string>;
   rows?: number;
 }
 
 /** Several lines of text: Enter adds a line, Ctrl/⌘+Enter (or leaving the field) commits. */
 export function TextAreaField({ label, value, validate, onCommit, rows = 3 }: TextAreaFieldProps) {
   const id = useId();
-  const locked = useContext(FieldLockContext);
-  const [fieldRef, draft] = useTextDraft<HTMLTextAreaElement>({ value, validate, onCommit, disabledReason: locked });
+  const locked = use(FieldLockContext);
+  const [fieldRef, draft] = useTextDraft<HTMLTextAreaElement>({ value, ...(validate === undefined ? {} : { validate }), onCommit, disabledReason: locked });
   return (
     <>
       <Textarea
@@ -153,13 +154,13 @@ export function TextAreaField({ label, value, validate, onCommit, rows = 3 }: Te
         aria-label={label}
         title={locked ?? undefined}
         value={draft.text}
-        className={cn("min-h-0 resize-none", QUIET, locked && "cursor-not-allowed")}
+        className={cn("min-h-0 resize-none", QUIET, ((locked != null && locked !== "") ? "cursor-not-allowed" : locked))}
         readOnly={locked !== null}
-        aria-disabled={locked ? true : undefined}
-        aria-invalid={draft.error ? true : undefined}
-        aria-describedby={draft.error ? `${id}-error` : undefined}
-        onChange={(event) => draft.setText(event.target.value)}
-        onBlur={draft.commit}
+        aria-disabled={(locked != null && locked !== "") ? true : undefined}
+        aria-invalid={(draft.error != null && draft.error !== "") ? true : undefined}
+        aria-describedby={(draft.error != null && draft.error !== "") ? `${id}-error` : undefined}
+        onChange={(event) => { draft.setText(event.target.value); }}
+        onBlur={() => { draft.commit(); }}
         onKeyDown={(event) => {
           if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
             event.preventDefault();
@@ -170,7 +171,7 @@ export function TextAreaField({ label, value, validate, onCommit, rows = 3 }: Te
           }
         }}
       />
-      {draft.error ? <FieldError id={`${id}-error`} error={draft.error} /> : null}
+      {(draft.error != null && draft.error !== "") ? <FieldError id={`${id}-error`} error={draft.error} /> : null}
     </>
   );
 }
@@ -195,8 +196,8 @@ export interface SelectFieldProps<T extends string> {
 }
 
 export function SelectField<T extends string>({ label, value, options, onChange, hint, className }: SelectFieldProps<T>) {
-  const density = useContext(DensityContext);
-  const locked = useContext(FieldLockContext);
+  const density = use(DensityContext);
+  const locked = use(FieldLockContext);
   const pointer = usePointerRelease();
   return (
     <span className={cn("block min-w-0", className)} {...pointer.handlers}>
@@ -204,12 +205,12 @@ export function SelectField<T extends string>({ label, value, options, onChange,
         compact
         aria-label={label}
         title={tooltip(label, locked, hint)}
-        aria-disabled={locked ? true : undefined}
+        aria-disabled={(locked != null && locked !== "") ? true : undefined}
         value={value}
-        className={cn(QUIET, SELECT_SIZE[density], locked && "cursor-not-allowed")}
+        className={cn(QUIET, SELECT_SIZE[density], ((locked != null && locked !== "") ? "cursor-not-allowed" : locked))}
         onChange={(event) => {
           const next = options.find((option) => option.value === event.target.value);
-          if (next && !locked) onChange(next.value);
+          if (next && !(locked != null && locked !== "")) onChange(next.value);
           pointer.release(event.target);
         }}
       >
@@ -231,7 +232,7 @@ export interface SwitchFieldProps {
 }
 
 export function SwitchField({ label, checked, onChange, hint }: SwitchFieldProps) {
-  const locked = useContext(FieldLockContext);
+  const locked = use(FieldLockContext);
   const pointer = usePointerRelease();
   return (
     <span className="inline-flex shrink-0" title={tooltip(label, locked, hint)} {...pointer.handlers}>
@@ -240,9 +241,9 @@ export function SwitchField({ label, checked, onChange, hint }: SwitchFieldProps
         hideLabel
         className="min-h-0 py-0"
         checked={checked}
-        aria-disabled={locked ? true : undefined}
+        aria-disabled={(locked != null && locked !== "") ? true : undefined}
         onChange={(event) => {
-          if (!locked) onChange(event.target.checked);
+          if (!(locked != null && locked !== "")) onChange(event.target.checked);
           pointer.release(event.target);
         }}
       />
@@ -257,19 +258,19 @@ export function SwitchField({ label, checked, onChange, hint }: SwitchFieldProps
  * control keeps the focus.
  */
 function usePointerRelease() {
-  const byPointer = useRef(false);
+  const byPointerRef = useRef(false);
   return {
     handlers: {
       onPointerDown: () => {
-        byPointer.current = true;
+        byPointerRef.current = true;
       },
       onKeyDown: () => {
-        byPointer.current = false;
+        byPointerRef.current = false;
       },
     },
     release: (control: HTMLElement) => {
-      if (!byPointer.current) return;
-      byPointer.current = false;
+      if (!byPointerRef.current) return;
+      byPointerRef.current = false;
       control.blur();
     },
   };
@@ -285,19 +286,19 @@ export interface SegmentedProps<T extends string> {
 
 /** A small radio group in one frame: one Tab stop, the arrow keys move and choose. */
 export function Segmented<T extends string>({ label, value, options, onChange, className }: SegmentedProps<T>) {
-  const list = useRef<HTMLDivElement>(null);
-  const density = useContext(DensityContext);
-  const locked = useContext(FieldLockContext);
+  const listRef = useRef<HTMLDivElement>(null);
+  const density = use(DensityContext);
+  const locked = use(FieldLockContext);
   // From the keyboard the chosen radio takes the focus (one Tab stop, the arrows move and choose). A click chooses
   // without taking it: in a panel that keeps the timeline's focus, the arrows and Space stay transport keys
   const choose = (index: number, byKeyboard: boolean) => {
     const next = options[(index + options.length) % options.length];
-    if (!next || locked) return;
+    if (!next || (locked != null && locked !== "")) return;
     onChange(next.value);
-    if (byKeyboard) list.current?.querySelector<HTMLElement>(`[data-value="${next.value}"]`)?.focus();
+    if (byKeyboard) listRef.current?.querySelector<HTMLElement>(`[data-value="${next.value}"]`)?.focus();
   };
   return (
-    <div ref={list} role="radiogroup" aria-label={label} className={cn("inline-flex shrink-0 items-stretch gap-0.5 rounded-md border border-line-strong bg-sunken p-0.5", density === "compact" ? "h-6.5" : "h-8", className)}>
+    <div ref={listRef} role="radiogroup" aria-label={label} className={cn("inline-flex shrink-0 items-stretch gap-0.5 rounded-md border border-line-strong bg-sunken p-0.5", density === "compact" ? "h-6.5" : "h-8", className)}>
       {options.map((option, index) => {
         const selected = option.value === value;
         return (
@@ -307,11 +308,11 @@ export function Segmented<T extends string>({ label, value, options, onChange, c
             role="radio"
             data-value={option.value}
             aria-checked={selected}
-            aria-label={option.icon ? option.label : undefined}
-            aria-disabled={locked ? true : undefined}
+            aria-label={hasSlotContent(option.icon) ? option.label : undefined}
+            aria-disabled={(locked != null && locked !== "") ? true : undefined}
             title={locked ?? option.title ?? option.label}
             tabIndex={selected ? 0 : -1}
-            onClick={(event) => choose(index, event.detail === 0)}
+            onClick={(event) => { choose(index, event.detail === 0); }}
             onKeyDown={(event) => {
               if (event.key === "ArrowRight" || event.key === "ArrowDown") choose(index + 1, true);
               else if (event.key === "ArrowLeft" || event.key === "ArrowUp") choose(index - 1, true);
@@ -321,7 +322,7 @@ export function Segmented<T extends string>({ label, value, options, onChange, c
             className={cn(
               "pressable inline-flex min-w-6 flex-1 items-center justify-center rounded-[5px] px-1.5 text-caption whitespace-nowrap [&_svg]:size-3.5",
               selected ? "bg-brand-gradient-soft text-fg ring-1 ring-brand-blue/50 ring-inset [&_svg]:text-brand-cyan" : "text-fg-tertiary hover:bg-raised hover:text-fg",
-              locked && "cursor-not-allowed",
+              ((locked != null && locked !== "") ? "cursor-not-allowed" : locked),
             )}
           >
             {option.icon ?? option.label}
@@ -338,42 +339,42 @@ export interface ColorFieldProps {
   label: string;
   /** #rrggbb. */
   value: string;
-  onCommit: (color: string) => CommitResult;
+  onCommit: CommitHandler<string>;
 }
 
 /** A color as a swatch (the system picker; the color applies once, when the picker closes) and as #RRGGBB text. */
 export function ColorField({ label, value, onCommit }: ColorFieldProps) {
-  const density = useContext(DensityContext);
-  const locked = useContext(FieldLockContext);
-  const swatch = useRef<HTMLInputElement>(null);
+  const density = use(DensityContext);
+  const locked = use(FieldLockContext);
+  const swatchRef = useRef<HTMLInputElement>(null);
   // The color under the pointer while the picker is open, over the document color it started from
   const [picking, setPicking] = useState<{ base: string; color: string } | null>(null);
   const picked = useEffectEvent(() => {
-    const color = swatch.current?.value.toLowerCase();
-    if (color && color !== value && !locked) onCommit(color);
+    const color = swatchRef.current?.value.toLowerCase();
+    if ((color != null && color !== "") && color !== value && !(locked != null && locked !== "")) onCommit(color);
   });
   // React's onChange follows every move inside the picker; the native change event fires once, when it closes
   useEffect(() => {
-    const node = swatch.current;
+    const node = swatchRef.current;
     if (!node) return;
-    const onChange = () => picked();
+    const onChange = () => { picked(); };
     node.addEventListener("change", onChange);
-    return () => node.removeEventListener("change", onChange);
+    return () => { node.removeEventListener("change", onChange); };
   }, []);
   return (
     <>
       <input
-        ref={swatch}
+        ref={swatchRef}
         type="color"
         aria-label={label}
         title={locked ?? label}
-        aria-disabled={locked ? true : undefined}
+        aria-disabled={(locked != null && locked !== "") ? true : undefined}
         value={picking?.base === value ? picking.color : value}
         onChange={(event) => {
-          if (!locked) setPicking({ base: value, color: event.target.value });
+          if (!(locked != null && locked !== "")) setPicking({ base: value, color: event.target.value });
         }}
-        onBlur={() => setPicking(null)}
-        className={cn("pressable w-9 shrink-0 cursor-pointer rounded-md border border-line-strong bg-sunken p-0.5", density === "compact" ? "h-6.5" : "h-8", locked && "cursor-not-allowed")}
+        onBlur={() => { setPicking(null); }}
+        className={cn("pressable w-9 shrink-0 cursor-pointer rounded-md border border-line-strong bg-sunken p-0.5", density === "compact" ? "h-6.5" : "h-8", ((locked != null && locked !== "") ? "cursor-not-allowed" : locked))}
       />
       <TextField
         label={t("{label}（#RRGGBB）", { label })}

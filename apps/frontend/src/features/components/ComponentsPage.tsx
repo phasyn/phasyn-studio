@@ -49,9 +49,8 @@ function isDirty(entry: DraftEntry | undefined): boolean {
 
 function withoutKey<T>(record: Record<string, T>, key: string): Record<string, T> {
   if (!(key in record)) return record;
-  const copy = { ...record };
-  delete copy[key];
-  return copy;
+  const { [key]: _removed, ...remaining } = record;
+  return remaining;
 }
 
 /**
@@ -84,8 +83,8 @@ export function ComponentsPage() {
   const nodePanel = useChangeFade<HTMLDivElement>(activeNodeId);
   const nodeEntries = entries.filter((entry) => entry.node.node_id === activeNodeId);
   const shownEntries = nodeEntries.filter((entry) => matchesFilters(entry, filters));
-  const selectedKey = activeNodeId && selectedComponent ? instanceKey(activeNodeId, selectedComponent) : null;
-  const selected = selectedKey ? (entries.find((entry) => entry.key === selectedKey) ?? null) : null;
+  const selectedKey = (activeNodeId != null && activeNodeId !== "") && (selectedComponent != null && selectedComponent !== "") ? instanceKey(activeNodeId, selectedComponent) : null;
+  const selected = (selectedKey != null && selectedKey !== "") ? (entries.find((entry) => entry.key === selectedKey) ?? null) : null;
   const dirtyKeys = [
     ...new Set([
       ...Object.keys(drafts).filter((key) => isDirty(drafts[key])),
@@ -105,27 +104,26 @@ export function ComponentsPage() {
       event.preventDefault();
     };
     window.addEventListener("beforeunload", handler);
-    return () => window.removeEventListener("beforeunload", handler);
+    return () => { window.removeEventListener("beforeunload", handler); };
   }, [dirtyKeys.length]);
 
-  const updateParams = (changes: Record<string, string | null>, options: { flushSync?: boolean } = {}) =>
-    setParams(
+  const updateParams = (changes: Record<string, string | null>, options: { flushSync?: boolean } = {}) => { setParams(
       (previous) => {
         const next = new URLSearchParams(previous);
         for (const [key, value] of Object.entries(changes)) {
-          if (value) next.set(key, value);
+          if (value != null && value !== "") next.set(key, value);
           else next.delete(key);
         }
         return next;
       },
       { replace: true, ...options },
-    );
+    ); };
 
   // 網址是 Node 的狀態來源：沒有 ?node= 時寫入目前採用的 Node（replace），左欄與中欄因此一致；並記住這台瀏覽器上次看的 Node。
   const urlNode = params.get("node");
   const knownActive = activeNodeId !== null && nodeIds.includes(activeNodeId);
   useEffect(() => {
-    if (activeNodeId && urlNode !== activeNodeId) {
+    if ((activeNodeId != null && activeNodeId !== "") && urlNode !== activeNodeId) {
       setParams(
         (previous) => {
           const next = new URLSearchParams(previous);
@@ -138,7 +136,7 @@ export function ComponentsPage() {
     }
   }, [activeNodeId, urlNode, setParams]);
   useEffect(() => {
-    if (activeNodeId && knownActive) setRememberedNode(activeNodeId);
+    if ((activeNodeId != null && activeNodeId !== "") && knownActive) setRememberedNode(activeNodeId);
   }, [activeNodeId, knownActive]);
 
   const clearFilters = () => {
@@ -146,23 +144,21 @@ export function ComponentsPage() {
     updateParams({ q: null, state: null });
   };
 
-  const chooseNode = (nodeId: string) => updateParams({ node: nodeId, component: nodeId === activeNodeId ? selectedComponent : null, in: null });
-  const select = (nodeId: string, componentId: string) => updateParams({ node: nodeId, component: componentId, in: null });
+  const chooseNode = (nodeId: string) => { updateParams({ node: nodeId, component: nodeId === activeNodeId ? selectedComponent : null, in: null }); };
+  const select = (nodeId: string, componentId: string) => { updateParams({ node: nodeId, component: componentId, in: null }); };
 
-  const setDraftEntry = (key: string, next: DraftEntry | null) => setDrafts((previous) => (next === null ? withoutKey(previous, key) : { ...previous, [key]: next }));
-  const setMetaDraft = (key: string, next: MetaDraft | null) => setMetaDrafts((previous) => (next === null ? withoutKey(previous, key) : { ...previous, [key]: next }));
+  const setDraftEntry = (key: string, next: DraftEntry | null) => { setDrafts((previous) => (next === null ? withoutKey(previous, key) : { ...previous, [key]: next })); };
+  const setMetaDraft = (key: string, next: MetaDraft | null) => { setMetaDrafts((previous) => (next === null ? withoutKey(previous, key) : { ...previous, [key]: next })); };
 
   const nodeTabs = nodeTabItems(nodes, entries);
   const suggestions = folderSuggestions(nodeEntries.map((entry) => entry.descriptor));
 
-  const tablePanel = !activeNodeId ? null : !knownActive ? (
+  const tablePanel = !(activeNodeId != null && activeNodeId !== "") ? null : !knownActive ? (
     <EmptyState
       icon={<ServerOff />}
       title={t("目錄中沒有這個 Node")}
       description={
-        <>
-          <Trans source={"<0>{activeNodeId}</0> 不在目前的目錄中：可能已移除或尚未登記。請選擇上方的 Node 分頁。"} values={{ activeNodeId }} slots={[<code className="machine" />]} />
-        </>
+        <Trans source={"<0>{activeNodeId}</0> 不在目前的目錄中：可能已移除或尚未登記。請選擇上方的 Node 分頁。"} values={{ activeNodeId }} slots={[<code key="slot-0" className="machine" />]} />
       }
     />
   ) : nodeEntries.length === 0 ? (
@@ -171,7 +167,7 @@ export function ComponentsPage() {
       title={t("這個 Node 沒有元件 instance")}
       description={activeNode?.snapshot ? t("Node 已回報快照，但沒有任何 instance。") : t("尚未收到這個 Node 的元件快照（Node 啟動後會自動上報）。")}
       action={
-        <Button size="sm" icon={<Plus aria-hidden />} onClick={() => setNewOpen(true)}>
+        <Button size="sm" icon={<Plus aria-hidden />} onClick={() => { setNewOpen(true); }}>
           {t("新建 instance")}
         </Button>
       }
@@ -194,7 +190,7 @@ export function ComponentsPage() {
       entries={shownEntries}
       filtering={filtering}
       selectedKey={selectedKey}
-      onSelect={(entry) => select(entry.node.node_id, entry.descriptor.component_id)}
+      onSelect={(entry) => { select(entry.node.node_id, entry.descriptor.component_id); }}
     />
   );
 
@@ -211,7 +207,7 @@ export function ComponentsPage() {
         description={t("依 Node 分頁、依資料夾分組的元件 instance；選一列在右側檢視器編輯名稱、分類、設定與啟停。")}
         className="shrink-0 border-b border-line-subtle px-4 py-3"
         actions={
-          <Button variant="primary" size="sm" icon={<Plus aria-hidden />} onClick={() => setNewOpen(true)}>
+          <Button variant="primary" size="sm" icon={<Plus aria-hidden />} onClick={() => { setNewOpen(true); }}>
             {t("新建 instance")}
           </Button>
         }
@@ -232,11 +228,11 @@ export function ComponentsPage() {
             placeholder={t("搜尋 ID、名稱、provider、資料夾")}
             aria-label={t("搜尋這個 Node 的元件（ID、名稱、provider、device、資料夾）")}
             autoComplete="off"
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => { setQuery(event.target.value); }}
             className="pl-8"
           />
         </div>
-        <Select compact id="component-state-filter" aria-label={t("狀態")} value={filters.state} onChange={(event) => updateParams({ state: event.target.value })} className="w-32">
+        <Select compact id="component-state-filter" aria-label={t("狀態")} value={filters.state} onChange={(event) => { updateParams({ state: event.target.value }); }} className="w-32">
           {STATE_OPTIONS.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
@@ -250,15 +246,15 @@ export function ComponentsPage() {
               {t("{platform} · 快照", { platform: activeNode.snapshot.platform })} <TimeText iso={activeNode.snapshot.observed_at} />
             </span>
           ) : null}
-          {activeNode?.stale ? <span className="text-warning">{t("Node 離線：顯示最後快照，狀態可能已改變")}</span> : null}
+          {(activeNode?.stale === true) ? <span className="text-warning">{t("Node 離線：顯示最後快照，狀態可能已改變")}</span> : null}
           <span>
-            <Trans source={"顯示 <0>{shownEntriesCount}</0>／<1>{nodeEntriesCount}</1> 個 instance"} values={{ shownEntriesCount: shownEntries.length, nodeEntriesCount: nodeEntries.length }} slots={[<span className="machine text-fg-secondary" />, <span className="machine" />]} />
+            <Trans source={"顯示 <0>{shownEntriesCount}</0>／<1>{nodeEntriesCount}</1> 個 instance"} values={{ shownEntriesCount: shownEntries.length, nodeEntriesCount: nodeEntries.length }} slots={[<span key="slot-0" className="machine text-fg-secondary" />, <span key="slot-1" className="machine" />]} />
           </span>
         </p>
       </ToolStrip>
-      {notice || (catalog.isError && catalog.data) ? (
+      {(notice ?? "") || (catalog.isError && catalog.data) ? (
         <div className="grid shrink-0 gap-2 border-b border-line-subtle px-4 py-2">
-          {notice ? (
+          {(notice != null && notice !== "") ? (
             <p key={notice} role="status" className="flex min-w-0 items-start gap-1.5 text-data text-success animate-rise-in">
               <CircleCheck aria-hidden className="mt-0.5 size-4 shrink-0" />
               <span className="min-w-0 [overflow-wrap:anywhere]">{notice}</span>
@@ -297,18 +293,18 @@ export function ComponentsPage() {
   );
 
   const inspector =
-    selected && selectedKey ? (
+    selected && (selectedKey != null && selectedKey !== "") ? (
       <ComponentInspector
         key={selectedKey}
         entry={selected}
         draftEntry={drafts[selectedKey] ?? null}
-        onDraftEntryChange={(next) => setDraftEntry(selectedKey, next)}
+        onDraftEntryChange={(next) => { setDraftEntry(selectedKey, next); }}
         metaDraft={metaDrafts[selectedKey] ?? null}
-        onMetaDraftChange={(next) => setMetaDraft(selectedKey, next)}
+        onMetaDraftChange={(next) => { setMetaDraft(selectedKey, next); }}
         folderSuggestions={suggestions}
-        onClone={() => setCloneSource(selected)}
-        onSavePreset={(settings) => setPresetSave({ componentId: selected.descriptor.component_id, providerId: selected.descriptor.provider_id, settings })}
-        onApplyPreset={(base, draft) => setPresetApply({ key: selectedKey, base, providerId: selected.descriptor.provider_id, draft })}
+        onClone={() => { setCloneSource(selected); }}
+        onSavePreset={(settings) => { setPresetSave({ componentId: selected.descriptor.component_id, providerId: selected.descriptor.provider_id, settings }); }}
+        onApplyPreset={(base, draft) => { setPresetApply({ key: selectedKey, base, providerId: selected.descriptor.provider_id, draft }); }}
         onDeleted={(nodeId, componentId) => {
           const key = instanceKey(nodeId, componentId);
           setDraftEntry(key, null);
@@ -319,14 +315,12 @@ export function ComponentsPage() {
           document.getElementById(`components-node-tab-${nodeId}`)?.focus();
         }}
       />
-    ) : selectedKey ? (
+    ) : (selectedKey != null && selectedKey !== "") ? (
       <EmptyState
         icon={<Boxes />}
         title={t("目錄中找不到此 instance")}
         description={
-          <>
-            <Trans source={"<0>{selectedComponent}</0> 不在 Node <1>{value}</1>的最新快照中：可能已刪除，或剛建立、等待 Node 回報（數秒內更新）。"} values={{ selectedComponent, value: activeNode?.label ?? activeNodeId }} slots={[<code className="machine" />, <code className="machine" />]} />
-          </>
+          <Trans source={"<0>{selectedComponent}</0> 不在 Node <1>{value}</1>的最新快照中：可能已刪除，或剛建立、等待 Node 回報（數秒內更新）。"} values={{ selectedComponent, value: activeNode?.label ?? activeNodeId }} slots={[<code key="slot-0" className="machine" />, <code key="slot-1" className="machine" />]} />
         }
       />
     ) : (
@@ -373,7 +367,7 @@ export function ComponentsPage() {
         source={cloneSource}
         nodes={nodes}
         entries={entries}
-        onOpenChange={(open) => (open ? undefined : setCloneSource(null))}
+        onOpenChange={(open) => { if (!(open)) { setCloneSource(null); } }}
         onCreated={(nodeId, componentId) => {
           setCloneSource(null);
           setNotice(t("已複製為 {componentId}；元件尚未啟動。", { componentId }));
@@ -382,7 +376,7 @@ export function ComponentsPage() {
       />
       <SavePresetDialog
         target={presetSave}
-        onOpenChange={(open) => (open ? undefined : setPresetSave(null))}
+        onOpenChange={(open) => { if (!(open)) { setPresetSave(null); } }}
         onDone={(preset) => {
           setPresetSave(null);
           setNotice(t("已保存 preset「{label}」（{preset_id}）。", { label: preset.label, preset_id: preset.preset_id }));
@@ -390,7 +384,7 @@ export function ComponentsPage() {
       />
       <ApplyPresetDialog
         target={presetApply}
-        onOpenChange={(open) => (open ? undefined : setPresetApply(null))}
+        onOpenChange={(open) => { if (!(open)) { setPresetApply(null); } }}
         onApply={(next: InstanceSettings) => {
           if (presetApply) setDraftEntry(presetApply.key, { base: presetApply.base, draft: next });
           setPresetApply(null);

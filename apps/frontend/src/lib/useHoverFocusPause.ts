@@ -23,9 +23,9 @@ export function useHoverFocusPause(): HoverFocusPause {
   return {
     paused: hovered || focused,
     pauseHandlers: {
-      onPointerEnter: () => setHovered(true),
-      onPointerLeave: () => setHovered(false),
-      onFocus: () => setFocused(true),
+      onPointerEnter: () => { setHovered(true); },
+      onPointerLeave: () => { setHovered(false); },
+      onFocus: () => { setFocused(true); },
       onBlur: (event: FocusEvent<HTMLElement>) => {
         if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
       },
@@ -41,17 +41,17 @@ export function useHoverFocusPause(): HoverFocusPause {
  */
 export function useHoverFocusTimeout(ms: number | null, running: boolean, onTimeout: () => void): HoverFocusPause {
   const pause = useHoverFocusPause();
-  const remaining = useRef(ms);
+  const remainingRef = useRef(ms);
   const timeout = useEffectEvent(onTimeout);
   const { paused } = pause;
   useEffect(() => {
-    const left = remaining.current;
+    const left = remainingRef.current;
     if (left === null || paused || !running) return;
     const started = performance.now();
-    const timer = window.setTimeout(() => timeout(), left);
+    const timer = window.setTimeout(() => { timeout(); }, left);
     return () => {
       window.clearTimeout(timer);
-      remaining.current = Math.max(0, left - (performance.now() - started));
+      remainingRef.current = Math.max(0, left - (performance.now() - started));
     };
   }, [paused, running]);
   return pause;

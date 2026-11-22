@@ -1,3 +1,4 @@
+import { pageTransition } from "@/lib/dom";
 import { PanelLeftClose, PanelLeftDashed, PanelLeftOpen, Pin } from "lucide-react";
 import { useRef } from "react";
 import { Link, useLocation } from "react-router";
@@ -26,7 +27,7 @@ function SidebarBrand({ collapsed, onNavigate }: { collapsed: boolean; onNavigat
       <span aria-hidden className="pointer-events-none absolute inset-0 bg-[radial-gradient(90%_120%_at_20%_-20%,rgb(62_137_255_/_0.2),transparent_70%)]" />
       <Link
         to={PATHS.studio}
-        viewTransition
+        {...pageTransition()}
         onClick={onNavigate}
         aria-label={t("Phasyn Studio 首頁（Video Studio）")}
         title={t("Phasyn Studio（{keys} 開啟命令面板）", { keys })}
@@ -60,7 +61,7 @@ function AreaLink({ area, memory, active, collapsed, fit, onNavigate }: { area: 
     <li>
       <Link
         to={areaLink(area, memory)}
-        viewTransition
+        {...pageTransition()}
         onClick={onNavigate}
         title={collapsed ? undefined : t("{label}：{hint}", { label: area.label, hint: area.hint })}
         aria-current={active ? "page" : undefined}
@@ -82,7 +83,7 @@ function AreaLink({ area, memory, active, collapsed, fit, onNavigate }: { area: 
           )}
         />
         <span className={collapsed ? "sr-only" : "min-w-0 flex-1 truncate animate-fade-in"}>{area.label}</span>
-        {!collapsed && area.brand && fit < 1 ? (
+        {!collapsed && (area.brand != null && area.brand !== "") && fit < 1 ? (
           <span aria-hidden className={cn("shrink-0 text-[9px] font-semibold tracking-[0.22em]", active ? "text-brand-gradient" : "text-fg-tertiary/70")}>
             {area.brand}
           </span>
@@ -97,7 +98,7 @@ function AreaLink({ area, memory, active, collapsed, fit, onNavigate }: { area: 
             )}
           >
             {area.label}
-            {area.brand ? <span className="ml-2 text-[9px] font-semibold tracking-[0.22em] text-fg-tertiary">{area.brand}</span> : null}
+            {(area.brand != null && area.brand !== "") ? <span className="ml-2 text-[9px] font-semibold tracking-[0.22em] text-fg-tertiary">{area.brand}</span> : null}
           </span>
         ) : null}
       </Link>
@@ -123,11 +124,11 @@ export function AreaNav({ memory, collapsed, onNavigate }: { memory: StudioMemor
       {/* 第 2 級：欄寬固定為清單寬度，名稱改為截斷（之前的層級由連結內容決定欄寬） */}
       <ul ref={listRef} data-fit={fit} className={cn("relative grid gap-1 px-3", fit >= 2 && "grid-cols-1")}>
         {creative.map((area) => (
-          <AreaLink key={area.id} area={area} memory={memory} active={area.id === current} collapsed={collapsed} fit={fit} onNavigate={onNavigate} />
+          <AreaLink key={area.id} area={area} memory={memory} active={area.id === current} collapsed={collapsed} fit={fit} {...(onNavigate === undefined ? {} : { onNavigate })} />
         ))}
         <li aria-hidden className={cn("my-1.5 h-px bg-line-subtle", collapsed ? "mx-2" : "mx-1")} />
         {system.map((area) => (
-          <AreaLink key={area.id} area={area} memory={memory} active={area.id === current} collapsed={collapsed} fit={fit} onNavigate={onNavigate} />
+          <AreaLink key={area.id} area={area} memory={memory} active={area.id === current} collapsed={collapsed} fit={fit} {...(onNavigate === undefined ? {} : { onNavigate })} />
         ))}
         <ActiveIndicator container={listRef} edge="left" inset={8} as="li" className="w-[3px]" />
       </ul>
@@ -147,7 +148,7 @@ const FOOTER_BUTTON = cn(
 function SidebarModeButtons({ mode, onModeChange }: { mode: SidebarMode; onModeChange: (mode: SidebarMode) => void }) {
   if (mode === "hidden") {
     return (
-      <button type="button" onClick={() => onModeChange("expanded")} title={t("固定側欄（不再自動收起）")} className={cn(FOOTER_BUTTON, "gap-2.5 px-3")}>
+      <button type="button" onClick={() => { onModeChange("expanded"); }} title={t("固定側欄（不再自動收起）")} className={cn(FOOTER_BUTTON, "gap-2.5 px-3")}>
         <Pin aria-hidden className="size-4 shrink-0" />
         <span className="animate-fade-in">{t("固定側欄")}</span>
       </button>
@@ -157,7 +158,7 @@ function SidebarModeButtons({ mode, onModeChange }: { mode: SidebarMode; onModeC
   const hide = (
     <button
       type="button"
-      onClick={() => onModeChange("hidden")}
+      onClick={() => { onModeChange("hidden"); }}
       aria-label={t("全收側欄")}
       title={t("全收側欄（指標停在螢幕左緣 1 秒後滑出）")}
       className={cn(FOOTER_BUTTON, "w-10 shrink-0 justify-center", collapsed && "mx-auto")}
@@ -169,7 +170,7 @@ function SidebarModeButtons({ mode, onModeChange }: { mode: SidebarMode; onModeC
     <div className={cn("flex", collapsed ? "flex-col gap-1" : "items-center gap-1")}>
       <button
         type="button"
-        onClick={() => onModeChange(collapsed ? "expanded" : "collapsed")}
+        onClick={() => { onModeChange(collapsed ? "expanded" : "collapsed"); }}
         aria-label={collapsed ? t("展開側欄") : t("收合側欄")}
         aria-expanded={!collapsed}
         title={collapsed ? t("展開側欄（顯示工作區名稱）") : t("收合側欄（只顯示圖示）")}
@@ -214,9 +215,9 @@ export function SidebarContent({
 }) {
   return (
     <>
-      <SidebarBrand collapsed={collapsed} onNavigate={onNavigate} />
-      <AreaNav memory={memory} collapsed={collapsed} onNavigate={onNavigate} />
-      <SidebarFooter collapsed={collapsed} mode={mode} onModeChange={onModeChange} />
+      <SidebarBrand collapsed={collapsed} {...(onNavigate === undefined ? {} : { onNavigate })} />
+      <AreaNav memory={memory} collapsed={collapsed} {...(onNavigate === undefined ? {} : { onNavigate })} />
+      <SidebarFooter collapsed={collapsed} {...(mode === undefined ? {} : { mode })} {...(onModeChange === undefined ? {} : { onModeChange })} />
     </>
   );
 }

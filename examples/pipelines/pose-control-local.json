@@ -1,0 +1,40 @@
+{
+  "pipeline_id": "pose-control-local",
+  "label": "人體姿勢控制素材",
+  "inputs": [
+    {
+      "name": "video_file",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": "單人表演影片"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "capture",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "pose-control",
+      "inputs": {
+        "video_file": {
+          "from_input": "video_file"
+        }
+      },
+      "parameters": {}
+    }
+  ],
+  "outputs": {
+    "asset": {
+      "from_step": "capture",
+      "output": "asset"
+    },
+    "video_file": {
+      "from_step": "capture",
+      "output": "video_file"
+    },
+    "landmarks": {
+      "from_step": "capture",
+      "output": "landmarks"
+    }
+  }
+}

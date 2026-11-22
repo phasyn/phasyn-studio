@@ -4,12 +4,27 @@ import { valuesEqual } from "@/lib/json";
 import { activeTransition, transitionOf, type TransitionAlignment, type TransitionKind, type TransitionOptions } from "../model/clipEffects";
 import { localId } from "../model/ids";
 import { ADJUSTMENT_TRANSITION, isAdjustment } from "./adjustment";
+import { DUCK_AMOUNT_RANGE, duckTrack } from "./autoDuck";
 import { clipDuration, clipEnd, MAX_TIMELINE_FRAMES, newTrack, processedDuration, selectClips, trackClips, type AllocateId, type TimelineResult } from "./model";
 import { restoreTake } from "./restoreTake";
 import { resizeClip, sliceClip } from "./slicing";
-import { changeClipTiming, materializeClipWindow } from "./timing";
+import { changeClipTiming, fixedLengthTiming, materializeClipWindow, type FixedLengthTiming } from "./timing";
 import { cutFrame, cutOf, DEFAULT_TRANSITION_ALIGNMENT, extendHead, extendTail, reconciledCut, restoreCut, retractHead, retractTail, splitAtCut, withoutTransitionOut } from "./transitionCut";
 import { timelineProblem } from "./validation";
+
+// A present undefined clears an optional attribute. Absent keys keep the previous value.
+type ClipAttributePatch = Partial<Pick<TimelineClip, "name" | "motion">> & {
+  [K in "effects" | "effect_stack" | "mask" | "blend_mode"]?: TimelineClip[K] | undefined;
+};
+
+function patchedClip(clip: TimelineClip, patch: ClipAttributePatch): TimelineClip {
+  const updated = Object.assign({ ...clip }, structuredClone(patch));
+  if (updated.effects === undefined) delete updated.effects;
+  if (updated.effect_stack === undefined) delete updated.effect_stack;
+  if (updated.mask === undefined) delete updated.mask;
+  if (updated.blend_mode === undefined) delete updated.blend_mode;
+  return updated;
+}
 
 export type EditCommand =
   /**
@@ -23,6 +38,7 @@ export type EditCommand =
   | { type: "delete"; clipIds: string[]; ripple?: boolean; linked?: boolean; keepSynced?: boolean }
   | { type: "rangeDelete"; startFrame: number; endFrame: number; ripple: boolean }
   | { type: "trim"; clipId: string; edge: "in" | "out"; delta: number; ripple?: boolean; linked?: boolean }
+  | { type: "fixedLengthTiming"; clipId: string; edit: FixedLengthTiming; linked?: boolean }
   | { type: "roll"; leftId: string; rightId: string; delta: number; linked?: boolean }
   | { type: "slide"; clipId: string; delta: number; linked?: boolean }
   | { type: "reorderTrack"; trackId: string; targetId: string }
@@ -34,10 +50,12 @@ export type EditCommand =
   | { type: "unlink"; clipIds: string[] }
   /** The pieces of a shot's clip around clipId (one track, back to back) become one clip of its take from inFrame at normal speed. */
   | { type: "restoreTake"; clipId: string; inFrame: number }
-  | { type: "patchClip"; clipId: string; patch: Partial<Pick<TimelineClip, "name" | "effects" | "motion" | "effect_stack" | "mask" | "blend_mode">>; linked?: boolean }
+  | { type: "patchClip"; clipId: string; patch: ClipAttributePatch; linked?: boolean }
   | { type: "patchTrack"; trackId: string; patch: Partial<Omit<TimelineTrack, "track_id" | "kind">> }
   | { type: "addTrack"; kind: TimelineTrack["kind"]; name: string }
-  | { type: "removeTrack"; trackId: string };
+  | { type: "removeTrack"; trackId: string }
+  /** Auto-duck (baked keys): lower trackId's clips wherever triggerTrackId has clips; replaces their gain_db keys. */
+  | { type: "duck"; trackId: string; triggerTrackId: string; amountDb: number; attackFrames: number; releaseFrames: number };
 
 class EditRejected extends Error {}
 function reject(message: string): never { throw new EditRejected(message); }
@@ -75,7 +93,7 @@ function clearTransitionGuard(timeline: StudioTimeline, clip: TimelineClip): voi
   const previous = clips[index - 1];
   if (activeTransition(clip.effects) || (previous && activeTransition(previous.effects))) reject(t("請先移除受影響編輯點的轉場"));
 }
-type TransitionPair = { leftId: string; rightId: string; transition: NonNullable<ReturnType<typeof activeTransition>> };
+interface TransitionPair { leftId: string; rightId: string; transition: NonNullable<ReturnType<typeof activeTransition>> }
 function transitionPairs(timeline: StudioTimeline): TransitionPair[] {
   return timeline.tracks.flatMap((track) => {
     const clips = trackClips(timeline, track.track_id);
@@ -177,15 +195,15 @@ function shiftedMetadata(timeline: StudioTimeline, start: number, end: number, i
   timeline.captions = timeline.captions.map((caption) => ({ ...caption, start_frame: adjust(caption.start_frame), end_frame: insert && caption.end_frame === start ? caption.end_frame : adjust(caption.end_frame) })).filter((caption) => caption.end_frame > caption.start_frame);
 }
 function rightLink(clip: TimelineClip, links: Map<string, string>, allocate: AllocateId): string | undefined {
-  if (!clip.linked_id) return undefined;
+  if (!(clip.linked_id != null && clip.linked_id !== "")) return undefined;
   let link = links.get(clip.linked_id);
-  if (!link) { link = allocate("link"); links.set(clip.linked_id, link); }
+  if (!(link != null && link !== "")) { link = allocate("link"); links.set(clip.linked_id, link); }
   return link;
 }
 /** A complete right-side member follows the new group even when another member supplied its ID later. */
 function relinkRight(clip: TimelineClip, links: ReadonlyMap<string, string>): TimelineClip {
-  const link = clip.linked_id ? links.get(clip.linked_id) : undefined;
-  return link ? { ...clip, linked_id: link } : clip;
+  const link = (clip.linked_id != null && clip.linked_id !== "") ? links.get(clip.linked_id) : undefined;
+  return (link != null && link !== "") ? { ...clip, linked_id: link } : clip;
 }
 /** For each moved clip, the staying clips it still forms a transition with after the move (same track, same order, an overlap a transition can have). */
 function keptPartners(timeline: StudioTimeline, moved: readonly TimelineClip[]): Map<string, Set<string>> {
@@ -230,7 +248,7 @@ function splitSelected(timeline: StudioTimeline, command: Extract<EditCommand, {
     const head = unwrap(sliceClip(clip, 0, offset, clip.clip_id));
     const tail = unwrap(sliceClip(clip, offset, clipDuration(clip), allocate("clip")));
     const link = rightLink(clip, links, allocate);
-    if (link) tail.linked_id = link;
+    if (link != null && link !== "") tail.linked_id = link;
     output.push(head, tail);
   }
   timeline.clips = [...timeline.clips.filter((clip) => !ids.has(clip.clip_id)), ...output.map((clip) => right.has(clip.clip_id) ? relinkRight(clip, links) : clip)];
@@ -248,7 +266,7 @@ function clearRange(timeline: StudioTimeline, tracks: ReadonlySet<string>, start
     if (clipEnd(clip) > end) {
       const tail = unwrap(sliceClip(clip, end - clip.start_frame, clipDuration(clip), clip.start_frame < start ? allocate("clip") : clip.clip_id));
       const link = rightLink(clip, links, allocate);
-      if (link) tail.linked_id = link;
+      if (link != null && link !== "") tail.linked_id = link;
       output.push(tail);
     }
   }
@@ -281,7 +299,7 @@ function place(timeline: StudioTimeline, command: Extract<EditCommand, { type: "
         const tail = unwrap(sliceClip(clip, offset, clipDuration(clip), allocate("clip")));
         tail.start_frame += command.duration;
         const link = rightLink(clip, links, allocate);
-        if (link) tail.linked_id = link;
+        if (link != null && link !== "") tail.linked_id = link;
         output.push(head, tail);
       } else output.push(clip);
     }
@@ -300,7 +318,7 @@ function deleteSelected(timeline: StudioTimeline, command: Extract<EditCommand, 
     if (pair.transition.cut && ids.has(pair.leftId) !== ids.has(pair.rightId)) restorePair(timeline, pair, { left: !ids.has(pair.leftId), right: !ids.has(pair.rightId) });
   }
   timeline.clips = timeline.clips.filter((clip) => !ids.has(clip.clip_id));
-  if (!command.ripple) return;
+  if (!(command.ripple === true)) return;
   const tracks = rippleTracks(timeline, new Set(selected.map((clip) => clip.track_id)));
   let ranges: { start: number; end: number }[] = [];
   for (const clip of [...selected].sort((a, b) => a.start_frame - b.start_frame)) {
@@ -323,7 +341,7 @@ function deleteSelected(timeline: StudioTimeline, command: Extract<EditCommand, 
   for (const range of ranges.reverse()) {
     // As in Premiere, a sync-locked track gives up what it has in the freed time (extracted there, clips cut around
     // it), so every track stays in sync (the Python twin's close_ranges with allocate)
-    if (!command.keepSynced) clearRange(timeline, tracks, range.start, range.end, allocate);
+    if (!(command.keepSynced === true)) clearRange(timeline, tracks, range.start, range.end, allocate);
     for (const clip of timeline.clips) if (tracks.has(clip.track_id) && clip.start_frame < range.end && clipEnd(clip) > range.start) reject(t("同步鎖定軌道在刪除範圍內仍有片段；請一併選取或關閉同步鎖定"));
     timeline.clips = timeline.clips.map((clip) => tracks.has(clip.track_id) && clip.start_frame >= range.end ? { ...clip, start_frame: clip.start_frame - (range.end - range.start) } : clip);
     shiftedMetadata(timeline, range.start, range.end, false);
@@ -352,7 +370,7 @@ function rangeDelete(timeline: StudioTimeline, command: Extract<EditCommand, { t
     if (clipEnd(clip) > end) {
       const tail = unwrap(sliceClip(source, end - clip.start_frame, clipDuration(clip), clip.start_frame < start ? allocate("clip") : clip.clip_id));
       const link = rightLink(clip, links, allocate);
-      if (link) tail.linked_id = link;
+      if (link != null && link !== "") tail.linked_id = link;
       origins.set(tail.clip_id, clip.clip_id);
       if (ripple) tail.start_frame -= end - start;
       output.push(tail);
@@ -382,7 +400,7 @@ function trim(timeline: StudioTimeline, command: Extract<EditCommand, { type: "t
   const selected = selection(timeline, [command.clipId], command.linked);
   const primary = requiredClip(timeline, command.clipId);
   const resized = selected.map((clip) => resizeForEdit(clip, command.edge, command.delta));
-  if (!command.ripple) { replace(timeline, resized); return; }
+  if (!(command.ripple === true)) { replace(timeline, resized); return; }
   const boundary = command.edge === "in" ? primary.start_frame : clipEnd(primary);
   if (selected.some((clip) => (command.edge === "in" ? clip.start_frame : clipEnd(clip)) !== boundary)) reject(t("連結片段的編輯點不同；請取消連結選取後修剪"));
   const change = command.edge === "in" ? -command.delta : command.delta;
@@ -497,7 +515,7 @@ function transition(timeline: StudioTimeline, command: Extract<EditCommand, { ty
 /** A clip that had no output window and shows its whole clock again keeps none (a transition made before cuts were recorded is restored by trimming). */
 function windowAsBefore(before: TimelineClip, after: TimelineClip): TimelineClip {
   const window = after.output_window;
-  if (before.output_window || !window || window.start_frame !== 0 || window.end_frame !== processedDuration(after)) return after;
+  if (before.output_window || window?.start_frame !== 0 || window.end_frame !== processedDuration(after)) return after;
   const { output_window: _window, ...rest } = after;
   return rest;
 }
@@ -596,7 +614,7 @@ function rearrange(timeline: StudioTimeline, command: Extract<EditCommand, { typ
   for (const clip of updated) {
     const original = requiredClip(timeline, clip.clip_id);
     const delta = clip.start_frame - original.start_frame;
-    if (!clip.linked_id) continue;
+    if (!(clip.linked_id != null && clip.linked_id !== "")) continue;
     const known = shift.get(clip.linked_id);
     if (known !== undefined && known !== delta) reject(t("連結片段會錯開；請取消連結選取後再調整順序"));
     shift.set(clip.linked_id, delta);
@@ -605,7 +623,7 @@ function rearrange(timeline: StudioTimeline, command: Extract<EditCommand, { typ
     const reflowed = new Set(updated.map((clip) => clip.clip_id));
     for (const clip of timeline.clips) {
       // A linked partner on a track that does not re-flow would be left behind
-      if (clip.linked_id && !reflowed.has(clip.clip_id) && (shift.get(clip.linked_id) ?? 0) !== 0) reject(t("連結片段會錯開；請取消連結選取後再調整順序"));
+      if ((clip.linked_id != null && clip.linked_id !== "") && !reflowed.has(clip.clip_id) && (shift.get(clip.linked_id) ?? 0) !== 0) reject(t("連結片段會錯開；請取消連結選取後再調整順序"));
     }
   }
   replace(timeline, updated);
@@ -618,6 +636,14 @@ function mutate(timeline: StudioTimeline, command: EditCommand, allocate: Alloca
     case "delete": deleteSelected(timeline, command, allocate); return;
     case "rangeDelete": rangeDelete(timeline, command, allocate, origins); return;
     case "trim": trim(timeline, command); return;
+    case "fixedLengthTiming": {
+      const peers = selection(timeline, [command.clipId], command.linked);
+      replace(timeline, peers.map((clip) => {
+        clearTransitionGuard(timeline, clip);
+        return unwrap(fixedLengthTiming(clip, command.edit));
+      }));
+      return;
+    }
     case "roll": roll(timeline, command); return;
     case "slide": slide(timeline, command); return;
     case "reorderTrack": {
@@ -690,7 +716,7 @@ function mutate(timeline: StudioTimeline, command: EditCommand, allocate: Alloca
     case "patchClip": {
       const clip = requiredClip(timeline, command.clipId);
       const peers = selection(timeline, [clip.clip_id], command.linked);
-      const updated = { ...clip, ...structuredClone(command.patch) };
+      const updated = patchedClip(clip, command.patch);
       const speedChanged = (updated.effects?.speed_percent ?? 100) !== (clip.effects?.speed_percent ?? 100);
       const holdStartChanged = (updated.effects?.hold?.start ?? 0) !== (clip.effects?.hold?.start ?? 0);
       const holdEndChanged = (updated.effects?.hold?.end ?? 0) !== (clip.effects?.hold?.end ?? 0);
@@ -702,11 +728,14 @@ function mutate(timeline: StudioTimeline, command: EditCommand, allocate: Alloca
         let effects = updated.effects;
         if (item.clip_id !== clip.clip_id) {
           effects = { ...item.effects };
-          if (speedChanged) effects.speed_percent = updated.effects?.speed_percent;
+          if (speedChanged) {
+            if (updated.effects?.speed_percent === undefined) delete effects.speed_percent;
+            else effects.speed_percent = updated.effects.speed_percent;
+          }
           if (holdStartChanged) effects.hold = { ...effects.hold, start: updated.effects?.hold?.start ?? 0 };
           if (holdEndChanged) effects.hold = { ...effects.hold, end: updated.effects?.hold?.end ?? 0 };
         }
-        const retimed = unwrap(changeClipTiming(item.clip_id === clip.clip_id ? { ...updated, effects: item.effects } : item, effects));
+        const retimed = unwrap(changeClipTiming(item.clip_id === clip.clip_id ? patchedClip(updated, { effects: item.effects }) : item, effects));
         return item.clip_id === clip.clip_id ? { ...retimed, name: updated.name } : retimed;
       }));
       return;
@@ -717,6 +746,24 @@ function mutate(timeline: StudioTimeline, command: EditCommand, allocate: Alloca
       return;
     }
     case "addTrack": timeline.tracks.push(newTrack(allocate("track"), command.kind, command.name)); return;
+    case "duck": {
+      const target = unlocked(timeline, command.trackId);
+      if (target.kind !== "audio") reject(t("只能壓低音訊軌"));
+      if (command.triggerTrackId === command.trackId) reject(t("觸發軌必須是另一條軌"));
+      if (!timeline.tracks.some((track) => track.track_id === command.triggerTrackId)) reject(t("找不到觸發軌"));
+      if (!(command.amountDb >= DUCK_AMOUNT_RANGE.min && command.amountDb <= DUCK_AMOUNT_RANGE.max)) reject(t("壓低量必須介於 {min} 到 {max} dB", DUCK_AMOUNT_RANGE));
+      frame(command.attackFrames);
+      frame(command.releaseFrames);
+      if (command.attackFrames < 1 || command.releaseFrames < 1) reject(t("淡入與恢復時間至少一格"));
+      const outcome = duckTrack(timeline, command.trackId, command.triggerTrackId, command);
+      if (!outcome.ok) {
+        if (outcome.reason === "no-target-clips") reject(t("這條軌沒有可壓低的片段"));
+        if (outcome.reason === "no-trigger-clips") reject(t("觸發軌沒有片段"));
+        reject(t("壓低的段落太多，一個片段的音量關鍵影格會超過上限；請把片段切短或減少觸發片段"));
+      }
+      replace(timeline, outcome.clips);
+      return;
+    }
     case "removeTrack": {
       unlocked(timeline, command.trackId);
       if (timeline.clips.some((clip) => clip.track_id === command.trackId)) reject(t("軌道仍有片段；請先移動或移除片段"));
@@ -728,7 +775,7 @@ function mutate(timeline: StudioTimeline, command: EditCommand, allocate: Alloca
 /** Transactional edit: only return a fully valid new document; the caller owns history and persistence. */
 export function executeEdit(timeline: StudioTimeline, command: EditCommand, allocate: AllocateId = localId): TimelineResult<StudioTimeline> {
   const initial = timelineProblem(timeline);
-  if (initial) return { ok: false, error: initial };
+  if (initial != null && initial !== "") return { ok: false, error: initial };
   const draft = structuredClone(timeline);
   try {
     const origins = new Map<string, string>();
@@ -744,7 +791,7 @@ export function executeEdit(timeline: StudioTimeline, command: EditCommand, allo
       return title && kind === "text" ? { ...restarted, effects: { ...clip.effects, title: { ...title, start_frame: 0, end_frame: null } } } : restarted;
     });
     const error = timelineProblem(draft);
-    return error ? { ok: false, error } : { ok: true, value: draft };
+    return (error != null && error !== "") ? { ok: false, error } : { ok: true, value: draft };
   } catch (error) {
     if (error instanceof EditRejected) return { ok: false, error: error.message };
     throw error;

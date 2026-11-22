@@ -12,7 +12,7 @@ from typing import Any
 
 from phasyn_h3.recipe.abi.values import UINT64_MAX, get_path, parse_seed
 
-from . import constants as C
+from . import constants
 from ._diag import INVALID, UNSUPPORTED, err, warn
 from .geometry import build_geometry
 from .materials import TASK_POLICIES, material_diagnostics
@@ -21,8 +21,15 @@ from .materials import TASK_POLICIES, material_diagnostics
 def task_variant_diagnostics(task: Any, model_variant: Any) -> list[dict[str, Any]]:
     """(SG:task_profiles.py:32-38)."""
     if task not in TASK_POLICIES:
-        return [err(UNSUPPORTED, f"H3 未登記 task「{task}」；可用：t2va、fl2va、ref2va", "task", actual=task)]
-    required = C.TASK_VARIANT[task]
+        return [
+            err(
+                UNSUPPORTED,
+                f"H3 未登記 task「{task}」；可用：t2va、fl2va、ref2va",
+                "task",
+                actual=task,
+            )
+        ]
+    required = constants.TASK_VARIANT[task]
     if model_variant != required:
         return [
             err(
@@ -37,22 +44,35 @@ def task_variant_diagnostics(task: Any, model_variant: Any) -> list[dict[str, An
     return []
 
 
-def seed_diagnostics(seed: Any, runtime_provider: str | None = None) -> list[dict[str, Any]]:
-    """via ``parse_seed``; plus the pinned SGLang signed-int64 limit."""
+def seed_diagnostics(
+    seed: Any, runtime_provider: str | None = None
+) -> list[dict[str, Any]]:
+    """Via ``parse_seed``; plus the pinned SGLang signed-int64 limit."""
     try:
         value = parse_seed(seed)
     except ValueError as exc:
-        return [err(INVALID, str(exc), "sampling.seed", expected=f"0..{UINT64_MAX}", actual=seed)]
-    if runtime_provider == C.RUNTIME_SGLANG and value > C.SGLANG_MAX_SEED:
+        return [
+            err(
+                INVALID,
+                str(exc),
+                "sampling.seed",
+                expected=f"0..{UINT64_MAX}",
+                actual=seed,
+            )
+        ]
+    if (
+        runtime_provider == constants.RUNTIME_SGLANG
+        and value > constants.SGLANG_MAX_SEED
+    ):
         return [
             err(
                 UNSUPPORTED,
-                f"釘版 SGLang H3 只接受 0..{C.SGLANG_MAX_SEED} 的 seed"
+                f"釘版 SGLang H3 只接受 0..{constants.SGLANG_MAX_SEED} 的 seed"
                 "（request_validation.py；condition noise 另用 seed+1）；"
                 "此 uint64 seed 不會被改寫，請改用較小 seed 或其他 runtime",
                 "sampling.seed",
                 "profile.runtime_provider",
-                expected=f"<= {C.SGLANG_MAX_SEED}",
+                expected=f"<= {constants.SGLANG_MAX_SEED}",
                 actual=seed,
             )
         ]
@@ -60,25 +80,43 @@ def seed_diagnostics(seed: Any, runtime_provider: str | None = None) -> list[dic
 
 
 def sampling_diagnostics(sampling: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Explain unsupported sampling parameters for this job."""
     out: list[dict[str, Any]] = []
     scheduler = sampling.get("scheduler")
-    if scheduler != C.SCHEDULER_ID:
+    if scheduler != constants.SCHEDULER_ID:
         out.append(
             err(
                 UNSUPPORTED,
-                f"H3 只支援 scheduler {C.SCHEDULER_ID}",
+                f"H3 只支援 scheduler {constants.SCHEDULER_ID}",
                 "sampling.scheduler",
-                expected=C.SCHEDULER_ID,
+                expected=constants.SCHEDULER_ID,
                 actual=scheduler,
             )
         )
     steps = sampling.get("steps")
-    if isinstance(steps, bool) or not isinstance(steps, int) or not 1 <= steps <= C.MAX_STEPS:
-        out.append(err(INVALID, f"steps 必須是 1..{C.MAX_STEPS} 的整數", "sampling.steps", actual=steps))
+    if (
+        isinstance(steps, bool)
+        or not isinstance(steps, int)
+        or not 1 <= steps <= constants.MAX_STEPS
+    ):
+        out.append(
+            err(
+                INVALID,
+                f"steps 必須是 1..{constants.MAX_STEPS} 的整數",
+                "sampling.steps",
+                actual=steps,
+            )
+        )
     for key in ("video_shift", "audio_shift"):
         value = sampling.get(key)
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not value > 0:
-            out.append(err(INVALID, f"{key} 必須是正數", f"sampling.{key}", actual=value))
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not value > 0
+        ):
+            out.append(
+                err(INVALID, f"{key} 必須是正數", f"sampling.{key}", actual=value)
+            )
     return out
 
 
@@ -116,7 +154,10 @@ def context_diagnostics(
                     "config.providers.local_rewrite.model_id",
                 )
             )
-        facts.update(provider="local_rewrite", node_role=get_path(config, "providers.local_rewrite.node_role"))
+        facts.update(
+            provider="local_rewrite",
+            node_role=get_path(config, "providers.local_rewrite.node_role"),
+        )
         return out, facts
     if mode == "official_api":
         checks = (
@@ -125,8 +166,16 @@ def context_diagnostics(
                 "config.network.allow_external_processing",
                 "站台未允許外部處理",
             ),
-            (request.get("allow_external_processing") is True, "allow_external_processing", "此 job 未允許外部處理"),
-            (get_path(config, "network.offline") is not True, "config.network.offline", "站台處於 offline 模式"),
+            (
+                request.get("allow_external_processing") is True,
+                "allow_external_processing",
+                "此 job 未允許外部處理",
+            ),
+            (
+                get_path(config, "network.offline") is not True,
+                "config.network.offline",
+                "站台處於 offline 模式",
+            ),
             (
                 get_path(config, "providers.official_context_ir.enabled") is True,
                 "config.providers.official_context_ir.enabled",
@@ -143,7 +192,7 @@ def context_diagnostics(
                 out.append(
                     err(
                         UNSUPPORTED,
-                        f"official_api 被拒絕：{reason}（RULE-009；官方 H3-Context-IR 只有 hosted 服務，BLK-001）",
+                        f"official_api 被拒絕：{reason}（官方 H3-Context-IR 只有 hosted 服務，BLK-001）",
                         "prompt.context_mode",
                         path,
                     )
@@ -184,14 +233,18 @@ def validate_job_semantics(
     out.extend(task_variant_diagnostics(task, model_variant))
     materials = list(request.get("materials") or [])
     output = request.get("output") or {}
-    out.extend(material_diagnostics(str(task), materials, duration_policy=output.get("duration_policy")))
+    out.extend(
+        material_diagnostics(
+            str(task), materials, duration_policy=output.get("duration_policy")
+        )
+    )
     _, geometry_diags = build_geometry(
         requested_seconds=output.get("requested_seconds"),
         width=output.get("width"),
         height=output.get("height"),
         duration_policy=str(output.get("duration_policy", "preserve_generated")),
         runtime_provider=runtime_provider,
-        fps=output.get("fps", C.FPS),
+        fps=output.get("fps", constants.FPS),
     )
     out.extend(geometry_diags)
     sampling = request.get("sampling") or {}

@@ -25,7 +25,7 @@ import { t } from "@/i18n";
  */
 function RecordingAction({ recordingId, nodeId, indexed }: { recordingId: string; nodeId: string; indexed: boolean }) {
   const client = useQueryClient();
-  const openLink = useRef<HTMLAnchorElement>(null);
+  const openLinkRef = useRef<HTMLAnchorElement>(null);
   const mutation = useMutation({
     mutationFn: () => fetchRecordingHistory(recordingId, { node_id: nodeId }),
     retry: false,
@@ -33,7 +33,7 @@ function RecordingAction({ recordingId, nodeId, indexed }: { recordingId: string
   });
   // The pressed button gives way to the result: focus that fell to the page moves to its link
   useEffect(() => {
-    if (mutation.isSuccess && (document.activeElement === null || document.activeElement === document.body)) openLink.current?.focus();
+    if (mutation.isSuccess && (document.activeElement === null || document.activeElement === document.body)) openLinkRef.current?.focus();
   }, [mutation.isSuccess]);
   if (mutation.isSuccess) {
     return (
@@ -41,7 +41,7 @@ function RecordingAction({ recordingId, nodeId, indexed }: { recordingId: string
         <Badge tone={mutation.data.still_partial ? "warning" : "success"}>
           {t("{value} · {imported_events} 筆事件", { value: mutation.data.still_partial ? t("已補抓（仍有缺段）") : t("已補抓"), imported_events: mutation.data.imported_events })}
         </Badge>
-        <Link ref={openLink} to={recordingPath(recordingId)} className={buttonVariants({ variant: "quiet", size: "sm" })}>
+        <Link ref={openLinkRef} to={recordingPath(recordingId)} className={buttonVariants({ variant: "quiet", size: "sm" })}>
           <ExternalLink aria-hidden />
           {t("開啟紀錄")}
         </Link>
@@ -58,7 +58,7 @@ function RecordingAction({ recordingId, nodeId, indexed }: { recordingId: string
   }
   return (
     <span className="grid gap-1">
-      <ActionButton size="sm" icon={<DatabaseBackup aria-hidden />} pending={mutation.isPending} onClick={() => mutation.mutate()}>
+      <ActionButton size="sm" icon={<DatabaseBackup aria-hidden />} pending={mutation.isPending} onClick={() => { mutation.mutate(); }}>
         {t("補抓到主控")}
       </ActionButton>
       {mutation.isError ? <ErrorCallout error={mutation.error} write title={t("補抓失敗（未自動重試）")} /> : null}
@@ -103,7 +103,7 @@ export function NodeHistoryPanel({
         <h2 id="node-history-title" className="text-section font-semibold text-fg">
           {t("Node 本機紀錄")}
         </h2>
-        <ActionButton size="sm" icon={<Search aria-hidden />} pending={loading} onClick={() => (requested ? pages.forEach((page) => void page.refetch()) : onRequest(nodeIds))}>
+        <ActionButton size="sm" icon={<Search aria-hidden />} pending={loading} onClick={() => { if (requested) { pages.forEach((page) => void page.refetch()); } else { onRequest(nodeIds); } }}>
           {requested ? t("重新查詢") : t("查詢 Node 本機紀錄")}
         </ActionButton>
       </div>

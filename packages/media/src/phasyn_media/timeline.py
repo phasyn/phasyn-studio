@@ -41,6 +41,8 @@ class _PacketAcc:
 
 @dataclass(frozen=True)
 class StreamTimeline:
+    """Presentation timestamps and timing metadata for one stream."""
+
     index: int
     codec_type: str
     codec_name: str | None
@@ -73,10 +75,12 @@ class StreamTimeline:
 
     @property
     def tick_seconds(self) -> float:
+        """Return the duration of one timebase tick in seconds."""
         return float(self.time_base)
 
     @property
     def timestamps_monotonic(self) -> bool:
+        """Check whether presentation timestamps are monotonic."""
         if self.missing_timestamps or not self.dts_monotonic:
             return False
         if self.codec_type == "audio":
@@ -87,25 +91,34 @@ class StreamTimeline:
     def priming_samples(self) -> int:
         """Encoder delay the container asks players to skip (edit list or CodecDelay)."""
         primed = 0
-        if self.sample_rate and self.first_packet_pts_seconds is not None and self.first_packet_pts_seconds < 0:
+        if (
+            self.sample_rate
+            and self.first_packet_pts_seconds is not None
+            and self.first_packet_pts_seconds < 0
+        ):
             primed = round(-self.first_packet_pts_seconds * self.sample_rate)
         return max(primed, self.initial_padding or 0)
 
 
 @dataclass(frozen=True)
 class FileTimeline:
+    """The presentation timelines of the streams in a file."""
+
     format_name: str
     duration_seconds: float | None
     streams: tuple[StreamTimeline, ...]
 
     def of_type(self, codec_type: str) -> list[StreamTimeline]:
+        """Return the timelines matching the requested stream type."""
         return [s for s in self.streams if s.codec_type == codec_type]
 
 
 class _PacketParser:
     """Incremental parser of ``ffprobe -show_entries packet=... -of compact`` lines."""
 
-    def __init__(self, *, max_packets: int, max_bytes: int, video_pts: dict[int, list[int]]) -> None:
+    def __init__(
+        self, *, max_packets: int, max_bytes: int, video_pts: dict[int, list[int]]
+    ) -> None:
         self.accs: dict[int, _PacketAcc] = {}
         self._video_pts = video_pts
         self._max_packets = max_packets
@@ -134,19 +147,21 @@ class _PacketParser:
         raw = raw.strip()
         if not raw:
             return
-        fields: dict[str, str] = {}
-        for part in raw.decode("ascii", errors="replace").split("|"):
-            key, sep, value = part.partition("=")
-            if sep:
-                fields[key] = value
+        fields = _packet_fields(raw)
         index = _int(fields.get("stream_index"))
         if index is None:
             return
         self._total += 1
         if self._total > self._max_packets:
-            raise MediaError("RESOURCE_EXHAUSTED", f"packet 數量超過掃描上限 {self._max_packets}")
+            raise MediaError(
+                "RESOURCE_EXHAUSTED", f"packet 數量超過掃描上限 {self._max_packets}"
+            )
         acc = self.accs.setdefault(index, _PacketAcc())
-        pts, dts, duration = _int(fields.get("pts")), _int(fields.get("dts")), _int(fields.get("duration"))
+        pts, dts, duration = (
+            _int(fields.get("pts")),
+            _int(fields.get("dts")),
+            _int(fields.get("duration")),
+        )
         acc.count += 1
         if pts is None or dts is None:
             acc.missing += 1
@@ -193,9 +208,7 @@ def scan_timeline(
             path,
             [
                 "-show_entries",
-                "format=format_name,duration,nb_streams:stream=index,codec_type,codec_name,width,height,pix_fmt,"
-                "sample_rate,channels,channel_layout,r_frame_rate,avg_frame_rate,start_time,time_base,has_b_frames,"
-                "initial_padding,color_range,color_space,color_primaries,color_transfer:stream_disposition=attached_pic",
+                "format=format_name,duration,nb_streams:stream=index,codec_type,codec_name,width,height,pix_fmt,sample_rate,channels,channel_layout,r_frame_rate,avg_frame_rate,start_time,time_base,has_b_frames,initial_padding,color_range,color_space,color_primaries,color_transfer:stream_disposition=attached_pic",
             ],
             limits=limits,
             ffprobe=exe,
@@ -205,17 +218,23 @@ def scan_timeline(
         if exc.code != "INVALID_ARGUMENT":
             raise
         # an artifact we (or an upstream stage) produced that ffprobe cannot parse is a broken file
-        raise MediaError("INTEGRITY_MISMATCH", f"媒體檔無法解析：{exc.message}") from exc
+        raise MediaError(
+            "INTEGRITY_MISMATCH", f"媒體檔無法解析：{exc.message}"
+        ) from exc
     streams_doc = [s for s in head.get("streams") or [] if isinstance(s, Mapping)]
     if not streams_doc or len(streams_doc) > limits.max_streams:
         raise MediaError("INTEGRITY_MISMATCH", "輸出檔的串流數量不符")
     video_pts: dict[int, list[int]] = {
-        int(s["index"]): [] for s in streams_doc if s.get("codec_type") == "video" and _int(s.get("index")) is not None
+        int(s["index"]): []
+        for s in streams_doc
+        if s.get("codec_type") == "video" and _int(s.get("index")) is not None
     }
 
     url = input_url(path)
     parser = _PacketParser(
-        max_packets=limits.max_scan_packets, max_bytes=limits.max_tool_output_bytes, video_pts=video_pts
+        max_packets=limits.max_scan_packets,
+        max_bytes=limits.max_tool_output_bytes,
+        video_pts=video_pts,
     )
     result = run_tool(
         [
@@ -241,8 +260,12 @@ def scan_timeline(
         what="ffprobe packet scan",
     )
     if result.returncode != 0:
-        detail = summarize_stderr(redact(result.stderr, {os.fspath(path): "<output>", url: "<output>"}), 600)
-        raise MediaError("MEDIA_TOOL_FAILED", "packet 掃描失敗" + (f"：{detail}" if detail else ""))
+        detail = summarize_stderr(
+            redact(result.stderr, {os.fspath(path): "<output>", url: "<output>"}), 600
+        )
+        raise MediaError(
+            "MEDIA_TOOL_FAILED", "packet 掃描失敗" + (f"：{detail}" if detail else "")
+        )
     accs = parser.finish()
 
     timelines: list[StreamTimeline] = []
@@ -255,13 +278,21 @@ def scan_timeline(
         start_meta = _float(doc.get("start_time"))
         first_pts = None if acc.first_pts is None else float(acc.first_pts * tb)
         min_pts = None if acc.min_pts is None else acc.min_pts * tb
-        start = start_meta if start_meta is not None else (float(min_pts) if min_pts is not None else 0.0)
+        start = (
+            start_meta
+            if start_meta is not None
+            else (float(min_pts) if min_pts is not None else 0.0)
+        )
         end = float(acc.end_ts * tb) if acc.end_ts is not None else start
         codec_type = str(doc.get("codec_type") or "")
         fps = None
         drift = None
         if codec_type == "video":
-            fps = expected_fps or _rate(doc.get("avg_frame_rate")) or _rate(doc.get("r_frame_rate"))
+            fps = (
+                expected_fps
+                or _rate(doc.get("avg_frame_rate"))
+                or _rate(doc.get("r_frame_rate"))
+            )
             if fps is not None and min_pts is not None:
                 drift = _grid_drift(video_pts.get(index, []), tb, fps, min_pts)
         timelines.append(
@@ -292,7 +323,9 @@ def scan_timeline(
                 channels=_int(doc.get("channels")),
                 channel_layout=_tag(doc.get("channel_layout")),
                 initial_padding=_int(doc.get("initial_padding")),
-                attached_picture=bool((doc.get("disposition") or {}).get("attached_pic")),
+                attached_picture=bool(
+                    (doc.get("disposition") or {}).get("attached_pic")
+                ),
             )
         )
     fmt = head.get("format") or {}
@@ -305,6 +338,8 @@ def scan_timeline(
 
 @dataclass(frozen=True)
 class TrackCheck:
+    """Result of validating track timing against its expected duration."""
+
     frames: int
     start_seconds: float
     duration_seconds: float
@@ -314,7 +349,7 @@ class TrackCheck:
     stream: StreamTimeline
 
 
-def check_video_stream(
+def check_video_stream(  # noqa: PLR0913 - Preserve the public keyword signature.
     stream: StreamTimeline,
     *,
     fps: Fraction,
@@ -330,7 +365,9 @@ def check_video_stream(
         problems.append(f"frame 數 {stream.packets} ≠ 預期 {expected_frames}")
     if stream.packets <= 0:
         problems.append("沒有任何 video frame")
-    if (width is not None and stream.width != width) or (height is not None and stream.height != height):
+    if (width is not None and stream.width != width) or (
+        height is not None and stream.height != height
+    ):
         problems.append(f"尺寸 {stream.width}x{stream.height} ≠ {width}x{height}")
     if codec is not None and stream.codec_name != codec:
         problems.append(f"codec {stream.codec_name} ≠ {codec}")
@@ -354,3 +391,12 @@ def check_video_stream(
         reorder_free=stream.pts_equals_dts and (stream.has_b_frames or 0) == 0,
         stream=stream,
     )
+
+
+def _packet_fields(raw: bytes) -> dict[str, str]:
+    fields: dict[str, str] = {}
+    for part in raw.decode("ascii", errors="replace").split("|"):
+        key, sep, value = part.partition("=")
+        if sep:
+            fields[key] = value
+    return fields

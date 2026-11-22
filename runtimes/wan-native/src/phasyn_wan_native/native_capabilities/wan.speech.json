@@ -1,0 +1,354 @@
+{
+  "label": "Wan2.2 音訊驅動角色生成",
+  "kind": "wan.speech",
+  "inputs": [
+    {
+      "name": "character",
+      "type_id": "media.image.v1",
+      "required": true,
+      "transport": "file",
+      "description": "角色參考圖"
+    },
+    {
+      "name": "audio",
+      "type_id": "media.audio.v1",
+      "required": true,
+      "transport": "file",
+      "description": "已選定的來源音訊"
+    },
+    {
+      "name": "prompt",
+      "type_id": "text.prompt.v1",
+      "required": false,
+      "transport": "inline",
+      "description": "選用的畫面描述"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "asset",
+      "type_id": "media.asset.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "完整且已探測的生成影片"
+    },
+    {
+      "name": "video_file",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": "成片檔案"
+    }
+  ],
+  "parameters_schema": {
+    "type": "object",
+    "properties": {
+      "seed": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 2147483647,
+        "default": 42
+      },
+      "steps": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100,
+        "default": 40
+      },
+      "size": {
+        "enum": [
+          "832*480",
+          "1280*720"
+        ],
+        "default": "832*480",
+        "description": "Maximum generation area; output aspect follows the reference."
+      },
+      "chunk_frames": {
+        "type": "integer",
+        "enum": [
+          8,
+          16,
+          32,
+          48,
+          64,
+          80
+        ],
+        "default": 80,
+        "description": "Native video frames per denoising chunk at 16 fps. Shorter chunks reduce activation memory and change temporal context."
+      }
+    },
+    "additionalProperties": false
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "load": {
+        "type": "object",
+        "properties": {
+          "model_path": {
+            "type": "string",
+            "description": "Node 本機模型路徑（使用者提供，不由主控下載）"
+          },
+          "model_revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "device": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "cuda"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "maxLength": 16384,
+                "pattern": "^[^\\x00-\\x1f\\x7f]*$"
+              },
+              "resource_group": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id",
+              "resource_group"
+            ],
+            "additionalProperties": false
+          },
+          "precision": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          },
+          "offload": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          },
+          "part_overrides": {
+            "type": "array"
+          },
+          "provider_options": {
+            "type": "object",
+            "properties": {
+              "engine_path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "convert_model_dtype": {
+                "type": "boolean",
+                "default": false,
+                "description": "Apply the pinned native model's optional DiT parameter conversion to its configured dtype."
+              },
+              "max_duration_seconds": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 3600,
+                "default": 30,
+                "description": "Local allocation limit for one input clip, in seconds."
+              },
+              "dit_offload": {
+                "type": "string",
+                "enum": [
+                  "native",
+                  "cpu_blocks",
+                  "disk_blocks"
+                ],
+                "default": "native",
+                "description": "DiT load strategy. Stream one native transformer block from CPU memory or directly from the verified original checkpoint shards on disk."
+              }
+            },
+            "required": [
+              "engine_path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "device",
+          "model_path"
+        ],
+        "additionalProperties": false
+      },
+      "invoke": {
+        "type": "object",
+        "properties": {
+          "seed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647,
+            "default": 42
+          },
+          "steps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 40
+          },
+          "size": {
+            "enum": [
+              "832*480",
+              "1280*720"
+            ],
+            "default": "832*480",
+            "description": "Maximum generation area; output aspect follows the reference."
+          },
+          "chunk_frames": {
+            "type": "integer",
+            "enum": [
+              8,
+              16,
+              32,
+              48,
+              64,
+              80
+            ],
+            "default": 80,
+            "description": "Native video frames per denoising chunk at 16 fps. Shorter chunks reduce activation memory and change temporal context."
+          }
+        },
+        "additionalProperties": false
+      },
+      "recording": {
+        "type": "object"
+      }
+    },
+    "required": [
+      "load",
+      "invoke",
+      "recording"
+    ],
+    "additionalProperties": false
+  },
+  "default_settings": {
+    "load": {
+      "model_path": "/path/to/models/Wan2.2-S2V-14B",
+      "model_revision": "dab4e9c55bbe4c8c4d03db1c2c98c7f0ac9c454b",
+      "device": {
+        "kind": "cuda",
+        "id": "GPU-REPLACE-0",
+        "resource_group": "gpu-0"
+      },
+      "provider_options": {
+        "engine_path": "/path/to/engines/Wan2.2-1ea34ff"
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "device_sample_hz": 2,
+      "publish_interval_ms": 1000,
+      "batch_max_events": 256,
+      "batch_max_bytes": 262144,
+      "queue_max_events": 8192,
+      "queue_max_bytes": 16777216,
+      "segment_bytes": 67108864,
+      "max_detail_bytes_per_recording": 2147483648,
+      "cuda_pending_event_pairs": 4096,
+      "trace_steps": [
+        0,
+        1
+      ],
+      "trace_parts": [],
+      "record_shapes": false,
+      "with_stack": false,
+      "capture_prompt": true,
+      "tensor_dump": false,
+      "capture_stderr": true,
+      "finite_scan": false,
+      "gpu_event_timing": true,
+      "log_level": "info",
+      "parts": [],
+      "steps": [],
+      "mode": "detailed"
+    }
+  },
+  "schema_version": "1.0",
+  "provider_id": "wan.speech",
+  "entry_point": "phasyn_wan_native.provider:SpeechProvider",
+  "operations": [
+    "speech_to_video"
+  ],
+  "capability_version": "1.0.0",
+  "license": "Apache-2.0",
+  "models": [
+    {
+      "id": "Wan-AI/Wan2.2-S2V-14B",
+      "revision": "dab4e9c55bbe4c8c4d03db1c2c98c7f0ac9c454b",
+      "license": "Apache-2.0",
+      "variants": [
+        "S2V-14B"
+      ],
+      "files": [
+        {
+          "path": "Wan2.1_VAE.pth",
+          "sha256": "38071ab59bd94681c686fa51d75a1968f64e470262043be31f7a094e442fd981",
+          "size_bytes": 507609880
+        },
+        {
+          "path": "diffusion_pytorch_model-00001-of-00004.safetensors",
+          "sha256": "5fb54febf10b729a6da7da222625d6ecaedde78becda01efbc13f6bebaeb6d43",
+          "size_bytes": 9968229352
+        },
+        {
+          "path": "diffusion_pytorch_model-00002-of-00004.safetensors",
+          "sha256": "922928094d8ea9b075888d473b7f9bf80ec60852eb83934079141b161a186f01",
+          "size_bytes": 9891539248
+        },
+        {
+          "path": "diffusion_pytorch_model-00003-of-00004.safetensors",
+          "sha256": "017fab8d2845976c9555df841765255118552fbad3e6760629342b47c36c24fc",
+          "size_bytes": 9956985634
+        },
+        {
+          "path": "diffusion_pytorch_model-00004-of-00004.safetensors",
+          "sha256": "5c194909066b8d7ed91f2c214389aa7ec7f25c60e3dd10ba8f607daf4f5cc6c0",
+          "size_bytes": 2774887624
+        },
+        {
+          "path": "models_t5_umt5-xxl-enc-bf16.pth",
+          "sha256": "7cace0da2b446bbbbc57d031ab6cf163a3d59b366da94e5afe36745b746fd81d",
+          "size_bytes": 11361920418
+        }
+      ],
+      "file_scope": "19 pinned files, including all runtime assets, are verified at load. The complete inventory is packaged alongside the provider."
+    }
+  ],
+  "resources": {
+    "devices": [
+      "cuda"
+    ],
+    "required_modules": [
+      "torch",
+      "torchvision",
+      "diffusers",
+      "transformers",
+      "flash_attn",
+      "decord",
+      "librosa",
+      "cv2",
+      "imageio",
+      "imageio_ffmpeg"
+    ],
+    "executables": [
+      "ffmpeg",
+      "ffprobe",
+      "bwrap"
+    ],
+    "vram_bytes": null,
+    "memory_basis": "No validated device threshold for these native 14B checkpoints."
+  },
+  "execution": {
+    "cache": "none",
+    "retry": "verify_stopped_first",
+    "cancellation": "cooperative",
+    "progress": [
+      "stage"
+    ],
+    "error_contract": "ComponentError",
+    "retry_condition": "Confirm the prior attempt stopped and inspect any published output before requesting another run."
+  }
+}

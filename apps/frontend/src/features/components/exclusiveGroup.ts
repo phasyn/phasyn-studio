@@ -39,11 +39,11 @@ export function suggestExclusiveGroup(
   members: readonly GroupMember[],
   providers: readonly Pick<ProviderInfo, "provider_id" | "runtime_id" | "kind">[],
 ): GroupSuggestion | null {
-  if (!kind || !resourceGroup) return null;
+  if (!(kind != null && kind !== "") || !(resourceGroup != null && resourceGroup !== "")) return null;
   const kinds = new Map(providers.map((item) => [`${item.runtime_id}::${item.provider_id}`, item.kind]));
   const uses = new Map<string, string[]>();
   for (const member of members) {
-    if (!member.exclusive_group || member.device.resource_group !== resourceGroup) continue;
+    if (!(member.exclusive_group != null && member.exclusive_group !== "") || member.device.resource_group !== resourceGroup) continue;
     if (kinds.get(`${member.runtime_id}::${member.provider_id}`) !== kind) continue;
     uses.set(member.exclusive_group, [...(uses.get(member.exclusive_group) ?? []), member.component_id]);
   }
@@ -53,5 +53,5 @@ export function suggestExclusiveGroup(
 
 /** Every group already used on the Node (input suggestions), sorted. */
 export function groupsInUse(members: readonly Pick<ComponentDescriptor, "exclusive_group">[]): string[] {
-  return [...new Set(members.flatMap((member) => (member.exclusive_group ? [member.exclusive_group] : [])))].sort();
+  return [...new Set(members.flatMap((member) => ((member.exclusive_group != null && member.exclusive_group !== "") ? [member.exclusive_group] : [])))].sort();
 }

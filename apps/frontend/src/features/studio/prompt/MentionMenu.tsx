@@ -41,18 +41,18 @@ export function MentionMenu({
     <div
       ref={menuRef}
       className="material-popover absolute z-30 grid max-h-72 overflow-y-auto rounded-xl p-1 text-data text-fg animate-pop-in forced-colors:border forced-colors:border-[CanvasText]"
-      style={{ top, left, width: `min(${MENU_WIDTH}px, 100%)` }}
+      style={{ top, left, width: `min(${String(MENU_WIDTH)}px, 100%)` }}
     >
       {filtered.length > 0 ? (
-        <ul role="listbox" id={listId} aria-label={t("插入參考素材")} className="grid">
+        <div role="listbox" id={listId} aria-label={t("插入參考素材")} className="grid">
           {filtered.map((option, index) => (
-            <li
+            <button type="button" tabIndex={-1}
               key={option.alias}
               id={optionId(option.alias)}
               role="option"
               aria-selected={index === active}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => onChoose(option)}
+              onMouseDown={(event) => { event.preventDefault(); }}
+              onClick={() => { onChoose(option); }}
               onMouseMove={() => {
                 if (index !== active) onHover(index);
               }}
@@ -61,12 +61,12 @@ export function MentionMenu({
               <ReferenceThumb item={option.item} kind={option.kind} className={cn("row-span-2 transition-[scale] duration-(--duration-spring-snappy) ease-(--ease-spring-snappy)", index === active && "scale-105")} />
               <span className="flex min-w-0 items-baseline gap-2">
                 <span className="machine shrink-0 text-fg">@{option.alias}</span>
-                {option.label ? <span className="machine truncate text-caption text-fg-tertiary">{option.label}</span> : null}
+                {(option.label != null && option.label !== "") ? <span className="machine truncate text-caption text-fg-tertiary">{option.label}</span> : null}
               </span>
-              <span className={cn("truncate text-caption", option.name ? "text-fg-tertiary" : "text-warning")}>{option.name ?? t("檔案已不在素材庫")}</span>
-            </li>
+              <span className={cn("truncate text-caption", (option.name != null && option.name !== "") ? "text-fg-tertiary" : "text-warning")}>{option.name ?? t("檔案已不在素材庫")}</span>
+            </button>
           ))}
-        </ul>
+        </div>
       ) : (
         <p id={listId} className="px-2 py-1.5 text-caption text-fg-tertiary">
           {hasOptions ? t("沒有符合「{query}」的參考。", { query }) : t("這個鏡頭還沒有參考素材：在「參考素材」加入後即可用 @ 插入。")}

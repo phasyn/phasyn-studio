@@ -1,0 +1,51 @@
+{
+  "component_id": "take-analysis",
+  "label": "候選影片黑場與停格檢查",
+  "provider_id": "media.take_analysis",
+  "runtime_id": "cpu",
+  "autostart": false,
+  "folder": "媒體處理",
+  "settings": {
+    "load": {
+      "device": {
+        "kind": "cpu",
+        "id": "cpu",
+        "resource_group": "cpu-video-analysis"
+      },
+      "provider_options": {}
+    },
+    "invoke": {
+      "min_seconds": 0.5,
+      "black_ratio": 0.98,
+      "black_luma": 0.1,
+      "freeze_noise": 0.001
+    },
+    "recording": {
+      "device_sample_hz": 2,
+      "publish_interval_ms": 1000,
+      "batch_max_events": 256,
+      "batch_max_bytes": 262144,
+      "queue_max_events": 8192,
+      "queue_max_bytes": 16777216,
+      "segment_bytes": 67108864,
+      "max_detail_bytes_per_recording": 2147483648,
+      "cuda_pending_event_pairs": 4096,
+      "trace_steps": [
+        0,
+        1
+      ],
+      "trace_parts": [],
+      "record_shapes": false,
+      "with_stack": false,
+      "capture_prompt": true,
+      "tensor_dump": false,
+      "capture_stderr": true,
+      "finite_scan": false,
+      "gpu_event_timing": true,
+      "log_level": "info",
+      "parts": [],
+      "steps": [],
+      "mode": "detailed"
+    }
+  }
+}

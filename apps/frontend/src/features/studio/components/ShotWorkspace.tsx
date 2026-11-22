@@ -4,6 +4,7 @@ import { useNavigate } from "react-router";
 import { Button } from "@/components/ui/button";
 import { playMotion } from "@/components/ui/motion";
 import { TOOL_BUTTON } from "@/components/ui/look";
+import { NARROW_HIDDEN, NARROW_PANEL_ROW, panelColumns } from "@/components/workbench/narrowPanels";
 import { Splitter } from "@/components/workbench/Splitter";
 import { CollapsedRail } from "@/features/studio-shell";
 import { t } from "@/i18n";
@@ -34,7 +35,7 @@ function timelineMaxHeight(workspaceHeight: number): number {
 function TimelineActions({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   const { project, selectedShotId } = useEditor();
   const navigate = useNavigate();
-  const shot = selectedShotId ? `&shot=${encodeURIComponent(selectedShotId)}` : "";
+  const shot = (selectedShotId != null && selectedShotId !== "") ? `&shot=${encodeURIComponent(selectedShotId)}` : "";
   return (
     <>
       <Button size="sm" variant="secondary" icon={<SquarePen aria-hidden />} onClick={() => void navigate(`/studio/edit?project=${encodeURIComponent(project.project_id)}${shot}`)}>
@@ -71,41 +72,44 @@ export function ShotWorkspace() {
   const timelineMax = timelineMaxHeight(workspaceHeight);
   const timeline = Math.min(storedTimeline, timelineMax);
   // The timeline row's height when its toggle was pressed: the layout effect below springs from it to the new height
-  const toggledFrom = useRef<number | null>(null);
+  const toggledFromRef = useRef<number | null>(null);
   const toggleTimeline = () => {
-    toggledFrom.current = rootRef.current?.lastElementChild?.getBoundingClientRect().height ?? null;
+    toggledFromRef.current = rootRef.current?.lastElementChild?.getBoundingClientRect().height ?? null;
     setTimelineOpen(!timelineOpen);
   };
   useLayoutEffect(() => {
-    const from = toggledFrom.current;
-    toggledFrom.current = null;
+    const from = toggledFromRef.current;
+    toggledFromRef.current = null;
     const root = rootRef.current;
     const to = root?.lastElementChild?.getBoundingClientRect().height;
     if (from === null || !root || to === undefined || Math.abs(to - from) < 1) return;
-    playMotion(root, [{ gridTemplateRows: `minmax(0,1fr) auto ${from}px` }, { gridTemplateRows: `minmax(0,1fr) auto ${to}px` }], { duration: "spring-smooth", easing: "spring-smooth" });
+    playMotion(root, [{ gridTemplateRows: `minmax(0,1fr) auto ${String(from)}px` }, { gridTemplateRows: `minmax(0,1fr) auto ${String(to)}px` }], { duration: "spring-smooth", easing: "spring-smooth" });
   }, [timelineOpen]);
   return (
-    <div ref={rootRef} className="grid min-h-0 flex-1 px-1.5 pb-1.5" style={{ gridTemplateRows: `minmax(0,1fr) auto ${timelineOpen ? `${timeline}px` : "auto"}` }}>
+    <div ref={rootRef} className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] px-1.5 pb-1.5" style={{ gridTemplateRows: `minmax(0,1fr) auto ${timelineOpen ? `${String(timeline)}px` : "auto"}` }}>
       <div
-        className="grid min-h-0"
-        style={{ gridTemplateColumns: `${binOpen ? `${bin}px` : "2.5rem"} auto minmax(0,1fr) auto ${inspectorOpen ? `${inspector}px` : "2.5rem"}` }}
+        className={cn("grid min-h-0", NARROW_PANEL_ROW)}
+        style={panelColumns(
+          `${binOpen ? `${String(bin)}px` : "2.5rem"} auto minmax(0,1fr) auto ${inspectorOpen ? `${String(inspector)}px` : "2.5rem"}`,
+          `${binOpen ? "100%" : "2.5rem"} 0.375rem 100% 0.375rem ${inspectorOpen ? "100%" : "2.5rem"}`,
+        )}
       >
-        {binOpen ? <Bin onCollapse={() => setBinOpen(false)} /> : <CollapsedRail side="left" label={t("專案面板")} onExpand={() => setBinOpen(true)} />}
+        {binOpen ? <Bin onCollapse={() => { setBinOpen(false); }} /> : <CollapsedRail side="left" label={t("專案面板")} onExpand={() => { setBinOpen(true); }} />}
         {binOpen ? (
-          <Splitter grip="always" orientation="vertical" value={bin} min={220} max={440} defaultValue={BIN_DEFAULT} onChange={setBin} label={t("調整專案面板寬度")} />
+          <Splitter grip="always" orientation="vertical" value={bin} min={220} max={440} defaultValue={BIN_DEFAULT} onChange={setBin} label={t("調整專案面板寬度")} className={NARROW_HIDDEN} />
         ) : (
           <div aria-hidden className="w-1.5" />
         )}
         <Monitor />
         {inspectorOpen ? (
-          <Splitter grip="always" orientation="vertical" value={inspector} min={300} max={520} defaultValue={INSPECTOR_DEFAULT} onChange={setInspector} label={t("調整屬性面板寬度")} invert />
+          <Splitter grip="always" orientation="vertical" value={inspector} min={300} max={520} defaultValue={INSPECTOR_DEFAULT} onChange={setInspector} label={t("調整屬性面板寬度")} invert className={NARROW_HIDDEN} />
         ) : (
           <div aria-hidden className="w-1.5" />
         )}
         {inspectorOpen ? (
-          <Inspector onCollapse={() => setInspectorOpen(false)} />
+          <Inspector onCollapse={() => { setInspectorOpen(false); }} />
         ) : (
-          <CollapsedRail side="right" label={t("屬性面板")} onExpand={() => setInspectorOpen(true)} />
+          <CollapsedRail side="right" label={t("屬性面板")} onExpand={() => { setInspectorOpen(true); }} />
         )}
       </div>
       {timelineOpen ? (
@@ -116,7 +120,7 @@ export function ShotWorkspace() {
           min={TIMELINE_MIN}
           max={timelineMax}
           defaultValue={TIMELINE_DEFAULT}
-          onChange={(next) => setTimeline(Math.min(next, timelineMax))}
+          onChange={(next) => { setTimeline(Math.min(next, timelineMax)); }}
           label={t("調整時間軸高度")}
           invert
         />

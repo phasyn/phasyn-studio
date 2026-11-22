@@ -14,7 +14,9 @@ Rules enforced here for every child process:
 
 from __future__ import annotations
 
+import contextlib
 import functools
+import io
 import os
 import re
 import shutil
@@ -25,11 +27,14 @@ import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import IO, Any
+from types import TracebackType
+from typing import IO, Any, TypedDict, cast
 
 from phasyn_components.runtime_env import ENV_FFMPEG, ENV_FFPROBE
 
+from ._paths import absolute
 from .errors import MediaCanceled, MediaError, cancel_requested
+
 
 # environment variables forwarded to FFmpeg children (everything else is dropped)
 _ENV_PASSTHROUGH = ("PATH", "LD_LIBRARY_PATH", "TMPDIR", "SYSTEMROOT")
@@ -41,10 +46,13 @@ _POLL_INTERVAL = 0.02
 
 
 def _validate_executable(candidate: str, env_name: str) -> str:
-    path = os.path.abspath(candidate)
-    if not os.path.isfile(path) or not os.access(path, os.X_OK):
+    path = str(absolute(candidate))
+    if not Path(path).is_file() or not os.access(path, os.X_OK):
         # The base name only: an error that reaches a run never carries a local path
-        raise MediaError("MEDIA_TOOL_FAILED", f"{os.path.basename(path)} 不是可執行檔（來源：{env_name} 或 PATH）")
+        raise MediaError(
+            "MEDIA_TOOL_FAILED",
+            f"{Path(path).name} 不是可執行檔（來源：{env_name} 或 PATH）",
+        )
     return path
 
 
@@ -52,7 +60,17 @@ def _env(name: str) -> str:
     return os.environ.get(name, "").strip()
 
 
-def _resolve_tool(env_name: str, default_name: str, sibling_of: str | None = None) -> str:
+def _expand_executable(raw: str) -> str:
+    try:
+        expanded = Path(raw).expanduser()
+    except RuntimeError:
+        return raw
+    return str(expanded)
+
+
+def _resolve_tool(
+    env_name: str, default_name: str, sibling_of: str | None = None
+) -> str:
     raw = _env(env_name)
     if raw:
         if "://" in raw:
@@ -60,16 +78,21 @@ def _resolve_tool(env_name: str, default_name: str, sibling_of: str | None = Non
         if os.sep not in raw:
             found = shutil.which(raw)
             if found is None:
-                raise MediaError("MEDIA_TOOL_FAILED", f"找不到 {env_name} 指定的工具：{raw}")
+                raise MediaError(
+                    "MEDIA_TOOL_FAILED", f"找不到 {env_name} 指定的工具：{raw}"
+                )
             return _validate_executable(found, env_name)
-        return _validate_executable(os.path.expanduser(raw), env_name)
+        return _validate_executable(_expand_executable(raw), env_name)
     found = shutil.which(default_name)
     if found is None and sibling_of is not None:
-        sibling = os.path.join(os.path.dirname(sibling_of), default_name)
-        if os.path.isfile(sibling):
+        sibling = str(Path(sibling_of).parent / default_name)
+        if Path(sibling).is_file():
             found = sibling
     if found is None:
-        raise MediaError("MEDIA_TOOL_FAILED", f"找不到 {default_name}；請安裝 FFmpeg 或設定 {env_name}")
+        raise MediaError(
+            "MEDIA_TOOL_FAILED",
+            f"找不到 {default_name}；請安裝 FFmpeg 或設定 {env_name}",
+        )
     return _validate_executable(found, env_name)
 
 
@@ -90,7 +113,12 @@ def find_ffprobe() -> str:
 
 
 def tool_env(extra: Mapping[str, str] | None = None) -> dict[str, str]:
-    env = {k: v for k, v in os.environ.items() if k in _ENV_PASSTHROUGH or k.startswith(_ENV_PREFIX_PASSTHROUGH)}
+    """Build the child environment for FFmpeg tools."""
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k in _ENV_PASSTHROUGH or k.startswith(_ENV_PREFIX_PASSTHROUGH)
+    }
     env.setdefault("PATH", os.defpath)
     env["LC_ALL"] = "C"
     env["AV_LOG_FORCE_NOCOLOR"] = "1"
@@ -106,6 +134,7 @@ class BoundedTail:
     """Thread-safe bounded capture: the first bytes (root cause) plus the last ``limit`` bytes."""
 
     def __init__(self, limit: int) -> None:
+        """Set the maximum size of the captured output tail."""
         self._limit = max(1024, int(limit))
         self._head_limit = min(16 * 1024, self._limit // 4)
         self._head = bytearray()
@@ -114,6 +143,7 @@ class BoundedTail:
         self._lock = threading.Lock()
 
     def feed(self, chunk: bytes) -> None:
+        """Retain the newest bytes within the capture limit."""
         with self._lock:
             room = self._head_limit - len(self._head)
             if room > 0:
@@ -126,6 +156,7 @@ class BoundedTail:
                 self._dropped += excess
 
     def text(self) -> str:
+        """Decode the captured tail for diagnostics."""
         with self._lock:
             head = bytes(self._head)
             tail = bytes(self._buf[-self._limit :])
@@ -169,6 +200,36 @@ def summarize_stderr(text: str, max_chars: int = 800) -> str:
     return summary if len(summary) <= max_chars else summary[:max_chars] + "…"
 
 
+class _MediaChild(subprocess.Popen[bytes]):
+    """Start an argument vector in an isolated process group with an explicit environment."""
+
+    @staticmethod
+    def arguments(argv: Sequence[str]) -> tuple[str, ...]:
+        if isinstance(argv, (str, bytes)) or not all(isinstance(a, str) for a in argv):
+            raise MediaError("INVALID_ARGUMENT", "子程序參數必須是字串清單")
+        return tuple(argv)
+
+    def __init__(
+        self,
+        argv: tuple[str, ...],
+        *,
+        stdin: int | IO[Any] | None,
+        stdout: int | IO[Any] | None,
+        env: Mapping[str, str] | None,
+    ) -> None:
+        """Open the supervised pipes without a shell or inherited descriptors."""
+        super().__init__(
+            list(argv),
+            stdin=stdin,
+            stdout=stdout,
+            stderr=subprocess.PIPE,
+            start_new_session=True,
+            close_fds=True,
+            env=dict(env) if env is not None else tool_env(),
+            shell=False,
+        )
+
+
 class ManagedProcess:
     """A child process in its own process group with a bounded stderr tail.
 
@@ -186,41 +247,40 @@ class ManagedProcess:
         env: Mapping[str, str] | None = None,
         max_stderr_bytes: int = 64 * 1024,
     ) -> None:
-        if isinstance(argv, (str, bytes)) or not all(isinstance(a, str) for a in argv):
-            raise MediaError("INVALID_ARGUMENT", "子程序參數必須是字串清單")
-        self.argv = tuple(argv)
+        """Start the supervised tool with bounded diagnostic capture."""
+        self.argv = _MediaChild.arguments(argv)
         self._lock = threading.Lock()
         self._stderr = BoundedTail(max_stderr_bytes)
         try:
-            self._proc = subprocess.Popen(  # argv list, never a shell
-                list(self.argv),
-                stdin=stdin,
-                stdout=stdout,
-                stderr=subprocess.PIPE,
-                start_new_session=True,
-                close_fds=True,
-                env=dict(env) if env is not None else tool_env(),
-                shell=False,
-            )
+            self._proc = _MediaChild(self.argv, stdin=stdin, stdout=stdout, env=env)
         except OSError as exc:
-            raise MediaError("MEDIA_TOOL_FAILED", f"無法啟動 {os.path.basename(self.argv[0])}：{exc.strerror}") from exc
-        self._stderr_thread = threading.Thread(target=self._drain_stderr, name="media-stderr", daemon=True)
+            raise MediaError(
+                "MEDIA_TOOL_FAILED",
+                f"無法啟動 {Path(self.argv[0]).name}：{exc.strerror}",
+            ) from exc
+        self._stderr_thread = threading.Thread(
+            target=self._drain_stderr, name="media-stderr", daemon=True
+        )
         self._stderr_thread.start()
 
     @property
     def pid(self) -> int:
+        """Return the operating system process identifier."""
         return self._proc.pid
 
     @property
     def stdin(self) -> IO[bytes] | None:
+        """Return the pipe feeding the child process."""
         return self._proc.stdin
 
     @property
-    def stdout(self) -> IO[bytes] | None:
-        return self._proc.stdout
+    def stdout(self) -> io.BufferedReader[io.FileIO] | None:
+        """Return the default buffered binary pipe when the child has piped output."""
+        return cast("io.BufferedReader[io.FileIO] | None", self._proc.stdout)
 
     @property
     def returncode(self) -> int | None:
+        """Return the exit code, or None while the child is running."""
         return self._proc.returncode
 
     def _drain_stderr(self) -> None:
@@ -229,7 +289,11 @@ class ManagedProcess:
             return
         try:
             while True:
-                chunk = stream.read1(65536) if hasattr(stream, "read1") else stream.read(65536)
+                chunk = (
+                    stream.read1(65536)
+                    if hasattr(stream, "read1")
+                    else stream.read(65536)
+                )
                 if not chunk:
                     break
                 self._stderr.feed(chunk)
@@ -237,10 +301,12 @@ class ManagedProcess:
             pass
 
     def poll(self) -> int | None:
+        """Check whether the child has exited."""
         with self._lock:
             return self._proc.poll()
 
     def wait(self, timeout: float | None) -> int | None:
+        """Wait for the child and return its exit status."""
         deadline = None if timeout is None else time.monotonic() + timeout
         while True:
             rc = self.poll()
@@ -257,28 +323,24 @@ class ManagedProcess:
                 try:
                     os.killpg(self._proc.pid, signal.SIGKILL)
                 except (ProcessLookupError, PermissionError):
-                    try:
+                    with contextlib.suppress(ProcessLookupError):
                         self._proc.kill()
-                    except ProcessLookupError:
-                        pass
         return self.wait(wait_seconds)
 
     def stderr_text(self) -> str:
+        """Return the bounded diagnostic output from the child."""
         return self._stderr.text()
 
     def close(self, *, join_seconds: float = 2.0) -> None:
+        """Release the child process and its associated pipes."""
         for stream in (self._proc.stdin, self._proc.stdout):
             if stream is not None:
-                try:
+                with contextlib.suppress(OSError, ValueError):
                     stream.close()
-                except (OSError, ValueError):
-                    pass
         self._stderr_thread.join(join_seconds)
         if self._proc.stderr is not None:
-            try:
+            with contextlib.suppress(OSError, ValueError):
                 self._proc.stderr.close()
-            except (OSError, ValueError):
-                pass
 
 
 @dataclass
@@ -287,9 +349,26 @@ class _DrainState:
     overflow: bool = False
     sink_error: Exception | None = None
 
+    def __enter__(self) -> None:
+        """Observe an individual call to the stdout consumer."""
+
+    def __exit__(
+        self,
+        _type: type[BaseException] | None,
+        exc: BaseException | None,
+        _traceback: TracebackType | None,
+    ) -> bool:
+        """Save callback failures for the supervisor so it can stop the child before reporting."""
+        if isinstance(exc, Exception):
+            self.sink_error = exc
+            return True
+        return False
+
 
 @dataclass(frozen=True)
 class ToolResult:
+    """The exit status and captured output of a media tool."""
+
     argv: tuple[str, ...]
     returncode: int
     stdout: bytes
@@ -298,7 +377,7 @@ class ToolResult:
     elapsed_seconds: float
 
 
-def run_tool(
+def run_tool(  # noqa: PLR0913 - Preserve the public keyword signature.
     argv: Sequence[str],
     *,
     timeout: float,
@@ -331,70 +410,29 @@ def run_tool(
     )
     writer: threading.Thread | None = None
     if stdin_data is not None:
-
-        def feed_stdin() -> None:
-            stream = proc.stdin
-            if stream is None:
-                return
-            try:
-                stream.write(stdin_data)
-                stream.flush()
-            except (OSError, ValueError):
-                pass
-            finally:
-                try:
-                    stream.close()
-                except (OSError, ValueError):
-                    pass
-
-        writer = threading.Thread(target=feed_stdin, name="media-stdin", daemon=True)
+        writer = threading.Thread(
+            target=_feed_stdin, args=(proc, stdin_data), name="media-stdin", daemon=True
+        )
         writer.start()
     collected = bytearray()
     state = _DrainState()
+    options: _ToolOptions = {
+        "stdout_sink": stdout_sink,
+        "max_stdout_bytes": max_stdout_bytes,
+        "cancel": cancel,
+        "what": what,
+    }
 
-    def drain_stdout() -> None:
-        stream = proc.stdout
-        if stream is None:
-            return
-        try:
-            while True:
-                chunk = stream.read1(1 << 20) if hasattr(stream, "read1") else stream.read(1 << 20)
-                if not chunk:
-                    break
-                state.bytes += len(chunk)
-                if stdout_sink is not None:
-                    try:
-                        stdout_sink(chunk)
-                    except Exception as exc:  # stop the tool, report below
-                        state.sink_error = exc
-                        break
-                elif len(collected) + len(chunk) > max_stdout_bytes:
-                    state.overflow = True
-                    break
-                else:
-                    collected.extend(chunk)
-        except (OSError, ValueError):
-            pass
-
-    reader = threading.Thread(target=drain_stdout, name="media-stdout", daemon=True)
+    reader = threading.Thread(
+        target=_drain_stdout,
+        args=(proc, collected, state, options),
+        name="media-stdout",
+        daemon=True,
+    )
     if stdout_fd is None:
         reader.start()
     try:
-        deadline = started + timeout
-        while True:
-            rc = proc.poll()
-            if rc is not None:
-                break
-            if cancel_requested(cancel):
-                proc.kill_tree()
-                raise MediaCanceled(f"{what} 已因取消而終止")
-            if state.overflow or state.sink_error is not None:
-                proc.kill_tree()
-                break
-            if time.monotonic() >= deadline:
-                proc.kill_tree()
-                raise MediaError("MEDIA_TOOL_FAILED", f"{what} 執行逾時（{timeout:.0f} 秒）")
-            time.sleep(_POLL_INTERVAL)
+        _wait_for_tool(proc, state, started, timeout, options)
         if reader.is_alive():
             reader.join(timeout=10.0)
     finally:
@@ -405,7 +443,9 @@ def run_tool(
             writer.join(timeout=5.0)
         proc.close()
     if state.overflow:
-        raise MediaError("RESOURCE_EXHAUSTED", f"{what} 輸出超過 {max_stdout_bytes} bytes 上限")
+        raise MediaError(
+            "RESOURCE_EXHAUSTED", f"{what} 輸出超過 {max_stdout_bytes} bytes 上限"
+        )
     if state.sink_error is not None:
         error = state.sink_error
         if isinstance(error, MediaError):
@@ -427,12 +467,14 @@ def run_tool(
 
 def _stat_key(path: str) -> tuple[str, int, int]:
     """Cache key of a tool binary: its real path, mtime and size (an upgraded binary is re-read)."""
-    st = os.stat(path)
+    st = Path(path).stat()
     return (os.path.realpath(path), st.st_mtime_ns, st.st_size)
 
 
 @dataclass(frozen=True)
 class EncoderInfo:
+    """The encoder name and evidence of its availability."""
+
     name: str
     media: str  # video | audio | subtitle
     codec: str
@@ -469,7 +511,11 @@ def parse_encoders(text: str) -> dict[str, EncoderInfo]:
 
 @functools.lru_cache(maxsize=16)
 def _encoders_cached(key: tuple[str, int, int]) -> tuple[tuple[str, EncoderInfo], ...]:
-    result = run_tool([key[0], "-hide_banner", "-nostdin", "-encoders"], timeout=15.0, max_stdout_bytes=4 << 20)
+    result = run_tool(
+        [key[0], "-hide_banner", "-nostdin", "-encoders"],
+        timeout=15.0,
+        max_stdout_bytes=4 << 20,
+    )
     if result.returncode != 0:
         raise MediaError("MEDIA_TOOL_FAILED", "無法列出 FFmpeg encoders")
     parsed = parse_encoders(result.stdout.decode("utf-8", errors="replace"))
@@ -486,7 +532,9 @@ def list_encoders(ffmpeg: str | None = None) -> dict[str, EncoderInfo]:
 @functools.lru_cache(maxsize=64)
 def _encoder_pix_fmts_cached(key: tuple[str, int, int], name: str) -> tuple[str, ...]:
     result = run_tool(
-        [key[0], "-hide_banner", "-nostdin", "-h", f"encoder={name}"], timeout=15.0, max_stdout_bytes=1 << 20
+        [key[0], "-hide_banner", "-nostdin", "-h", f"encoder={name}"],
+        timeout=15.0,
+        max_stdout_bytes=1 << 20,
     )
     for raw in result.stdout.decode("utf-8", errors="replace").splitlines():
         line = raw.strip()
@@ -504,7 +552,11 @@ def encoder_pixel_formats(name: str, ffmpeg: str | None = None) -> tuple[str, ..
 
 @functools.lru_cache(maxsize=16)
 def _graph_script_option_cached(key: tuple[str, int, int]) -> str:
-    result = run_tool([key[0], "-hide_banner", "-nostdin", "-h", "full"], timeout=15.0, max_stdout_bytes=16 << 20)
+    result = run_tool(
+        [key[0], "-hide_banner", "-nostdin", "-h", "full"],
+        timeout=15.0,
+        max_stdout_bytes=16 << 20,
+    )
     text = result.stdout.decode("utf-8", errors="replace")
     if result.returncode != 0 or "-filter_complex" not in text:
         raise MediaError("MEDIA_TOOL_FAILED", "無法讀取 FFmpeg 的選項說明")
@@ -516,20 +568,110 @@ def _graph_script_option_cached(key: tuple[str, int, int]) -> str:
     )
 
 
-def graph_script_args(path: str | os.PathLike[str], ffmpeg: str | None = None) -> list[str]:
+def graph_script_args(
+    path: str | os.PathLike[str], ffmpeg: str | None = None
+) -> list[str]:
     """Arguments that make this ffmpeg build read a complex filter graph from ``path`` (asked once per binary)."""
-    return [_graph_script_option_cached(_stat_key(ffmpeg or find_ffmpeg())), os.fspath(path)]
+    return [
+        _graph_script_option_cached(_stat_key(ffmpeg or find_ffmpeg())),
+        os.fspath(path),
+    ]
 
 
 def input_url(path: str | os.PathLike[str]) -> str:
     """``file:`` URL for an absolute local path (never interpreted as another protocol)."""
-    return "file:" + os.path.abspath(os.fspath(path))
+    return "file:" + str(absolute(path))
 
 
 def is_within(path: Path, roots: Sequence[Path]) -> bool:
+    """Check whether the path resolves beneath the allowed directory."""
     real = os.path.realpath(path)
     for root in roots:
         base = os.path.realpath(root)
         if real == base or real.startswith(base.rstrip(os.sep) + os.sep):
             return True
     return False
+
+
+def _feed_stdin(proc: ManagedProcess, stdin_data: bytes) -> None:
+    stream = proc.stdin
+    if stream is None:
+        return
+    try:
+        stream.write(stdin_data)
+        stream.flush()
+    except (OSError, ValueError):
+        pass
+    finally:
+        with contextlib.suppress(OSError, ValueError):
+            stream.close()
+
+
+class _ToolOptions(TypedDict):
+    stdout_sink: Callable[[bytes], None] | None
+    max_stdout_bytes: int
+    cancel: Any
+    what: str
+
+
+def _drain_stdout(
+    proc: ManagedProcess,
+    collected: bytearray,
+    state: _DrainState,
+    options: _ToolOptions,
+) -> None:
+    stdout_sink = options.get("stdout_sink")
+    max_stdout_bytes = options.get("max_stdout_bytes", 16 * 1024 * 1024)
+    stream = proc.stdout
+    if stream is None:
+        return
+    try:
+        while True:
+            chunk = (
+                stream.read1(1 << 20)
+                if hasattr(stream, "read1")
+                else stream.read(1 << 20)
+            )
+            if not chunk:
+                break
+            state.bytes += len(chunk)
+            if stdout_sink is not None:
+                with state:
+                    stdout_sink(chunk)
+                if state.sink_error is not None:
+                    break
+            elif len(collected) + len(chunk) > max_stdout_bytes:
+                state.overflow = True
+                break
+            else:
+                collected.extend(chunk)
+    except (OSError, ValueError):
+        pass
+
+
+def _wait_for_tool(
+    proc: ManagedProcess,
+    state: _DrainState,
+    started: float,
+    timeout: float,
+    options: _ToolOptions,
+) -> None:
+    what = options.get("what", "FFmpeg")
+    cancel = options.get("cancel")
+    deadline = started + timeout
+    while True:
+        rc = proc.poll()
+        if rc is not None:
+            break
+        if cancel_requested(cancel):
+            proc.kill_tree()
+            raise MediaCanceled(f"{what} 已因取消而終止")
+        if state.overflow or state.sink_error is not None:
+            proc.kill_tree()
+            break
+        if time.monotonic() >= deadline:
+            proc.kill_tree()
+            raise MediaError(
+                "MEDIA_TOOL_FAILED", f"{what} 執行逾時（{timeout:.0f} 秒）"
+            )
+        time.sleep(_POLL_INTERVAL)

@@ -21,13 +21,13 @@ const NAMES: Record<ConformMethod, () => string> = {
 /** A row's line: what the edit does with its scores, or why it cannot be made. */
 function detail(options: ConformOptions, method: ConformMethod): string {
   const score = options.scores[method];
-  if (method === "retime") return options.retime?.ok && score ? retimeText(options.retime.plan, score) : options.retime && !options.retime.ok ? options.retime.reason : "";
-  if (method === "shift") return options.shift?.ok && score ? shiftText(options.shift.plan.lag, score) : options.shift && !options.shift.ok ? options.shift.reason : "";
-  return options.cut?.ok && score ? scoreText(score) : options.cut && !options.cut.ok ? options.cut.reason : "";
+  if (method === "retime") return (options.retime?.ok === true) && score ? retimeText(options.retime.plan, score) : options.retime && !options.retime.ok ? options.retime.reason : "";
+  if (method === "shift") return (options.shift?.ok === true) && score ? shiftText(options.shift.plan.lag, score) : options.shift && !options.shift.ok ? options.shift.reason : "";
+  return (options.cut?.ok === true) && score ? scoreText(score) : options.cut && !options.cut.ok ? options.cut.reason : "";
 }
 
 export function MethodChoice({ options, selected, onSelect }: { options: ConformOptions; selected: ConformMethod | null; onSelect: (method: ConformMethod) => void }) {
-  const name = useId();
+  const nameId = useId();
   const recommended = options.recommendation.kind === "method" ? options.recommendation.method : null;
   const ready = readyMethods(options);
   return (
@@ -46,7 +46,7 @@ export function MethodChoice({ options, selected, onSelect }: { options: Conform
               chosen ? OPTION_SELECTED : can ? cn("cursor-pointer", OPTION_IDLE) : "cursor-not-allowed border-line-subtle bg-canvas/30",
             )}
           >
-            <input type="radio" name={name} checked={chosen} disabled={!can} onChange={() => onSelect(method)} className="sr-only" />
+            <input type="radio" name={nameId} checked={chosen} disabled={!can} onChange={() => { onSelect(method); }} className="sr-only" />
             <span aria-hidden className={cn("mt-0.5 grid size-3.5 place-items-center rounded-full border transition-colors duration-(--duration-fast)", chosen ? "border-brand-cyan" : "border-line-control")}>
               {chosen ? <span className="size-1.5 rounded-full bg-brand-cyan animate-pop-in" /> : null}
             </span>
@@ -66,8 +66,8 @@ export function MethodChoice({ options, selected, onSelect }: { options: Conform
 
 /** What the chosen motion edit (the retime or the shift) does, after the tables. */
 export function MotionNote({ options, method }: { options: ConformOptions; method: "retime" | "shift" }) {
-  const retime = method === "retime" && options.retime?.ok ? options.retime.plan : null;
-  const shift = method === "shift" && options.shift?.ok ? options.shift.plan : null;
+  const retime = method === "retime" && (options.retime?.ok === true) ? options.retime.plan : null;
+  const shift = method === "shift" && (options.shift?.ok === true) ? options.shift.plan : null;
   const line = retime ? retimeEffectText(retime) : shift ? syncEffectText(shift) : null;
   if (line === null) return null;
   // The retime repeats frames where a late take would have run past the clip's out point (the shift's line says it itself)
@@ -75,8 +75,8 @@ export function MotionNote({ options, method }: { options: ConformOptions; metho
     <section aria-label={t("套用後")} className="grid gap-1 rounded-lg border border-line-subtle bg-sunken/60 p-3 text-caption text-fg-secondary animate-reveal">
       <h4 className="font-semibold text-fg-secondary">{t("套用後")}</h4>
       <p>{line}</p>
-      {retime?.capped ? <p>{t("片段出點之後的畫格可能畫出原角色，不使用；改用停格補上。")}</p> : null}
-      {(retime ?? shift)?.linked ? <p>{t("連結的聲音（這個 take 自己的聲音）跟著畫面一起調整，保持同步。")}</p> : null}
+      {(retime?.capped === true) ? <p>{t("片段出點之後的畫格可能畫出原角色，不使用；改用停格補上。")}</p> : null}
+      {((retime ?? shift)?.linked === true) ? <p>{t("連結的聲音（這個 take 自己的聲音）跟著畫面一起調整，保持同步。")}</p> : null}
     </section>
   );
 }

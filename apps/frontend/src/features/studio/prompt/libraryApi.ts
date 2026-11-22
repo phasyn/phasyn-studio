@@ -2,7 +2,7 @@
 // PUT 本文 revision 必須等於伺服器目前 revision；409 REVISION_CONFLICT → 重新讀取並告訴使用者，絕不自動重送。
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { StudioPromptLibrary } from "@/api/generated/contracts";
-import { apiJson } from "@/api/http";
+import { contractJson } from "@/api/http";
 import { hasErrorCode } from "@/lib/errors";
 
 export const promptLibraryKeys = {
@@ -12,11 +12,11 @@ export const promptLibraryKeys = {
 const PATH = "/api/studio/prompt-library";
 
 export function fetchPromptLibrary(signal?: AbortSignal): Promise<StudioPromptLibrary> {
-  return apiJson<StudioPromptLibrary>(PATH, { signal });
+  return contractJson("StudioPromptLibrary", PATH, { signal });
 }
 
 export function savePromptLibrary(library: StudioPromptLibrary): Promise<StudioPromptLibrary> {
-  return apiJson<StudioPromptLibrary>(PATH, { method: "PUT", json: library });
+  return contractJson("StudioPromptLibrary", PATH, { method: "PUT", json: library });
 }
 
 export function usePromptLibrary(enabled = true) {

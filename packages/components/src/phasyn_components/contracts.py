@@ -12,12 +12,13 @@ import json
 import os
 import re
 import reprlib
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from functools import cache, lru_cache
 from pathlib import Path
 from typing import Any
 
 from .errors import ComponentError
+
 
 SCHEMA_FILE = "component.schema.json"
 METRIC_CATALOG_FILE = "metric-catalog.json"
@@ -27,6 +28,7 @@ CONTRACTS_DIR_ENV = "PHASYN_CONTRACTS_DIR"
 
 @lru_cache(maxsize=1)
 def contracts_dir() -> Path:
+    """Locate the directory containing the versioned wire contracts."""
     env = os.environ.get(CONTRACTS_DIR_ENV)
     if env and (Path(env) / SCHEMA_FILE).is_file():
         return Path(env)
@@ -38,22 +40,32 @@ def contracts_dir() -> Path:
         candidate = parent / "contracts"
         if (candidate / SCHEMA_FILE).is_file():
             return candidate
-    raise RuntimeError("找不到 contracts/component.schema.json；設定 PHASYN_CONTRACTS_DIR")
+    raise RuntimeError(
+        "找不到 contracts/component.schema.json；設定 PHASYN_CONTRACTS_DIR"
+    )
 
 
 @lru_cache(maxsize=1)
 def schema() -> dict[str, Any]:
-    return json.loads((contracts_dir() / SCHEMA_FILE).read_text(encoding="utf-8"))
+    """Read the component JSON schema."""
+    document: dict[str, Any] = json.loads(
+        (contracts_dir() / SCHEMA_FILE).read_text(encoding="utf-8")
+    )
+    return document
 
 
 @lru_cache(maxsize=1)
 def metric_catalog() -> dict[str, dict[str, Any]]:
-    doc = json.loads((contracts_dir() / METRIC_CATALOG_FILE).read_text(encoding="utf-8"))
+    """Load the catalog of recorder metric definitions."""
+    doc = json.loads(
+        (contracts_dir() / METRIC_CATALOG_FILE).read_text(encoding="utf-8")
+    )
     return {str(m["name"]): dict(m) for m in doc.get("metrics", [])}
 
 
 def definition(name: str) -> dict[str, Any]:
-    defs = schema()["$defs"]
+    """Look up a named contract definition."""
+    defs: dict[str, dict[str, Any]] = schema()["$defs"]
     if name not in defs:
         raise KeyError(name)
     return defs[name]
@@ -67,31 +79,50 @@ def _pattern(source: str) -> re.Pattern[str]:
     return re.compile(source)
 
 
-def _strict_pattern(validator: Any, pattern: str, instance: Any, _schema: Any) -> Iterator[Any]:
-    from jsonschema import ValidationError
+def _strict_pattern(
+    validator: Any, pattern: str, instance: Any, _schema: Any
+) -> Iterator[Any]:
+    from jsonschema import ValidationError  # noqa: PLC0415 - Validator imports are deferred until contract validation.
 
     if validator.is_type(instance, "string") and not _pattern(pattern).search(instance):
         yield ValidationError(f"{instance!r} does not match {pattern!r}")
 
 
+def _extend_validator(
+    base: type[Any], handlers: dict[str, Callable[[Any, Any, Any, Any], Iterator[Any]]]
+) -> type[Any]:
+    from jsonschema import validators  # noqa: PLC0415 - Schema discovery must not initialize validators.
+
+    # The upstream stubs leave extend untyped. Its two-argument form creates a new validator class.
+    extend: Callable[
+        [type[Any], dict[str, Callable[[Any, Any, Any, Any], Iterator[Any]]]], type[Any]
+    ] = validators.extend
+    return extend(base, handlers)
+
+
 @lru_cache(maxsize=1)
 def _validator_class() -> Any:
     """Draft 2020-12 with a ``pattern`` that an identifier ending in a line break cannot pass."""
-    from jsonschema import Draft202012Validator, validators
+    from jsonschema import Draft202012Validator  # noqa: PLC0415 - Keep schema discovery lightweight.
 
-    return validators.extend(Draft202012Validator, {"pattern": _strict_pattern})
+    return _extend_validator(Draft202012Validator, {"pattern": _strict_pattern})
 
 
 def _for_definition(validator_class: Any, name: str) -> Any:
-    from jsonschema import Draft202012Validator
-    from referencing import Registry, Resource
+    from jsonschema import Draft202012Validator  # noqa: PLC0415 - Keep schema discovery lightweight.
+    from referencing import Registry, Resource  # noqa: PLC0415 - Only validation needs the registry.
 
     root = schema()
     definition(name)  # KeyError for unknown names
     resource = Resource.from_contents(root)
     registry = Registry().with_resource(root["$id"], resource)
-    sub = {"$schema": "https://json-schema.org/draft/2020-12/schema", "$ref": f"{root['$id']}#/$defs/{name}"}
-    return validator_class(sub, registry=registry, format_checker=Draft202012Validator.FORMAT_CHECKER)
+    sub = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "$ref": f"{root['$id']}#/$defs/{name}",
+    }
+    return validator_class(
+        sub, registry=registry, format_checker=Draft202012Validator.FORMAT_CHECKER
+    )
 
 
 @cache
@@ -119,8 +150,10 @@ def _frozen(value: Any) -> Any:
     return value
 
 
-def _hashed_unique_items(validator: Any, unique: Any, instance: Any, _schema: Any) -> Iterator[Any]:
-    from jsonschema import ValidationError
+def _hashed_unique_items(
+    validator: Any, unique: Any, instance: Any, _schema: Any
+) -> Iterator[Any]:
+    from jsonschema import ValidationError  # noqa: PLC0415 - Validator imports are deferred until contract validation.
 
     if unique and validator.is_type(instance, "array"):
         seen: set[Any] = set()
@@ -132,20 +165,28 @@ def _hashed_unique_items(validator: Any, unique: Any, instance: Any, _schema: An
             seen.add(key)
 
 
-def _first_problem_any_of(validator: Any, alternatives: Any, instance: Any, _schema: Any) -> Iterator[Any]:
-    from jsonschema import ValidationError
+def _first_problem_any_of(
+    validator: Any, alternatives: Any, instance: Any, _schema: Any
+) -> Iterator[Any]:
+    from jsonschema import ValidationError  # noqa: PLC0415 - Validator imports are deferred until contract validation.
 
     for index, alternative in enumerate(alternatives):
-        if next(validator.descend(instance, alternative, schema_path=index), None) is None:
+        if (
+            next(validator.descend(instance, alternative, schema_path=index), None)
+            is None
+        ):
             return
-    yield ValidationError(f"{_brief(instance)} is not valid under any of the given schemas")
+    yield ValidationError(
+        f"{_brief(instance)} is not valid under any of the given schemas"
+    )
 
 
 @lru_cache(maxsize=1)
 def _stranger_validator_class() -> Any:
-    from jsonschema import validators
-
-    return validators.extend(_validator_class(), {"uniqueItems": _hashed_unique_items, "anyOf": _first_problem_any_of})
+    return _extend_validator(
+        _validator_class(),
+        {"uniqueItems": _hashed_unique_items, "anyOf": _first_problem_any_of},
+    )
 
 
 @cache
@@ -174,6 +215,7 @@ def _format_error(err: Any) -> str:
 
 
 def errors(name: str, obj: Any, *, limit: int = 20) -> list[str]:
+    """List the validation errors for a value."""
     validator = _validator(name)
     out: list[str] = []
     for err in sorted(validator.iter_errors(obj), key=lambda e: list(e.absolute_path)):
@@ -193,34 +235,58 @@ def first_errors(name: str, obj: Any, *, limit: int = 20) -> list[str]:
     """
     if _deeper_than(obj, STRANGER_DEPTH):
         return [f"(root): nested deeper than {STRANGER_DEPTH} levels"]
-    return [_format_error(err) for err in itertools.islice(_stranger_validator(name).iter_errors(obj), limit)]
+    return [
+        _format_error(err)
+        for err in itertools.islice(_stranger_validator(name).iter_errors(obj), limit)
+    ]
 
 
-def validate(name: str, obj: Any, *, code: str = "INVALID_ARGUMENT", what: str | None = None) -> None:
+def validate(
+    name: str, obj: Any, *, code: str = "INVALID_ARGUMENT", what: str | None = None
+) -> None:
+    """Validate the value against a named contract."""
     problems = errors(name, obj)
     if problems:
         label = what or name
-        raise ComponentError(code, f"{label} 不符合契約：{problems[0]}", details={"schema": name, "errors": problems})
+        raise ComponentError(
+            code,
+            f"{label} 不符合契約：{problems[0]}",
+            details={"schema": name, "errors": problems},
+        )
 
 
 def is_valid(name: str, obj: Any) -> bool:
+    """Report whether the value conforms to the named contract."""
     return not errors(name, obj, limit=1)
 
 
-def validate_with_schema(json_schema: Mapping[str, Any], obj: Any, *, code: str, what: str) -> None:
-    """以 provider 宣告的 schema 驗證（settings_schema、parameters_schema）。"""
-    from jsonschema import Draft202012Validator
+def validate_with_schema(
+    json_schema: Mapping[str, Any], obj: Any, *, code: str, what: str
+) -> None:
+    """以 provider 宣告的 schema 驗證（settings_schema、parameters_schema）."""
+    from jsonschema import Draft202012Validator  # noqa: PLC0415 - Keep schema discovery lightweight.
 
-    validator = _validator_class()(dict(json_schema), format_checker=Draft202012Validator.FORMAT_CHECKER)
-    problems = [_format_error(e) for e in sorted(validator.iter_errors(obj), key=lambda e: list(e.absolute_path))][:20]
+    validator = _validator_class()(
+        dict(json_schema), format_checker=Draft202012Validator.FORMAT_CHECKER
+    )
+    problems = [
+        _format_error(e)
+        for e in sorted(validator.iter_errors(obj), key=lambda e: list(e.absolute_path))
+    ][:20]
     if problems:
-        raise ComponentError(code, f"{what}：{problems[0]}", details={"errors": problems})
+        raise ComponentError(
+            code, f"{what}：{problems[0]}", details={"errors": problems}
+        )
 
 
 def defaults_of(name: str) -> dict[str, Any]:
-    """object definition 的頂層 default 值（例如 RecorderConfig）。"""
+    """Object definition 的頂層 default 值（例如 RecorderConfig）."""
     props = definition(name).get("properties", {})
-    return {k: v["default"] for k, v in props.items() if isinstance(v, dict) and "default" in v}
+    return {
+        k: v["default"]
+        for k, v in props.items()
+        if isinstance(v, dict) and "default" in v
+    }
 
 
 __all__ = [

@@ -39,16 +39,16 @@ export function useSourcePlayback({ total, fps, range, onPlay, onProblem }: Sour
     mediaRef.current = next;
     setElement(next);
   }, []);
-  const attempt = useRef(0);
-  const pending = useRef(0);
-  const reverse = useRef(0);
+  const attemptRef = useRef(0);
+  const pendingRef = useRef(0);
+  const reverseRef = useRef(0);
   const [frame, setFrame] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
   const stopReverse = () => {
-    window.clearInterval(reverse.current);
-    reverse.current = 0;
+    window.clearInterval(reverseRef.current);
+    reverseRef.current = 0;
   };
 
   useEffect(() => {
@@ -59,9 +59,9 @@ export function useSourcePlayback({ total, fps, range, onPlay, onProblem }: Sour
     const read = () => {
       if (media.readyState < 1) return;
       const next = Math.max(0, Math.min(total - 1, Math.floor(media.currentTime * fps)));
-      pending.current = next;
+      pendingRef.current = next;
       setFrame(next);
-      setPlaying((!media.paused && !media.ended) || reverse.current !== 0);
+      setPlaying((!media.paused && !media.ended) || reverseRef.current !== 0);
     };
     const tick = () => {
       if (media.currentTime * fps >= range.outFrame) {
@@ -83,7 +83,7 @@ export function useSourcePlayback({ total, fps, range, onPlay, onProblem }: Sour
       read();
     };
     const loaded = () => {
-      if (pending.current > 0) media.currentTime = (pending.current + 0.5) / fps;
+      if (pendingRef.current > 0) media.currentTime = (pendingRef.current + 0.5) / fps;
       read();
     };
     const visibility = () => {
@@ -99,8 +99,8 @@ export function useSourcePlayback({ total, fps, range, onPlay, onProblem }: Sour
     if (media.readyState >= 1) loaded();
     return () => {
       cancelAnimationFrame(animation);
-      window.clearInterval(reverse.current);
-      reverse.current = 0;
+      window.clearInterval(reverseRef.current);
+      reverseRef.current = 0;
       media.removeEventListener("loadedmetadata", loaded);
       media.removeEventListener("seeked", read);
       media.removeEventListener("timeupdate", read);
@@ -114,9 +114,9 @@ export function useSourcePlayback({ total, fps, range, onPlay, onProblem }: Sour
 
   const seek = (position: number) => {
     const next = Math.max(0, Math.min(total - 1, Math.round(position)));
-    attempt.current += 1;
+    attemptRef.current += 1;
     stopReverse();
-    pending.current = next;
+    pendingRef.current = next;
     const media = mediaRef.current;
     if (media) {
       media.pause();
@@ -129,14 +129,14 @@ export function useSourcePlayback({ total, fps, range, onPlay, onProblem }: Sour
 
   const playAt = (rate: number) => {
     const media = mediaRef.current;
-    if (!media || problem) return;
+    if (!media || (problem != null && problem !== "")) return;
     stopReverse();
     onPlay();
-    if (pending.current < range.inFrame || pending.current >= range.outFrame - 1) seek(range.inFrame);
+    if (pendingRef.current < range.inFrame || pendingRef.current >= range.outFrame - 1) seek(range.inFrame);
     media.playbackRate = rate;
-    const current = ++attempt.current;
+    const current = ++attemptRef.current;
     void media.play().catch((error: unknown) => {
-      if (attempt.current !== current || (error instanceof DOMException && error.name === "AbortError")) return;
+      if (attemptRef.current !== current || (error instanceof DOMException && error.name === "AbortError")) return;
       const message = t("瀏覽器無法播放此素材；請確認格式與檔案是否可用");
       setProblem(message);
       onProblem(message);
@@ -144,7 +144,7 @@ export function useSourcePlayback({ total, fps, range, onPlay, onProblem }: Sour
   };
 
   const pause = () => {
-    attempt.current += 1;
+    attemptRef.current += 1;
     stopReverse();
     mediaRef.current?.pause();
     setPlaying(false);
@@ -152,40 +152,40 @@ export function useSourcePlayback({ total, fps, range, onPlay, onProblem }: Sour
 
   const toggle = () => {
     const media = mediaRef.current;
-    if (!media || problem) return;
-    if (!media.paused || reverse.current !== 0) pause();
+    if (!media || (problem != null && problem !== "")) return;
+    if (!media.paused || reverseRef.current !== 0) pause();
     else playAt(1);
   };
 
   const shuttle = (direction: -1 | 0 | 1, slow: boolean) => {
     const media = mediaRef.current;
-    if (!media || problem) return;
+    if (!media || (problem != null && problem !== "")) return;
     if (direction === 0) {
       pause();
       return;
     }
     if (direction > 0) {
-      const running = !media.paused && reverse.current === 0;
+      const running = !media.paused && reverseRef.current === 0;
       const faster = running && media.playbackRate >= 1 ? Math.min(4, media.playbackRate * 2) : 1;
       const slower = running && media.playbackRate < 1 ? Math.max(0.25, media.playbackRate / 2) : 0.5;
       playAt(slow ? slower : faster);
       return;
     }
     // Backwards: step the element at the frame rate (half speed when slow)
-    attempt.current += 1;
+    attemptRef.current += 1;
     media.pause();
     stopReverse();
     onPlay();
     setPlaying(true);
-    reverse.current = window.setInterval(
+    reverseRef.current = window.setInterval(
       () => {
-        const next = pending.current - 1;
+        const next = pendingRef.current - 1;
         if (next < 0) {
           stopReverse();
           setPlaying(false);
           return;
         }
-        pending.current = next;
+        pendingRef.current = next;
         if (media.readyState >= 1) media.currentTime = (next + 0.5) / fps;
         setFrame(next);
       },
@@ -194,7 +194,7 @@ export function useSourcePlayback({ total, fps, range, onPlay, onProblem }: Sour
   };
 
   const fail = () => {
-    attempt.current += 1;
+    attemptRef.current += 1;
     stopReverse();
     mediaRef.current?.pause();
     setProblem(t("無法讀取來源素材，請到素材庫確認檔案"));

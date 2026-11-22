@@ -1,6 +1,6 @@
 // The running render in Video Studio's status bar: a 2 px line along the bar's top edge (the estimated share of the
 // run's time behind us, or the counted share of its pipeline steps; a sweep while there is nothing to count) and the line
-// 「鏡頭 2／3・DiT 第 3／8 步・剩餘約 9:23・預計 07:03 完成」, a link to the render workspace with this run selected.
+// 「鏡頭 2／3・DiT 第 3／8 步・剩餘約 9:23・預計 07:03 完成」, a link to the 工作 list (Render workspace) with this run selected.
 // The status bar is the positioned parent of the edge line. Both fade in and, under the bar's AnimatePresence, out
 // (inert while leaving); the edge line's fill moves linearly.
 import { ChevronRight, LoaderCircle } from "lucide-react";
@@ -41,7 +41,7 @@ export function RenderStatusLine({ activity }: { activity: RenderActivity }) {
     <>
       <motion.span {...FADE} aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-0.5 overflow-hidden bg-line-subtle">
         {figure ? (
-          <span className={EDGE_FILL} style={{ width: `${figure.share * 100}%` }} />
+          <span className={EDGE_FILL} style={{ width: `${String(figure.share * 100)}%` }} />
         ) : (
           <span className={cn("absolute inset-0 bg-brand-gradient opacity-50", SHIMMER)} />
         )}
@@ -49,7 +49,7 @@ export function RenderStatusLine({ activity }: { activity: RenderActivity }) {
       <motion.span {...FADE} inert={exiting} className="flex min-w-0 shrink items-center gap-3">
         <Link
           to={runHref(project.project_id, activity.run.run_id, params.get("shot"))}
-          title={t("在渲染頁查看")}
+          title={t("在工作清單查看")}
           className="inline-flex h-6 min-w-0 items-center gap-1.5 rounded-sm px-1 text-fg-secondary no-underline hover:bg-raised/60 hover:text-fg"
         >
           <LoaderCircle aria-hidden className="size-3 shrink-0 animate-spin text-info" />

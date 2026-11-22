@@ -128,7 +128,7 @@ export function packColumn(desired: readonly number[], heights: readonly number[
 
 function countCrossings(layers: readonly string[][], segments: readonly Segment[], layerOf: Map<string, number>): number {
   const rank = new Map<string, number>();
-  for (const layer of layers) layer.forEach((id, index) => rank.set(id, index));
+  for (const layer of layers) layer.forEach((id, index) => void rank.set(id, index));
   const byLayer = new Map<number, { a: number; b: number }[]>();
   for (const segment of segments) {
     const layer = layerOf.get(segment.upper) ?? 0;
@@ -159,8 +159,8 @@ function stringify(commands: readonly Command[]): string {
   return commands
     .map((command) =>
       command.op === "C"
-        ? `C ${round(command.c1.x)} ${round(command.c1.y)}, ${round(command.c2.x)} ${round(command.c2.y)}, ${round(command.p.x)} ${round(command.p.y)}`
-        : `${command.op} ${round(command.p.x)} ${round(command.p.y)}`,
+        ? `C ${String(round(command.c1.x))} ${String(round(command.c1.y))}, ${String(round(command.c2.x))} ${String(round(command.c2.y))}, ${String(round(command.p.x))} ${String(round(command.p.y))}`
+        : `${command.op} ${String(round(command.p.x))} ${String(round(command.p.y))}`,
     )
     .join(" ");
 }
@@ -196,7 +196,7 @@ export function layoutGraph(model: GraphModel): GraphLayout {
     if (b <= a) continue; // 回頭線（循環）不參與排序與對齊。
     const chain: string[] = [];
     for (let layer = a + 1; layer < b; layer += 1) {
-      const id = `${edge.key}␟${layer}`;
+      const id = `${edge.key}␟${String(layer)}`;
       entries.set(id, { id, node: null, height: DUMMY_HEIGHT, order: from.order, top: 0 });
       layerOf.set(id, layer);
       chain.push(id);
@@ -313,8 +313,8 @@ export function layoutGraph(model: GraphModel): GraphLayout {
       const x = layerX(layerIndex);
       boxes.set(node.key, { key: node.key, x, y: entry.top, width: G.nodeWidth, height: entry.height, layer: layerIndex, rank, metaRows: metaRowsOf(node), portRows: portRows(node) });
       rank += 1;
-      node.inputs.forEach((port, index) => anchors.set(anchorKey(node.key, "in", port.name), { x, y: entry.top + portOffsetY(node, index) }));
-      node.outputs.forEach((port, index) => anchors.set(anchorKey(node.key, "out", port.name), { x: x + G.nodeWidth, y: entry.top + portOffsetY(node, index) }));
+      node.inputs.forEach((port, index) => void anchors.set(anchorKey(node.key, "in", port.name), { x, y: entry.top + portOffsetY(node, index) }));
+      node.outputs.forEach((port, index) => void anchors.set(anchorKey(node.key, "out", port.name), { x: x + G.nodeWidth, y: entry.top + portOffsetY(node, index) }));
     }
   });
 

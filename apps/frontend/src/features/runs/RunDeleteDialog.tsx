@@ -132,7 +132,7 @@ export function RunDeleteDialog({
                     <li className="flex items-start gap-2">
                       <ScrollText aria-hidden className="mt-0.5 size-4 shrink-0 text-fg-tertiary" />
                       <span>
-                        <T source={"<0>{recordings} 筆效能紀錄</0>（主控上的副本）"} values={{ recordings: summary.recordings }} slots={[<span className="text-fg" />]} />
+                        <T source={"<0>{recordings} 筆效能紀錄</0>（主控上的副本）"} values={{ recordings: summary.recordings }} slots={[<span key="slot-0" className="text-fg" />]} />
                       </span>
                     </li>
                     {summary.projects.map((project) => (
@@ -166,7 +166,7 @@ export function RunDeleteDialog({
                     </span>
                   </li>
                 ) : (
-                  <li key={item.runId || `error-${index}`} className="grid gap-1">
+                  <li key={item.runId || `error-${String(index)}`} className="grid gap-1">
                     <span className="flex items-start gap-2 text-data text-danger">
                       <CircleX aria-hidden className="mt-0.5 size-4 shrink-0" />
                       <span>
@@ -176,7 +176,7 @@ export function RunDeleteDialog({
                     {failedFiles(item.partial).length > 0 ? (
                       <span className="flex items-start gap-2 pl-6 text-caption text-fg-secondary">
                         <FileX2 aria-hidden className="mt-0.5 size-3.5 shrink-0" />
-                        {t("{partialCount} 個檔案刪不到（例如 Node 離線）；run 紀錄與專案都沒有變更，Node 恢復後可以再刪一次。{value}", { partialCount: failedFiles(item.partial).length, value: item.partial && item.partial.files.some((file) => file.status === "deleted")
+                        {t("{partialCount} 個檔案刪不到（例如 Node 離線）；run 紀錄與專案都沒有變更，Node 恢復後可以再刪一次。{value}", { partialCount: failedFiles(item.partial).length, value: item.partial?.files.some((file) => file.status === "deleted") === true
                           ? t(" 其中 {filterCount} 個檔案已經刪除。", { filterCount: item.partial.files.filter((file) => file.status === "deleted").length })
                           : "" })}
                       </span>
@@ -195,7 +195,7 @@ export function RunDeleteDialog({
         <DialogFooter>
           {outcomes === null ? (
             <>
-              <Button variant="quiet" onClick={() => close(false)} disabled={pending}>
+              <Button variant="quiet" onClick={() => { close(false); }} disabled={pending}>
                 {t("取消")}
               </Button>
               <Button
@@ -210,7 +210,7 @@ export function RunDeleteDialog({
               </Button>
             </>
           ) : (
-            <Button variant="secondary" onClick={() => close(false)} disabled={pending}>
+            <Button variant="secondary" onClick={() => { close(false); }} disabled={pending}>
               {pending ? t("刪除中…") : t("關閉")}
             </Button>
           )}

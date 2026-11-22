@@ -1,0 +1,88 @@
+{
+  "pipeline_id": "qimg-reuse-i2i",
+  "label": "Qwen 圖生圖：沿用編碼產物生成圖片",
+  "inputs": [
+    {
+      "name": "conditioning",
+      "type_id": "qimg.conditioning.v1",
+      "required": true,
+      "transport": "file",
+      "description": "沿用同一次編碼的文字與參考圖條件。"
+    },
+    {
+      "name": "ref_latents",
+      "type_id": "qimg.ref_latents.v1",
+      "required": true,
+      "transport": "file",
+      "description": "與 conditioning 取自同一次編碼，參考圖順序與尺寸須一致。"
+    },
+    {
+      "name": "prepared",
+      "type_id": "qimg.prepared.v1",
+      "required": true,
+      "transport": "file",
+      "description": "沿用同一次編碼的原圖、尺寸與遮罩，供最終合成。"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "dit",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "qimg-dit-bf16-phase-gpu0",
+      "inputs": {
+        "conditioning": {
+          "from_input": "conditioning"
+        },
+        "ref_latents": {
+          "from_input": "ref_latents"
+        }
+      },
+      "parameters": {
+        "width": 1024,
+        "height": 1024,
+        "steps": 40,
+        "guidance": 1.0,
+        "seed": 42
+      }
+    },
+    {
+      "step_id": "vae",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "qimg-vae-gpu0",
+      "inputs": {
+        "latent": {
+          "from_step": "dit",
+          "output": "latent"
+        }
+      },
+      "parameters": {
+        "mode": "full"
+      }
+    },
+    {
+      "step_id": "compose",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "image-compose",
+      "inputs": {
+        "image": {
+          "from_step": "vae",
+          "output": "image"
+        },
+        "prepared": {
+          "from_input": "prepared"
+        }
+      },
+      "parameters": {}
+    }
+  ],
+  "outputs": {
+    "image": {
+      "from_step": "compose",
+      "output": "image"
+    },
+    "image_white": {
+      "from_step": "compose",
+      "output": "image_white"
+    }
+  }
+}

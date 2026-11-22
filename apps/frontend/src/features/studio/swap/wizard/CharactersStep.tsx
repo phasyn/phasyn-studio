@@ -25,7 +25,7 @@ export function CharactersStep({ api, derived, library }: { api: SwapDraftApi; d
   // The per-segment limit can depend on the character count: say so next to the button when one more character lowers it
   const nextFrames = maxFramesFor(derived.limit, draft.characters.length + 1);
   const lowerNext =
-    !addReason && nextFrames < derived.frameLimit
+    !(addReason != null && addReason !== "") && nextFrames < derived.frameLimit
       ? t("新增第 {charactersCount} 個角色後，每段上限從 {frameLimit} 影格（{frameLimit2}）降到 {nextFrames} 影格（{nextFrames2}）", { charactersCount: draft.characters.length + 1, frameLimit: derived.frameLimit, frameLimit2: frameSeconds(derived.frameLimit), nextFrames, nextFrames2: frameSeconds(nextFrames) })
       : null;
   return (
@@ -46,7 +46,7 @@ export function CharactersStep({ api, derived, library }: { api: SwapDraftApi; d
             {t("{charactersCount}／{limit}", { charactersCount: draft.characters.length, limit })}
           </span>
         </div>
-        {addReason || lowerNext ? <p className="text-caption text-fg-tertiary [overflow-wrap:anywhere]">{addReason ?? lowerNext}</p> : null}
+        {(addReason ?? "") || (lowerNext != null && lowerNext !== "") ? <p className="text-caption text-fg-tertiary [overflow-wrap:anywhere]">{addReason ?? lowerNext}</p> : null}
       </div>
       <NoteList tone="warning" icon={<MemoryStick aria-hidden />} items={areaWarning} />
       <Section title={t("整體描述（選填，英文）")} icon={<PaintBucket />}>
@@ -55,13 +55,13 @@ export function CharactersStep({ api, derived, library }: { api: SwapDraftApi; d
             <Label htmlFor={`${id}-style`} hint={t("空白＝沿用參考影片的畫風、光線與場景")}>
               {t("畫面風格")}
             </Label>
-            <Input id={`${id}-style`} compact maxLength={FIELD_LIMITS.style} value={draft.style} placeholder="2D Japanese anime film style with crisp line art and cel shading" onChange={(event) => update({ style: event.target.value })} />
+            <Input id={`${id}-style`} compact maxLength={FIELD_LIMITS.style} value={draft.style} placeholder="2D Japanese anime film style with crisp line art and cel shading" onChange={(event) => { update({ style: event.target.value }); }} />
           </div>
           <div className="grid gap-1">
             <Label htmlFor={`${id}-language`} hint={t("例如 Japanese；空白＝不指定")}>
               {t("台詞語言")}
             </Label>
-            <Input id={`${id}-language`} compact maxLength={FIELD_LIMITS.language} value={draft.dialogueLanguage} placeholder="Japanese" onChange={(event) => update({ dialogueLanguage: event.target.value })} />
+            <Input id={`${id}-language`} compact maxLength={FIELD_LIMITS.language} value={draft.dialogueLanguage} placeholder="Japanese" onChange={(event) => { update({ dialogueLanguage: event.target.value }); }} />
           </div>
         </div>
       </Section>

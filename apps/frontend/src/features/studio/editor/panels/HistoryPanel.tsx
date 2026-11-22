@@ -32,8 +32,7 @@ interface StateRowProps {
 
 function StateRow({ position, label, current, undone, onChoose }: StateRowProps) {
   return (
-    <li role="option" aria-selected={current} className="contents">
-      <button
+    <button role="option" aria-selected={current}
         type="button"
         data-history-state={position}
         tabIndex={current ? 0 : -1}
@@ -47,27 +46,26 @@ function StateRow({ position, label, current, undone, onChoose }: StateRowProps)
       >
         <span className="machine w-6 shrink-0 text-right text-caption text-fg-tertiary">{position}</span>
         <span className={cn("min-w-0 flex-1 truncate", undone && "italic")}>{label}</span>
-      </button>
-    </li>
+    </button>
   );
 }
 
 export function HistoryPanel() {
   const editor = useEditor();
   const { steps, position } = editor.history;
-  const list = useRef<HTMLOListElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
   // The current state stays in view when an edit, an undo or a redo moves it
   useEffect(() => {
-    list.current?.querySelector<HTMLElement>(`[data-history-state="${position}"]`)?.scrollIntoView({ block: "nearest" });
+    listRef.current?.querySelector<HTMLElement>(`[data-history-state="${String(position)}"]`)?.scrollIntoView({ block: "nearest" });
   }, [position, steps.length]);
 
   const focusState = (target: number) => {
     const bounded = Math.max(0, Math.min(steps.length, target));
-    list.current?.querySelector<HTMLElement>(`[data-history-state="${bounded}"]`)?.focus();
+    listRef.current?.querySelector<HTMLElement>(`[data-history-state="${String(bounded)}"]`)?.focus();
   };
-  const onKeyDown = (event: KeyboardEvent<HTMLOListElement>) => {
-    const focused = Number((event.target as HTMLElement).dataset.historyState ?? position);
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const focused = Number(event.target instanceof HTMLElement ? event.target.dataset["historyState"] ?? position : position);
     const next = event.key === "ArrowDown" ? focused + 1 : event.key === "ArrowUp" ? focused - 1 : event.key === "Home" ? 0 : event.key === "End" ? steps.length : null;
     if (next === null) return;
     event.preventDefault();
@@ -110,8 +108,8 @@ export function HistoryPanel() {
           />
         </div>
       ) : (
-        <ol ref={list} role="listbox" aria-label={t("剪輯步驟")} data-keep-focus="" onKeyDown={onKeyDown} className="grid min-h-0 flex-1 content-start gap-0.5 overflow-y-auto p-1.5">
-          <StateRow position={0} label={t("開啟時的狀態")} current={position === 0} undone={false} onChoose={() => editor.travelTo(0)} />
+        <div tabIndex={-1} ref={listRef} role="listbox" aria-label={t("剪輯步驟")} data-keep-focus="" onKeyDown={onKeyDown} className="grid min-h-0 flex-1 content-start gap-0.5 overflow-y-auto p-1.5">
+          <StateRow position={0} label={t("開啟時的狀態")} current={position === 0} undone={false} onChoose={() => { editor.travelTo(0); }} />
           {steps.map((step, index) => (
             <StateRow
               key={step.id}
@@ -119,10 +117,10 @@ export function HistoryPanel() {
               label={step.label}
               current={position === index + 1}
               undone={index + 1 > position}
-              onChoose={() => editor.travelTo(index + 1)}
+              onChoose={() => { editor.travelTo(index + 1); }}
             />
           ))}
-        </ol>
+        </div>
       )}
     </div>
   );

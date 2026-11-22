@@ -35,10 +35,10 @@ export function motionSource(motion: MotionReference | null, references: readonl
   if (!motion) return { ok: false, reason: t("Prompt 裡沒有動作參考影片那一行（@Video1 is a motion and camera reference…），所以沒有畫面") };
   let alias: string | null = null;
   if ("alias" in motion) alias = motion.alias;
-  else for (const [candidate, label] of aliasLabels(references)) if (label === `<Video ${motion.tag}>`) alias = candidate;
-  const name = "alias" in motion ? `@${motion.alias}` : `<Video ${motion.tag}>`;
+  else for (const [candidate, label] of aliasLabels(references)) if (label === `<Video ${String(motion.tag)}>`) alias = candidate;
+  const name = "alias" in motion ? `@${motion.alias}` : `<Video ${String(motion.tag)}>`;
   const reference = references.find((ref) => ref.kind === "video" && ref.alias === alias);
-  if (!alias || !reference) return { ok: false, reason: t("這個鏡頭沒有 {name} 參考影片，所以沒有畫面", { name }) };
+  if (!(alias != null && alias !== "") || !reference) return { ok: false, reason: t("這個鏡頭沒有 {name} 參考影片，所以沒有畫面", { name }) };
   const item = library.find((entry) => entry.item_id === reference.item_id);
   if (!item) return { ok: false, reason: t("{name} 的檔案已不在素材庫", { name: `@${alias}` }) };
   const start = Math.max(0, reference.start_seconds ?? 0);

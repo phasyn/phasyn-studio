@@ -29,9 +29,9 @@ export function leadingLabels(ctx: RuleContext, section: Section): LeadingLabel[
   for (const line of ctx.text.slice(section.bodyStart, section.end).split("\n")) {
     const match = LEADING_LABEL.exec(line);
     const token = match?.[1];
-    if (match && token) {
+    if (match && (token != null && token !== "")) {
       const alias = token.startsWith("@") ? token.slice(1) : null;
-      const key = alias ? (ctx.plan.byAlias.get(alias)?.label ?? token) : token.replace(/^<(\w+)[ \t]*(\d+)>$/, "<$1 $2>");
+      const key = (alias != null && alias !== "") ? (ctx.plan.byAlias.get(alias)?.label ?? token) : token.replace(/^<(\w+)[ \t]*(\d+)>$/, "<$1 $2>");
       out.push({ key, text: token, start: offset + match[0].length - token.length, audio: /^(?:<Audio|@Audio)/.test(token), rest: line.slice(match[0].length) });
     }
     offset += line.length + 1;
@@ -82,7 +82,7 @@ export function definitionRules(ctx: RuleContext): Finding[] {
     }
     const badMarkers = lines.filter((line) => {
       const marker = /^\s*(?:\([^)\n]*\))?\s*[:：]\s*([A-Za-z_]+)/.exec(line.rest)?.[1];
-      return !marker || !(line.audio ? AUDIO_MARKERS : VISUAL_MARKERS).includes(marker);
+      return !(marker != null && marker !== "") || !(line.audio ? AUDIO_MARKERS : VISUAL_MARKERS).includes(marker);
     });
     const speaker = /\(S\d+(?:\s*,\s*S\d+)*\)/.exec(retention.body);
     const firstBad = badMarkers[0];

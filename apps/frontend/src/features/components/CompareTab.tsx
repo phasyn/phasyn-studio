@@ -21,7 +21,7 @@ const MISSING = Symbol("missing");
 
 function Cell({ value, emphasize }: { value: unknown; emphasize?: boolean }) {
   if (value === MISSING) return <span className="text-fg-tertiary">—</span>;
-  return <span className={emphasize ? "machine text-warning" : "machine text-fg-secondary"}>{previewValue(value, 60)}</span>;
+  return <span className={(emphasize === true) ? "machine text-warning" : "machine text-fg-secondary"}>{previewValue(value, 60)}</span>;
 }
 
 function lookup(source: unknown, path: string): unknown {
@@ -51,7 +51,7 @@ export function CompareTab({ view, nodeId, componentId }: { view: SettingsView; 
 
   const paths = new Set<string>();
   for (const source of [view.stored, view.loaded ? { load: view.loaded } : null, effective === MISSING ? null : effective]) {
-    if (source) for (const key of flattenLeaves(source).keys()) if (key) paths.add(key);
+    if (source != null) for (const key of flattenLeaves(source).keys()) if (key) paths.add(key);
   }
   const rows = [...paths]
     .sort()
@@ -93,9 +93,9 @@ export function CompareTab({ view, nodeId, componentId }: { view: SettingsView; 
                   <ExternalLink aria-hidden className="size-3.5" />
                 </Link>, value2: context.settings ? (
                   <span className="machine text-caption text-fg-tertiary">
-                    stored #{context.settings.stored_revision} · loaded {context.settings.loaded_revision === null ? "—" : `#${context.settings.loaded_revision}`}
+                    stored #{context.settings.stored_revision} · loaded {context.settings.loaded_revision === null ? "—" : `#${String(context.settings.loaded_revision)}`}
                   </span>
-                ) : null, value3: context.synthetic ? <SyntheticBadge /> : null }} slots={[<TimeText iso={context.created_at} />]} />
+                ) : null, value3: context.synthetic ? <SyntheticBadge /> : null }} slots={[<TimeText key="slot-0" iso={context.created_at} />]} />
               </span>
             ) : (
               t("此 instance 還沒有 invoke 紀錄")
@@ -162,7 +162,7 @@ export function CompareTab({ view, nodeId, componentId }: { view: SettingsView; 
                         <span className="machine text-fg">{previewValue(obs.value, 40)}</span>
                       ) : (
                         <span className="text-caption text-warning">
-                          {t("未觀測{value}", { value: obs.reason ? t("：{reason}", { reason: tServer(obs.reason) }) : t("（runtime 未回報）") })}
+                          {t("未觀測{value}", { value: (obs.reason != null && obs.reason !== "") ? t("：{reason}", { reason: tServer(obs.reason) }) : t("（runtime 未回報）") })}
                         </span>
                       )}
                     </Td>
@@ -179,7 +179,7 @@ export function CompareTab({ view, nodeId, componentId }: { view: SettingsView; 
           <h3 id="settings-compare-title" className="text-data font-semibold text-fg">
             {t("全部設定：已保存／目前載入／這次呼叫（effective）")}
           </h3>
-          <Checkbox id="compare-only-diff" label={t("只顯示有差異的欄位")} checked={onlyDiff} onChange={(event) => setOnlyDiff(event.target.checked)} />
+          <Checkbox id="compare-only-diff" label={t("只顯示有差異的欄位")} checked={onlyDiff} onChange={(event) => { setOnlyDiff(event.target.checked); }} />
         </div>
         {rows.length === 0 ? (
           <p className="text-data text-fg-tertiary">{onlyDiff ? t("三欄之間沒有差異。") : t("沒有設定欄位。")}</p>

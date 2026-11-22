@@ -1,3 +1,4 @@
+import { nonEmptyText } from "@/lib/json";
 // 介面動作（motion）的 DOM 端，引擎是 Motion（motion.dev）：以 token 播放動畫、清單逐項進場、分頁指示線、內容切換淡入、
 // 狀態變化淡入、面板開合、清單補位（FLIP）。時間、曲線與位移一律讀 index.css 的 token（--duration-*、--ease-*、
 // --motion-shift*），這裡只把它們轉成 Motion 的 transition，不另訂數值（下面的預設只在讀不到 CSS 變數時使用，與 index.css 相同）。
@@ -43,7 +44,11 @@ export function easeFromToken(raw: string): Easing | null {
   const match = /^(linear|cubic-bezier)\((.*)\)$/.exec(raw.trim());
   const values = match?.[2]?.split(",").map((value) => Number(value.trim())) ?? [];
   if (!match || values.length < 2 || values.some((value) => !Number.isFinite(value))) return null;
-  if (match[1] === "cubic-bezier") return values.length === 4 ? (values as [number, number, number, number]) : null;
+  if (match[1] === "cubic-bezier") {
+    const [x1, y1, x2, y2] = values;
+    return values.length === 4 && x1 !== undefined && y1 !== undefined && x2 !== undefined && y2 !== undefined
+      ? [x1, y1, x2, y2] : null;
+  }
   const last = values.length - 1;
   return (t: number) => {
     const position = Math.min(Math.max(t, 0), 1) * last;
@@ -95,9 +100,9 @@ function identityTransform(list: string): string {
 function toMotionKeyframes(frames: readonly Record<string, string | number>[]): DOMKeyframesDefinition {
   const out: Record<string, (string | number)[]> = {};
   for (const frame of frames) for (const [key, value] of Object.entries(frame)) (out[key] ??= []).push(value);
-  const transforms = out.transform;
+  const transforms = out["transform"];
   const list = transforms?.find((value) => typeof value === "string" && value !== "none");
-  if (transforms && typeof list === "string") out.transform = transforms.map((value) => (value === "none" ? identityTransform(list) : value));
+  if (transforms && typeof list === "string") out["transform"] = transforms.map((value) => (value === "none" ? identityTransform(list) : value));
   return out;
 }
 
@@ -161,7 +166,7 @@ export function playMotion(
   const settle = () => {
     if (settled) return;
     settled = true;
-    requestAnimationFrame(() => releaseInline(element, held, names));
+    requestAnimationFrame(() => { releaseInline(element, held, names); });
   };
   try {
     const animation = animate(element, toMotionKeyframes(keyframes), { ...motionTransition(spec.duration, spec.easing, spec.delayMs), reduceMotion: false });
@@ -190,9 +195,9 @@ export function viewTransitionActive(): boolean {
   }
 }
 
-type TypedViewTransitionDocument = Document & {
+interface TypedViewTransitionDocument {
   startViewTransition?: (options: { update: () => void; types: string[] }) => unknown;
-};
+}
 
 /** 瀏覽器支援帶 types 的 View Transition（Chrome 125+）；舊版只接受 callback，傳物件會出錯，所以先偵測。 */
 function supportsTypedViewTransition(): boolean {
@@ -214,6 +219,7 @@ export function runViewTransition(type: string, update: () => void): void {
   const apply = () => {
     if (applied) return;
     applied = true;
+    // eslint-disable-next-line @eslint-react/dom-no-flush-sync -- The native view transition takes its new-layout snapshot when this callback returns.
     flushSync(update);
   };
   try {
@@ -229,7 +235,7 @@ export function playPageEnter(element: Element | null | undefined): void {
   playMotion(
     element,
     [
-      { opacity: 0, transform: `translateY(${motionShift("panel")}px) scale(0.985)` },
+      { opacity: 0, transform: `translateY(${String(motionShift("panel"))}px) scale(0.985)` },
       { opacity: 1, transform: "translateY(0px) scale(1)" },
     ],
     { duration: "spring-smooth", easing: "spring-smooth" },
@@ -289,7 +295,7 @@ interface IndicatorState {
  */
 function observe(current: IndicatorState, container: HTMLElement | null, indicator: HTMLElement | null, place: RefObject<() => void>): void {
   if (!container || typeof ResizeObserver === "undefined") return;
-  current.observer ??= new ResizeObserver(() => place.current());
+  current.observer ??= new ResizeObserver(() => { place.current(); });
   for (const element of [container, ...Array.from(container.children)]) {
     if (current.observed.has(element) || element === indicator) continue;
     current.observed.add(element);
@@ -299,31 +305,31 @@ function observe(current: IndicatorState, container: HTMLElement | null, indicat
 
 export function useActiveIndicator(containerRef: RefObject<HTMLElement | null>, indicatorRef: RefObject<HTMLElement | null>, options: IndicatorOptions = {}): void {
   const { axis = "x", inset = 0, selector = ACTIVE_TAB_SELECTOR, swapPanels = true } = options;
-  const state = useRef<IndicatorState>({ observer: null, observed: new WeakSet(), transform: "", activeId: null });
-  const place = useRef<() => void>(() => undefined);
+  const stateRef = useRef<IndicatorState>({ observer: null, observed: new WeakSet(), transform: "", activeId: null });
+  const placeRef = useRef<() => void>(() => undefined);
 
   useLayoutEffect(() => {
-    const current = state.current;
-    place.current = () => {
+    const current = stateRef.current;
+    placeRef.current = () => {
       const container = containerRef.current;
       const indicator = indicatorRef.current;
       if (!container || !indicator) return;
       const active = container.querySelector<HTMLElement>(selector);
       if (!active) {
-        indicator.dataset.state = "hidden";
+        indicator.dataset["state"] = "hidden";
         current.activeId = null;
         return;
       }
-      const activeId = active.id || active.getAttribute("aria-controls") || active.getAttribute("href");
+      const activeId = nonEmptyText(active.id) ?? nonEmptyText(active.getAttribute("aria-controls")) ?? active.getAttribute("href");
       if (swapPanels && current.activeId !== null && activeId !== current.activeId) {
         const panelId = active.getAttribute("aria-controls");
-        playSwap(panelId ? document.getElementById(panelId) : null);
+        playSwap((panelId != null && panelId !== "") ? document.getElementById(panelId) : null);
       }
       current.activeId = activeId;
       const start = offsetWithin(active, container, axis) ?? rectOffset(active, container, axis);
       const size = axis === "x" ? active.offsetWidth : active.offsetHeight;
       const transform = indicatorTransform(axis, indicatorPlacement({ start, size }, inset));
-      const visible = indicator.dataset.state === "visible";
+      const visible = indicator.dataset["state"] === "visible";
       if (visible && transform === current.transform) return;
       current.transform = transform;
       if (visible) {
@@ -335,21 +341,21 @@ export function useActiveIndicator(containerRef: RefObject<HTMLElement | null>, 
       indicator.style.transform = transform;
       indicator.getBoundingClientRect();
       indicator.style.removeProperty("transition");
-      indicator.dataset.state = "visible";
+      indicator.dataset["state"] = "visible";
     };
-    place.current();
-    observe(current, containerRef.current, indicatorRef.current, place);
+    placeRef.current();
+    observe(current, containerRef.current, indicatorRef.current, placeRef);
   });
 
   // 容器的 ref 若掛在父層元素（例如 AppShell 的 <nav>），首次掛載時子元件的 layout effect 先於父層 ref 執行，
   // 上面會找不到容器；passive effect 時所有 ref 都已就緒，這裡補一次定位與監看（place 是冪等的）。
   useEffect(() => {
-    place.current();
-    observe(state.current, containerRef.current, indicatorRef.current, place);
+    placeRef.current();
+    observe(stateRef.current, containerRef.current, indicatorRef.current, placeRef);
   });
 
   useEffect(() => {
-    const current = state.current;
+    const current = stateRef.current;
     return () => {
       current.observer?.disconnect();
       current.observer = null;
@@ -374,7 +380,7 @@ export function useContentSwapMotion<T extends HTMLElement>(): RefCallback<T> {
       if (previous && next) playPageEnter(next);
     });
     observer.observe(container, { childList: true });
-    return () => observer.disconnect();
+    return () => { observer.disconnect(); };
   }, []);
 }
 
@@ -383,10 +389,10 @@ export function useContentSwapMotion<T extends HTMLElement>(): RefCallback<T> {
 
 export function useChangeFade<T extends Element>(value: unknown): RefObject<T | null> {
   const ref = useRef<T | null>(null);
-  const previous = useRef(value);
+  const previousRef = useRef(value);
   useLayoutEffect(() => {
-    if (Object.is(previous.current, value)) return;
-    previous.current = value;
+    if (Object.is(previousRef.current, value)) return;
+    previousRef.current = value;
     playSwap(ref.current);
   }, [value]);
   return ref;
@@ -435,9 +441,9 @@ export type PanelEdge = "left" | "right" | "bottom" | "none";
 /** 側邊面板（Inspector、資源樹）從邊緣滑入 2× panel 位移（16 px）；底部面板 8 px。 */
 function panelOffset(edge: PanelEdge): string {
   const shift = motionShift("panel");
-  if (edge === "left") return `translateX(${-shift * 2}px)`;
-  if (edge === "right") return `translateX(${shift * 2}px)`;
-  if (edge === "bottom") return `translateY(${shift}px)`;
+  if (edge === "left") return `translateX(${String(-shift * 2)}px)`;
+  if (edge === "right") return `translateX(${String(shift * 2)}px)`;
+  if (edge === "bottom") return `translateY(${String(shift)}px)`;
   return "none";
 }
 
@@ -461,19 +467,19 @@ export function usePanelEnter<T extends Element>(key: string, edge: PanelEdge): 
 // version 改變時才量測（輪詢沒有改變順序就不動）。
 
 export function useFlipList(containerRef: RefObject<HTMLElement | null>, version: unknown): void {
-  const positions = useRef(new Map<Element, number>());
+  const positionsRef = useRef(new Map<Element, number>());
   useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     const next = new Map<Element, number>();
     for (const child of Array.from(container.children)) if (child instanceof HTMLElement) next.set(child, child.offsetTop);
     for (const [child, top] of next) {
-      const before = positions.current.get(child);
+      const before = positionsRef.current.get(child);
       if (before === undefined || Math.abs(before - top) < 0.5 || !(child instanceof HTMLElement)) continue;
       const current = new DOMMatrixReadOnly(getComputedStyle(child).transform === "none" ? undefined : getComputedStyle(child).transform).m42;
-      playMotion(child, [{ transform: `translateY(${before - top + current}px)` }, { transform: "translateY(0px)" }], { duration: "spring-snappy", easing: "spring-snappy" });
+      playMotion(child, [{ transform: `translateY(${String(before - top + current)}px)` }, { transform: "translateY(0px)" }], { duration: "spring-snappy", easing: "spring-snappy" });
     }
-    positions.current = next;
+    positionsRef.current = next;
   }, [containerRef, version]);
 }
 
@@ -495,7 +501,7 @@ export function reveal(index: number): RefCallback<HTMLElement | SVGElement> {
       const handle = playMotion(
         node,
         [
-          { opacity: 0, transform: `translateY(${motionShift("panel")}px) scale(0.985)` },
+          { opacity: 0, transform: `translateY(${String(motionShift("panel"))}px) scale(0.985)` },
           { opacity: 1, transform: "translateY(0px) scale(1)" },
         ],
         { duration: "spring-smooth", easing: "spring-smooth", delayMs: step * STAGGER_STEP_MS },

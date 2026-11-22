@@ -26,17 +26,33 @@ from typing import Any
 
 from ._diag import UNSUPPORTED, err, warn
 
-ONLINE_QUANT: frozenset[tuple[str, str]] = frozenset({("int8_convrot", "sglang_native"), ("fp8_e4m3", "sglang_native")})
+
+_MIN_SM_DIGITS = 2
+
+
+ONLINE_QUANT: frozenset[tuple[str, str]] = frozenset(
+    {("int8_convrot", "sglang_native"), ("fp8_e4m3", "sglang_native")}
+)
 ONLINE_QUANT_SCHEMES = frozenset(scheme for scheme, _ in ONLINE_QUANT)
 CONVROT_GROUP_SIZE = 256
 ONLINE_QUANT_OFFLOADS = ("none", "block")
-FP8_W8A8_MIN_SM = 89  # E4M3 tensor cores (runtime: acceleration.FP8_W8A8_MIN_CAPABILITY)
+FP8_W8A8_MIN_SM = (
+    89  # E4M3 tensor cores (runtime: acceleration.FP8_W8A8_MIN_CAPABILITY)
+)
 # exact compute capabilities ("<major><minor>" like node-inventory ``sm``)
 APPROXIMATE_ATTENTION_SM: Mapping[str, tuple[str, ...]] = {
     "fp8_fa_sm120": ("120",),
     "subblock_sparse_attn": ("90", "100", "120"),
 }
-SUBBLOCK_KEYS = ("sparsity", "skip_first_steps", "skip_first_layers", "n_k", "n_q", "min_seq_len", "compute_mode")
+SUBBLOCK_KEYS = (
+    "sparsity",
+    "skip_first_steps",
+    "skip_first_layers",
+    "n_k",
+    "n_q",
+    "min_seq_len",
+    "compute_mode",
+)
 
 
 def _quant(comp: Mapping[str, Any] | None) -> Mapping[str, Any]:
@@ -44,8 +60,12 @@ def _quant(comp: Mapping[str, Any] | None) -> Mapping[str, Any]:
 
 
 def is_online_quant(comp: Mapping[str, Any] | None) -> bool:
+    """Check whether the requested scheme quantizes weights during loading."""
     quant = _quant(comp)
-    return (str(quant.get("scheme", "none")), str(quant.get("provider", "native"))) in ONLINE_QUANT
+    return (
+        str(quant.get("scheme", "none")),
+        str(quant.get("provider", "native")),
+    ) in ONLINE_QUANT
 
 
 def adaln_quant_relaxable(profile: Mapping[str, Any]) -> bool:
@@ -54,11 +74,20 @@ def adaln_quant_relaxable(profile: Mapping[str, Any]) -> bool:
 
 
 def _sm_text(sm: Any) -> str | None:
-    text = str(sm or "").strip().lower().removeprefix("sm").removeprefix("_").replace(".", "")
-    return text if text.isdigit() and len(text) >= 2 else None
+    text = (
+        str(sm or "")
+        .strip()
+        .lower()
+        .removeprefix("sm")
+        .removeprefix("_")
+        .replace(".", "")
+    )
+    return text if text.isdigit() and len(text) >= _MIN_SM_DIGITS else None
 
 
-def _quant_diagnostics(profile: Mapping[str, Any], device_sms: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+def _quant_diagnostics(
+    profile: Mapping[str, Any], device_sms: Mapping[str, Any] | None = None
+) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for name, comp in (profile.get("components") or {}).items():
         if not isinstance(comp, Mapping):
@@ -88,42 +117,7 @@ def _quant_diagnostics(profile: Mapping[str, Any], device_sms: Mapping[str, Any]
                 )
             )
             continue
-        group = quant.get("group_size")
-        if scheme == "int8_convrot" and group not in (None, CONVROT_GROUP_SIZE):
-            out.append(
-                err(
-                    UNSUPPORTED,
-                    f"釘版 --quantization convrot_int8 固定 group {CONVROT_GROUP_SIZE}（transformer_load_utils.py:1059-1065）",
-                    f"{base}.quantization.group_size",
-                    expected=CONVROT_GROUP_SIZE,
-                    actual=group,
-                )
-            )
-        if scheme == "fp8_e4m3" and group is not None:
-            out.append(err(UNSUPPORTED, "線上 FP8 是 per-channel，沒有 group_size", f"{base}.quantization.group_size"))
-        for key in ("weights_ref", "calibration_ref"):
-            if quant.get(key) is not None:
-                out.append(err(UNSUPPORTED, f"線上量化不讀 {key}", f"{base}.quantization.{key}"))
-        if comp.get("weight_format", "native") != "native":
-            out.append(
-                err(
-                    UNSUPPORTED,
-                    "線上量化只接受原生 BF16 checkpoint（weight_format=native）",
-                    f"{base}.weight_format",
-                    expected="native",
-                    actual=comp.get("weight_format"),
-                )
-            )
-        if comp.get("offload", "block") not in ONLINE_QUANT_OFFLOADS:
-            out.append(
-                err(
-                    UNSUPPORTED,
-                    "線上量化 DiT 只驗證 offload=none|block（上游 cookbook 配方為 layerwise）",
-                    f"{base}.offload",
-                    expected="none|block",
-                    actual=comp.get("offload"),
-                )
-            )
+        _online_weight_settings(comp, scheme, quant, base, out)
         if scheme == "fp8_e4m3":
             if comp.get("offload", "block") == "none":
                 out.append(
@@ -154,9 +148,16 @@ def _subblock_problems(raw: Any) -> list[tuple[str, str]]:
     """(field path, message) for an ``attention.subblock_sparse`` value."""
     base = "attention.subblock_sparse"
     if not isinstance(raw, Mapping):
-        return [(base, "subblock_sparse_attn 需要完整的 attention.subblock_sparse（不套用 SGLang 隱含預設）")]
+        return [
+            (
+                base,
+                "subblock_sparse_attn 需要完整的 attention.subblock_sparse（不套用 SGLang 隱含預設）",
+            )
+        ]
     problems = [(f"{base}.{k}", f"缺少 {k}") for k in SUBBLOCK_KEYS if k not in raw]
-    problems += [(f"{base}.{k}", f"未知欄位 {k}") for k in sorted(set(raw) - set(SUBBLOCK_KEYS))]
+    problems += [
+        (f"{base}.{k}", f"未知欄位 {k}") for k in sorted(set(raw) - set(SUBBLOCK_KEYS))
+    ]
     sparsity = raw.get("sparsity")
     if "sparsity" in raw and (
         isinstance(sparsity, bool)
@@ -170,14 +171,20 @@ def _subblock_problems(raw: Any) -> list[tuple[str, str]]:
             problems.append((f"{base}.{key}", f"{key} 必須是 1、2、4 或 8"))
     for key in ("skip_first_steps", "skip_first_layers", "min_seq_len"):
         value = raw.get(key)
-        if key in raw and (isinstance(value, bool) or not isinstance(value, int) or value < 0):
+        if key in raw and (
+            isinstance(value, bool) or not isinstance(value, int) or value < 0
+        ):
             problems.append((f"{base}.{key}", f"{key} 必須是非負整數"))
     if "compute_mode" in raw and raw["compute_mode"] not in ("bf16", "sage_fp8"):
-        problems.append((f"{base}.compute_mode", "compute_mode 必須是 bf16 或 sage_fp8"))
+        problems.append(
+            (f"{base}.compute_mode", "compute_mode 必須是 bf16 或 sage_fp8")
+        )
     return problems
 
 
-def _attention_diagnostics(profile: Mapping[str, Any], device_sms: Mapping[str, Any] | None) -> list[dict[str, Any]]:
+def _attention_diagnostics(
+    profile: Mapping[str, Any], device_sms: Mapping[str, Any] | None
+) -> list[dict[str, Any]]:
     attention = profile.get("attention") or {}
     provider = str(attention.get("provider", "auto_exact"))
     params = attention.get("subblock_sparse")
@@ -197,15 +204,24 @@ def _attention_diagnostics(profile: Mapping[str, Any], device_sms: Mapping[str, 
         out.append(
             err(
                 UNSUPPORTED,
-                f"{provider} 是近似 attention（FP8 量化或區塊稀疏），不能用於 mode=exact（REQ-021/026）",
+                f"{provider} 是近似 attention（FP8 量化或區塊稀疏），不能用於 mode=exact（/026）",
                 "mode",
                 "attention.provider",
             )
         )
     if attention.get("kernel_variant") is not None:
-        out.append(err(UNSUPPORTED, f"{provider} 沒有 kernel_variant 選項（不默默忽略）", "attention.kernel_variant"))
+        out.append(
+            err(
+                UNSUPPORTED,
+                f"{provider} 沒有 kernel_variant 選項（不默默忽略）",
+                "attention.kernel_variant",
+            )
+        )
     if provider == "subblock_sparse_attn":
-        out.extend(err(UNSUPPORTED, message, path) for path, message in _subblock_problems(params))
+        out.extend(
+            err(UNSUPPORTED, message, path)
+            for path, message in _subblock_problems(params)
+        )
         if isinstance(params, Mapping) and params.get("compute_mode") == "sage_fp8":
             out.append(
                 warn(
@@ -217,7 +233,11 @@ def _attention_diagnostics(profile: Mapping[str, Any], device_sms: Mapping[str, 
             )
     elif params is not None:
         out.append(
-            err(UNSUPPORTED, f"{provider} 不接受 attention.subblock_sparse（不默默忽略）", "attention.subblock_sparse")
+            err(
+                UNSUPPORTED,
+                f"{provider} 不接受 attention.subblock_sparse（不默默忽略）",
+                "attention.subblock_sparse",
+            )
         )
     dit_sm = _sm_text((device_sms or {}).get("dit"))
     if dit_sm is None:
@@ -242,8 +262,13 @@ def _attention_diagnostics(profile: Mapping[str, Any], device_sms: Mapping[str, 
     return out
 
 
-def diagnostics(profile: Mapping[str, Any], device_sms: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
-    return _quant_diagnostics(profile, device_sms) + _attention_diagnostics(profile, device_sms)
+def diagnostics(
+    profile: Mapping[str, Any], device_sms: Mapping[str, Any] | None = None
+) -> list[dict[str, Any]]:
+    """Report incompatible acceleration options."""
+    return _quant_diagnostics(profile, device_sms) + _attention_diagnostics(
+        profile, device_sms
+    )
 
 
 __all__ = [
@@ -254,3 +279,56 @@ __all__ = [
     "diagnostics",
     "is_online_quant",
 ]
+
+
+def _online_weight_settings(
+    comp: Mapping[str, Any],
+    scheme: str,
+    quant: Mapping[str, Any],
+    base: str,
+    out: list[dict[str, Any]],
+) -> None:
+    group = quant.get("group_size")
+    if scheme == "int8_convrot" and group not in (None, CONVROT_GROUP_SIZE):
+        out.append(
+            err(
+                UNSUPPORTED,
+                f"釘版 --quantization convrot_int8 固定 group {CONVROT_GROUP_SIZE}（transformer_load_utils.py:1059-1065）",
+                f"{base}.quantization.group_size",
+                expected=CONVROT_GROUP_SIZE,
+                actual=group,
+            )
+        )
+    if scheme == "fp8_e4m3" and group is not None:
+        out.append(
+            err(
+                UNSUPPORTED,
+                "線上 FP8 是 per-channel，沒有 group_size",
+                f"{base}.quantization.group_size",
+            )
+        )
+    out.extend(
+        err(UNSUPPORTED, f"線上量化不讀 {key}", f"{base}.quantization.{key}")
+        for key in ("weights_ref", "calibration_ref")
+        if quant.get(key) is not None
+    )
+    if comp.get("weight_format", "native") != "native":
+        out.append(
+            err(
+                UNSUPPORTED,
+                "線上量化只接受原生 BF16 checkpoint（weight_format=native）",
+                f"{base}.weight_format",
+                expected="native",
+                actual=comp.get("weight_format"),
+            )
+        )
+    if comp.get("offload", "block") not in ONLINE_QUANT_OFFLOADS:
+        out.append(
+            err(
+                UNSUPPORTED,
+                "線上量化 DiT 只驗證 offload=none|block（上游 cookbook 配方為 layerwise）",
+                f"{base}.offload",
+                expected="none|block",
+                actual=comp.get("offload"),
+            )
+        )

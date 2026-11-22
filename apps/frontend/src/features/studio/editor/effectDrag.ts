@@ -1,3 +1,4 @@
+import { isRecord } from "@/lib/json";
 // What the Effects browser puts on a drag so the timeline can apply it: the id of the dragged effect, preset or
 // transition. Only this module knows the transfer format. A browser hides the payload until the drop, so the drag that
 // started in this page is also kept here: the timeline shows where it would land while it is still over the tracks.
@@ -35,11 +36,11 @@ export function isEffectDrag(transfer: DataTransfer | null): boolean {
 /** The dragged effect of a drop; null when the drop carries none or its payload is not ours. */
 export function readEffectDrag(transfer: DataTransfer | null): EffectDrag | null {
   const raw = transfer?.getData(EFFECT_DRAG_TYPE);
-  if (!raw || raw.length > 200) return null;
+  if (!(raw != null && raw !== "") || raw.length > 200) return null;
   try {
     const value: unknown = JSON.parse(raw);
-    if (typeof value !== "object" || value === null) return null;
-    const { itemId } = value as Record<string, unknown>;
+    if (!isRecord(value)) return null;
+    const { itemId } = value;
     return typeof itemId === "string" && itemId !== "" && itemId.length <= 120 ? { itemId } : null;
   } catch {
     return null;

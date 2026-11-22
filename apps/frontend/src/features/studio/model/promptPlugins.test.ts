@@ -5,10 +5,10 @@
 // marks the take as out of date. The registry is the shared fixture of contracts/examples/plugin-rules.
 import registryJson from "@contracts/examples/plugin-rules/registry.json";
 import { afterEach, describe, expect, it } from "vitest";
-import type { StudioPluginList, StudioProject, StudioShot } from "@/api/generated/contracts";
+import type { StudioProject, StudioShot } from "@/api/generated/contracts";
 import type { PluginRegistry } from "@/features/plugins";
 import { LOADING_REGISTRY, registryFromError, registryFromList, setCurrentPluginRegistry } from "@/features/plugins/testing";
-import { studioProject, studioShot } from "@/test/fixtures";
+import { contractFixture, studioProject, studioShot } from "@/test/fixtures";
 import { FIXED_TIME, PIPELINE_ID, uid } from "@/test/ids";
 import { changedSinceTake } from "./project";
 import { applyPromptPlugins, samePlugins, takePluginFields } from "./promptPlugins";
@@ -16,7 +16,7 @@ import { planRender, renderTakes } from "./renderPlan";
 import { deriveStudioRoutes } from "./routes";
 import { exampleCatalog, t2vaPipeline } from "./studioFixtures";
 
-const list = registryJson as unknown as StudioPluginList;
+const list = contractFixture("StudioPluginList", registryJson);
 const ready = registryFromList(list);
 const catalog = exampleCatalog();
 const routes = deriveStudioRoutes([t2vaPipeline()], catalog);
@@ -85,7 +85,7 @@ describe("render planning with plugin contributions", () => {
 
 describe("content revisions on takes", () => {
   const refs = ["com.example.staging-pack/watercolor", "com.example.staging-pack/no-side-view"];
-  afterEach(() => setCurrentPluginRegistry(null));
+  afterEach(() => { setCurrentPluginRegistry(null); });
 
   it("records the revision of every selected contribution when a render is planned", () => {
     const doc = project(refs);

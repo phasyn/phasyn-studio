@@ -29,7 +29,7 @@ export function ReasonDetails({ state, reason, className }: { state: Exclude<Met
 /** 單一數值（不含品質標記）。 */
 export function MetricValue({ metric, className }: { metric: Metric; className?: string }) {
   const state = metricState(metric);
-  if (state !== "measured") return <ReasonDetails state={state} reason={metric.reason} className={className} />;
+  if (state !== "measured") return <ReasonDetails state={state} reason={metric.reason} {...(className === undefined ? {} : { className })} />;
   return (
     <span className={cn("machine text-fg", className)} title={exactMetricValue(metric) ?? undefined}>
       {formatMetricValue(metric)}
@@ -48,7 +48,7 @@ export function MetricInline({ metric, className }: { metric: Metric; className?
       <span className="machine text-caption text-fg-tertiary">
         {metric.method || t("method 未標示")}
         {metric.scope ? ` · ${metric.scope}` : ""}
-        {metric.count !== undefined ? ` · n=${metric.count}` : ""}
+        {metric.count !== undefined ? ` · n=${String(metric.count)}` : ""}
       </span>
     </span>
   );
@@ -61,7 +61,7 @@ export function MetricName({ name }: { name: string }) {
   return (
     <div className="grid min-w-0 gap-0.5">
       {label !== name ? <span className="text-data text-fg">{label}</span> : null}
-      {rule ? (
+      {(rule != null && rule !== "") ? (
         <details className="group min-w-0">
           <summary className="-ml-1 inline-flex min-h-6 cursor-pointer list-none items-center gap-1 rounded-sm px-1 text-caption text-fg-tertiary transition-colors duration-(--duration-fast) hover:bg-raised/60 hover:text-fg-secondary [&::-webkit-details-marker]:hidden">
             <code className="machine">{name}</code>
@@ -87,7 +87,7 @@ export interface MetricTableRow {
 /** metric 表格：指標｜值｜品質｜方法 · 範圍（scope）。 */
 export function MetricTable({ label, rows, className }: { label: string; rows: readonly MetricTableRow[]; className?: string }) {
   return (
-    <TableScroll label={label} className={className}>
+    <TableScroll label={label} {...(className === undefined ? {} : { className })}>
       <Table>
         <caption className="sr-only">{label}</caption>
         <thead>
@@ -110,7 +110,7 @@ export function MetricTable({ label, rows, className }: { label: string; rows: r
                 <MetricValue metric={row.metric} />
                 {row.metric.count !== undefined ? <span className="machine block text-caption text-fg-tertiary">n={row.metric.count}</span> : null}
               </Td>
-              <Td>{row.missing ? <span className="text-caption text-fg-tertiary">{t("未回報")}</span> : <QualityBadge quality={row.metric.quality} />}</Td>
+              <Td>{(row.missing === true) ? <span className="text-caption text-fg-tertiary">{t("未回報")}</span> : <QualityBadge quality={row.metric.quality} />}</Td>
               <Td className="machine text-caption text-fg-tertiary">
                 {row.metric.method || "—"}
                 {row.metric.scope ? <span className="block">{row.metric.scope}</span> : null}

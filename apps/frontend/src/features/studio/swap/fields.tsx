@@ -1,3 +1,4 @@
+import { hasSlotContent } from "@/lib/dom";
 // 換角介面的小元件：數字欄位（輸入期間保留草稿，Enter 或離開時才驗證並送出；不合法時保留輸入並顯示原因）、事實清單。
 import { useState, type ReactNode } from "react";
 import { Input } from "@/components/ui/controls";
@@ -49,7 +50,7 @@ export function NumberField({
     setDraft(null);
     setError(null);
   };
-  const described = [describedBy, error ? `${id}-error` : null].filter(Boolean).join(" ") || undefined;
+  const described = [describedBy, (error != null && error !== "") ? `${id}-error` : null].filter(Boolean).join(" ") || undefined;
   return (
     <span className={cn("grid min-w-0 gap-1", className)}>
       <Input
@@ -59,9 +60,9 @@ export function NumberField({
         value={shown}
         placeholder={placeholder}
         aria-label={label}
-        aria-invalid={error ? true : undefined}
+        aria-invalid={(error != null && error !== "") ? true : undefined}
         aria-describedby={described}
-        onChange={(event) => setDraft(event.target.value)}
+        onChange={(event) => { setDraft(event.target.value); }}
         onBlur={commit}
         onKeyDown={(event) => {
           if (event.key === "Enter") {
@@ -76,7 +77,7 @@ export function NumberField({
         }}
         className="machine"
       />
-      {error ? (
+      {(error != null && error !== "") ? (
         <span id={`${id}-error`} className="text-caption text-danger">
           {error}
         </span>
@@ -107,7 +108,7 @@ export function Section({ title, icon, children, actions, className }: { title: 
           {icon}
         </span>
         <h3 className="text-data font-semibold text-fg-secondary">{title}</h3>
-        {actions ? <div className="ml-auto flex items-center gap-1.5">{actions}</div> : null}
+        {hasSlotContent(actions) ? <div className="ml-auto flex items-center gap-1.5">{actions}</div> : null}
       </div>
       {children}
     </section>
@@ -120,7 +121,7 @@ export function NoteList({ tone, items, icon, title }: { tone: "warning" | "dang
   const tones = { warning: "border-warning/40 bg-warning/10 text-warning", danger: "border-danger/40 bg-danger/10 text-danger", info: "border-line-strong bg-sunken text-fg-secondary" } as const;
   return (
     <div role={tone === "danger" ? "alert" : "note"} className={cn("grid gap-1 rounded-lg border px-3 py-2 text-caption", tones[tone])}>
-      {title ? (
+      {(title != null && title !== "") ? (
         <p className="flex items-center gap-1.5 font-medium [&_svg]:size-3.5">
           {icon}
           {title}
@@ -129,7 +130,7 @@ export function NoteList({ tone, items, icon, title }: { tone: "warning" | "dang
       <ul className="grid gap-0.5">
         {items.map((item) => (
           <li key={item} className="flex items-start gap-1.5 [overflow-wrap:anywhere] [&_svg]:mt-0.5 [&_svg]:size-3.5 [&_svg]:shrink-0">
-            {title ? null : icon}
+            {(title != null && title !== "") ? null : icon}
             <span>{item}</span>
           </li>
         ))}

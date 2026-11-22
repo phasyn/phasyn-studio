@@ -2,7 +2,7 @@
 // scale and rotation; choosing its header marks the group and shows the transform box of the Program monitor, and the
 // header carries the switch for that box. Opacity: the opacity and the blend mode.
 import { Move } from "lucide-react";
-import { useContext } from "react";
+import { use } from "react";
 import type { TimelineClip } from "@/api/generated/contracts";
 import { t } from "@/i18n";
 import { BLEND_NAMES } from "../../../compositing";
@@ -30,7 +30,7 @@ export interface VideoGroupProps {
 export function MotionGroup({ clip, properties }: VideoGroupProps) {
   const { ui } = useEditor();
   const panel = useClipPanel();
-  const groups = useContext(GroupsContext);
+  const groups = use(GroupsContext);
   const { motion } = clip;
   const moved = motion.x !== 0 || motion.y !== 0 || motion.scale !== 1 || motion.rotation !== 0;
   const keys = MOTION_KEYS.reduce((count, key) => count + (motion.keyframes[key]?.length ?? 0), 0);
@@ -60,7 +60,7 @@ export function MotionGroup({ clip, properties }: VideoGroupProps) {
           label={t("變形控制框")}
           title={ui.transform ? t("節目監看器正在顯示變形控制框；按一下關閉") : t("在節目監看器上顯示變形控制框")}
           pressed={ui.transform}
-          onClick={() => ui.setTransform(!ui.transform)}
+          onClick={() => { ui.setTransform(!ui.transform); }}
         >
           <Move aria-hidden />
         </IconButton>
@@ -94,7 +94,7 @@ export function OpacityGroup({ clip, properties }: VideoGroupProps) {
           label={t("混合模式")}
           value={blend}
           options={BLEND_OPTIONS}
-          onChange={(blend_mode) => panel.perform({ ...clip, blend_mode })}
+          onChange={(blend_mode) => void panel.perform({ ...clip, blend_mode })}
           className="max-w-56 flex-1"
         />
       </Row>

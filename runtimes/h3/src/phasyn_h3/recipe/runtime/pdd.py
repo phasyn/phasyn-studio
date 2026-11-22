@@ -16,7 +16,7 @@ fuse exactly into one head weighted by Δσ::
 
     W̃_b = Σ_{j∈b} (Δσ_j ／ Σ_{k∈b} Δσ_k) · W_j        (bias likewise)
 
-on the ``N``-interval grid ``σ(q) = s·q／(1+(s−1)·q)``, ``q = linspace(1, 0, N+1)``, with the
+on the ``N``-interval grid ``sigma(q) = s·q／(1+(s-1)·q)``, ``q = linspace(1, 0, N+1)``, with the
 video shift for ``proj_out`` and the audio shift for ``audio_proj_out``
 (``PAI:minimax_h3_pdd.py:33-48, 204-238``; ``SGR:tools/fuse_minimax_h3_pdd_heads.py:42-65``).
 The fused heads are loaded with SGLang's own ``MiniMaxH3FinalLayer.load_pdd_fused_heads``
@@ -44,12 +44,13 @@ import json
 import math
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
 from .errors import UnsupportedCombination
 from .lora_policy import LoraPolicy, LoraSpec
+
 
 # same tolerance as S/stages/timestep_preparation.py:110-113
 REL_TOL = 1e-6
@@ -58,7 +59,7 @@ HEAD_NAMES = {"proj_out": "video_out", "audio_proj_out": "audio_out"}
 
 
 def sigma_grid(num_points: int, shift: float) -> np.ndarray:
-    """float64 ``shift·q／(1+(shift−1)·q)``, ``q = linspace(1, 0, num_points)``."""
+    """float64 ``shift·q／(1+(shift-1)·q)``, ``q = linspace(1, 0, num_points)``."""
     q = np.linspace(1.0, 0.0, int(num_points), dtype=np.float64)
     return float(shift) * q / (1.0 + (float(shift) - 1.0) * q)
 
@@ -66,33 +67,44 @@ def sigma_grid(num_points: int, shift: float) -> np.ndarray:
 def block_weights(num_steps: int, block_size: int, shift: float) -> np.ndarray:
     """``[num_steps／block_size, block_size]`` Δσ weights; each row sums to 1."""
     if block_size < 1 or num_steps < 1 or num_steps % block_size:
-        raise ValueError(f"PDD num_steps={num_steps} 不能被 block_size={block_size} 整除")
+        raise ValueError(
+            f"PDD num_steps={num_steps} 不能被 block_size={block_size} 整除"
+        )
     sigmas = sigma_grid(num_steps + 1, shift)
-    dsigma = np.clip(sigmas[:-1] - sigmas[1:], 0.0, None).reshape(num_steps // block_size, block_size)
+    dsigma = np.clip(sigmas[:-1] - sigmas[1:], 0.0, None).reshape(
+        num_steps // block_size, block_size
+    )
     totals = dsigma.sum(axis=1, keepdims=True)
     if np.any(totals <= 0):
         raise ValueError("PDD block 的 Δσ 全為 0")
-    return dsigma / totals
+    return cast("np.ndarray", dsigma / totals)
 
 
-def block_boundaries(num_steps: int, block_size: int, shift: float, blocks: Sequence[int] | None = None) -> np.ndarray:
-    """The sigmas one backbone forward per block steps through: every ``block_size``-th point of the
-    ``num_steps``-interval grid, or, with a non-uniform grouping ``blocks`` (manifest ``pdd.blocks``), the points at
-    its block boundaries ``[0, b1, b1+b2, …, num_steps]``."""
+def block_boundaries(
+    num_steps: int, block_size: int, shift: float, blocks: Sequence[int] | None = None
+) -> np.ndarray:
+    """The sigmas one backbone forward per block steps through: every ``block_size``-th point of the ``num_steps``-interval grid, or, with a non-uniform grouping ``blocks`` (manifest ``pdd.blocks``), the points at its block boundaries ``[0, b1, b1+b2, …, num_steps]``."""
     grid = sigma_grid(num_steps + 1, shift)
     if blocks is None:
         return grid[::block_size]
     if not blocks or min(blocks) < 1 or sum(blocks) != num_steps:
         raise ValueError(f"PDD blocks {list(blocks)} 不是 {num_steps} 個區間的分組")
-    return grid[np.cumsum([0, *blocks])]
+    return cast("np.ndarray", grid[np.cumsum([0, *blocks])])
 
 
-def check_pdd_schedule(video: Sequence[float], audio: Sequence[float], spec: LoraSpec) -> None:
+def check_pdd_schedule(
+    video: Sequence[float], audio: Sequence[float], spec: LoraSpec
+) -> None:
     """The plan's two grids must equal the PDD block boundaries (8 steps; shift 12／3)."""
     if not spec.is_pdd or spec.pdd_num_steps is None or spec.pdd_block_size is None:
         return
-    for modality, grid, shift in (("video", video, spec.video_shift), ("audio", audio, spec.audio_shift)):
-        expected = block_boundaries(spec.pdd_num_steps, spec.pdd_block_size, shift, spec.pdd_blocks)
+    for modality, grid, shift in (
+        ("video", video, spec.video_shift),
+        ("audio", audio, spec.audio_shift),
+    ):
+        expected = block_boundaries(
+            spec.pdd_num_steps, spec.pdd_block_size, shift, spec.pdd_blocks
+        )
         if len(grid) != len(expected) or any(
             not math.isclose(float(a), float(b), rel_tol=REL_TOL, abs_tol=ABS_TOL)
             for a, b in zip(grid, expected, strict=True)
@@ -113,17 +125,19 @@ def check_pdd_schedule(video: Sequence[float], audio: Sequence[float], spec: Lor
 
 
 def _fuse_blocks(fuse: Any, heads: Any, sigmas: Any, blocks: Sequence[int]) -> Any:
-    """Non-uniform grouping: SGLang's own ``fuse`` on each block's heads and its slice of the grid (one block per
-    call, so each fused head is the same Δσ-weighted sum ``fuse`` computes for a uniform block)."""
+    """Non-uniform grouping: SGLang's own ``fuse`` on each block's heads and its slice of the grid (one block per call, so each fused head is the same Δσ-weighted sum ``fuse`` computes for a uniform block)."""
     import torch
 
     if min(blocks) < 1 or sum(blocks) != int(heads.shape[0]):
         raise UnsupportedCombination(
-            "LORA_PDD_HEADS", f"pdd.blocks {list(blocks)} 不是 {int(heads.shape[0])} 個輸出頭的分組"
+            "LORA_PDD_HEADS",
+            f"pdd.blocks {list(blocks)} 不是 {int(heads.shape[0])} 個輸出頭的分組",
         )
     out, start = [], 0
     for size in blocks:
-        out.append(fuse(heads[start : start + size], sigmas[start : start + size + 1], size))
+        out.append(
+            fuse(heads[start : start + size], sigmas[start : start + size + 1], size)
+        )
         start += size
     return torch.cat(out)
 
@@ -133,12 +147,16 @@ def fuse_heads(raw: Mapping[str, Any], spec: LoraSpec) -> dict[str, Any]:
 
     A non-uniform grouping (``spec.pdd_blocks``) calls ``fuse`` once per block; a uniform one once per head tensor.
     """
-    from sglang.multimodal_gen.tools.fuse_minimax_h3_pdd_heads import fuse
-    from sglang.multimodal_gen.tools.fuse_minimax_h3_pdd_heads import sigma_grid as sg_sigma_grid
+    from sglang.multimodal_gen.tools.fuse_minimax_h3_pdd_heads import (  # type: ignore[import-untyped]
+        fuse,
+        sigma_grid as sg_sigma_grid,
+    )
 
     n, block = spec.pdd_num_steps, spec.pdd_block_size
     if n is None or block is None:
-        raise UnsupportedCombination("LORA_PDD_FACTS_MISSING", f"{spec.lora_id} 不是 PDD LoRA")
+        raise UnsupportedCombination(
+            "LORA_PDD_FACTS_MISSING", f"{spec.lora_id} 不是 PDD LoRA"
+        )
     out: dict[str, Any] = {}
     for source, target in HEAD_NAMES.items():
         shift = spec.video_shift if source == "proj_out" else spec.audio_shift
@@ -157,18 +175,26 @@ def fuse_heads(raw: Mapping[str, Any], spec: LoraSpec) -> dict[str, Any]:
                     else _fuse_blocks(fuse, heads.float(), sigmas, spec.pdd_blocks)
                 )
                 out[f"{target}.{suffix}"] = fused.contiguous()
-            except SystemExit as exc:  # the offline tool reports bad grids with SystemExit
-                raise UnsupportedCombination("LORA_PDD_HEADS", f"PDD 輸出頭融合失敗：{exc}") from exc
+            except (
+                SystemExit
+            ) as exc:  # the offline tool reports bad grids with SystemExit
+                raise UnsupportedCombination(
+                    "LORA_PDD_HEADS", f"PDD 輸出頭融合失敗：{exc}"
+                ) from exc
     return out
 
 
-def install_pdd_heads(module: Any, raw: Mapping[str, Any], spec: LoraSpec, *, workdir: Path) -> dict[str, Any]:
+def install_pdd_heads(
+    module: Any, raw: Mapping[str, Any], spec: LoraSpec, *, workdir: Path
+) -> dict[str, Any]:
     """Fuse, write a content-addressed file, load it through ``load_pdd_fused_heads``."""
     from safetensors.torch import save_file
 
     final_layer = module.final_layer
     if getattr(final_layer, "_pdd_heads", None) is not None:
-        raise UnsupportedCombination("PDD_HEADS_UNEXPECTED", "DiT 已帶有 PDD 輸出頭（不得由環境變數注入）")
+        raise UnsupportedCombination(
+            "PDD_HEADS_UNEXPECTED", "DiT 已帶有 PDD 輸出頭（不得由環境變數注入）"
+        )
     fused = fuse_heads(raw, spec)
     h = hashlib.sha256()
     meta = {
@@ -196,28 +222,43 @@ def install_pdd_heads(module: Any, raw: Mapping[str, Any], spec: LoraSpec, *, wo
     loaded = final_layer._pdd_heads
     steps = int(loaded["video_out.weight"].shape[0])
     if steps != spec.pdd_steps:
-        raise UnsupportedCombination("LORA_PDD_HEADS", f"載入 {steps} 個融合頭，預期 {spec.pdd_steps}")
+        raise UnsupportedCombination(
+            "LORA_PDD_HEADS", f"載入 {steps} 個融合頭，預期 {spec.pdd_steps}"
+        )
     # the cache file relative to the runtime work directory: records never name local folders
-    return {"heads_digest": digest, "fused_steps": steps, "dtype": "fp32", "path": f"pdd/{path.name}", **meta}
+    return {
+        "heads_digest": digest,
+        "fused_steps": steps,
+        "dtype": "fp32",
+        "path": f"pdd/{path.name}",
+        **meta,
+    }
 
 
-def verify_heads_installed(model: Any, policy: LoraPolicy | None, *, planned_updates: int) -> dict[str, Any]:
+def verify_heads_installed(
+    model: Any, policy: LoraPolicy | None, *, planned_updates: int
+) -> dict[str, Any]:
     """Right before the loop: PDD ⇔ fused heads present, one per planned update."""
     final_layer = getattr(model, "final_layer", None)
     heads = None if final_layer is None else getattr(final_layer, "_pdd_heads", None)
     pdd = [s for s in (policy.specs if policy else ()) if s.is_pdd]
     if not pdd:
         if heads is not None:
-            raise UnsupportedCombination("PDD_HEADS_UNEXPECTED", "DiT 帶有 PDD 輸出頭，但 plan 沒有 PDD LoRA")
+            raise UnsupportedCombination(
+                "PDD_HEADS_UNEXPECTED", "DiT 帶有 PDD 輸出頭，但 plan 沒有 PDD LoRA"
+            )
         return {"pdd_heads": None}
     if heads is None:
         raise UnsupportedCombination(
-            "LORA_PDD_HEADS", "PDD LoRA 的融合輸出頭沒有安裝（只套 backbone 不是訓練時的模型）"
+            "LORA_PDD_HEADS",
+            "PDD LoRA 的融合輸出頭沒有安裝（只套 backbone 不是訓練時的模型）",
         )
     steps = int(heads["video_out.weight"].shape[0])
     if steps != planned_updates:
         raise UnsupportedCombination(
-            "LORA_PDD_SCHEDULE_MISMATCH", f"融合頭 {steps} 個，plan 有 {planned_updates} 次更新", field_path="schedule"
+            "LORA_PDD_SCHEDULE_MISMATCH",
+            f"融合頭 {steps} 個，plan 有 {planned_updates} 次更新",
+            field_path="schedule",
         )
     return {"pdd_heads": steps}
 

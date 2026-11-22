@@ -1,6 +1,7 @@
 // The Source monitor: the media selected in the Project panel (or the source of the selected clip), with In and Out
 // marks and the three-point edits. Same anatomy as the Program monitor: viewer, scrub bar, timecode row, transport.
 // Which tracks an insert or overwrite lands on is decided by the source patches in the track headers.
+import { AssetAudio, AssetVideo } from "@/components/common/AssetMedia";
 import { AudioLines, ArrowLeftToLine, ArrowRightToLine, CornerDownLeft, CornerDownRight, Pause, Play, StepBack, StepForward, Volume2, VolumeX } from "lucide-react";
 import { useEffect, useEffectEvent, useState } from "react";
 import type { TimelineSource } from "@/api/generated/contracts";
@@ -20,7 +21,7 @@ import { ViewerFrame, type ViewerZoom } from "./ViewerFrame";
 /** The file the monitor plays: the verified proxy while proxy playback is on, else the original. */
 function previewFile(source: TimelineSource, useProxy: boolean, fps: { num: number; den: number }) {
   const proxy = source.proxy;
-  const verified = proxy?.complete && proxy.frame_count === source.duration_frames && proxy.fps?.num === fps.num && proxy.fps.den === fps.den && source.proxy_source_sha256 === source.file?.sha256;
+  const verified = proxy?.complete === true && proxy.frame_count === source.duration_frames && proxy.fps?.num === fps.num && proxy.fps.den === fps.den && source.proxy_source_sha256 === source.file?.sha256;
   return useProxy && verified ? proxy.file : source.file;
 }
 
@@ -43,30 +44,30 @@ function LoadedSource({ source, url, range, onRange }: LoadedSourceProps) {
     total,
     fps,
     range,
-    onPlay: () => editor.playhead.setPlaying(false),
+    onPlay: () => { editor.playhead.setPlaying(false); },
     onProblem: editor.warn,
   });
   const sequencePlaying = usePlaying(editor.playhead);
-  const stopForSequence = useEffectEvent(() => shuttle(0, false));
+  const stopForSequence = useEffectEvent(() => { shuttle(0, false); });
   useEffect(() => {
     if (sequencePlaying) stopForSequence();
   }, [sequencePlaying]);
 
-  const mark = (edge: "in" | "out") => onRange(edge === "in" ? { inFrame: frame, outFrame: Math.max(range.outFrame, frame + 1) } : { inFrame: Math.min(range.inFrame, frame), outFrame: frame + 1 });
-  const seekEdge = (edge: "start" | "end" | "in" | "out") => seek(edge === "start" ? 0 : edge === "end" ? total - 1 : edge === "in" ? range.inFrame : range.outFrame - 1);
+  const mark = (edge: "in" | "out") => { onRange(edge === "in" ? { inFrame: frame, outFrame: Math.max(range.outFrame, frame + 1) } : { inFrame: Math.min(range.inFrame, frame), outFrame: frame + 1 }); };
+  const seekEdge = (edge: "start" | "end" | "in" | "out") => { seek(edge === "start" ? 0 : edge === "end" ? total - 1 : edge === "in" ? range.inFrame : range.outFrame - 1); };
   const place = (mode: "insert" | "overwrite") => {
     shuttle(0, false);
     editor.place(source, range.inFrame, range.outFrame, mode);
   };
 
   // The key map drives this monitor while its panel has the focus
-  const live = useEffectEvent((): SourceMonitorHandle => ({ toggle, step: (frames) => seek(frame + frames), seekEdge, mark, shuttle }));
+  const live = useEffectEvent((): SourceMonitorHandle => ({ toggle, step: (frames) => { seek(frame + frames); }, seekEdge, mark, shuttle }));
   useEffect(
     () =>
       sourceMonitor.register({
-        toggle: () => live().toggle(),
-        step: (frames) => live().step(frames),
-        seekEdge: (edge) => live().seekEdge(edge),
+        toggle: () => { live().toggle(); },
+        step: (frames) => { live().step(frames); },
+        seekEdge: (edge) => { live().seekEdge(edge); },
         mark: (edge) => live().mark?.(edge),
         shuttle: (direction, slow) => live().shuttle?.(direction, slow),
       }),
@@ -74,12 +75,12 @@ function LoadedSource({ source, url, range, onRange }: LoadedSourceProps) {
   );
   // Match frame: show the frame that was asked for
   const matched = ui.intent?.panel === "source" && ui.intent.frame !== undefined ? ui.intent : null;
-  const showMatch = useEffectEvent((target: number) => seek(target));
+  const showMatch = useEffectEvent((target: number) => { seek(target); });
   useEffect(() => {
     if (matched?.frame !== undefined) showMatch(matched.frame);
   }, [matched]);
 
-  const noMedia = !url || problem !== null;
+  const noMedia = !(url != null && url !== "") || problem !== null;
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-1.5 p-2">
       <ViewerFrame
@@ -96,15 +97,15 @@ function LoadedSource({ source, url, range, onRange }: LoadedSourceProps) {
           onEnd: endSourceDrag,
         }}
       >
-        {url && source.kind === "image" ? (
+        {(url != null && url !== "") && source.kind === "image" ? (
           <img src={url} alt={source.name} draggable={false} onError={fail} className="absolute inset-0 size-full object-contain animate-fade-in" />
         ) : null}
-        {url && source.kind === "video" ? (
-          <video ref={attachMedia} src={url} muted={muted} preload="metadata" playsInline onError={fail} aria-label={t("來源影片預覽")} className="absolute inset-0 size-full object-contain animate-fade-in" />
+        {(url != null && url !== "") && source.kind === "video" ? (
+          <AssetVideo ref={attachMedia} src={url} muted={muted} preload="metadata" playsInline onError={fail} aria-label={t("來源影片預覽")} className="absolute inset-0 size-full object-contain animate-fade-in" />
         ) : null}
-        {url && source.kind === "audio" ? (
+        {(url != null && url !== "") && source.kind === "audio" ? (
           <>
-            <audio ref={attachMedia} src={url} muted={muted} preload="metadata" onError={fail} aria-label={t("來源聲音預覽")} />
+            <AssetAudio ref={attachMedia} src={url} muted={muted} preload="metadata" onError={fail} aria-label={t("來源聲音預覽")} />
             <div className="absolute inset-0 grid place-items-center">
               <AudioLines aria-hidden className="size-10 text-clip-audio-edge" />
             </div>
@@ -121,35 +122,35 @@ function LoadedSource({ source, url, range, onRange }: LoadedSourceProps) {
         <ZoomMenu zoom={zoom} onZoom={setZoom} />
       </TimecodeRow>
       <TransportRow label={t("來源播放控制")}>
-        <MonitorButton label={t("標記入點")} shortcut={chordOf("markIn")} onClick={() => mark("in")}>
+        <MonitorButton label={t("標記入點")} shortcut={chordOf("markIn")} onClick={() => { mark("in"); }}>
           <MarkGlyph edge="in" />
         </MonitorButton>
-        <MonitorButton label={t("標記出點")} shortcut={chordOf("markOut")} onClick={() => mark("out")}>
+        <MonitorButton label={t("標記出點")} shortcut={chordOf("markOut")} onClick={() => { mark("out"); }}>
           <MarkGlyph edge="out" />
         </MonitorButton>
-        <MonitorButton label={t("到入點")} shortcut={chordOf("goIn")} onClick={() => seekEdge("in")}>
+        <MonitorButton label={t("到入點")} shortcut={chordOf("goIn")} onClick={() => { seekEdge("in"); }}>
           <ArrowLeftToLine aria-hidden />
         </MonitorButton>
-        <MonitorButton label={t("上一影格")} shortcut={chordOf("stepBack")} onClick={() => seek(frame - 1)}>
+        <MonitorButton label={t("上一影格")} shortcut={chordOf("stepBack")} onClick={() => { seek(frame - 1); }}>
           <StepBack aria-hidden />
         </MonitorButton>
         <MonitorButton label={playing ? t("停止") : t("播放")} shortcut={chordOf("playToggle")} onClick={toggle} primary disabledReason={source.kind === "image" ? t("靜態圖片沒有播放") : noMedia ? t("素材還不能播放") : null}>
           {playing ? <Pause aria-hidden /> : <Play aria-hidden />}
         </MonitorButton>
-        <MonitorButton label={t("下一影格")} shortcut={chordOf("stepForward")} onClick={() => seek(frame + 1)}>
+        <MonitorButton label={t("下一影格")} shortcut={chordOf("stepForward")} onClick={() => { seek(frame + 1); }}>
           <StepForward aria-hidden />
         </MonitorButton>
-        <MonitorButton label={t("到出點")} shortcut={chordOf("goOut")} onClick={() => seekEdge("out")}>
+        <MonitorButton label={t("到出點")} shortcut={chordOf("goOut")} onClick={() => { seekEdge("out"); }}>
           <ArrowRightToLine aria-hidden />
         </MonitorButton>
-        <MonitorButton label={muted ? t("取消靜音") : t("靜音")} onClick={() => setMuted(!muted)} pressed={muted} disabledReason={hasAudio ? null : t("這個素材沒有聲音")}>
+        <MonitorButton label={muted ? t("取消靜音") : t("靜音")} onClick={() => { setMuted(!muted); }} pressed={muted} disabledReason={hasAudio ? null : t("這個素材沒有聲音")}>
           {muted ? <VolumeX aria-hidden /> : <Volume2 aria-hidden />}
         </MonitorButton>
         <span aria-hidden className="mx-1.5 h-5 w-px bg-line-subtle" />
-        <MonitorButton label={t("插入")} text={t("插入")} shortcut={chordOf("insert")} onClick={() => place("insert")}>
+        <MonitorButton label={t("插入")} text={t("插入")} shortcut={chordOf("insert")} onClick={() => { place("insert"); }}>
           <CornerDownRight aria-hidden className="rotate-90" />
         </MonitorButton>
-        <MonitorButton label={t("覆寫")} text={t("覆寫")} shortcut={chordOf("overwrite")} onClick={() => place("overwrite")}>
+        <MonitorButton label={t("覆寫")} text={t("覆寫")} shortcut={chordOf("overwrite")} onClick={() => { place("overwrite"); }}>
           <CornerDownLeft aria-hidden className="-rotate-90" />
         </MonitorButton>
       </TransportRow>

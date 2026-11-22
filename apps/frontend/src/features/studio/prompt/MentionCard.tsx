@@ -16,7 +16,7 @@ const MAX_RATIO = 5 / 4;
 function pictureRatio(option: MentionOption): number {
   const width = option.item?.width ?? null;
   const height = option.item?.height ?? null;
-  if (!width || !height) return MIN_RATIO;
+  if (!(width != null && Boolean(width)) || !(height != null && Boolean(height))) return MIN_RATIO;
   return Math.min(MAX_RATIO, Math.max(MIN_RATIO, height / width));
 }
 
@@ -41,7 +41,7 @@ export function MentionCard({
     const card = ref.current;
     const box = container.current;
     const view = field.current;
-    const mark = layer.current?.querySelector<HTMLElement>(`[data-mark-start="${start}"]`);
+    const mark = layer.current?.querySelector<HTMLElement>(`[data-mark-start="${String(start)}"]`);
     if (!card) return;
     const rect = mark?.getClientRects()[0];
     if (!box || !view || !rect) {
@@ -60,8 +60,8 @@ export function MentionCard({
     const room = visible.bottom - frame.top;
     const top = below + card.offsetHeight <= room || above < 0 ? below : above;
     const left = Math.min(Math.max(0, rect.left - frame.left - 4), Math.max(0, box.clientWidth - card.offsetWidth));
-    card.style.top = `${Math.round(top)}px`;
-    card.style.left = `${Math.round(left)}px`;
+    card.style.top = `${String(Math.round(top))}px`;
+    card.style.left = `${String(Math.round(left))}px`;
     card.style.visibility = "visible";
   });
 
@@ -70,15 +70,15 @@ export function MentionCard({
       {option.kind === "audio" ? (
         <ReferenceThumb item={option.item} kind="audio" className="size-10" />
       ) : (
-        <span className="block w-40 overflow-hidden rounded-md" style={{ aspectRatio: `1 / ${pictureRatio(option)}` }}>
+        <span className="block w-40 overflow-hidden rounded-md" style={{ aspectRatio: `1 / ${String(pictureRatio(option))}` }}>
           <ReferenceThumb item={option.item} kind={option.kind} className="size-full rounded-md" />
         </span>
       )}
       <span className="flex min-w-0 items-baseline gap-1.5">
         <span className="machine shrink-0 text-data text-fg">@{option.alias}</span>
-        {option.label ? <span className="machine truncate text-caption text-fg-tertiary">{option.label}</span> : null}
+        {(option.label != null && option.label !== "") ? <span className="machine truncate text-caption text-fg-tertiary">{option.label}</span> : null}
       </span>
-      <span className={cn("truncate text-caption", option.name ? "text-fg-secondary" : "text-warning")}>{option.name ?? t("檔案已不在素材庫")}</span>
+      <span className={cn("truncate text-caption", (option.name != null && option.name !== "") ? "text-fg-secondary" : "text-warning")}>{option.name ?? t("檔案已不在素材庫")}</span>
     </div>
   );
 }

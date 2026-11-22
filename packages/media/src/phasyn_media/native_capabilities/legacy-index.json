@@ -1,0 +1,368 @@
+{
+  "providers": {
+    "media.concat": {
+      "default_settings": {
+        "invoke": {},
+        "load": {
+          "device": {
+            "id": "cpu",
+            "kind": "cpu",
+            "resource_group": "cpu-concat"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_media.providers.concat:ConcatProvider",
+      "kind": "media.concat",
+      "label": "序列匯出（多片段依序裁切、接合、重新編碼）",
+      "required_modules": [],
+      "source_pins": [],
+      "synthetic": false
+    },
+    "media.edge_control": {
+      "default_settings": {
+        "invoke": {},
+        "load": {
+          "device": {
+            "id": "cpu",
+            "kind": "cpu",
+            "resource_group": "cpu-media"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_media.providers.edge_control:EdgeControlProvider",
+      "kind": "media.prepare",
+      "label": "Canny edge control sequence",
+      "required_modules": [],
+      "source_pins": [],
+      "synthetic": false
+    },
+    "media.frame": {
+      "default_settings": {
+        "invoke": {},
+        "load": {
+          "device": {
+            "id": "cpu",
+            "kind": "cpu",
+            "resource_group": "cpu-frame"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_media.providers.frame:FrameProvider",
+      "kind": "media.frame",
+      "label": "取出影格（first／last／index；原解析度 PNG）",
+      "required_modules": [],
+      "source_pins": [],
+      "synthetic": false
+    },
+    "media.mux": {
+      "default_settings": {
+        "invoke": {},
+        "load": {
+          "device": {
+            "id": "cpu",
+            "kind": "cpu",
+            "resource_group": "cpu-media"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_media.providers.mux:MuxProvider",
+      "kind": "media.mux",
+      "label": "影音封裝（影片軌＋WAV；驗證 AV 同步）",
+      "required_modules": [],
+      "source_pins": [],
+      "synthetic": false
+    },
+    "media.previs_animatic": {
+      "default_settings": {
+        "invoke": {},
+        "load": {
+          "device": {
+            "id": "cpu",
+            "kind": "cpu",
+            "resource_group": "cpu-media"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_media.providers.animatic:PrevisAnimaticProvider",
+      "kind": "media.prepare",
+      "label": "Shot animatic",
+      "required_modules": [],
+      "source_pins": [],
+      "synthetic": false
+    },
+    "media.probe": {
+      "default_settings": {
+        "invoke": {},
+        "load": {
+          "device": {
+            "id": "cpu",
+            "kind": "cpu",
+            "resource_group": "cpu-media"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_media.providers.mux:ProbeProvider",
+      "kind": "media.prepare",
+      "label": "媒體探測（ffprobe：codec／幾何／fps／實際 frame 數；可選鏡頭切換偵測）",
+      "required_modules": [],
+      "source_pins": [],
+      "synthetic": false
+    },
+    "media.take_analysis": {
+      "default_settings": {
+        "invoke": {},
+        "load": {
+          "device": {
+            "id": "cpu",
+            "kind": "cpu",
+            "resource_group": "cpu-media"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_media.providers.take_analysis:TakeAnalysisProvider",
+      "kind": "media.prepare",
+      "label": "Black and stationary frame review",
+      "required_modules": [],
+      "source_pins": [],
+      "synthetic": false
+    },
+    "test.synthetic_decode": {
+      "default_settings": {
+        "invoke": {},
+        "load": {
+          "device": {
+            "id": "cpu",
+            "kind": "cpu",
+            "resource_group": "cpu-fixture"
+          },
+          "provider_options": {
+            "output_kind": "final"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_media.testing.synthetic_decode:SyntheticDecodeProvider",
+      "kind": "decode.final",
+      "label": "合成 latent 解碼器（test fixture；只讀 test.synthetic-rgbdiv8.v1）",
+      "required_modules": [],
+      "source_pins": [],
+      "synthetic": true
+    }
+  },
+  "schema_version": "1.0"
+}

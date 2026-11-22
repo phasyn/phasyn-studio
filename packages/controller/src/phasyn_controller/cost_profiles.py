@@ -7,7 +7,7 @@ key (node, device, component, effective load settings, code revision), and withi
 
 - stage ``theta_ms_per_unit`` from the most recent :data:`MAX_SAMPLES` successful *warm* calls within
   :data:`WINDOW_DAYS`: 1 sample → its ratio; 2 → Σcompute / Σwork; 3 or more → the weighted median of the
-  ratios (weight ``exp(-age / 7 days)``) after dropping outliers (``|log r − median| > max(3·1.4826·MAD,
+  ratios (weight ``exp(-age / 7 days)``) after dropping outliers (``|log r - median| > max(3·1.4826·MAD,
   ln 1.3)``). No free-form polynomial is ever fitted.
 - a key without any warm sample (the first call after a load is always cold) is fitted on its *cold* calls
   with the same rules: a stage's compute span barely depends on the cold start, which mostly lands in the
@@ -16,7 +16,7 @@ key (node, device, component, effective load settings, code revision), and withi
 - drift: when the :data:`DRIFT_RUN` newest samples all fall outside the interval of the older ones, on the
   same side, only the :data:`DRIFT_WINDOW` newest samples are used;
 - leave-one-out log residuals give the stage's 10 % / 90 % quantiles (the client turns them into intervals);
-- ``overhead_ms`` (wall − Σcompute, never below 0), ``cold_ms`` (what the first call after a load costs on top
+- ``overhead_ms`` (wall - Σcompute, never below 0), ``cold_ms`` (what the first call after a load costs on top
   of a warm one), ``load_ms`` (median of the "load" stage of load recordings);
 - out-of-memory warning: ``max_succeeded_risk`` (largest of successful calls) and ``min_failed_risk``
   (smallest of GPU_OOM / HOST_OOM failures) compare only the stage's ``shape.risk_measure``, a number that
@@ -48,6 +48,7 @@ from phasyn_components.timeutil import parse_rfc3339, utc_now
 from phasyn_server.http import json_response
 from starlette.responses import JSONResponse
 
+
 if TYPE_CHECKING:
     from .state import Controller
 
@@ -60,6 +61,7 @@ OUTLIER_FLOOR = math.log(1.3)
 DRIFT_RUN = 3
 DRIFT_WINDOW = 5
 OOM_CODES = frozenset({"GPU_OOM", "HOST_OOM"})
+MIN_FIT_SAMPLES = 2
 ROW_LIMIT = 10000
 CACHE_MAX_AGE_S = 600.0  # weights age with time: refit at least this often even when nothing new arrived
 CACHE_ENTRIES = 256
@@ -70,6 +72,8 @@ Slot = tuple[str, str]  # (stage, work_unit)
 
 @dataclass(frozen=True)
 class Sample:
+    """One recording with measured compute time and completed work."""
+
     recording_id: str
     created_at: datetime
     work: float
@@ -77,6 +81,7 @@ class Sample:
 
     @property
     def ratio(self) -> float:
+        """Return observed compute milliseconds per unit of work."""
         return self.compute_ms / self.work
 
 
@@ -103,7 +108,11 @@ def inliers(samples: Sequence[Sample]) -> list[Sample]:
     median = statistics.median(logs)
     mad = statistics.median(abs(value - median) for value in logs)
     limit = max(OUTLIER_MADS * MAD_TO_SIGMA * mad, OUTLIER_FLOOR)
-    kept = [s for s, value in zip(samples, logs, strict=True) if abs(value - median) <= limit]
+    kept = [
+        s
+        for s, value in zip(samples, logs, strict=True)
+        if abs(value - median) <= limit
+    ]
     return kept or list(samples)
 
 
@@ -113,7 +122,7 @@ def fit_theta(samples: Sequence[Sample], now: datetime) -> float:
         raise ValueError("no samples")
     if len(samples) == 1:
         return samples[0].ratio
-    if len(samples) == 2:
+    if len(samples) == MIN_FIT_SAMPLES:
         return sum(s.compute_ms for s in samples) / sum(s.work for s in samples)
     kept = inliers(samples)
     return _weighted_median([(s.ratio, _weight(s, now)) for s in kept])
@@ -152,12 +161,18 @@ def stage_window(samples: Sequence[Sample], now: datetime) -> list[Sample]:
 
 
 def _number(value: Any) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, int | float) or not math.isfinite(value):
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int | float)
+        or not math.isfinite(value)
+    ):
         return None
     return float(value)
 
 
 class StageCost(NamedTuple):
+    """A named work measurement and the unit used to group samples."""
+
     name: str
     unit: str
     work: float
@@ -167,6 +182,7 @@ class StageCost(NamedTuple):
 
     @property
     def slot(self) -> Slot:
+        """Return the stage name and unit used to group samples."""
         return self.name, self.unit
 
 
@@ -192,10 +208,22 @@ def _stages(cost: Mapping[str, Any]) -> Iterable[StageCost]:
             continue
         work = _number(stage.get("work"))
         unit = stage.get("work_unit")
-        if work is None or work <= 0 or not is_local_id(stage.get("stage")) or unit not in COST_UNITS:
+        if (
+            work is None
+            or work <= 0
+            or not is_local_id(stage.get("stage"))
+            or unit not in COST_UNITS
+        ):
             continue
         risk, risk_unit = _risk(stage.get("shape"))
-        yield StageCost(str(stage["stage"]), str(unit), work, _number(stage.get("compute_ms")), risk, risk_unit)
+        yield StageCost(
+            str(stage["stage"]),
+            str(unit),
+            work,
+            _number(stage.get("compute_ms")),
+            risk,
+            risk_unit,
+        )
 
 
 def profile_key(row: Mapping[str, Any]) -> ProfileKey:
@@ -216,13 +244,17 @@ class _Calls:
     rows: list[Mapping[str, Any]] = field(default_factory=list)
     samples: dict[Slot, list[Sample]] = field(default_factory=dict)
 
-    def add(self, row: Mapping[str, Any], created_at: datetime, stages: Iterable[StageCost]) -> None:
+    def add(
+        self, row: Mapping[str, Any], created_at: datetime, stages: Iterable[StageCost]
+    ) -> None:
         if len(self.rows) >= MAX_SAMPLES:  # rows arrive newest first
             return
         self.rows.append(row)
         for stage in stages:
             if stage.compute_ms is not None and stage.compute_ms > 0:
-                sample = Sample(str(row["recording_id"]), created_at, stage.work, stage.compute_ms)
+                sample = Sample(
+                    str(row["recording_id"]), created_at, stage.work, stage.compute_ms
+                )
                 self.samples.setdefault(stage.slot, []).append(sample)
 
 
@@ -233,7 +265,9 @@ class _ProfileBuilder:
         self.warm = _Calls()
         self.cold = _Calls()
         self.loads: list[float] = []
-        self.risk_units: dict[Slot, str | None] = {}  # pinned by the newest row that reported a risk measure
+        self.risk_units: dict[
+            Slot, str | None
+        ] = {}  # pinned by the newest row that reported a risk measure
         self.succeeded_risk: dict[Slot, float] = {}
         self.failed_risk: dict[Slot, float] = {}
 
@@ -242,7 +276,11 @@ class _ProfileBuilder:
         stages = list(_stages(cost))
         if operation == "load":
             if state == "succeeded":
-                self.loads += [s.compute_ms for s in stages if s.name == "load" and s.compute_ms is not None]
+                self.loads += [
+                    s.compute_ms
+                    for s in stages
+                    if s.name == "load" and s.compute_ms is not None
+                ]
             return
         if operation != "invoke":
             return
@@ -269,18 +307,26 @@ class _ProfileBuilder:
             # or a larger measure supersedes it
             if self.succeeded_risk.get(stage.slot, -math.inf) >= stage.risk:
                 return
-            self.failed_risk[stage.slot] = min(self.failed_risk.get(stage.slot, math.inf), stage.risk)
+            self.failed_risk[stage.slot] = min(
+                self.failed_risk.get(stage.slot, math.inf), stage.risk
+            )
         else:
-            self.succeeded_risk[stage.slot] = max(self.succeeded_risk.get(stage.slot, 0.0), stage.risk)
+            self.succeeded_risk[stage.slot] = max(
+                self.succeeded_risk.get(stage.slot, 0.0), stage.risk
+            )
 
     def build(self, now: datetime) -> dict[str, Any]:
         # Warm calls when there are any; otherwise the cold calls (after a load, the first call is always cold).
         basis = self.warm if self.warm.rows or not self.cold.rows else self.cold
-        windows = {slot: stage_window(samples, now) for slot, samples in basis.samples.items()}
+        windows = {
+            slot: stage_window(samples, now) for slot, samples in basis.samples.items()
+        }
         thetas = {slot: fit_theta(samples, now) for slot, samples in windows.items()}
         stages = []
         for slot, samples in sorted(windows.items()):
-            residuals = loo_residuals(samples, now) if len(samples) >= 2 else []
+            residuals = (
+                loo_residuals(samples, now) if len(samples) >= MIN_FIT_SAMPLES else []
+            )
             newest = max(samples, key=lambda s: s.created_at)
             stages.append(
                 {
@@ -293,7 +339,9 @@ class _ProfileBuilder:
                     "max_succeeded_risk": self.succeeded_risk.get(slot),
                     "min_failed_risk": self.failed_risk.get(slot),
                     "risk_unit": self.risk_units.get(slot),
-                    "updated_at": newest.created_at.isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+                    "updated_at": newest.created_at.isoformat(
+                        timespec="milliseconds"
+                    ).replace("+00:00", "Z"),
                     "last_recording_id": newest.recording_id,
                 }
             )
@@ -313,13 +361,17 @@ class _ProfileBuilder:
             "samples": len(basis.rows),
             "warm_samples": len(self.warm.rows),
             "cold_samples": len(self.cold.rows),
-            "updated_at": str(newest_row["created_at"]) if newest_row is not None else None,
-            "last_recording_id": str(newest_row["recording_id"]) if newest_row is not None else None,
+            "updated_at": str(newest_row["created_at"])
+            if newest_row is not None
+            else None,
+            "last_recording_id": str(newest_row["recording_id"])
+            if newest_row is not None
+            else None,
             "stages": stages,
         }
 
     def _cold(self, thetas: Mapping[Slot, float]) -> float | None:
-        """median over first-after-load calls of what their stages took beyond the warm prediction."""
+        """Median over first-after-load calls of what their stages took beyond the warm prediction."""
         extras = []
         for row in self.cold.rows:
             parts = [
@@ -328,22 +380,28 @@ class _ProfileBuilder:
                 if s.compute_ms is not None and s.slot in thetas
             ]
             if parts:
-                extras.append(max(0.0, sum(actual - predicted for actual, predicted in parts)))
+                extras.append(
+                    max(0.0, sum(actual - predicted for actual, predicted in parts))
+                )
         return statistics.median(extras) if extras else None
 
 
 def _overhead(rows: Iterable[Mapping[str, Any]]) -> float | None:
-    """median(wall − Σ stage compute) of the calls, never below 0; None without wall times."""
+    """median(wall - Σ stage compute) of the calls, never below 0; None without wall times."""
     gaps = []
     for row in rows:
         wall = _number(row.get("wall_ms"))
         if wall is not None:
-            computed = sum(s.compute_ms for s in _stages(row["cost"]) if s.compute_ms is not None)
+            computed = sum(
+                s.compute_ms for s in _stages(row["cost"]) if s.compute_ms is not None
+            )
             gaps.append(max(0.0, wall - computed))
     return statistics.median(gaps) if gaps else None
 
 
-def build_profiles(rows: Iterable[Mapping[str, Any]], *, now: datetime) -> list[dict[str, Any]]:
+def build_profiles(
+    rows: Iterable[Mapping[str, Any]], *, now: datetime
+) -> list[dict[str, Any]]:
     """Cost profiles from index rows (newest first, as ``RecordingStore.cost_rows`` returns them)."""
     oldest = now - timedelta(days=WINDOW_DAYS)
     builders: dict[ProfileKey, _ProfileBuilder] = {}
@@ -360,15 +418,25 @@ def build_profiles(rows: Iterable[Mapping[str, Any]], *, now: datetime) -> list[
         key = profile_key(row)
         builder = builders.get(key)
         if builder is None:
-            builder = builders[key] = _ProfileBuilder(key, str(row.get("provider_id") or ""))
+            builder = builders[key] = _ProfileBuilder(
+                key, str(row.get("provider_id") or "")
+            )
         builder.add(row, created_at)
-    return [builders[key].build(now) for key in sorted(builders, key=lambda k: tuple(str(part) for part in k))]
+    return [
+        builders[key].build(now)
+        for key in sorted(builders, key=lambda k: tuple(str(part) for part in k))
+    ]
 
 
-def cost_profiles(rows: Iterable[Mapping[str, Any]], *, now: str | None = None) -> dict[str, Any]:
+def cost_profiles(
+    rows: Iterable[Mapping[str, Any]], *, now: str | None = None
+) -> dict[str, Any]:
     """Contract ``CostProfileList``."""
     stamp = now or utc_now()
-    return {"computed_at": stamp, "items": build_profiles(rows, now=parse_rfc3339(stamp))}
+    return {
+        "computed_at": stamp,
+        "items": build_profiles(rows, now=parse_rfc3339(stamp)),
+    }
 
 
 @dataclass(frozen=True)
@@ -381,24 +449,37 @@ class _Cached:
 class CostProfileService:
     """Fits on demand; an answer is reused until the recording index changes (or :data:`CACHE_MAX_AGE_S`)."""
 
-    def __init__(self, store: RecordingStore, *, clock: Callable[[], float] = time.monotonic) -> None:
+    def __init__(
+        self, store: RecordingStore, *, clock: Callable[[], float] = time.monotonic
+    ) -> None:
+        """Set the recording source and the cost-profile cache."""
         self.store = store
         self.clock = clock
         self._lock = threading.Lock()
         self._cache: dict[tuple[str | None, str | None], _Cached] = {}
         self.fits = 0
 
-    def profiles(self, *, node_id: str | None = None, component_id: str | None = None) -> dict[str, Any]:
+    def profiles(
+        self, *, node_id: str | None = None, component_id: str | None = None
+    ) -> dict[str, Any]:
         """(thread) Contract ``CostProfileList`` for the query."""
         key = (node_id, component_id)
-        generation = self.store.generation  # read before the index rows: a concurrent write invalidates
+        generation = (
+            self.store.generation
+        )  # read before the index rows: a concurrent write invalidates
         with self._lock:
             hit = self._cache.get(key)
-            if hit is not None and hit.generation == generation and self.clock() - hit.at < CACHE_MAX_AGE_S:
+            if (
+                hit is not None
+                and hit.generation == generation
+                and self.clock() - hit.at < CACHE_MAX_AGE_S
+            ):
                 return hit.value
         stamp = utc_now()
         since = (parse_rfc3339(stamp) - timedelta(days=WINDOW_DAYS)).isoformat()
-        rows = self.store.cost_rows(node_id=node_id, component_id=component_id, since=since, limit=ROW_LIMIT)
+        rows = self.store.cost_rows(
+            node_id=node_id, component_id=component_id, since=since, limit=ROW_LIMIT
+        )
         value = cost_profiles(rows, now=stamp)
         with self._lock:
             self.fits += 1
@@ -409,15 +490,26 @@ class CostProfileService:
 
 
 def routes(ctl: Controller) -> APIRouter:
+    """Build the Controller routes for cost profiles."""
     router = APIRouter()
 
     @router.get("/api/cost-profiles")
     async def list_cost_profiles(request: Request) -> JSONResponse:
         """x-phasyn-extension: cost profiles fitted on demand from the recording index (no extra write path)."""
         params = request.query_params
-        node_id = require_uuid(params["node_id"], "node_id") if params.get("node_id") else None
-        component_id = require_local_id(params["component_id"], "component_id") if params.get("component_id") else None
-        doc = await asyncio.to_thread(ctl.cost_profiles.profiles, node_id=node_id, component_id=component_id)
+        node_id = (
+            require_uuid(params["node_id"], "node_id")
+            if params.get("node_id")
+            else None
+        )
+        component_id = (
+            require_local_id(params["component_id"], "component_id")
+            if params.get("component_id")
+            else None
+        )
+        doc = await asyncio.to_thread(
+            ctl.cost_profiles.profiles, node_id=node_id, component_id=component_id
+        )
         return json_response(doc)
 
     return router

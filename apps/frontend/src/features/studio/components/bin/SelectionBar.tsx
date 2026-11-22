@@ -11,15 +11,18 @@ import { Check, ChevronDown, Copy, ListChecks, Replace, Shuffle, Trash2, X, type
 import { motion, useIsPresent } from "motion/react";
 import { useId, useRef, useState } from "react";
 import type { StudioShot } from "@/api/generated/contracts";
+import { Dialog, DialogBody, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { ActionMenu, MenuTriggerButton } from "@/components/ui/action-menu";
 import type { MenuAnchor, MenuItem } from "@/components/ui/menuModel";
 import { motionTransition } from "@/components/ui/motion";
 import { cn } from "@/lib/cn";
 import { useFitLevel } from "@/lib/useFitLevel";
 import { t } from "@/i18n";
-import { taskUnfitReason, useShotsEdit } from "../../hooks/useShotsEdit";
+import { routeUnfitReason, useShotsEdit } from "../../hooks/useShotsEdit";
 import { formatDuration, frameOptions } from "../../model/frames";
-import { engineUnavailable, routeName } from "../../model/routes";
+import { FrameCountInput } from "../generation/FrameCountInput";
+import { frameLimits } from "../../model/studioGenerationBinding";
+import { engineUnavailable, findRoute, routeName } from "../../model/routes";
 import { useStudio } from "../../studioContext";
 
 /** The value every shot shares; null when they differ. */
@@ -97,7 +100,9 @@ export interface SelectionBarProps {
 }
 
 export function SelectionBar({ shots, onRenderVariants, onReplaceReferences, onDuplicate, onDelete, onClear }: SelectionBarProps) {
-  const { engine } = useStudio();
+  const { engine, project } = useStudio();
+  const [durationOpen, setDurationOpen] = useState(false);
+  const limits = frameLimits(shots.map((shot) => findRoute(engine.routes, shot.route)));
   const edit = useShotsEdit();
   const exiting = !useIsPresent();
   const menuId = useId();
@@ -110,26 +115,27 @@ export function SelectionBar({ shots, onRenderVariants, onReplaceReferences, onD
   const selectedLabel = t("已選取 {count} 個", { count: shots.length });
   const noReferences = shots.some((shot) => (shot.references?.length ?? 0) > 0) ? null : t("選取的鏡頭都沒有參考素材");
   const unavailable = engineUnavailable(engine) ?? (engine.routes.length === 0 ? t("還沒有可用於 Video Studio 的元件組合") : null);
-  const open = (kind: OpenMenu["kind"]) => (element: HTMLButtonElement, focus: "first" | "last") => setMenu({ kind, anchor: { kind: "element", element }, returnFocus: element, focus });
+  const open = (kind: OpenMenu["kind"]) => (element: HTMLButtonElement, focus: "first" | "last") => { setMenu({ kind, anchor: { kind: "element", element }, returnFocus: element, focus }); };
 
   const framesShared = shared(shots, (shot) => shot.frames);
   const routeShared = shared(shots, (shot) => shot.route);
   const items: MenuItem[] =
     menu?.kind === "frames"
-      ? frameOptions().map((frames) => ({
-          id: `frames-${frames}`,
-          label: t("{frames}（{frames2} 影格）", { frames: formatDuration(frames), frames2: frames }),
-          icon: frames === framesShared ? Check : undefined,
-          onSelect: () => edit.setFrames(shots, frames),
+      ? frameOptions().filter(limits.allows).map((frames) => ({
+          id: `frames-${String(frames)}`,
+          label: t("{frames}（{frames2} 影格）", { frames: formatDuration(frames, project.format.fps.num / project.format.fps.den), frames2: frames }),
+          ...(frames === framesShared ? { icon: Check } : {}),
+          onSelect: () => { edit.setFrames(shots, frames); },
         }))
-      : engine.routes.map((route) => {
+      // Edit-tool routes (延展, 重繪, 控制) are not shot routes: they are not offered here
+      : engine.routes.filter((route) => route.renderable).map((route) => {
           const name = routeName(route.label).name;
           return {
             id: `route-${route.id}`,
             label: route.ready ? name : t("{name}（未就緒）", { name }),
-            icon: route.id === routeShared ? Check : undefined,
-            disabledReason: taskUnfitReason(shots, route.capability),
-            onSelect: () => edit.setRoute(shots, route),
+            ...(route.id === routeShared ? { icon: Check } : {}),
+            disabledReason: routeUnfitReason(shots, route),
+            onSelect: () => { edit.setRoute(shots, route); },
           };
         });
 
@@ -156,11 +162,25 @@ export function SelectionBar({ shots, onRenderVariants, onReplaceReferences, onD
           ) : (
             <span className="mr-0.5 shrink-0 pl-0.5 text-caption font-medium whitespace-nowrap text-fg">{selectedLabel}</span>
           )}
-          <MenuTriggerButton menuId={menuId} open={menu?.kind === "frames"} label={t("把選取的鏡頭改成同一個時長")} onOpen={open("frames")} onClose={() => setMenu(null)} className={TRIGGER}>
-            <span>{t("時長")}</span>
-            <ChevronDown aria-hidden />
-          </MenuTriggerButton>
-          {unavailable ? (
+          {limits.h3 ? (
+            <MenuTriggerButton menuId={menuId} open={menu?.kind === "frames"} label={t("把選取的鏡頭改成同一個時長")} onOpen={open("frames")} onClose={() => { setMenu(null); }} className={TRIGGER}>
+              <span>{t("時長")}</span>
+              <ChevronDown aria-hidden />
+            </MenuTriggerButton>
+          ) : (
+            <Dialog open={durationOpen} onOpenChange={setDurationOpen}>
+              <DialogTrigger asChild>
+                <button type="button" className={cn(BAR_BUTTON, TRIGGER)} aria-label={t("把選取的鏡頭改成同一個時長")}>
+                  {t("時長")}<ChevronDown aria-hidden />
+                </button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader><DialogTitle>{t("把選取的鏡頭改成同一個時長")}</DialogTitle></DialogHeader>
+                <DialogBody><FrameCountInput initial={framesShared} limits={limits} onApply={(frames) => { edit.setFrames(shots, frames); setDurationOpen(false); }} /></DialogBody>
+              </DialogContent>
+            </Dialog>
+          )}
+          {(unavailable != null && unavailable !== "") ? (
             <button type="button" aria-disabled aria-describedby={reasonId} title={unavailable} className={cn("inline-flex shrink-0 cursor-not-allowed items-center rounded-md text-fg-disabled", TRIGGER)}>
               <span>{t("路線")}</span>
               <ChevronDown aria-hidden />
@@ -169,7 +189,7 @@ export function SelectionBar({ shots, onRenderVariants, onReplaceReferences, onD
               </span>
             </button>
           ) : (
-            <MenuTriggerButton menuId={menuId} open={menu?.kind === "route"} label={t("把選取的鏡頭改用同一條路線")} onOpen={open("route")} onClose={() => setMenu(null)} className={TRIGGER}>
+            <MenuTriggerButton menuId={menuId} open={menu?.kind === "route"} label={t("把選取的鏡頭改用同一條路線")} onOpen={open("route")} onClose={() => { setMenu(null); }} className={TRIGGER}>
               <span>{t("路線")}</span>
               <ChevronDown aria-hidden />
             </MenuTriggerButton>
@@ -192,7 +212,7 @@ export function SelectionBar({ shots, onRenderVariants, onReplaceReferences, onD
           anchor={menu.anchor}
           returnFocus={menu.returnFocus}
           initialFocus={menu.focus}
-          onClose={() => setMenu(null)}
+          onClose={() => { setMenu(null); }}
         />
       ) : null}
     </>

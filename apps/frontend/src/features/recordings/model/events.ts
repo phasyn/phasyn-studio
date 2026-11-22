@@ -23,12 +23,12 @@ export function eventListWithGaps(pages: readonly EventPage[], firstAfterSeq = 0
       seen.add(event.seq);
       if (event.seq > lastSeq + 1) {
         foundJump = true;
-        pageItems.push({ type: "gap", key: `gap-${lastSeq + 1}-${event.seq - 1}`, fromSeq: lastSeq + 1, toSeq: event.seq - 1 });
+        pageItems.push({ type: "gap", key: `gap-${String(lastSeq + 1)}-${String(event.seq - 1)}`, fromSeq: lastSeq + 1, toSeq: event.seq - 1 });
       }
-      pageItems.push({ type: "event", key: `${event.stream_id}:${event.seq}`, event });
+      pageItems.push({ type: "event", key: `${event.stream_id}:${String(event.seq)}`, event });
       lastSeq = Math.max(lastSeq, event.seq);
     }
-    if (page.gap && !foundJump) items.push({ type: "page-gap", key: `page-gap-${pageStart}`, afterSeq: pageStart });
+    if (page.gap && !foundJump) items.push({ type: "page-gap", key: `page-gap-${String(pageStart)}`, afterSeq: pageStart });
     items.push(...pageItems);
   }
   return items;
@@ -49,7 +49,7 @@ export function flattenPages(pages: readonly EventPage[]): RecordingEvent[] {
 
 /** 單列文字（複製用）：UTC 時間、level、stream#seq、kind、摘要。 */
 export function eventLine(event: RecordingEvent): string {
-  return `${event.occurred_at}\t${event.level}\t${event.stream_id}#${event.seq}\t${event.kind}\t${eventSummary(event)}`;
+  return `${event.occurred_at}\t${event.level}\t${event.stream_id}#${String(event.seq)}\t${event.kind}\t${eventSummary(event)}`;
 }
 
 const searchCache = new WeakMap<RecordingEvent, string>();
@@ -57,7 +57,7 @@ const searchCache = new WeakMap<RecordingEvent, string>();
 function searchText(event: RecordingEvent): string {
   let text = searchCache.get(event);
   if (text === undefined) {
-    text = `${event.seq} ${event.level} ${event.kind} ${eventSummary(event)} ${JSON.stringify(event.data)}`.toLowerCase();
+    text = `${String(event.seq)} ${event.level} ${event.kind} ${eventSummary(event)} ${JSON.stringify(event.data)}`.toLowerCase();
     searchCache.set(event, text);
   }
   return text;

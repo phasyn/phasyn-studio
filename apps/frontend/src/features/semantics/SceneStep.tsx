@@ -1,5 +1,6 @@
 // 步驟 2：Scene 編修。中欄＝SceneEditor（主要工作區）與各種載入狀態；
 // 檢視器＝Scene 檔（原檔不變、另存的新檔、caption 會用哪一份）、資料檢查、反推 run；底部是「另存新 Scene」。
+import { withOccurrenceKeys } from "@/lib/occurrenceKeys";
 import type { UseQueryResult } from "@tanstack/react-query";
 import { FileBraces, ListChecks, LoaderCircle, RotateCcw, Save } from "lucide-react";
 import type { WireRun } from "@/api/types";
@@ -30,7 +31,7 @@ function Pending({ children }: { children: string }) {
 
 /** 中欄：Scene 編修器；沒有 Scene 時說明原因（尚未反推、執行中、沒有輸出、讀檔失敗、內容無效）。 */
 export function SceneWorkspace({ scene, describeRunId, describeRun }: { scene: SceneStepState; describeRunId: string | null; describeRun: UseQueryResult<WireRun> }) {
-  if (!describeRunId) {
+  if (!(describeRunId != null && describeRunId !== "")) {
     return <EmptyState illustration="frames" icon={<FileBraces />} title={t("還沒有 Scene")} description={t("執行反推後在這裡檢視與編修 Scene。也可從 run 明細的 Scene 輸出開啟此頁。")} />;
   }
   if (!describeRun.data) {
@@ -64,7 +65,7 @@ export function SceneWorkspace({ scene, describeRunId, describeRun }: { scene: S
       </div>
     );
   }
-  if (!scene.draft || !scene.originKey) return <Pending>{t("讀取反推 run…")}</Pending>;
+  if (!scene.draft || !(scene.originKey != null && scene.originKey !== "")) return <Pending>{t("讀取反推 run…")}</Pending>;
   return (
     <div className="p-4 animate-rise-in">
       <SceneEditor scene={scene.draft} issues={scene.issues} onChange={scene.setDraft} />
@@ -104,7 +105,7 @@ export function SceneInspector({ scene, describeRunId, describeRun }: { scene: S
       note={t("另存會上傳成新檔（application/json）；原 Scene 保留。")}
       actions={
         <>
-          {scene.saveError ? <ErrorCallout error={scene.saveError} write title={t("另存 Scene 失敗；編修內容保留")} /> : null}
+          {(scene.saveError != null) ? <ErrorCallout error={scene.saveError} write title={t("另存 Scene 失敗；編修內容保留")} /> : null}
           <div className="flex flex-wrap items-center gap-2">
             <ActionButton
               variant="primary"
@@ -161,8 +162,8 @@ export function SceneInspector({ scene, describeRunId, describeRun }: { scene: S
         ) : (
           <Callout tone="danger" title={t("Scene 有 {issuesCount} 個資料錯誤（修正後才能另存）", { issuesCount: issues.length })}>
             <ul className="grid gap-0.5">
-              {issues.slice(0, MAX_LISTED_ISSUES).map((issue, index) => (
-                <li key={index}>
+              {withOccurrenceKeys(issues.slice(0, MAX_LISTED_ISSUES), (issue) => issue.message).map(({ item: issue, key }) => (
+                <li key={key}>
                   <span className="machine text-caption">{issue.path}</span>
                   {t("：{message}", { message: issue.message })}
                 </li>

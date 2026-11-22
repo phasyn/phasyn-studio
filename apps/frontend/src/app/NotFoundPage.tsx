@@ -1,3 +1,4 @@
+import { pageTransition } from "@/lib/dom";
 import { Link } from "react-router";
 import { EmptyState } from "@/components/common/EmptyState";
 import { PageBody, PageHeader } from "@/components/common/PageHeader";
@@ -16,10 +17,10 @@ export function NotFoundPage() {
         description={t("請從左側導覽選擇工作區。")}
         action={
           <>
-            <Link to={PATHS.studio} viewTransition className={buttonVariants({ variant: "primary" })}>
+            <Link to={PATHS.studio} {...pageTransition()} className={buttonVariants({ variant: "primary" })}>
               {t("前往 Video Studio")}
             </Link>
-            <Link to={PATHS.components} viewTransition className={buttonVariants({ variant: "secondary" })}>
+            <Link to={PATHS.components} {...pageTransition()} className={buttonVariants({ variant: "secondary" })}>
               {t("回到元件頁")}
             </Link>
           </>

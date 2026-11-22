@@ -25,9 +25,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from phasyn_h3.recipe.abi.canonical import canonical_digest
+
 from .acceleration import CONVROT_BACKEND, attention_plan, server_args_overrides
 from .errors import UnsupportedCombination
 from .policy import STAGE_PRIMARY_COMPONENT, StagePolicy
+from .toolchain import apply_jit_environment
+from .upstream_patches import ensure_uuid_device_ids
+
 
 OFFLINE_ENV = {
     "HF_HUB_OFFLINE": "1",
@@ -43,7 +48,11 @@ OFFLINE_ENV = {
 }
 # srt Fp8Config reads SGLANG_FP8_IGNORED_LAYERS (srt/layers/quantization/fp8.py:283-287),
 # Fp8LinearMethod SGLANG_FORCE_FP8_MARLIN (fp8.py:127-130), fp8_utils USE_TRITON_W8A8_FP8_KERNEL
-FP8_OVERRIDE_ENV = ("SGLANG_FP8_IGNORED_LAYERS", "SGLANG_FORCE_FP8_MARLIN", "USE_TRITON_W8A8_FP8_KERNEL")
+FP8_OVERRIDE_ENV = (
+    "SGLANG_FP8_IGNORED_LAYERS",
+    "SGLANG_FORCE_FP8_MARLIN",
+    "USE_TRITON_W8A8_FP8_KERNEL",
+)
 # NCCL opens its bootstrap sockets on the host's first non-loopback interface, also for a single rank, and
 # the CPU-side (gloo) groups SGLang creates listen on the address the host name resolves to. A component is
 # one process on one GPU, so both stay on loopback unless the runtime's own environment (the Node
@@ -73,7 +82,6 @@ def apply_process_environment(workdir: Path) -> dict[str, str]:
     # (Fp8Config ignored_layers), switch to weight-only Marlin, or swap the GEMM kernel
     for name in FP8_OVERRIDE_ENV:
         os.environ.pop(name, None)
-    from .toolchain import apply_jit_environment
 
     # nvcc/ninja for SGLang JIT kernels + one stable build cache (toolchain.py)
     toolchain = apply_jit_environment()
@@ -102,6 +110,8 @@ def _rendezvous_file(workdir: Path) -> Path:
 
 @dataclass(frozen=True)
 class ServerArgsKey:
+    """Identify the SGLang process configuration needed by the stage."""
+
     model_path: str
     variant: str
     knobs_digest: str
@@ -111,6 +121,7 @@ class SglangSession:
     """Owns the process-wide SGLang state (distributed groups, ServerArgs)."""
 
     def __init__(self, workdir: Path) -> None:
+        """Track the SGLang process configuration for this host."""
         self.workdir = workdir
         self._lock = threading.Lock()
         self._initialized = False
@@ -119,6 +130,7 @@ class SglangSession:
 
     # -- process init ------------------------------------------------------
     def ensure_process(self, torch_device: Any) -> None:
+        """Prepare the SGLang configuration for the current process."""
         with self._lock:
             if self._initialized:
                 return
@@ -128,10 +140,10 @@ class SglangSession:
             os.environ["LOCAL_RANK"] = "0"
             os.environ["RANK"] = "0"
             os.environ["WORLD_SIZE"] = "1"
-            from sglang.multimodal_gen.runtime.distributed.parallel_state import (
+            from sglang.multimodal_gen.runtime.distributed.parallel_state import (  # type: ignore[import-untyped]
                 maybe_init_distributed_environment_and_model_parallel,
             )
-            from sglang.multimodal_gen.runtime.platforms import current_platform
+            from sglang.multimodal_gen.runtime.platforms import current_platform  # type: ignore[import-untyped]
 
             if torch_device.type == "cuda":
                 current_platform.set_device(torch_device)
@@ -144,14 +156,15 @@ class SglangSession:
                 dp_size=1,
                 distributed_init_method=f"file://{_rendezvous_file(self.workdir)}",
             )
-            from sglang.srt.runtime_context import get_context, publish
-            from sglang.srt.server_args import ServerArgs as SrtServerArgs
+            from sglang.srt.runtime_context import get_context, publish  # type: ignore[import-untyped]
+            from sglang.srt.server_args import ServerArgs as SrtServerArgs  # type: ignore[import-untyped]
 
             if get_context()._server_args is None:
-                publish(SrtServerArgs(model_path="dummy", tp_size=1), role="diffusion_gpu_worker")
+                publish(
+                    SrtServerArgs(model_path="dummy", tp_size=1),
+                    role="diffusion_gpu_worker",
+                )
             if torch_device.type == "cuda":
-                from .upstream_patches import ensure_uuid_device_ids
-
                 # NVML capability queries (H3 validate_server_args, attention resolvers)
                 # must accept the actor's GPU-UUID CUDA_VISIBLE_DEVICES
                 ensure_uuid_device_ids()
@@ -185,7 +198,11 @@ class SglangSession:
         # the loader rounds the decoder linears to the pipeline's fp16 decode dtype
         # (vae_loader.py:267-311).  The fp16 recipe is the pipeline default, so it
         # gets no override -- an fp16 entry would also load the encoder in fp16.
-        precisions = {"video_vae": "fp32"} if video_vae is not None and video_vae.compute_dtype == "fp32" else {}
+        precisions = (
+            {"video_vae": "fp32"}
+            if video_vae is not None and video_vae.compute_dtype == "fp32"
+            else {}
+        )
         kwargs: dict[str, Any] = {
             "model_path": model_path,
             "model_variant": variant,
@@ -203,8 +220,12 @@ class SglangSession:
             "enable_torch_compile": False,
             "enable_breakable_cuda_graph": False,
             "pin_cpu_memory": True,
-            "dit_cpu_offload": bool(transformer.component_cpu_offload) if transformer else False,
-            "dit_layerwise_offload": bool(transformer.layerwise) if transformer else False,
+            "dit_cpu_offload": bool(transformer.component_cpu_offload)
+            if transformer
+            else False,
+            "dit_layerwise_offload": bool(transformer.layerwise)
+            if transformer
+            else False,
             "dit_offload_prefetch_size": float(transformer.prefetch_depth)
             if transformer and transformer.layerwise
             else 1.0,
@@ -212,13 +233,17 @@ class SglangSession:
             if transformer and transformer.layerwise
             else 0.0,
             "dit_layerwise_residency_policy": "leading",
-            "text_encoder_cpu_offload": bool(text_encoder.component_cpu_offload) if text_encoder else False,
+            "text_encoder_cpu_offload": bool(text_encoder.component_cpu_offload)
+            if text_encoder
+            else False,
             "vae_cpu_offload": any(v.component_cpu_offload for v in vaes),
             "layerwise_offload_components": layerwise or None,
             "layerwise_prefetch_size": prefetch,
             "layerwise_resident_layers": resident,
             "minimax_h3_adaln_online": policy.adaln_mode == "online",
-            "minimax_h3_adaln_cache_path": adaln_cache_path if policy.adaln_mode == "fixed" else None,
+            "minimax_h3_adaln_cache_path": adaln_cache_path
+            if policy.adaln_mode == "fixed"
+            else None,
             "minimax_h3_adaln_host_cache_gb": policy.adaln_host_cache_bytes / 1e9,
             "component_precisions": precisions,
             "warmup_mode": "off",
@@ -231,11 +256,16 @@ class SglangSession:
         # online DiT quantization / approximate DiT attention (acceleration.py)
         kwargs.update(
             server_args_overrides(
-                transformer_component=(policy.effective_profile.get("components") or {}).get("transformer"),
+                transformer_component=(
+                    policy.effective_profile.get("components") or {}
+                ).get("transformer"),
                 attention=attention_plan(
-                    policy.attention_provider_effective, policy.sglang_attention_backend, policy.effective_profile
+                    policy.attention_provider_effective,
+                    policy.sglang_attention_backend,
+                    policy.effective_profile,
                 ),
-                dit_stage=STAGE_PRIMARY_COMPONENT.get(policy.stage_kind) == "transformer",
+                dit_stage=STAGE_PRIMARY_COMPONENT.get(policy.stage_kind)
+                == "transformer",
             )
         )
         return kwargs
@@ -285,22 +315,24 @@ class SglangSession:
         if changed:
             raise UnsupportedCombination(
                 "SGLANG_REWROTE_SERVER_ARGS",
-                "釘版 SGLang 改寫了 profile 設定（不接受默默 fallback）：" + "; ".join(changed),
+                "釘版 SGLang 改寫了 profile 設定（不接受默默 fallback）："
+                + "; ".join(changed),
             )
 
     def server_args_for(self, key_kwargs: Mapping[str, Any]) -> Any:
         """(Re)build ServerArgs when the frozen knobs change; returns it."""
-        from phasyn_h3.recipe.abi.canonical import canonical_digest
-
         key = ServerArgsKey(
             model_path=str(key_kwargs["model_path"]),
             variant=str(key_kwargs["model_variant"]),
-            knobs_digest=canonical_digest({k: v for k, v in key_kwargs.items()}),
+            knobs_digest=canonical_digest(dict(key_kwargs)),
         )
         with self._lock:
             if self._key == key and self.server_args is not None:
                 return self.server_args
-            from sglang.multimodal_gen.runtime.server_args import ServerArgs, set_global_server_args
+            from sglang.multimodal_gen.runtime.server_args import (  # type: ignore[import-untyped]
+                ServerArgs,
+                set_global_server_args,
+            )
 
             server_args = ServerArgs.from_kwargs(**dict(key_kwargs))
             self.verify_server_args(server_args, key_kwargs)
@@ -311,6 +343,7 @@ class SglangSession:
 
     @property
     def key(self) -> ServerArgsKey | None:
+        """Return the identity of the active server arguments."""
         return self._key
 
 

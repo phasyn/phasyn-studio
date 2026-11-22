@@ -46,13 +46,13 @@ export function AudioGroup({ clip, audio }: AudioGroupProps) {
   const extra = audio.legacy !== 0 ? t("另有舊版的效果音量 {volume} 會再相加", { volume: formatShown(UNITS.decibels, audio.legacy) }) : undefined;
   return (
     <Group id="audio" title={t("音訊")} changed={animated || levelled || fadeIn > 0 || fadeOut > 0} onReset={reset} resetKeys={keys}>
-      <PropertyRow property={audio.volume} owner={clip} hint={extra} />
+      <PropertyRow property={audio.volume} owner={clip} {...(extra === undefined ? {} : { hint: extra })} />
       <PropertyRow property={audio.pan} owner={clip} hint={HINTS.pan} />
       <Row label={t("靜音")}>
         <SwitchField
           label={t("靜音")}
           checked={effects.mute ?? false}
-          onChange={(mute) => panel.perform({ ...clip, effects: { ...effects, mute } })}
+          onChange={(mute) => void panel.perform({ ...clip, effects: { ...effects, mute } })}
         />
       </Row>
       <Row label={t("淡入")} hint={HINTS.fadeIn}>

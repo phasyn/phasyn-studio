@@ -15,6 +15,7 @@ from typing import Any
 
 import pytest
 
+
 REPO = Path(__file__).resolve().parents[3]
 EXAMPLES = REPO / "examples"
 COMPONENTS = EXAMPLES / "components"
@@ -27,28 +28,45 @@ def models_dir() -> Path:
     """The models root for real-file checks, or skip (a skip is not a pass)."""
     raw = os.environ.get(MODELS_DIR_ENV)
     if not raw or not Path(raw).is_dir():
-        pytest.skip(f"{MODELS_DIR_ENV} 未指向模型根目錄（需要真實權重檔，未驗證，不算通過）")
+        pytest.skip(
+            f"{MODELS_DIR_ENV} 未指向模型根目錄（需要真實權重檔，未驗證，不算通過）"
+        )
     return Path(raw)
 
 
+def read_object(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    assert isinstance(value, dict), path
+    return value
+
+
 def component(component_id: str) -> dict[str, Any]:
-    return json.loads((COMPONENTS / f"{component_id}.json").read_text(encoding="utf-8"))
+    return read_object(COMPONENTS / f"{component_id}.json")
 
 
 def pipeline(pipeline_id: str) -> dict[str, Any]:
-    return json.loads((PIPELINES / f"{pipeline_id}.json").read_text(encoding="utf-8"))
+    return read_object(PIPELINES / f"{pipeline_id}.json")
 
 
 def h3_components() -> dict[str, dict[str, Any]]:
     """Every H3 template in ``examples/components`` (image templates are tested by runtimes/qimg)."""
-    docs = {p.stem: json.loads(p.read_text(encoding="utf-8")) for p in sorted(COMPONENTS.glob("*.json"))}
-    return {cid: doc for cid, doc in docs.items() if str(doc.get("provider_id", "")).startswith("h3.")}
+    docs = {
+        p.stem: json.loads(p.read_text(encoding="utf-8"))
+        for p in sorted(COMPONENTS.glob("*.json"))
+    }
+    return {
+        cid: doc
+        for cid, doc in docs.items()
+        if str(doc.get("provider_id", "")).startswith("h3.")
+    }
 
 
 @cache
 def generator() -> ModuleType:
     """``examples/generate_dit_components.py`` imported as a module (it is a standalone stdlib script)."""
-    spec = importlib.util.spec_from_file_location("generate_dit_components", EXAMPLES / "generate_dit_components.py")
+    spec = importlib.util.spec_from_file_location(
+        "generate_dit_components", EXAMPLES / "generate_dit_components.py"
+    )
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -56,7 +74,7 @@ def generator() -> ModuleType:
 
 
 def provider_classes() -> dict[str, Any]:
-    from phasyn_h3 import providers
+    from phasyn_h3 import providers  # noqa: PLC0415 - Keep this optional experiment dependency behind its runtime check.
 
     return {
         "h3.conditioning": providers.ConditioningProvider,
@@ -72,7 +90,7 @@ def provider_classes() -> dict[str, Any]:
 def descriptor(provider_id: str) -> dict[str, Any]:
     """The catalog entry ``validate_pipeline`` needs (ports and parameters schema)."""
     if provider_id == "media.mux":
-        from phasyn_media.providers.mux import MuxProvider
+        from phasyn_media.providers.mux import MuxProvider  # noqa: PLC0415 - Keep this optional experiment dependency behind its runtime check.
 
         desc = MuxProvider.describe(None)
     else:

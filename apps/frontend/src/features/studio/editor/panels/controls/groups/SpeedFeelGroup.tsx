@@ -39,10 +39,10 @@ export function SpeedFeelGroup({ clip }: { clip: TimelineClip }) {
       title={t("速度感")}
       actions={
         <>
-          <TextButton icon={<Zap aria-hidden />} title={t("比對原片的動作重音，在生成沒打到的地方加上震動與負片衝擊格")} onClick={() => open("effects")}>
+          <TextButton icon={<Zap aria-hidden />} title={t("比對原片的動作重音，在生成沒打到的地方加上震動與負片衝擊格")} onClick={() => { open("effects"); }}>
             {t("分析…")}
           </TextButton>
-          <TextButton icon={<Magnet aria-hidden />} title={t("找出原片和生成的切點，把生成的切點移到原片切點的同一格（停格或加快，片段總長不變）")} onClick={() => open("conform")}>
+          <TextButton icon={<Magnet aria-hidden />} title={t("找出原片和生成的切點，把生成的切點移到原片切點的同一格（停格或加快，片段總長不變）")} onClick={() => { open("conform"); }}>
             {t("對齊切點…")}
           </TextButton>
         </>

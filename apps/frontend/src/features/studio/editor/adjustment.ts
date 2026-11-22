@@ -21,7 +21,7 @@ export function isAdjustment(timeline: Pick<StudioTimeline, "sources">, clip: Pi
 }
 
 const MOTION_REST = { x: 0, y: 0, scale: 1, rotation: 0, gain_db: 0, pan: 0 } as const;
-const REST_KEYS = Object.keys(MOTION_REST) as (keyof typeof MOTION_REST)[];
+const REST_KEYS = ["x", "y", "scale", "rotation", "gain_db", "pan"] as const satisfies readonly (keyof typeof MOTION_REST)[];
 
 /**
  * Why an adjustment clip cannot be as it is: it keeps position, scale, rotation and its sound at rest (its opacity may

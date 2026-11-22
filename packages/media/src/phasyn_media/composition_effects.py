@@ -18,12 +18,17 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import KW_ONLY, dataclass
 from typing import Any
 
 from phasyn_components.errors import ComponentError
 
 from .composition_curves import command_filter, expression, frame_parameters, number
+
+
+_MAX_INTENSITY = 2
+_VERTICAL_DEGREES = 90
+
 
 # gblur steps of the look effects: four passes come within about 10 % of a Gaussian (two: about 25 %).
 GAUSS_STEPS = 4
@@ -49,14 +54,31 @@ class Canvas:
     frames: int
 
 
+@dataclass(frozen=True)
+class _EffectFrame:
+    offset: int
+    canvas: Canvas
+
+
+@dataclass(frozen=True)
+class _BlendSpan:
+    start: int
+    end: int
+    _: KW_ONLY
+    background: str | None = None
+    padded: bool = False
+
+
 def clock(counter: str, offset: int) -> str:
     """The processed frame number, from a filter's frame counter (``n``, ``N`` or ``(N-1)``)."""
     return counter if offset == 0 else f"({counter}+{offset})"
 
 
 def _peak(effect: Mapping[str, Any], name: str) -> float:
-    """The largest value a parameter takes: its largest key when it is animated (no curve passes its keys), else
-    its fixed value."""
+    """The largest value a parameter takes: its largest key when it is animated (no curve passes its keys), else.
+
+    its fixed value.
+    """
     keys = effect.get("keyframes", {}).get(name) or []
     return max([float(key["value"]) for key in keys] or [float(effect[name])])
 
@@ -71,8 +93,10 @@ def _automation(target: str, commands: Mapping[str, str]) -> str:
 
 
 def _plane(canvas: Canvas, luma: str, offset: int | None) -> str:
-    """A grey plane of the canvas drawn by a ``geq`` expression: one frame when ``offset`` is None (a blend repeats
-    it for every clip frame), else one per processed frame of the slice from ``offset`` on."""
+    """A grey plane of the canvas drawn by a ``geq`` expression: one frame when ``offset`` is None (a blend repeats.
+
+    it for every clip frame), else one per processed frame of the slice from ``offset`` on.
+    """
     frames, tail = (1, "") if offset is None else (canvas.frames, f",setpts=N+{offset}")
     return (
         f"color=c=black:s={canvas.width}x{canvas.height}:r={canvas.rate},trim=end_frame={frames},format=gray,"
@@ -82,10 +106,20 @@ def _plane(canvas: Canvas, luma: str, offset: int | None) -> str:
 
 def animated(container: Mapping[str, Any]) -> bool:
     """True when a key track really changes its value (constant keys are a fixed parameter)."""
-    return any(len({point["value"] for point in points}) > 1 for points in container.get("keyframes", {}).values())
+    return any(
+        len({point["value"] for point in points}) > 1
+        for points in container.get("keyframes", {}).values()
+    )
 
 
-def _color(graph: list[str], current: str, effect: Mapping[str, Any], label: str, offset: int, _canvas: Canvas) -> str:
+def _color(
+    graph: list[str],
+    current: str,
+    effect: Mapping[str, Any],
+    label: str,
+    timing: _EffectFrame,
+) -> str:
+    offset = timing.offset
     if not any(effect.get("keyframes", {}).values()) and (
         effect["brightness"],
         effect["contrast"],
@@ -107,14 +141,23 @@ def _color(graph: list[str], current: str, effect: Mapping[str, Any], label: str
 
 
 def _chroma_key(
-    graph: list[str], current: str, effect: Mapping[str, Any], label: str, offset: int, _canvas: Canvas
+    graph: list[str],
+    current: str,
+    effect: Mapping[str, Any],
+    label: str,
+    timing: _EffectFrame,
 ) -> str:
+    offset = timing.offset
     # colorkey replaces alpha. Intersect the keyed coverage with the existing alpha
     # so multiple keys and earlier blurs retain their ordered, non-destructive meaning.
     color = f"0x{int(effect['color'][1:], 16):06x}"
     target = f"colorkey@{label}"
     frame = clock("(N-1)", offset)
-    commands = {name: expression(effect, name, frame) for name in ("similarity", "blend") if _keyed(effect, name)}
+    commands = {
+        name: expression(effect, name, frame)
+        for name in ("similarity", "blend")
+        if _keyed(effect, name)
+    }
     automation = _automation(target, commands)
     graph.append(f"[{current}]format=rgba,split=2[{label}source][{label}coverage]")
     graph.append(f"[{label}coverage]alphaextract[{label}original]")
@@ -123,19 +166,30 @@ def _chroma_key(
         f"blend={number(effect['blend'])},format=gbrap,split=2[{label}rgb][{label}key]"
     )
     graph.append(f"[{label}key]alphaextract[{label}keyalpha]")
-    graph.append(f"[{label}original][{label}keyalpha]blend=all_mode=multiply:shortest=1[{label}alpha]")
+    graph.append(
+        f"[{label}original][{label}keyalpha]blend=all_mode=multiply:shortest=1[{label}alpha]"
+    )
     graph.append(f"[{label}rgb][{label}alpha]alphamerge[{label}]")
     return label
 
 
-def _blur(graph: list[str], current: str, effect: Mapping[str, Any], label: str, offset: int, _canvas: Canvas) -> str:
+def _blur(
+    graph: list[str],
+    current: str,
+    effect: Mapping[str, Any],
+    label: str,
+    timing: _EffectFrame,
+) -> str:
+    offset = timing.offset
     moving = _keyed(effect, "radius")
     if effect["radius"] == 0 and not moving:
         return current
     target = f"gblur@{label}"
     radius = expression(effect, "radius", clock("(N-1)", offset))
     # Update both axes: gblur may resolve sigmaV=-1 during initialization.
-    automation = _automation(target, {"sigma": radius, "sigmaV": radius} if moving else {})
+    automation = _automation(
+        target, {"sigma": radius, "sigmaV": radius} if moving else {}
+    )
     # Blur premultiplied RGB and coverage together to avoid dark/colored
     # fringes at transparent edges, then restore straight alpha for overlay.
     graph.append(
@@ -146,22 +200,41 @@ def _blur(graph: list[str], current: str, effect: Mapping[str, Any], label: str,
     return label
 
 
-def _glow(graph: list[str], current: str, effect: Mapping[str, Any], label: str, offset: int, _canvas: Canvas) -> str:
-    """Bloom in premultiplied 16-bit RGBA: weight = clip((luma - threshold) / (1 - threshold), 0, 1), the picture
+def _glow(
+    graph: list[str],
+    current: str,
+    effect: Mapping[str, Any],
+    label: str,
+    timing: _EffectFrame,
+) -> str:
+    offset = timing.offset
+    """Bloom in premultiplied 16-bit RGBA: weight = clip((luma - threshold) / (1 - threshold), 0, 1), the picture.
+
     times its weight blurred by ``radius`` and scaled by ``intensity``, added to the colour; the glow's own coverage
-    screens the alpha, so a glow reaches past a keyed or text picture onto what lies under it."""
+    screens the alpha, so a glow reaches past a keyed or text picture onto what lies under it.
+    """
     if _peak(effect, "intensity") <= 0:
         return current
     frame = clock("(N-1)", offset)
-    threshold, radius, intensity = (expression(effect, name, frame) for name in ("threshold", "radius", "intensity"))
+    threshold, radius, intensity = (
+        expression(effect, name, frame) for name in ("threshold", "radius", "intensity")
+    )
     floor = f"min({threshold},{GLOW_THRESHOLD_MAX})"
     level = number(min(float(effect["threshold"]), GLOW_THRESHOLD_MAX))
-    luma = ":".join(f"{out}{src}={weight}" for out in "rgba" for src, weight in zip("rgb", LUMA, strict=True))
+    luma = ":".join(
+        f"{out}{src}={weight}"
+        for out in "rgba"
+        for src, weight in zip("rgb", LUMA, strict=True)
+    )
     levels = f"colorlevels@{label}level"
     graph.append(
         f"[{current}]format=gbrap16le,premultiply=inplace=1:planes=7,split=3[{label}src][{label}pass][{label}luma]"
     )
-    level_commands = {f"{plane}imin": floor for plane in "rgba"} if _keyed(effect, "threshold") else {}
+    level_commands = (
+        {f"{plane}imin": floor for plane in "rgba"}
+        if _keyed(effect, "threshold")
+        else {}
+    )
     graph.append(
         f"[{label}luma]colorchannelmixer={luma}:aa=0,{_automation(levels, level_commands)}"
         f"{levels}=rimin={level}:gimin={level}:bimin={level}:aimin={level}[{label}weight]"
@@ -170,7 +243,9 @@ def _glow(graph: list[str], current: str, effect: Mapping[str, Any], label: str,
     blurred = f"{label}bright"
     if _peak(effect, "radius") > 0:
         target = f"gblur@{label}blur"
-        commands = {"sigma": radius, "sigmaV": radius} if _keyed(effect, "radius") else {}
+        commands = (
+            {"sigma": radius, "sigmaV": radius} if _keyed(effect, "radius") else {}
+        )
         sigma = number(effect["radius"])
         graph.append(
             f"[{label}bright]{_automation(target, commands)}{target}=sigma={sigma}:sigmaV={sigma}:steps={GAUSS_STEPS}"
@@ -179,14 +254,22 @@ def _glow(graph: list[str], current: str, effect: Mapping[str, Any], label: str,
         blurred = f"{label}soft"
     # colorchannelmixer takes gains up to 2: a stronger glow is two of them (min(I, 2), then max(1, I / 2)).
     gains = [(f"min({intensity},2)", min(float(effect["intensity"]), 2.0))]
-    if _peak(effect, "intensity") > 2:
-        gains.append((f"max(1,({intensity})/2)", max(1.0, float(effect["intensity"]) / 2)))
+    if _peak(effect, "intensity") > _MAX_INTENSITY:
+        gains.append(
+            (f"max(1,({intensity})/2)", max(1.0, float(effect["intensity"]) / 2))
+        )
     mixers = []
     for step, (moving, fixed) in enumerate(gains):
         target = f"colorchannelmixer@{label}gain{step}"
-        commands = dict.fromkeys(("rr", "gg", "bb", "aa"), moving) if _keyed(effect, "intensity") else {}
+        commands = (
+            dict.fromkeys(("rr", "gg", "bb", "aa"), moving)
+            if _keyed(effect, "intensity")
+            else {}
+        )
         gain = number(fixed)
-        mixers.append(f"{_automation(target, commands)}{target}=rr={gain}:gg={gain}:bb={gain}:aa={gain}")
+        mixers.append(
+            f"{_automation(target, commands)}{target}=rr={gain}:gg={gain}:bb={gain}:aa={gain}"
+        )
     graph.append(f"[{blurred}]{','.join(mixers)}[{label}glow]")
     graph.append(
         f"[{label}src][{label}glow]blend=c0_mode=addition:c1_mode=addition:c2_mode=addition:c3_mode=screen,"
@@ -196,8 +279,13 @@ def _glow(graph: list[str], current: str, effect: Mapping[str, Any], label: str,
 
 
 def _rgb_split(
-    graph: list[str], current: str, effect: Mapping[str, Any], label: str, offset: int, _canvas: Canvas
+    graph: list[str],
+    current: str,
+    effect: Mapping[str, Any],
+    label: str,
+    timing: _EffectFrame,
 ) -> str:
+    offset = timing.offset
     """Red moves ``offset`` pixels towards ``angle`` (0 = right, 90 = down), blue the opposite way, whole pixels."""
     if _peak(effect, "offset") <= 0:
         return current
@@ -211,9 +299,14 @@ def _rgb_split(
         shift = "rh=0:rv=0:bh=0:bv=0"
     else:
         radians = math.radians(float(effect["angle"]))
-        x, y = round(effect["offset"] * math.cos(radians)), round(effect["offset"] * math.sin(radians))
+        x, y = (
+            round(effect["offset"] * math.cos(radians)),
+            round(effect["offset"] * math.sin(radians)),
+        )
         commands, shift = {}, f"rh={x}:rv={y}:bh={-x}:bv={-y}"
-    graph.append(f"[{current}]format=gbrap,{_automation(target, commands)}{target}={shift}:edge=smear[{label}]")
+    graph.append(
+        f"[{current}]format=gbrap,{_automation(target, commands)}{target}={shift}:edge=smear[{label}]"
+    )
     return label
 
 
@@ -232,8 +325,13 @@ def vignette_luma(amount: str, softness: str) -> str:
 
 
 def _vignette(
-    graph: list[str], current: str, effect: Mapping[str, Any], label: str, offset: int, canvas: Canvas
+    graph: list[str],
+    current: str,
+    effect: Mapping[str, Any],
+    label: str,
+    timing: _EffectFrame,
 ) -> str:
+    offset, canvas = timing.offset, timing.canvas
     """Colour times a shade plane (alpha unchanged): drawn once when it does not move, per frame when it is keyed."""
     if _peak(effect, "amount") <= 0:
         return current
@@ -241,7 +339,11 @@ def _vignette(
         prefix = frame_parameters(effect, ("amount", "softness"), clock("N", offset))
         shade = _plane(canvas, prefix + vignette_luma("ld(0)", "ld(1)"), offset)
     else:
-        shade = _plane(canvas, vignette_luma(number(effect["amount"]), number(effect["softness"])), None)
+        shade = _plane(
+            canvas,
+            vignette_luma(number(effect["amount"]), number(effect["softness"])),
+            None,
+        )
     graph.append(f"{shade},format=gbrap[{label}shade]")
     graph.append(f"[{current}]format=gbrap[{label}base]")
     graph.append(f"[{label}base][{label}shade]blend=all_mode=multiply[{label}]")
@@ -268,7 +370,14 @@ def grain_luma(amount: str, frame: str) -> str:
     )
 
 
-def _grain(graph: list[str], current: str, effect: Mapping[str, Any], label: str, offset: int, canvas: Canvas) -> str:
+def _grain(
+    graph: list[str],
+    current: str,
+    effect: Mapping[str, Any],
+    label: str,
+    timing: _EffectFrame,
+) -> str:
+    offset, canvas = timing.offset, timing.canvas
     """The same noise added to red, green and blue (alpha unchanged); a function of the pixel and the processed frame."""
     if _peak(effect, "amount") <= 0:
         return current
@@ -279,13 +388,20 @@ def _grain(graph: list[str], current: str, effect: Mapping[str, Any], label: str
         luma = grain_luma(number(effect["amount"]), frame)
     graph.append(f"{_plane(canvas, luma, offset)},format=gbrap[{label}noise]")
     graph.append(f"[{current}]format=gbrap[{label}base]")
-    graph.append(f"[{label}base][{label}noise]blend=c0_mode=grainmerge:c1_mode=grainmerge:c2_mode=grainmerge[{label}]")
+    graph.append(
+        f"[{label}base][{label}noise]blend=c0_mode=grainmerge:c1_mode=grainmerge:c2_mode=grainmerge[{label}]"
+    )
     return label
 
 
 def _directional_blur(
-    graph: list[str], current: str, effect: Mapping[str, Any], label: str, offset: int, canvas: Canvas
+    graph: list[str],
+    current: str,
+    effect: Mapping[str, Any],
+    label: str,
+    timing: _EffectFrame,
 ) -> str:
+    offset, canvas = timing.offset, timing.canvas
     """A Gaussian streak along ``angle`` (sigma = length / 4) in premultiplied 16-bit RGBA.
 
     Along an axis it is one ``gblur`` axis. Any other angle turns the picture so the streak runs horizontally and
@@ -298,7 +414,9 @@ def _directional_blur(
     sigma = number(float(effect["length"]) * STREAK_SIGMA)
     moving = f"({expression(effect, 'length', clock('(N-1)', offset))})*{STREAK_SIGMA}"
     axis = None if _keyed(effect, "angle") else float(effect["angle"]) % 180
-    name, other = ("sigmaV", "sigma") if axis == 90 else ("sigma", "sigmaV")
+    name, other = (
+        ("sigmaV", "sigma") if axis == _VERTICAL_DEGREES else ("sigma", "sigmaV")
+    )
     commands = {name: moving} if _keyed(effect, "length") else {}
     streak = f"{_automation(target, commands)}{target}={name}={sigma}:{other}=0:steps={GAUSS_STEPS}"
     head = f"[{current}]format=gbrap16le,premultiply=inplace=1:planes=7,"
@@ -326,8 +444,10 @@ def _directional_blur(
 
 
 def _sharpen_levels(amount: float) -> dict[str, float]:
-    """colorlevels that scale a detail plane around 0.5 by ``amount``: by the input range from 1 on, below 1 by the
-    output range (0 leaves the plane at 0.5: no change)."""
+    """Colorlevels that scale a detail plane around 0.5 by ``amount``: by the input range from 1 on, below 1 by the.
+
+    output range (0 leaves the plane at 0.5: no change).
+    """
     stretched = amount > 1
     values = {
         "imin": 0.5 - 0.5 / amount if stretched else 0.0,
@@ -335,7 +455,9 @@ def _sharpen_levels(amount: float) -> dict[str, float]:
         "omin": 0.0 if stretched else 0.5 - 0.5 * amount,
         "omax": 1.0 if stretched else 0.5 + 0.5 * amount,
     }
-    return {f"{plane}{name}": value for plane in "rgb" for name, value in values.items()}
+    return {
+        f"{plane}{name}": value for plane in "rgb" for name, value in values.items()
+    }
 
 
 def _sharpen_commands(amount: str) -> dict[str, str]:
@@ -347,26 +469,46 @@ def _sharpen_commands(amount: str) -> dict[str, str]:
         "omin": f"if({stretched},0,0.5-0.5*{amount})",
         "omax": f"if({stretched},1,0.5+0.5*{amount})",
     }
-    return {f"{plane}{name}": value for plane in "rgb" for name, value in values.items()}
+    return {
+        f"{plane}{name}": value for plane in "rgb" for name, value in values.items()
+    }
 
 
 def _sharpen(
-    graph: list[str], current: str, effect: Mapping[str, Any], label: str, offset: int, _canvas: Canvas
+    graph: list[str],
+    current: str,
+    effect: Mapping[str, Any],
+    label: str,
+    timing: _EffectFrame,
 ) -> str:
+    offset = timing.offset
     """Unsharp mask in 16 bits: colour + amount x (colour - Gaussian(colour)) on premultiplied RGB; alpha unchanged."""
     if _peak(effect, "amount") <= 0:
         return current
     target = f"colorlevels@{label}"
     animated_amount = _keyed(effect, "amount")
-    commands = _sharpen_commands(expression(effect, "amount", clock("(N-1)", offset))) if animated_amount else {}
-    levels = ":".join(f"{name}={number(value)}" for name, value in _sharpen_levels(float(effect["amount"])).items())
+    commands = (
+        _sharpen_commands(expression(effect, "amount", clock("(N-1)", offset)))
+        if animated_amount
+        else {}
+    )
+    levels = ":".join(
+        f"{name}={number(value)}"
+        for name, value in _sharpen_levels(float(effect["amount"])).items()
+    )
     sigma = number(SHARPEN_SIGMA)
-    graph.append(f"[{current}]format=gbrap16le,premultiply=inplace=1:planes=7,split=3[{label}a][{label}b][{label}c]")
-    graph.append(f"[{label}b]gblur=sigma={sigma}:sigmaV={sigma}:steps={GAUSS_STEPS}:planes=7[{label}soft]")
+    graph.append(
+        f"[{current}]format=gbrap16le,premultiply=inplace=1:planes=7,split=3[{label}a][{label}b][{label}c]"
+    )
+    graph.append(
+        f"[{label}b]gblur=sigma={sigma}:sigmaV={sigma}:steps={GAUSS_STEPS}:planes=7[{label}soft]"
+    )
     graph.append(
         f"[{label}a][{label}soft]blend=c0_mode=grainextract:c1_mode=grainextract:c2_mode=grainextract[{label}detail]"
     )
-    graph.append(f"[{label}detail]{_automation(target, commands)}{target}={levels}[{label}gain]")
+    graph.append(
+        f"[{label}detail]{_automation(target, commands)}{target}={levels}[{label}gain]"
+    )
     graph.append(
         f"[{label}c][{label}gain]blend=c0_mode=grainmerge:c1_mode=grainmerge:c2_mode=grainmerge,"
         f"unpremultiply=inplace=1:planes=7,format=gbrap[{label}]"
@@ -374,7 +516,7 @@ def _sharpen(
     return label
 
 
-Effect = Callable[[list[str], str, Mapping[str, Any], str, int, Canvas], str]
+Effect = Callable[[list[str], str, Mapping[str, Any], str, _EffectFrame], str]
 _EFFECTS: Mapping[str, Effect] = {
     "color": _color,
     "blur": _blur,
@@ -389,16 +531,24 @@ _EFFECTS: Mapping[str, Effect] = {
 
 
 def append_effect_stack(
-    graph: list[str], current: str, stack: Sequence[Mapping[str, Any]], index: int, offset: int, canvas: Canvas
+    graph: list[str],
+    current: str,
+    stack: Sequence[Mapping[str, Any]],
+    index: int,
+    *position: Any,
+    **geometry: Any,
 ) -> str:
     """At most eight effects per clip; disabled and identity effects allocate no filters."""
+    timing = _EffectFrame(*position, **geometry)
     for order, effect in enumerate(stack):
         if not effect["enabled"]:
             continue
         compile_effect = _EFFECTS.get(effect["kind"])
         if compile_effect is None:
             raise ComponentError("INVALID_ARGUMENT", "時間軸效果種類不支援")
-        current = compile_effect(graph, current, effect, f"effect{index}_{order}", offset, canvas)
+        current = compile_effect(
+            graph, current, effect, f"effect{index}_{order}", timing
+        )
     return current
 
 
@@ -420,13 +570,20 @@ def mask_luma(mask: Mapping[str, Any], frame: str = "N") -> str:
 
 
 def append_mask(
-    graph: list[str], current: str, mask: Mapping[str, Any] | None, label: str, offset: int, canvas: Canvas
+    graph: list[str],
+    current: str,
+    mask: Mapping[str, Any] | None,
+    label: str,
+    *position: Any,
+    **geometry: Any,
 ) -> str:
     """Multiply a shape into the alpha of a clip.
 
     The shape is one grey plane: computed once when it does not move, per frame when it is keyed.
     Colour planes are never touched (the earlier per-pixel copy of red, green and blue is gone).
     """
+    timing = _EffectFrame(*position, **geometry)
+    offset, canvas = timing.offset, timing.canvas
     if mask is None:
         return current
     if animated(mask):
@@ -446,11 +603,8 @@ def append_blend(
     base: int,
     placed: str,
     mode: str,
-    start: int,
-    end: int,
-    *,
-    background: str | None = None,
-    padded: bool = False,
+    *extent: Any,
+    **options: Any,
 ) -> None:
     """Blend RGB against the opaque accumulated canvas, then apply source coverage.
 
@@ -461,7 +615,9 @@ def append_blend(
     ``background`` names the canvas when it is not ``base{base}`` (an adjustment layer split it to read it);
     ``padded`` says the layer already starts at the segment's first frame with a transparent lead-in.
     """
-    background = background or f"base{base}"
+    span = _BlendSpan(*extent, **options)
+    start, end, padded = span.start, span.end, span.padded
+    background = span.background or f"base{base}"
     layer = placed
     if mode != "normal":
         blend = {"multiply": "multiply", "screen": "screen", "add": "addition"}[mode]
@@ -469,7 +625,11 @@ def append_blend(
         # Pad transparent lead-in before splitting so both framesync branches start
         # together; a late overlay must not queue the full background prefix.
         aligned = f"{tag}aligned"
-        lead = "" if padded else f",setpts=PTS-STARTPTS,tpad=start_mode=add:start={start}:color=black@0"
+        lead = (
+            ""
+            if padded
+            else f",setpts=PTS-STARTPTS,tpad=start_mode=add:start={start}:color=black@0"
+        )
         graph.append(f"[{placed}]format=gbrap{lead}[{aligned}]")
         graph.append(f"[{background}]split=2[{tag}background][{tag}backdrop]")
         graph.append(f"[{tag}backdrop]format=gbrp[{tag}backrgb]")
@@ -482,12 +642,18 @@ def append_blend(
             # before the alpha plane is dropped, which silently removed the clip's opacity from this blend.
             graph.append(f"[{tag}coverage]alphaextract,format=gbrp[{tag}alpha]")
             graph.append(f"[{tag}source]format=gbrp[{tag}straight]")
-            graph.append(f"[{tag}straight][{tag}alpha]blend=all_mode=multiply[{tag}rgb]")
-            graph.append(f"[{tag}rgb][{tag}backrgb]blend=all_mode=addition:shortest=1:repeatlast=0[{tag}layer]")
+            graph.append(
+                f"[{tag}straight][{tag}alpha]blend=all_mode=multiply[{tag}rgb]"
+            )
+            graph.append(
+                f"[{tag}rgb][{tag}backrgb]blend=all_mode=addition:shortest=1:repeatlast=0[{tag}layer]"
+            )
         else:
             graph.append(f"[{tag}coverage]alphaextract[{tag}alpha]")
             graph.append(f"[{tag}source]format=gbrp[{tag}rgb]")
-            graph.append(f"[{tag}rgb][{tag}backrgb]blend=all_mode={blend}:shortest=1:repeatlast=0[{tag}mixed]")
+            graph.append(
+                f"[{tag}rgb][{tag}backrgb]blend=all_mode={blend}:shortest=1:repeatlast=0[{tag}mixed]"
+            )
             graph.append(f"[{tag}mixed][{tag}alpha]alphamerge[{tag}layer]")
         background, layer = f"{tag}background", f"{tag}layer"
     graph.append(

@@ -51,7 +51,7 @@ export function editCommand(
     const index = clips.findIndex((item) => item.clip_id === clip.clip_id);
     const left = edge === "in" ? clips[index - 1] : clip;
     const right = edge === "out" ? clips[index + 1] : clip;
-    if (!left || !right || clipEnd(left) - (activeTransition(left.effects)?.frames ?? 0) !== right.start_frame) {
+    if (!left || clipEnd(left) - (activeTransition(left.effects)?.frames ?? 0) !== right?.start_frame) {
       return { ok: false, error: t("滾動編輯需要同軌且緊鄰的兩個片段") };
     }
     return { ok: true, value: { type: "roll", leftId: left.clip_id, rightId: right.clip_id, delta, linked } };
@@ -183,5 +183,5 @@ export function adjacentEditPoint(timeline: StudioTimeline, trackIds: ReadonlySe
 /** The label of a track in its kind: V1, V2… / A1, A2… (its position, not the name the user gave it). */
 export function trackLabel(track: TimelineTrack, tracks: readonly TimelineTrack[]): string {
   const index = tracks.filter((item) => item.kind === track.kind).findIndex((item) => item.track_id === track.track_id);
-  return `${track.kind === "video" ? "V" : "A"}${index + 1}`;
+  return `${track.kind === "video" ? "V" : "A"}${String(index + 1)}`;
 }

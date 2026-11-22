@@ -1,3 +1,4 @@
+import { isNonzeroNumber } from "@/lib/json";
 // The cut a transition sits on, the way Premiere places one: on the edit point between two clips, centred on it,
 // starting at it or ending at it (its alignment), covered by the two clips' own frames beyond the cut. The outgoing
 // clip runs on after the cut and the incoming clip starts before it, each first from its hidden output, then from the
@@ -93,10 +94,9 @@ function withEffects(clip: TimelineClip, effects: MediaClipEffects): TimelineCli
 /** The hold at one edge changed by `frames` (negative gives frames back); an edge back at 0, and then an empty hold, go. */
 function withHold(clip: TimelineClip, edge: "start" | "end", frames: number): TimelineClip {
   const effects: MediaClipEffects = { ...clip.effects };
-  const hold = { ...effects.hold };
-  const held = (hold[edge] ?? 0) + frames;
-  if (held > 0) hold[edge] = held;
-  else delete hold[edge];
+  const { [edge]: previous, ...others } = effects.hold ?? {};
+  const held = (previous ?? 0) + frames;
+  const hold = held > 0 ? { ...others, [edge]: held } : others;
   if (Object.keys(hold).length > 0) effects.hold = hold;
   else delete effects.hold;
   return withEffects(clip, effects);
@@ -132,7 +132,7 @@ function keyLists(clip: TimelineClip): (TimelineKeyframe[] | undefined)[] {
 
 /** Whether the keys, the title, the fades and the impact frames of a clip still fit a clock of `complete` frames. */
 function fitsClock(clip: TimelineClip, complete: number): boolean {
-  if (keyLists(clip).some((keys) => keys?.some((key) => key.frame > complete))) return false;
+  if (keyLists(clip).some((keys) => Boolean(keys?.some((key) => key.frame > complete)))) return false;
   const fx = clip.effects;
   const title = fx?.title;
   if (title && (title.start_frame >= complete || (title.end_frame !== null && title.end_frame > complete))) return false;
@@ -146,7 +146,7 @@ function fitsClock(clip: TimelineClip, complete: number): boolean {
  * always covers the whole layer (the edit sets it so again), so it does not count.
  */
 function fitsShift(clip: TimelineClip, frames: number, text: boolean): boolean {
-  if (keyLists(clip).some((keys) => keys?.some((key) => key.frame < frames))) return false;
+  if (keyLists(clip).some((keys) => Boolean(keys?.some((key) => key.frame < frames)))) return false;
   return text || (clip.effects?.title?.start_frame ?? frames) >= frames;
 }
 
@@ -167,7 +167,7 @@ export function extendTail(clip: TimelineClip, frames: number, source: TimelineS
   let rest = frames - Math.min(frames, complete - end);
   let value = clip;
   let extended = 0;
-  if (rest > 0 && !endAnchored(clip) && !clip.effects?.hold?.end) {
+  if (rest > 0 && !endAnchored(clip) && !isNonzeroNumber(clip.effects?.hold?.end)) {
     extended = wholeFrames(clip, rest, source ? source.duration_frames - clip.out_frame : 0, false);
     value = { ...value, out_frame: value.out_frame + (extended * speedOf(clip)) / 100 };
     rest -= extended;
@@ -194,7 +194,7 @@ export function extendHead(clip: TimelineClip, frames: number, source: TimelineS
   let rest = frames - shown;
   let value = clip;
   let extended = 0;
-  if (rest > 0 && !startAnchored(clip) && !clip.effects?.hold?.start) {
+  if (rest > 0 && !startAnchored(clip) && !isNonzeroNumber(clip.effects?.hold?.start)) {
     // A text layer has no source frames: any frame of it is the same layer
     extended = wholeFrames(clip, rest, source?.kind === "text" ? null : clip.in_frame, true);
     value = { ...value, in_frame: value.in_frame - (extended * speedOf(clip)) / 100 };
@@ -227,7 +227,7 @@ export function retractTail(clip: TimelineClip, side: TransitionSide): TimelineR
       value = withHold(value, "end", -thaw);
       complete -= thaw;
     }
-    if (side.source > 0 && !value.effects?.hold?.end) {
+    if (side.source > 0 && !isNonzeroNumber(value.effects?.hold?.end)) {
       const given = wholeFrames(value, Math.min(side.source, complete - cut), null, false);
       if (given > 0 && fitsClock(value, complete - given)) {
         value = { ...value, out_frame: value.out_frame - (given * speedOf(value)) / 100 };
@@ -257,7 +257,7 @@ export function retractHead(clip: TimelineClip, side: TransitionSide, source: Ti
       value = withHold(value, "start", -thaw);
       removed = thaw;
     }
-    if (side.source > 0 && !value.effects?.hold?.start) {
+    if (side.source > 0 && !isNonzeroNumber(value.effects?.hold?.start)) {
       const given = wholeFrames(value, Math.min(side.source, cut - removed), null, true);
       if (given > 0 && fitsShift(value, removed + given, text)) {
         value = { ...value, in_frame: value.in_frame + (given * speedOf(value)) / 100 };

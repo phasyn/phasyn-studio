@@ -35,7 +35,7 @@ export function EffectsBrowser() {
   // Every item is tried on a copy of the timeline. That follows the document a beat behind, so an edit never waits for it
   const snapshot = useDeferredValue(timeline);
   const availability = useMemo(() => {
-    if (problem) {
+    if (problem != null && problem !== "") {
       const blocked: EffectAvailability = { reason: problem, applied: false, clipName: null };
       return new Map(EFFECT_ITEMS.map((item) => [item.id, blocked]));
     }
@@ -90,7 +90,7 @@ export function EffectsBrowser() {
     });
   };
   const apply = (item: EffectItem) => {
-    if (problem) editor.warn(problem);
+    if (problem != null && problem !== "") editor.warn(problem);
     else if (item.lands === "cut" || editor.selected.length === 0) applyPlan(item);
     else applyToSelection(item);
   };
@@ -107,7 +107,7 @@ export function EffectsBrowser() {
             aria-label={t("搜尋效果")}
             placeholder={t("搜尋效果")}
             className="pl-8"
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => { setQuery(event.target.value); }}
             onKeyDown={(event) => {
               if (event.key !== "Escape" || query === "") return;
               event.preventDefault();
@@ -133,7 +133,7 @@ export function EffectsBrowser() {
             icon={<Search />}
             title={t("沒有符合的效果")}
             action={
-              <Button size="sm" onClick={() => setQuery("")}>
+              <Button size="sm" onClick={() => { setQuery(""); }}>
                 {t("清除搜尋")}
               </Button>
             }

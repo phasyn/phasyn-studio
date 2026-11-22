@@ -1,11 +1,11 @@
-"""裝置與主機取樣。
+"""裝置與主機取樣.
 
 每個使用中的裝置只有一個 sampler 執行緒（``sample_id`` 可關聯多個 recording，不會把同一張卡的用量
 重複算成多份）。load 或 call 進行中時把樣本掛到該 recording 的 Node 端 Recorder：
 
 - GPU（``pynvml``）：nvml_device_used/total_bytes、nvml_process_used_bytes、device_utilization_pct、
   memory_utilization_pct、device_power_w、device_temperature_c、device_sm_clock_mhz（quality sampled）。
-  NVML 不存在／錯誤／欄位不支援（例如整合記憶體（UMA）裝置沒有獨立顯存總量）→ value null 並附原因，絕不填 0，
+  NVML 不存在/錯誤/欄位不支援（例如整合記憶體（UMA）裝置沒有獨立顯存總量）→ value null 並附原因，絕不填 0，
   也不影響呼叫。CPU 裝置的 GPU 指標為 not_applicable。
 - 主機（``psutil``）：host_rss_current_bytes（元件程序 PID）、host_available_bytes、host_swap_used_bytes。
 """
@@ -20,12 +20,14 @@ import threading
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass
+from importlib import import_module
 from typing import Any
 
 import psutil
 from phasyn_components.errors import exception_message
 from phasyn_components.recorder import Recorder
 from phasyn_components.recorder.metrics import metric, not_applicable, unavailable
+
 
 log = logging.getLogger("phasyn_node.sampler")
 
@@ -50,10 +52,11 @@ def _nvml_reason(exc: BaseException) -> str:
 
 
 class NvmlDevice:
-    """單一 CUDA 裝置的 NVML handle（在 sampler 執行緒內建立與使用）。"""
+    """單一 CUDA 裝置的 NVML handle（在 sampler 執行緒內建立與使用）."""
 
     def __init__(self, device_id: str) -> None:
-        import pynvml
+        """Open an NVML session for the configured device."""
+        pynvml = import_module("pynvml")
 
         self._nv: Any = pynvml
         pynvml.nvmlInit()
@@ -67,16 +70,33 @@ class NvmlDevice:
                 pynvml.nvmlShutdown()
             raise
 
+    def physical_id(self) -> str:
+        """Identify the CUDA device consistently across local node processes."""
+        identifier = self._nv.nvmlDeviceGetUUID(self._handle)
+        return (
+            identifier.decode("ascii")
+            if isinstance(identifier, bytes)
+            else str(identifier)
+        )
+
     def close(self) -> None:
+        """Release the device's NVML session."""
         with contextlib.suppress(Exception):
             self._nv.nvmlShutdown()
 
     def _field(
-        self, name: str, fn: Any, out: dict[str, dict[str, Any]], *, scale: float = 1.0, integer: bool = False
+        self,
+        name: str,
+        fn: Any,
+        out: dict[str, dict[str, Any]],
+        *,
+        scale: float = 1.0,
+        integer: bool = False,
     ) -> None:
         try:
             raw = fn()
         except Exception as exc:
+            log.debug("Sensor reading unavailable", exc_info=True)
             out[name] = unavailable(name, _nvml_reason(exc))
             return
         if raw is None:
@@ -88,36 +108,66 @@ class NvmlDevice:
         out[name] = metric(name, value, quality="sampled")
 
     def device_metrics(self) -> dict[str, dict[str, Any]]:
+        """Collect the supported NVML device measurements."""
         nv, h = self._nv, self._handle
         out: dict[str, dict[str, Any]] = {}
         try:
             mem = nv.nvmlDeviceGetMemoryInfo(h)
-            out["nvml_device_used_bytes"] = metric("nvml_device_used_bytes", int(mem.used), quality="sampled")
-            out["nvml_device_total_bytes"] = metric("nvml_device_total_bytes", int(mem.total), quality="sampled")
+            out["nvml_device_used_bytes"] = metric(
+                "nvml_device_used_bytes", int(mem.used), quality="sampled"
+            )
+            out["nvml_device_total_bytes"] = metric(
+                "nvml_device_total_bytes", int(mem.total), quality="sampled"
+            )
         except Exception as exc:
+            log.debug("Sensor reading unavailable", exc_info=True)
             reason = _nvml_reason(exc)
-            out["nvml_device_used_bytes"] = unavailable("nvml_device_used_bytes", reason)
-            out["nvml_device_total_bytes"] = unavailable("nvml_device_total_bytes", reason)
+            out["nvml_device_used_bytes"] = unavailable(
+                "nvml_device_used_bytes", reason
+            )
+            out["nvml_device_total_bytes"] = unavailable(
+                "nvml_device_total_bytes", reason
+            )
         try:
             util = nv.nvmlDeviceGetUtilizationRates(h)
-            out["device_utilization_pct"] = metric("device_utilization_pct", float(util.gpu), quality="sampled")
-            out["memory_utilization_pct"] = metric("memory_utilization_pct", float(util.memory), quality="sampled")
+            out["device_utilization_pct"] = metric(
+                "device_utilization_pct", float(util.gpu), quality="sampled"
+            )
+            out["memory_utilization_pct"] = metric(
+                "memory_utilization_pct", float(util.memory), quality="sampled"
+            )
         except Exception as exc:
+            log.debug("Sensor reading unavailable", exc_info=True)
             reason = _nvml_reason(exc)
-            out["device_utilization_pct"] = unavailable("device_utilization_pct", reason)
-            out["memory_utilization_pct"] = unavailable("memory_utilization_pct", reason)
-        self._field("device_power_w", lambda: nv.nvmlDeviceGetPowerUsage(h), out, scale=0.001)
-        self._field("device_temperature_c", lambda: nv.nvmlDeviceGetTemperature(h, nv.NVML_TEMPERATURE_GPU), out)
-        self._field("device_sm_clock_mhz", lambda: nv.nvmlDeviceGetClockInfo(h, nv.NVML_CLOCK_SM), out)
+            out["device_utilization_pct"] = unavailable(
+                "device_utilization_pct", reason
+            )
+            out["memory_utilization_pct"] = unavailable(
+                "memory_utilization_pct", reason
+            )
+        self._field(
+            "device_power_w", lambda: nv.nvmlDeviceGetPowerUsage(h), out, scale=0.001
+        )
+        self._field(
+            "device_temperature_c",
+            lambda: nv.nvmlDeviceGetTemperature(h, nv.NVML_TEMPERATURE_GPU),
+            out,
+        )
+        self._field(
+            "device_sm_clock_mhz",
+            lambda: nv.nvmlDeviceGetClockInfo(h, nv.NVML_CLOCK_SM),
+            out,
+        )
         return out
 
     def process_used(self, pids: set[int]) -> tuple[dict[int, int], str | None]:
-        """回傳 {pid: bytes}；整體查詢失敗時回傳原因。"""
+        """回傳 {pid: bytes}；整體查詢失敗時回傳原因."""
         nv, h = self._nv, self._handle
         found: dict[int, int] = {}
         try:
             procs = list(nv.nvmlDeviceGetComputeRunningProcesses(h))
         except Exception as exc:
+            log.debug("Sensor reading unavailable", exc_info=True)
             return found, _nvml_reason(exc)
         for p in procs:
             pid = int(getattr(p, "pid", -1))
@@ -135,35 +185,55 @@ class _Subscription:
 
 
 def host_metrics() -> dict[str, dict[str, Any]]:
+    """Collect host memory measurements and their evidence."""
     out: dict[str, dict[str, Any]] = {}
     try:
         out["host_available_bytes"] = metric(
-            "host_available_bytes", int(psutil.virtual_memory().available), quality="sampled"
+            "host_available_bytes",
+            int(psutil.virtual_memory().available),
+            quality="sampled",
         )
     except Exception as exc:
-        out["host_available_bytes"] = unavailable("host_available_bytes", f"psutil 查詢失敗：{exception_message(exc)}")
+        log.debug("Sensor reading unavailable", exc_info=True)
+        out["host_available_bytes"] = unavailable(
+            "host_available_bytes", f"psutil 查詢失敗：{exception_message(exc)}"
+        )
     try:
-        out["host_swap_used_bytes"] = metric("host_swap_used_bytes", int(psutil.swap_memory().used), quality="sampled")
+        out["host_swap_used_bytes"] = metric(
+            "host_swap_used_bytes", int(psutil.swap_memory().used), quality="sampled"
+        )
     except Exception as exc:
-        out["host_swap_used_bytes"] = unavailable("host_swap_used_bytes", f"psutil 查詢失敗：{exception_message(exc)}")
+        log.debug("Sensor reading unavailable", exc_info=True)
+        out["host_swap_used_bytes"] = unavailable(
+            "host_swap_used_bytes", f"psutil 查詢失敗：{exception_message(exc)}"
+        )
     return out
 
 
 def process_rss(pid: int | None) -> dict[str, Any]:
+    """Measure the resident memory of the given process."""
     if pid is None:
         return unavailable("host_rss_current_bytes", "沒有元件程序 PID")
     try:
-        return metric("host_rss_current_bytes", int(psutil.Process(pid).memory_info().rss), quality="sampled")
+        return metric(
+            "host_rss_current_bytes",
+            int(psutil.Process(pid).memory_info().rss),
+            quality="sampled",
+        )
     except psutil.NoSuchProcess:
         return unavailable("host_rss_current_bytes", "元件程序已結束")
     except Exception as exc:
-        return unavailable("host_rss_current_bytes", f"psutil 查詢失敗：{exception_message(exc)}")
+        log.debug("Sensor reading unavailable", exc_info=True)
+        return unavailable(
+            "host_rss_current_bytes", f"psutil 查詢失敗：{exception_message(exc)}"
+        )
 
 
 class DeviceSampler:
-    """一個裝置一條執行緒；只有在有訂閱（load／call 進行中）時才運作。"""
+    """一個裝置一條執行緒；只有在有訂閱（load/call 進行中）時才運作."""
 
     def __init__(self, hub: SamplerHub, device: Mapping[str, Any]) -> None:
+        """Prepare the sampling thread for one device."""
         self.hub = hub
         self.kind = str(device.get("kind") or "cpu")
         self.device_id = str(device.get("id") or "cpu")
@@ -177,20 +247,25 @@ class DeviceSampler:
         self._tag = _SAFE_ID.sub("-", self.key).strip("-") or "device"
 
     def add(self, sub: _Subscription) -> None:
+        """Register the subscriber with this device sampler."""
         with self._lock:
             self._subs[sub.token] = sub
             if self._thread is None or not self._thread.is_alive():
                 self._stop.clear()
-                self._thread = threading.Thread(target=self._loop, name=f"sampler-{self._tag}", daemon=True)
+                self._thread = threading.Thread(
+                    target=self._loop, name=f"sampler-{self._tag}", daemon=True
+                )
                 self._thread.start()
             else:
-                self._wake.set()  # 新的 load／call 立即取第一個樣本，不等下一個週期
+                self._wake.set()  # 新的 load/call 立即取第一個樣本，不等下一個週期
 
     def remove(self, token: int) -> None:
+        """Remove a subscription from the device sampler."""
         with self._lock:
             self._subs.pop(token, None)
 
     def stop(self, timeout: float = 2.0) -> None:
+        """Stop the device sampling thread."""
         self._stop.set()
         self._wake.set()
         thread = self._thread
@@ -204,8 +279,15 @@ class DeviceSampler:
             try:
                 nvml = NvmlDevice(self.device_id)
             except Exception as exc:
-                nvml_error = f"NVML 無法使用：{type(exc).__name__}: {exception_message(exc)}"[:500]
-                log.info("裝置 %s 的 NVML 取樣不可用（只影響觀測）：%s", self.key, nvml_error)
+                log.debug("Sensor reading unavailable", exc_info=True)
+                nvml_error = (
+                    f"NVML 無法使用：{type(exc).__name__}: {exception_message(exc)}"[
+                        :500
+                    ]
+                )
+                log.info(
+                    "裝置 %s 的 NVML 取樣不可用（只影響觀測）：%s", self.key, nvml_error
+                )
         try:
             while not self._stop.is_set():
                 with self._lock:
@@ -226,7 +308,9 @@ class DeviceSampler:
             if nvml is not None:
                 nvml.close()
 
-    def _sample_once(self, subs: list[_Subscription], nvml: NvmlDevice | None, nvml_error: str | None) -> None:
+    def _sample_once(
+        self, subs: list[_Subscription], nvml: NvmlDevice | None, nvml_error: str | None
+    ) -> None:
         sample_id = f"smp-{self._tag}-{next(self._counter)}"
         shared = host_metrics()
         per_pid: dict[int, int] = {}
@@ -234,7 +318,9 @@ class DeviceSampler:
         if self.kind == "cuda":
             if nvml is not None:
                 shared.update(nvml.device_metrics())
-                per_pid, pid_reason = nvml.process_used({s.pid for s in subs if s.pid is not None})
+                per_pid, pid_reason = nvml.process_used(
+                    {s.pid for s in subs if s.pid is not None}
+                )
             else:
                 for name in GPU_METRICS:
                     shared[name] = unavailable(name, nvml_error or "NVML 無法使用")
@@ -256,11 +342,19 @@ class DeviceSampler:
                         or "NVML 未列出此 PID（可能尚未建立 CUDA context，或裝置不支援 per-process 查詢）；不以 device used 代替",
                     )
             with contextlib.suppress(Exception):
-                sub.recorder.sample(sample_id, device_id=self.device_id, process_id=sub.pid, metrics=metrics)
+                sub.recorder.sample(
+                    sample_id,
+                    device_id=self.device_id,
+                    process_id=sub.pid,
+                    metrics=metrics,
+                )
 
 
 class SamplerHub:
+    """Share device sampling across active subscribers."""
+
     def __init__(self, *, hz: float) -> None:
+        """Initialize the shared sampling registry."""
         self.hz = float(hz)
         self.interval_s = 1.0 / self.hz if self.hz > 0 else 0.0
         self._lock = threading.Lock()
@@ -270,11 +364,17 @@ class SamplerHub:
 
     @property
     def enabled(self) -> bool:
+        """Report whether this node collects device samples."""
         return self.hz > 0
 
-    def subscribe(self, device: Mapping[str, Any], recorder: Recorder, pid: int | None) -> int | None:
-        """把這個 recording 掛到裝置 sampler；recording 的 device_sample_hz=0 時不掛。"""
-        if not self.enabled or float(recorder.config.get("device_sample_hz", 2) or 0) <= 0:
+    def subscribe(
+        self, device: Mapping[str, Any], recorder: Recorder, pid: int | None
+    ) -> int | None:
+        """把這個 recording 掛到裝置 sampler；recording 的 device_sample_hz=0 時不掛."""
+        if (
+            not self.enabled
+            or float(recorder.config.get("device_sample_hz", 2) or 0) <= 0
+        ):
             return None
         key = f"{device.get('kind') or 'cpu'}:{device.get('id') or 'cpu'}"
         with self._lock:
@@ -288,6 +388,7 @@ class SamplerHub:
         return token
 
     def unsubscribe(self, token: int | None) -> None:
+        """Remove the indicated subscription from the hub."""
         if token is None:
             return
         with self._lock:
@@ -296,6 +397,7 @@ class SamplerHub:
             sampler.remove(token)
 
     def stop(self) -> None:
+        """Stop all device sampling threads."""
         with self._lock:
             samplers = list(self._devices.values())
             self._index.clear()
@@ -304,4 +406,11 @@ class SamplerHub:
             sampler.stop(timeout=max(0.1, deadline - time.monotonic()))
 
 
-__all__ = ["GPU_METRICS", "DeviceSampler", "NvmlDevice", "SamplerHub", "host_metrics", "process_rss"]
+__all__ = [
+    "GPU_METRICS",
+    "DeviceSampler",
+    "NvmlDevice",
+    "SamplerHub",
+    "host_metrics",
+    "process_rss",
+]

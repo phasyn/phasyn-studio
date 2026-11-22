@@ -31,10 +31,23 @@ from ctypes import (
     c_void_p,
 )
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any, ClassVar
 
 from .model import TextFailure
 from .native import bind, load
+
+
+if TYPE_CHECKING:
+    from _ctypes import _CDataType
+    from collections.abc import Sequence
+
+    type _NativeFields = Sequence[
+        tuple[str, type[_CDataType]] | tuple[str, type[_CDataType], int]
+    ]
+
+
+_FIXED_POINT_ONE = 0x10000
+
 
 SONAME = "libfreetype.so.6"
 # Unhinted outlines at their exact scale; embedded bitmap strikes are never used.
@@ -47,30 +60,44 @@ _PIXEL_MODE_GRAY = 2
 _STROKER_LINECAP_ROUND = 1
 _STROKER_LINEJOIN_ROUND = 0
 _ERR_INVALID_ARGUMENT = 0x06
-_MAX_OUTLINE_ITEMS = 32767  # n_points and n_contours were signed 16-bit before FreeType 2.13.3
+_MAX_OUTLINE_ITEMS = (
+    32767  # n_points and n_contours were signed 16-bit before FreeType 2.13.3
+)
 _MAX_BITMAP_BYTES = 1 << 28
 
 FaceHandle = Any  # FT_Face as a ctypes pointer to FaceRec
 
 
 class Vector(Structure):
-    _fields_ = (("x", c_long), ("y", c_long))
+    """FreeType vector in the native ABI coordinate representation."""
+
+    _fields_: ClassVar[_NativeFields] = (("x", c_long), ("y", c_long))
 
 
 class _BBox(Structure):
-    _fields_ = (("x_min", c_long), ("y_min", c_long), ("x_max", c_long), ("y_max", c_long))
+    _fields_: ClassVar[_NativeFields] = (
+        ("x_min", c_long),
+        ("y_min", c_long),
+        ("x_max", c_long),
+        ("y_max", c_long),
+    )
 
 
 class _Matrix(Structure):
-    _fields_ = (("xx", c_long), ("xy", c_long), ("yx", c_long), ("yy", c_long))
+    _fields_: ClassVar[_NativeFields] = (
+        ("xx", c_long),
+        ("xy", c_long),
+        ("yx", c_long),
+        ("yy", c_long),
+    )
 
 
 class _Generic(Structure):
-    _fields_ = (("data", c_void_p), ("finalizer", c_void_p))
+    _fields_: ClassVar[_NativeFields] = (("data", c_void_p), ("finalizer", c_void_p))
 
 
 class _Bitmap(Structure):
-    _fields_ = (
+    _fields_: ClassVar[_NativeFields] = (
         ("rows", c_uint),
         ("width", c_uint),
         ("pitch", c_int),
@@ -85,7 +112,7 @@ class _Bitmap(Structure):
 class Outline(Structure):
     """``FT_Outline``; the two counts are unsigned since FreeType 2.13.3 and never exceed 32767 here."""
 
-    _fields_ = (
+    _fields_: ClassVar[_NativeFields] = (
         ("n_contours", c_ushort),
         ("n_points", c_ushort),
         ("points", POINTER(Vector)),
@@ -96,7 +123,7 @@ class Outline(Structure):
 
 
 class _GlyphMetrics(Structure):
-    _fields_ = (
+    _fields_: ClassVar[_NativeFields] = (
         ("width", c_long),
         ("height", c_long),
         ("hori_bearing_x", c_long),
@@ -111,7 +138,7 @@ class _GlyphMetrics(Structure):
 class GlyphSlotRec(Structure):
     """``FT_GlyphSlotRec`` up to ``outline``."""
 
-    _fields_ = (
+    _fields_: ClassVar[_NativeFields] = (
         ("library", c_void_p),
         ("face", c_void_p),
         ("next", c_void_p),
@@ -130,13 +157,18 @@ class GlyphSlotRec(Structure):
 
 
 class _CharMapRec(Structure):
-    _fields_ = (("face", c_void_p), ("encoding", c_uint), ("platform_id", c_ushort), ("encoding_id", c_ushort))
+    _fields_: ClassVar[_NativeFields] = (
+        ("face", c_void_p),
+        ("encoding", c_uint),
+        ("platform_id", c_ushort),
+        ("encoding_id", c_ushort),
+    )
 
 
 class FaceRec(Structure):
     """``FT_FaceRec`` up to ``charmap`` (the public part)."""
 
-    _fields_ = (
+    _fields_: ClassVar[_NativeFields] = (
         ("num_faces", c_long),
         ("face_index", c_long),
         ("face_flags", c_long),
@@ -165,7 +197,7 @@ class FaceRec(Structure):
 
 
 class _VarAxis(Structure):
-    _fields_ = (
+    _fields_: ClassVar[_NativeFields] = (
         ("name", c_char_p),
         ("minimum", c_long),
         ("default", c_long),
@@ -176,7 +208,7 @@ class _VarAxis(Structure):
 
 
 class _MMVar(Structure):
-    _fields_ = (
+    _fields_: ClassVar[_NativeFields] = (
         ("num_axis", c_uint),
         ("num_designs", c_uint),
         ("num_namedstyles", c_uint),
@@ -209,6 +241,7 @@ class StrokeOutline:
     """The outline of a stroke, in memory owned by Python."""
 
     def __init__(self, points: int, contours: int) -> None:
+        """Store the outline handle and its owning FreeType instance."""
         self._points = (Vector * points)()
         self._tags = (c_ubyte * points)()
         self._contours = (c_ushort * contours)()
@@ -223,52 +256,103 @@ class FreeType:
     """One FreeType library instance and one stroker; lives as long as the worker process."""
 
     def __init__(self) -> None:
+        """Load FreeType and initialize its native library handle."""
         lib = load(SONAME)
         outline = POINTER(Outline)
         face = POINTER(FaceRec)
         self._init = bind(lib, "FT_Init_FreeType", c_int, POINTER(c_void_p))
         self._done_library = bind(lib, "FT_Done_FreeType", c_int, c_void_p)
         self._library_version = bind(
-            lib, "FT_Library_Version", None, c_void_p, POINTER(c_int), POINTER(c_int), POINTER(c_int)
+            lib,
+            "FT_Library_Version",
+            None,
+            c_void_p,
+            POINTER(c_int),
+            POINTER(c_int),
+            POINTER(c_int),
         )
-        self._new_face = bind(lib, "FT_New_Face", c_int, c_void_p, c_char_p, c_long, POINTER(face))
+        self._new_face = bind(
+            lib, "FT_New_Face", c_int, c_void_p, c_char_p, c_long, POINTER(face)
+        )
         self._done_face = bind(lib, "FT_Done_Face", c_int, face)
-        self._set_char_size = bind(lib, "FT_Set_Char_Size", c_int, face, c_long, c_long, c_uint, c_uint)
+        self._set_char_size = bind(
+            lib, "FT_Set_Char_Size", c_int, face, c_long, c_long, c_uint, c_uint
+        )
         self._get_char_index = bind(lib, "FT_Get_Char_Index", c_uint, face, c_ulong)
         self._load_glyph = bind(lib, "FT_Load_Glyph", c_int, face, c_uint, c_int)
         self._load_sfnt_table = bind(
-            lib, "FT_Load_Sfnt_Table", c_int, face, c_ulong, c_long, c_char_p, POINTER(c_ulong)
+            lib,
+            "FT_Load_Sfnt_Table",
+            c_int,
+            face,
+            c_ulong,
+            c_long,
+            c_char_p,
+            POINTER(c_ulong),
         )
-        self._get_mm_var = bind(lib, "FT_Get_MM_Var", c_int, face, POINTER(POINTER(_MMVar)))
-        self._done_mm_var = bind(lib, "FT_Done_MM_Var", c_int, c_void_p, POINTER(_MMVar))
-        self._get_design = bind(lib, "FT_Get_Var_Design_Coordinates", c_int, face, c_uint, POINTER(c_long))
-        self._set_design = bind(lib, "FT_Set_Var_Design_Coordinates", c_int, face, c_uint, POINTER(c_long))
-        self._outline_embolden = bind(lib, "FT_Outline_Embolden", c_int, outline, c_long)
-        self._outline_transform = bind(lib, "FT_Outline_Transform", None, outline, POINTER(_Matrix))
-        self._outline_translate = bind(lib, "FT_Outline_Translate", None, outline, c_long, c_long)
-        self._outline_cbox = bind(lib, "FT_Outline_Get_CBox", None, outline, POINTER(_BBox))
-        self._outline_bitmap = bind(lib, "FT_Outline_Get_Bitmap", c_int, c_void_p, outline, POINTER(_Bitmap))
-        self._stroker_new = bind(lib, "FT_Stroker_New", c_int, c_void_p, POINTER(c_void_p))
-        self._stroker_set = bind(lib, "FT_Stroker_Set", None, c_void_p, c_long, c_int, c_int, c_long)
-        self._stroker_parse = bind(lib, "FT_Stroker_ParseOutline", c_int, c_void_p, outline, c_ubyte)
-        self._stroker_counts = bind(lib, "FT_Stroker_GetCounts", c_int, c_void_p, POINTER(c_uint), POINTER(c_uint))
+        self._get_mm_var = bind(
+            lib, "FT_Get_MM_Var", c_int, face, POINTER(POINTER(_MMVar))
+        )
+        self._done_mm_var = bind(
+            lib, "FT_Done_MM_Var", c_int, c_void_p, POINTER(_MMVar)
+        )
+        self._get_design = bind(
+            lib, "FT_Get_Var_Design_Coordinates", c_int, face, c_uint, POINTER(c_long)
+        )
+        self._set_design = bind(
+            lib, "FT_Set_Var_Design_Coordinates", c_int, face, c_uint, POINTER(c_long)
+        )
+        self._outline_embolden = bind(
+            lib, "FT_Outline_Embolden", c_int, outline, c_long
+        )
+        self._outline_transform = bind(
+            lib, "FT_Outline_Transform", None, outline, POINTER(_Matrix)
+        )
+        self._outline_translate = bind(
+            lib, "FT_Outline_Translate", None, outline, c_long, c_long
+        )
+        self._outline_cbox = bind(
+            lib, "FT_Outline_Get_CBox", None, outline, POINTER(_BBox)
+        )
+        self._outline_bitmap = bind(
+            lib, "FT_Outline_Get_Bitmap", c_int, c_void_p, outline, POINTER(_Bitmap)
+        )
+        self._stroker_new = bind(
+            lib, "FT_Stroker_New", c_int, c_void_p, POINTER(c_void_p)
+        )
+        self._stroker_set = bind(
+            lib, "FT_Stroker_Set", None, c_void_p, c_long, c_int, c_int, c_long
+        )
+        self._stroker_parse = bind(
+            lib, "FT_Stroker_ParseOutline", c_int, c_void_p, outline, c_ubyte
+        )
+        self._stroker_counts = bind(
+            lib,
+            "FT_Stroker_GetCounts",
+            c_int,
+            c_void_p,
+            POINTER(c_uint),
+            POINTER(c_uint),
+        )
         self._stroker_export = bind(lib, "FT_Stroker_Export", None, c_void_p, outline)
         self._stroker_done = bind(lib, "FT_Stroker_Done", None, c_void_p)
         self._library = c_void_p()
         self._stroker = c_void_p()
         self._check("FT_Init_FreeType", self._init(byref(self._library)))
         try:
-            self._check("FT_Stroker_New", self._stroker_new(self._library, byref(self._stroker)))
+            self._check(
+                "FT_Stroker_New", self._stroker_new(self._library, byref(self._stroker))
+            )
         except BaseException:
             self.close()
             raise
 
     def close(self) -> None:
         """Free the stroker and the library (which frees any face still open); idempotent."""
-        if self._stroker:
+        if self._stroker.value:
             self._stroker_done(self._stroker)
             self._stroker = c_void_p()
-        if self._library:
+        if self._library.value:
             self._done_library(self._library)
             self._library = c_void_p()
 
@@ -278,6 +362,7 @@ class FreeType:
             raise _failed(call, code)
 
     def version(self) -> str:
+        """Return the loaded native library version."""
         major, minor, patch = c_int(), c_int(), c_int()
         self._library_version(self._library, byref(major), byref(minor), byref(patch))
         return f"{major.value}.{minor.value}.{patch.value}"
@@ -295,7 +380,11 @@ class FreeType:
             return None
         record = face.contents
         charmap = record.charmap
-        if not record.face_flags & _FACE_FLAG_SCALABLE or not charmap or charmap.contents.encoding != _ENCODING_UNICODE:
+        if (
+            not record.face_flags & _FACE_FLAG_SCALABLE
+            or not charmap
+            or charmap.contents.encoding != _ENCODING_UNICODE
+        ):
             self.close_face(face)
             return None
         return face
@@ -306,6 +395,7 @@ class FreeType:
 
     @staticmethod
     def metrics(face: FaceHandle) -> FaceMetrics:
+        """Read ascent, descent, and line-height metrics from the active face."""
         record = face.contents
         return FaceMetrics(record.units_per_em, record.ascender, record.descender)
 
@@ -317,7 +407,9 @@ class FreeType:
         """The glyph of a character, 0 when the face has none."""
         return int(self._get_char_index(face, code))
 
-    def sfnt_table(self, face: FaceHandle, tag: bytes, offset: int, length: int) -> bytes | None:
+    def sfnt_table(
+        self, face: FaceHandle, tag: bytes, offset: int, length: int
+    ) -> bytes | None:
         """``length`` bytes of an SFNT table from ``offset``; ``None`` when there is no such table or it is shorter.
 
         FreeType checks a read against the font file only, not against the table, so the table's own
@@ -325,7 +417,10 @@ class FreeType:
         """
         name = int.from_bytes(tag, "big")
         table = c_ulong(0)
-        if self._load_sfnt_table(face, name, 0, None, byref(table)) != 0 or offset + length > table.value:
+        if (
+            self._load_sfnt_table(face, name, 0, None, byref(table)) != 0
+            or offset + length > table.value
+        ):
             return None
         buffer = ctypes.create_string_buffer(length)
         size = c_ulong(length)
@@ -333,20 +428,30 @@ class FreeType:
             return None
         return buffer.raw if size.value == length else None
 
-    def set_design_coordinates(self, face: FaceHandle, settings: Mapping[str, float]) -> None:
+    def set_design_coordinates(
+        self, face: FaceHandle, settings: Mapping[str, float]
+    ) -> None:
         """Move a variable face along the axes named in ``settings`` (four-letter tag -> design value)."""
         master = POINTER(_MMVar)()
         self._check("FT_Get_MM_Var", self._get_mm_var(face, byref(master)))
         try:
             count = master.contents.num_axis
             coordinates = (c_long * count)()
-            self._check("FT_Get_Var_Design_Coordinates", self._get_design(face, count, coordinates))
+            self._check(
+                "FT_Get_Var_Design_Coordinates",
+                self._get_design(face, count, coordinates),
+            )
             for position in range(count):
                 axis = master.contents.axis[position]
                 value = settings.get(axis.tag.to_bytes(4, "big").decode("latin-1"))
                 if value is not None:
-                    coordinates[position] = min(max(round(value * 65536), axis.minimum), axis.maximum)
-            self._check("FT_Set_Var_Design_Coordinates", self._set_design(face, count, coordinates))
+                    coordinates[position] = min(
+                        max(round(value * 65536), axis.minimum), axis.maximum
+                    )
+            self._check(
+                "FT_Set_Var_Design_Coordinates",
+                self._set_design(face, count, coordinates),
+            )
         finally:
             self._check("FT_Done_MM_Var", self._done_mm_var(self._library, master))
 
@@ -377,10 +482,18 @@ class FreeType:
 
     def stroke(self, outline: Outline, radius: int) -> StrokeOutline:
         """The outline of a round-joined pen of ``radius`` (26.6) drawn along every contour."""
-        self._stroker_set(self._stroker, radius, _STROKER_LINECAP_ROUND, _STROKER_LINEJOIN_ROUND, 0)
-        self._check("FT_Stroker_ParseOutline", self._stroker_parse(self._stroker, byref(outline), 0))
+        self._stroker_set(
+            self._stroker, radius, _STROKER_LINECAP_ROUND, _STROKER_LINEJOIN_ROUND, 0
+        )
+        self._check(
+            "FT_Stroker_ParseOutline",
+            self._stroker_parse(self._stroker, byref(outline), 0),
+        )
         points, contours = c_uint(), c_uint()
-        self._check("FT_Stroker_GetCounts", self._stroker_counts(self._stroker, byref(points), byref(contours)))
+        self._check(
+            "FT_Stroker_GetCounts",
+            self._stroker_counts(self._stroker, byref(points), byref(contours)),
+        )
         if points.value > _MAX_OUTLINE_ITEMS or contours.value > _MAX_OUTLINE_ITEMS:
             raise TextFailure("text_render_failed", "stroke outline too complex")
         stroke = StrokeOutline(points.value, contours.value)
@@ -389,7 +502,7 @@ class FreeType:
 
     def place(self, outline: Outline, x_scale: int, dx: int, dy: int) -> None:
         """Scale an outline horizontally by ``x_scale`` (16.16) about its origin, then move it by 26.6 offsets."""
-        if x_scale != 0x10000:
+        if x_scale != _FIXED_POINT_ONE:
             matrix = _Matrix(x_scale, 0, 0, 0x10000)
             self._outline_transform(byref(outline), byref(matrix))
         self._outline_translate(byref(outline), dx, dy)
@@ -410,5 +523,8 @@ class FreeType:
         buffer = (c_ubyte * (width * rows))()
         bitmap = _Bitmap(rows, width, width, buffer, 256, _PIXEL_MODE_GRAY, 0, None)
         self._outline_translate(byref(outline), -left * 64, -bottom * 64)
-        self._check("FT_Outline_Get_Bitmap", self._outline_bitmap(self._library, byref(outline), byref(bitmap)))
+        self._check(
+            "FT_Outline_Get_Bitmap",
+            self._outline_bitmap(self._library, byref(outline), byref(bitmap)),
+        )
         return Coverage(buffer, width, rows, left, bottom + rows)

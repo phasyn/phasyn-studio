@@ -44,7 +44,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from phasyn_h3.recipe.abi.stage import OutputFile, StageResult
 
@@ -63,6 +63,11 @@ from .common import StageRun, contributes_audio, task_of
 from .normalization import ensure_vae_arch, normalization_digest
 from .tensor_io import load_tensors, tensor_bytes, verified_payload
 
+
+_WAVEFORM_RANK = 2
+_STEREO_CHANNELS = 2
+
+
 REFERENCE_SCOPES = ("all", "visual", "audio")
 SCOPE_KEY = "reference_scope"
 ENCODE_SEED = 42  # the visual recipes' scoped seed (S/keyframe_encoding.py, S/reference_encoding.py)
@@ -73,7 +78,9 @@ def stage_scope(stage: Mapping[str, Any]) -> str:
     scope = str(stage.get(SCOPE_KEY) or "all")
     if scope not in REFERENCE_SCOPES:
         raise InvalidStageInput(
-            "REFERENCE_SCOPE", f"reference_scope={scope!r} 不合法（all／visual／audio）", field_path=SCOPE_KEY
+            "REFERENCE_SCOPE",
+            f"reference_scope={scope!r} 不合法（all／visual／audio）",
+            field_path=SCOPE_KEY,
         )
     return scope
 
@@ -98,7 +105,9 @@ def scoped_sources(
     return visual, audio, 0
 
 
-def image_block(m: Mapping[str, Any], *, index: int, kind: str, latent_h: int, latent_w: int) -> dict[str, Any]:
+def image_block(
+    m: Mapping[str, Any], *, index: int, kind: str, latent_h: int, latent_w: int
+) -> dict[str, Any]:
     """Block of a keyframe (``image.target_canvas``) or a reference image."""
     return {
         "kind": kind,
@@ -108,14 +117,20 @@ def image_block(m: Mapping[str, Any], *, index: int, kind: str, latent_h: int, l
         "latent_h": latent_h,
         "latent_w": latent_w,
         **(
-            {"frame_index": m["frame_index"], "resolved_frame_index": m["resolved_frame_index"]}
+            {
+                "frame_index": m["frame_index"],
+                "resolved_frame_index": m["resolved_frame_index"],
+            }
             if kind == "keyframe"
             else {}
         ),
     }
 
 
-def video_block(m: Mapping[str, Any], *, index: int, latent_t: int, latent_h: int, latent_w: int) -> dict[str, Any]:
+def video_block(
+    m: Mapping[str, Any], *, index: int, latent_t: int, latent_h: int, latent_w: int
+) -> dict[str, Any]:
+    """Build a conditioning block from the encoded video reference."""
     return {
         "kind": "video",
         "tensor": f"video_{index:02d}",
@@ -127,7 +142,10 @@ def video_block(m: Mapping[str, Any], *, index: int, latent_t: int, latent_h: in
     }
 
 
-def audio_block(m: Mapping[str, Any], *, index: int, ref_audio_t: int, duration_seconds: float) -> dict[str, Any]:
+def audio_block(
+    m: Mapping[str, Any], *, index: int, ref_audio_t: int, duration_seconds: float
+) -> dict[str, Any]:
+    """Build a conditioning block from the encoded audio reference."""
     return {
         "kind": "audio",
         "tensor": f"audio_{index:02d}",
@@ -151,7 +169,11 @@ def reference_metadata(
         "blocks": [dict(b) for b in blocks],
         # request order + chains: the DiT layout needs them (S/stages/denoising.py:250-323)
         "materials": [
-            {"material_index": m["material_index"], "material_chain": m["material_chain"], "role": m["role"]}
+            {
+                "material_index": m["material_index"],
+                "material_chain": m["material_chain"],
+                "role": m["role"],
+            }
             for m in materials
         ],
         "task": task,
@@ -181,7 +203,9 @@ def write_reference_bundle(
     """``references.payload.safetensors`` (tensors in name order) + its verified manifest."""
     decls = [d for d, _ in items]
     payload_path = output_dir / "references.payload.safetensors"
-    with SafetensorsStreamWriter(payload_path, decls, metadata=payload_metadata(metadata)) as writer:
+    with SafetensorsStreamWriter(
+        payload_path, decls, metadata=payload_metadata(metadata)
+    ) as writer:
         for decl, tensor in sorted(items, key=lambda item: item[0].name):
             writer.write(decl.name, to_bytes(tensor))
     return finalize_tensor_bundle(
@@ -196,32 +220,24 @@ def write_reference_bundle(
 
 
 def run(run: StageRun) -> StageResult:
-    import torch
-    from PIL import Image
-    from sglang.multimodal_gen.runtime.managers.forward_context import set_forward_context
-    from sglang.multimodal_gen.runtime.pipelines_core.stages.model_specific_stages.minimax_h3.keyframe_encoding import (
-        minimax_h3_encode_keyframe_cond_rows,
-        minimax_h3_scoped_encode_fp32,
-    )
-    from sglang.multimodal_gen.runtime.pipelines_core.stages.model_specific_stages.minimax_h3.packed_tokens import (
+    """Encode the requested audio and video references."""
+    from sglang.multimodal_gen.runtime.pipelines_core.stages.model_specific_stages.minimax_h3.packed_tokens import (  # type: ignore[import-untyped]
         minimax_h3_unpatchify_video_tokens,
-    )
-    from sglang.multimodal_gen.runtime.pipelines_core.stages.model_specific_stages.minimax_h3.reference_encoding import (
-        MINIMAX_H3_AUDIO_SAMPLE_RATE,
-        _audio_resampler,
-        _AudioVAEDeterminismContext,
-        minimax_h3_encode_reference_video_rows,
     )
 
     scope = stage_scope(run.stage)
-    streaming = vae_frame_streaming.stage_config(run.stage)  # None: the production video encode (default)
+    streaming = vae_frame_streaming.stage_config(
+        run.stage
+    )  # None: the production video encode (default)
     task = task_of(run.plan)
     prepared = run.read_json_input("prepared")
-    assert prepared is not None
+    if prepared is None:
+        raise RuntimeError("prepared is unavailable in this stage")
     materials = prepared.get("materials") or []
     if task == "t2va" or not materials:
         raise InvalidStageInput(
-            "NO_REFERENCES", "t2va／無素材時 encode_references 應由 plan 省略（omitted），不偽造輸出"
+            "NO_REFERENCES",
+            "t2va／無素材時 encode_references 應由 plan 省略（omitted），不偽造輸出",
         )
     visual, audio_sources, audio_index_base = scoped_sources(materials, scope)
     if not visual and not audio_sources:
@@ -231,13 +247,7 @@ def run(run: StageRun) -> StageResult:
             field_path=SCOPE_KEY,
         )
     # only the frozen media: the payload also carries the Qwen presentation (encode_conditioning's)
-    if scope == "all":
-        names = sorted({m["tensor"] for m in materials} | {m["audio"]["tensor"] for m in materials if m.get("audio")})
-    else:  # a partial run reads only the media it encodes
-        names = sorted(
-            {m["tensor"] for m in visual}
-            | {m["tensor"] if m["material_chain"] == "audio" else m["audio"]["tensor"] for m in audio_sources}
-        )
+    names = _reference_names(scope, materials, visual, audio_sources)
     tensors = load_tensors(verified_payload(prepared, run.ctx.attachments), names)
     blocks: list[dict[str, Any]] = []
     out: list[tuple[TensorDecl, Any]] = []
@@ -245,121 +255,38 @@ def run(run: StageRun) -> StageResult:
     done = 0
 
     def to_wire(rows: Any, t: int, h: int, w: int) -> Any:
-        return minimax_h3_unpatchify_video_tokens(rows, latent_shape=[t, h // 2, w // 2, 24], patch_size=[1, 2, 2])
+        return minimax_h3_unpatchify_video_tokens(
+            rows, latent_shape=[t, h // 2, w // 2, 24], patch_size=[1, 2, 2]
+        )
 
     timings = {"visual_seconds": 0.0, "audio_seconds": 0.0}
-    if visual:
-        video_policy = run.policy.components.get("video_vae")
-        vae_frame_streaming.check_precision(streaming, video_policy.compute_dtype if video_policy else "fp32")
-        with run.provider.use_component(run, "video_vae") as video_vae:
-            arch = ensure_vae_arch(run.plan, "video_vae", run.provider.pipeline_config().vae_config)
-            started = time.perf_counter()
-            with minimax_h3_scoped_encode_fp32(video_vae), set_forward_context(current_timestep=0, attn_metadata=None):
-                for m in visual:
-                    run.check_cancel()
-                    item_started = time.perf_counter()  # the encoders return CPU rows: each item ends synchronized
-                    chain = m["material_chain"]
-                    if chain in ("image.target_canvas", "image.reference_preserve"):
-                        image = Image.fromarray(tensors[m["tensor"]].numpy())
-                        rows = minimax_h3_encode_keyframe_cond_rows(video_vae, image, arch)
-                        lh, lw = image.size[1] // 16, image.size[0] // 16
-                        wire = to_wire(rows, 1, lh, lw)
-                        kind = "keyframe" if chain == "image.target_canvas" else "image"
-                        blocks.append(image_block(m, index=len(blocks), kind=kind, latent_h=lh, latent_w=lw))
-                        cost: tuple[str, int, str, dict[str, int]] = (
-                            f"encode_{kind}",
-                            image.size[0] * image.size[1],
-                            "pixel",
-                            {},
-                        )
-                    else:
-                        frames = tensors[m["tensor"]].numpy()
-                        if streaming is None:
-                            rows, lt, lh, lw = minimax_h3_encode_reference_video_rows(video_vae, frames, arch)
-                        else:
-                            rows, lt, lh, lw, streamed = vae_frame_streaming.stream_reference_video_rows(
-                                video_vae, frames, arch, streaming, check_cancel=run.check_cancel
-                            )
-                            run.fact("FRAME_STREAMING", {"material_index": m["material_index"], **streamed})
-                        wire = to_wire(rows, int(lt), int(lh), int(lw))
-                        blocks.append(video_block(m, index=len(blocks), latent_t=lt, latent_h=lh, latent_w=lw))
-                        t, h, w = (int(d) for d in frames.shape[:3])  # [T,H,W,3] uint8
-                        cost = ("encode_video", t * h * w, "pixel_frame", {"frames": t})
-                    wire = wire.to(torch.float32).contiguous()
-                    out.append(
-                        (TensorDecl(blocks[-1]["tensor"], "F32", tuple(int(d) for d in wire.shape), "B,C,T,H,W"), wire)
-                    )
-                    name, work, unit, shape = cost
-                    run.cost(name, work=work, unit=unit, seconds=time.perf_counter() - item_started, **shape)
-                    done += 1
-                    run.progress("encode_references", "items", done, total)
-            run.provider.backend.synchronize()
-            timings["visual_seconds"] = time.perf_counter() - started
+    done = _encode_visual_materials(
+        _EncodeVisualMaterialsInputs(
+            visual, run, streaming, tensors, to_wire, blocks, out, total, timings
+        )
+    )
 
-    if audio_sources:
-        # validated only now (the stage's own component is the video VAE); the
-        # residency extension applies to it like to any other use
-        comp = component_policy_for(run.policy, "audio_vae")
-        run.fact("AUDIO_VAE_POLICY", comp.as_dict())
-        with run.provider.use_component(run, "audio_vae", policy_override=comp) as audio_vae:
-            arch = ensure_vae_arch(run.plan, "audio_vae", run.provider.pipeline_config().audio_vae_config)
-            device = next(audio_vae.parameters()).device
-            mean = torch.tensor(list(arch.latents_mean), dtype=torch.float32).view(1, 1, -1)
-            std = torch.tensor(list(arch.latents_std), dtype=torch.float32).view(1, 1, -1)
-            started = time.perf_counter()
-            with _AudioVAEDeterminismContext(), torch.inference_mode():
-                for m in audio_sources:
-                    run.check_cancel()
-                    item_started = time.perf_counter()  # ends with the latent copied to the CPU
-                    name = m["tensor"] if m["material_chain"] == "audio" else m["audio"]["tensor"]
-                    rate = int(m.get("source_sample_rate") or m["audio"]["source_sample_rate"])
-                    waveform = tensors[name].to(torch.float32)
-                    if waveform.ndim != 2 or int(waveform.shape[0]) != 2:
-                        raise InvalidStageInput("AUDIO_WAVEFORM_SHAPE", f"{name} 必須是 [2,N]（L,R）")
-                    if rate != MINIMAX_H3_AUDIO_SAMPLE_RATE:
-                        waveform = _audio_resampler(rate)(waveform)
-                    waveform = waveform.to(device)
-                    with set_forward_context(current_timestep=0, attn_metadata=None):
-                        audio_data = audio_vae.preprocess(waveform.unsqueeze(1), MINIMAX_H3_AUDIO_SAMPLE_RATE)
-                        z = audio_vae.encoder(audio_data)
-                        if bool(getattr(audio_vae, "attn_proj", False)):
-                            z = audio_vae.pre_block(z.transpose(1, 2)).transpose(1, 2)
-                        latent = audio_vae.mean_proj(z).float()
-                    if int(latent.shape[-1]) != int(arch.latent_channels):
-                        latent = latent.transpose(1, 2).contiguous()  # -> [2, T, 32]
-                    latent = (latent.cpu() - mean) / std
-                    t = int(latent.shape[1])
-                    wire = latent.reshape(1, 2, t, int(arch.latent_channels)).contiguous()
-                    blocks.append(
-                        audio_block(
-                            m,
-                            index=audio_index_base + len(blocks),
-                            ref_audio_t=t,
-                            duration_seconds=float(waveform.shape[-1]) / MINIMAX_H3_AUDIO_SAMPLE_RATE,
-                        )
-                    )
-                    tensor_name = blocks[-1]["tensor"]
-                    out.append((TensorDecl(tensor_name, "F32", tuple(int(d) for d in wire.shape), "B,C,T,D"), wire))
-                    run.cost(
-                        "encode_audio",
-                        work=float(waveform.shape[-1]) / MINIMAX_H3_AUDIO_SAMPLE_RATE,
-                        unit="second",
-                        seconds=time.perf_counter() - item_started,
-                    )
-                    done += 1
-                    run.progress("encode_references", "items", done, total)
-            run.provider.backend.synchronize()
-            timings["audio_seconds"] = time.perf_counter() - started
+    _encode_audio_materials(
+        done,
+        _EncodeAudioMaterialsInputs(
+            audio_sources, run, tensors, blocks, audio_index_base, out, total, timings
+        ),
+    )
 
     metadata = reference_metadata(
         blocks,
         materials,
         task,
         scope=scope,
-        prepared_payload_sha256=str((prepared.get("payload") or {}).get("sha256") or ""),
+        prepared_payload_sha256=str(
+            (prepared.get("payload") or {}).get("sha256") or ""
+        ),
     )
     outputs, _ = write_reference_bundle(
-        run.output_dir, out, metadata, run.bundle_identity(normalization_digest(run.plan))
+        run.output_dir,
+        out,
+        metadata,
+        run.bundle_identity(normalization_digest(run.plan)),
     )
     run.outputs.extend(outputs)
     run.measure(
@@ -369,7 +296,10 @@ def run(run: StageRun) -> StageResult:
     )
     run.fact(
         "REFERENCE_BLOCKS",
-        {"scope": scope, "blocks": [{k: b[k] for k in ("kind", "tensor")} for b in blocks]},
+        {
+            "scope": scope,
+            "blocks": [{k: b[k] for k in ("kind", "tensor")} for b in blocks],
+        },
     )
     return run.result()
 
@@ -387,3 +317,317 @@ __all__ = [
     "video_block",
     "write_reference_bundle",
 ]
+
+
+def _reference_names(
+    scope: str, materials: Any, visual: Any, audio_sources: Any
+) -> list[str]:
+    if scope == "all":
+        names = sorted(
+            {m["tensor"] for m in materials}
+            | {m["audio"]["tensor"] for m in materials if m.get("audio")}
+        )
+    else:  # a partial run reads only the media it encodes
+        names = sorted(
+            {m["tensor"] for m in visual}
+            | {
+                m["tensor"] if m["material_chain"] == "audio" else m["audio"]["tensor"]
+                for m in audio_sources
+            }
+        )
+    return names
+
+
+class _EncodeVisualReferenceInputs(NamedTuple):
+    chain: Any
+    tensors: Any
+    m: Any
+    video_vae: Any
+    arch: Any
+    to_wire: Any
+    blocks: list[dict[str, Any]]
+    streaming: Any
+    run: StageRun
+
+
+def _encode_visual_reference(
+    inputs: _EncodeVisualReferenceInputs,
+) -> tuple[Any, tuple[str, int, str, dict[str, int]]]:
+    from PIL import Image
+    from sglang.multimodal_gen.runtime.pipelines_core.stages.model_specific_stages.minimax_h3.keyframe_encoding import (  # type: ignore[import-untyped]
+        minimax_h3_encode_keyframe_cond_rows,
+    )
+    from sglang.multimodal_gen.runtime.pipelines_core.stages.model_specific_stages.minimax_h3.reference_encoding import (  # type: ignore[import-untyped]
+        minimax_h3_encode_reference_video_rows,
+    )
+
+    chain, tensors, m, video_vae, arch, to_wire, blocks, streaming, run = inputs
+    if chain in ("image.target_canvas", "image.reference_preserve"):
+        image = Image.fromarray(tensors[m["tensor"]].numpy())
+        rows = minimax_h3_encode_keyframe_cond_rows(video_vae, image, arch)
+        lh, lw = image.size[1] // 16, image.size[0] // 16
+        wire = to_wire(rows, 1, lh, lw)
+        kind = "keyframe" if chain == "image.target_canvas" else "image"
+        blocks.append(
+            image_block(
+                m,
+                index=len(blocks),
+                kind=kind,
+                latent_h=lh,
+                latent_w=lw,
+            )
+        )
+        cost: tuple[str, int, str, dict[str, int]] = (
+            f"encode_{kind}",
+            image.size[0] * image.size[1],
+            "pixel",
+            {},
+        )
+    else:
+        frames = tensors[m["tensor"]].numpy()
+        if streaming is None:
+            rows, lt, lh, lw = minimax_h3_encode_reference_video_rows(
+                video_vae, frames, arch
+            )
+        else:
+            rows, lt, lh, lw, streamed = (
+                vae_frame_streaming.stream_reference_video_rows(
+                    video_vae,
+                    frames,
+                    arch,
+                    streaming,
+                    check_cancel=run.check_cancel,
+                )
+            )
+            run.fact(
+                "FRAME_STREAMING",
+                {"material_index": m["material_index"], **streamed},
+            )
+        wire = to_wire(rows, int(lt), int(lh), int(lw))
+        blocks.append(
+            video_block(
+                m,
+                index=len(blocks),
+                latent_t=lt,
+                latent_h=lh,
+                latent_w=lw,
+            )
+        )
+        t, h, w = (int(d) for d in frames.shape[:3])  # [T,H,W,3] uint8
+        cost = ("encode_video", t * h * w, "pixel_frame", {"frames": t})
+    return wire, cost
+
+
+class _EncodeAudioWaveformInputs(NamedTuple):
+    m: Any
+    tensors: Any
+    device: Any
+    audio_vae: Any
+    arch: Any
+    mean: Any
+    std: Any
+
+
+def _encode_audio_waveform(inputs: _EncodeAudioWaveformInputs) -> tuple[Any, Any]:
+    import torch
+    from sglang.multimodal_gen.runtime.managers.forward_context import (  # type: ignore[import-untyped]
+        set_forward_context,
+    )
+    from sglang.multimodal_gen.runtime.pipelines_core.stages.model_specific_stages.minimax_h3.reference_encoding import (
+        MINIMAX_H3_AUDIO_SAMPLE_RATE,
+        _audio_resampler,
+    )
+
+    m, tensors, device, audio_vae, arch, mean, std = inputs
+    name = m["tensor"] if m["material_chain"] == "audio" else m["audio"]["tensor"]
+    rate = int(m.get("source_sample_rate") or m["audio"]["source_sample_rate"])
+    waveform = tensors[name].to(torch.float32)
+    if waveform.ndim != _WAVEFORM_RANK or int(waveform.shape[0]) != _STEREO_CHANNELS:
+        raise InvalidStageInput("AUDIO_WAVEFORM_SHAPE", f"{name} 必須是 [2,N]（L,R）")
+    if rate != MINIMAX_H3_AUDIO_SAMPLE_RATE:
+        waveform = _audio_resampler(rate)(waveform)
+    waveform = waveform.to(device)
+    with set_forward_context(current_timestep=0, attn_metadata=None):
+        audio_data = audio_vae.preprocess(
+            waveform.unsqueeze(1), MINIMAX_H3_AUDIO_SAMPLE_RATE
+        )
+        z = audio_vae.encoder(audio_data)
+        if bool(getattr(audio_vae, "attn_proj", False)):
+            z = audio_vae.pre_block(z.transpose(1, 2)).transpose(1, 2)
+        latent = audio_vae.mean_proj(z).float()
+    if int(latent.shape[-1]) != int(arch.latent_channels):
+        latent = latent.transpose(1, 2).contiguous()  # -> [2, T, 32]
+    latent = (latent.cpu() - mean) / std
+    return waveform, latent
+
+
+class _EncodeVisualMaterialsInputs(NamedTuple):
+    visual: Any
+    run: StageRun
+    streaming: Any
+    tensors: Any
+    to_wire: Any
+    blocks: list[dict[str, Any]]
+    out: list[tuple[TensorDecl, Any]]
+    total: Any
+    timings: Any
+
+
+def _encode_visual_materials(inputs: _EncodeVisualMaterialsInputs) -> Any:
+    import torch
+    from sglang.multimodal_gen.runtime.managers.forward_context import (
+        set_forward_context,
+    )
+    from sglang.multimodal_gen.runtime.pipelines_core.stages.model_specific_stages.minimax_h3.keyframe_encoding import (
+        minimax_h3_scoped_encode_fp32,
+    )
+
+    visual, run, streaming, tensors, to_wire, blocks, out, total, timings = inputs
+    done = 0
+    if visual:
+        video_policy = run.policy.components.get("video_vae")
+        vae_frame_streaming.check_precision(
+            streaming, video_policy.compute_dtype if video_policy else "fp32"
+        )
+        with run.provider.use_component(run, "video_vae") as video_vae:
+            arch = ensure_vae_arch(
+                run.plan, "video_vae", run.provider.pipeline_config().vae_config
+            )
+            started = time.perf_counter()
+            with (
+                minimax_h3_scoped_encode_fp32(video_vae),
+                set_forward_context(current_timestep=0, attn_metadata=None),
+            ):
+                for m in visual:
+                    run.check_cancel()
+                    item_started = (
+                        time.perf_counter()
+                    )  # the encoders return CPU rows: each item ends synchronized
+                    chain = m["material_chain"]
+                    wire, cost = _encode_visual_reference(
+                        _EncodeVisualReferenceInputs(
+                            chain,
+                            tensors,
+                            m,
+                            video_vae,
+                            arch,
+                            to_wire,
+                            blocks,
+                            streaming,
+                            run,
+                        )
+                    )
+                    wire = wire.to(torch.float32).contiguous()
+                    out.append(
+                        (
+                            TensorDecl(
+                                blocks[-1]["tensor"],
+                                "F32",
+                                tuple(int(d) for d in wire.shape),
+                                "B,C,T,H,W",
+                            ),
+                            wire,
+                        )
+                    )
+                    name, work, unit, shape = cost
+                    run.cost(
+                        name,
+                        work=work,
+                        unit=unit,
+                        seconds=time.perf_counter() - item_started,
+                        **shape,
+                    )
+                    done += 1
+                    run.progress("encode_references", "items", done, total)
+            run.provider.backend.synchronize()
+            timings["visual_seconds"] = time.perf_counter() - started
+    return done
+
+
+class _EncodeAudioMaterialsInputs(NamedTuple):
+    audio_sources: Any
+    run: StageRun
+    tensors: Any
+    blocks: list[dict[str, Any]]
+    audio_index_base: Any
+    out: list[tuple[TensorDecl, Any]]
+    total: Any
+    timings: Any
+
+
+def _encode_audio_materials(
+    initial_done: int, inputs: _EncodeAudioMaterialsInputs
+) -> None:
+    import torch
+    from sglang.multimodal_gen.runtime.pipelines_core.stages.model_specific_stages.minimax_h3.reference_encoding import (
+        MINIMAX_H3_AUDIO_SAMPLE_RATE,
+        _AudioVAEDeterminismContext,
+    )
+
+    audio_sources, run, tensors, blocks, audio_index_base, out, total, timings = inputs
+    done = initial_done
+    if audio_sources:
+        # validated only now (the stage's own component is the video VAE); the
+        # residency extension applies to it like to any other use
+        comp = component_policy_for(run.policy, "audio_vae")
+        run.fact("AUDIO_VAE_POLICY", comp.as_dict())
+        with run.provider.use_component(
+            run, "audio_vae", policy_override=comp
+        ) as audio_vae:
+            arch = ensure_vae_arch(
+                run.plan, "audio_vae", run.provider.pipeline_config().audio_vae_config
+            )
+            device = next(audio_vae.parameters()).device
+            mean = torch.tensor(list(arch.latents_mean), dtype=torch.float32).view(
+                1, 1, -1
+            )
+            std = torch.tensor(list(arch.latents_std), dtype=torch.float32).view(
+                1, 1, -1
+            )
+            started = time.perf_counter()
+            with _AudioVAEDeterminismContext(), torch.inference_mode():
+                for m in audio_sources:
+                    run.check_cancel()
+                    item_started = (
+                        time.perf_counter()
+                    )  # ends with the latent copied to the CPU
+                    waveform, latent = _encode_audio_waveform(
+                        _EncodeAudioWaveformInputs(
+                            m, tensors, device, audio_vae, arch, mean, std
+                        )
+                    )
+                    t = int(latent.shape[1])
+                    wire = latent.reshape(
+                        1, 2, t, int(arch.latent_channels)
+                    ).contiguous()
+                    blocks.append(
+                        audio_block(
+                            m,
+                            index=audio_index_base + len(blocks),
+                            ref_audio_t=t,
+                            duration_seconds=float(waveform.shape[-1])
+                            / MINIMAX_H3_AUDIO_SAMPLE_RATE,
+                        )
+                    )
+                    tensor_name = blocks[-1]["tensor"]
+                    out.append(
+                        (
+                            TensorDecl(
+                                tensor_name,
+                                "F32",
+                                tuple(int(d) for d in wire.shape),
+                                "B,C,T,D",
+                            ),
+                            wire,
+                        )
+                    )
+                    run.cost(
+                        "encode_audio",
+                        work=float(waveform.shape[-1]) / MINIMAX_H3_AUDIO_SAMPLE_RATE,
+                        unit="second",
+                        seconds=time.perf_counter() - item_started,
+                    )
+                    done += 1
+                    run.progress("encode_references", "items", done, total)
+            run.provider.backend.synchronize()
+            timings["audio_seconds"] = time.perf_counter() - started

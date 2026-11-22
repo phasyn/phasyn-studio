@@ -8,9 +8,12 @@ the component process (see ``backend`` and ``sglang_env``).
 
 from __future__ import annotations
 
-from phasyn_h3.recipe.adapter.constants import FAMILY
-from phasyn_h3.recipe.adapter.constants import H3_GIT_REVISION as MINIMAX_H3_REPO_REVISION
-from phasyn_h3.recipe.adapter.constants import SGLANG_REVISION as SGLANG_SOURCE_REVISION
+from phasyn_h3.recipe.adapter.constants import (
+    FAMILY,
+    H3_GIT_REVISION as MINIMAX_H3_REPO_REVISION,
+    SGLANG_REVISION as SGLANG_SOURCE_REVISION,
+)
+
 
 PROVIDER_ID = "sglang_h3"
 SGLANG_REPOSITORY = "https://github.com/sgl-project/sglang"

@@ -1,3 +1,4 @@
+import { hasSlotContent } from "@/lib/dom";
 // Panel pieces both Studios share: section titles and the collapse button / collapsed rail of a side panel (a panel or
 // rail that appears after collapsing or expanding fades in from its edge). The tabs and the splitter between panels are
 // the workbench ones (PanelTabs variant="studio", Splitter grip="always").
@@ -14,7 +15,7 @@ export function SectionTitle({ icon: Icon, children, actions }: { icon: LucideIc
     <div className="flex items-center gap-2 pb-2">
       <Icon aria-hidden className="size-3.5 shrink-0 text-brand-cyan/80" />
       <h3 className="text-data font-semibold text-fg-secondary">{children}</h3>
-      {actions ? <div className="ml-auto flex items-center gap-1">{actions}</div> : null}
+      {hasSlotContent(actions) ? <div className="ml-auto flex items-center gap-1">{actions}</div> : null}
     </div>
   );
 }

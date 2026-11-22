@@ -31,33 +31,73 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict, Unpack
 
 from phasyn_components import contracts
 from phasyn_components.errors import ComponentError
 from phasyn_components.ids import new_id
-from phasyn_components.provider import BaseProvider, Description, Port, RunContext, settings_schema
+from phasyn_components.provider import (
+    BaseProvider,
+    Description,
+    Port,
+    RunContext,
+    settings_schema,
+)
 from phasyn_components.settings import normalize_recording
 
-from ..effects import FITS, ClipSource, PlannedClip, SequencePlan, filter_graph, fit_chain, parse_effects, plan_sequence
+from phasyn_media._options import validate_keywords
+
+from ..effects import (
+    FITS,
+    ClipSource,
+    PlannedClip,
+    SequencePlan,
+    filter_graph,
+    fit_chain,
+    parse_effects,
+    plan_sequence,
+)
 from ..errors import MediaError
 from ..limits import DEFAULT_LIMITS, MediaLimits
 from ..probe import probe
-from ..soundtrack import AudioSource, AudioTrack, SoundtrackPlan, audio_source, parse_audio_track, soundtrack_chain
-from ..soundtrack import plan_soundtrack as _plan_soundtrack
+from ..soundtrack import (
+    AudioSource,
+    AudioTrack,
+    SoundtrackPlan,
+    audio_source,
+    parse_audio_track,
+    plan_soundtrack as _plan_soundtrack,
+    soundtrack_chain,
+)
 from ..timeline import scan_timeline
 from ..tools import find_ffmpeg, input_url, redact, run_tool, summarize_stderr
 from ._failure import media_failure
 from .timeline_export import TIMELINE_EXPORT_FACTS, export_timeline
+
 
 MAX_CLIPS = 200
 MIN_FPS = Fraction(1)
 MAX_FPS = Fraction(240)
 AUDIO_RATE = 48000
 PARAMS: dict[str, dict[str, Any]] = {
+    "audio_only": {
+        "type": "boolean",
+        "default": False,
+        "description": "只匯出時間軸的 AAC 混音",
+    },
     "crf": {"type": "integer", "minimum": 0, "maximum": 51, "default": 18},
-    "preset": {"enum": ["ultrafast", "veryfast", "faster", "fast", "medium", "slow"], "default": "medium"},
-    "audio_bitrate": {"type": "integer", "minimum": 32000, "maximum": 512000, "default": 192000},
+    "preset": {
+        "enum": ["ultrafast", "veryfast", "faster", "fast", "medium", "slow"],
+        "default": "medium",
+    },
+    "audio_bitrate": {
+        "type": "integer",
+        "minimum": 32000,
+        "maximum": 512000,
+        "default": 192000,
+    },
+    # Timeline exports only: integrated loudness target in LUFS (0 = export the mix as it is).
+    "loudness_lufs": {"enum": [0, -18, -16, -14], "default": 0},
 }
 
 
@@ -68,9 +108,11 @@ def _fps_of(value: Any) -> Fraction | None:
 
 
 def plan_clips(sequence: Any) -> tuple[list[dict[str, Any]], Mapping[str, Any]]:
-    """驗證 ``media.sequence.v1`` 並展開成 [{asset, in_frame, out_frame, frames}]（純函式，方便測試）。"""
+    """驗證 ``media.sequence.v1`` 並展開成 [{asset, in_frame, out_frame, frames}]（純函式，方便測試）."""
     if not isinstance(sequence, Mapping):
-        raise ComponentError("INVALID_ARGUMENT", "sequence 必須是 object（media.sequence.v1）")
+        raise ComponentError(
+            "INVALID_ARGUMENT", "sequence 必須是 object（media.sequence.v1）"
+        )
     clips = sequence.get("clips")
     if not isinstance(clips, list) or not clips:
         raise ComponentError("INVALID_ARGUMENT", "sequence.clips 必須是非空陣列")
@@ -80,12 +122,20 @@ def plan_clips(sequence: Any) -> tuple[list[dict[str, Any]], Mapping[str, Any]]:
     for index, clip in enumerate(clips):
         asset = clip.get("asset") if isinstance(clip, Mapping) else None
         if not isinstance(asset, Mapping) or not isinstance(asset.get("file"), Mapping):
-            raise ComponentError("INVALID_ARGUMENT", f"clips[{index}] 需要 asset（media.asset.v1，含 file）")
+            raise ComponentError(
+                "INVALID_ARGUMENT",
+                f"clips[{index}] 需要 asset（media.asset.v1，含 file）",
+            )
         if not asset.get("complete"):
-            raise ComponentError("MEDIA_INCOMPLETE", f"clips[{index}] 的 Asset 尚未完整（complete=false）")
+            raise ComponentError(
+                "MEDIA_INCOMPLETE",
+                f"clips[{index}] 的 Asset 尚未完整（complete=false）",
+            )
         total = int(asset.get("frame_count") or 0)
         if total <= 0:
-            raise ComponentError("INVALID_ARGUMENT", f"clips[{index}] 的 Asset 沒有 frame_count")
+            raise ComponentError(
+                "INVALID_ARGUMENT", f"clips[{index}] 的 Asset 沒有 frame_count"
+            )
         start = int(clip.get("in_frame") or 0)
         raw_end = clip.get("out_frame")
         end = total if raw_end is None else int(raw_end)
@@ -93,19 +143,32 @@ def plan_clips(sequence: Any) -> tuple[list[dict[str, Any]], Mapping[str, Any]]:
             raise ComponentError(
                 "INVALID_ARGUMENT",
                 f"clips[{index}] 的裁切範圍不合法：in_frame={start}、out_frame={raw_end}（片段共 {total} 幀）",
-                details={"index": index, "in_frame": start, "out_frame": raw_end, "frame_count": total},
+                details={
+                    "index": index,
+                    "in_frame": start,
+                    "out_frame": raw_end,
+                    "frame_count": total,
+                },
             )
         effects = clip.get("effects")
         if effects is not None:
-            contracts.validate("MediaClipEffects", effects, what=f"clips[{index}].effects")
+            contracts.validate(
+                "MediaClipEffects", effects, what=f"clips[{index}].effects"
+            )
         planned.append(
-            {"asset": dict(asset), "in_frame": start, "out_frame": end, "frames": end - start, "effects": effects}
+            {
+                "asset": dict(asset),
+                "in_frame": start,
+                "out_frame": end,
+                "frames": end - start,
+                "effects": effects,
+            }
         )
     return planned, sequence
 
 
 def plan_audio_track(sequence: Mapping[str, Any]) -> AudioTrack | None:
-    """驗證 ``sequence.audio_track``（契約 MediaSequenceAudioTrack＋範圍；純函式）；沒有時回傳 None（＝原本的行為）。"""
+    """驗證 ``sequence.audio_track``（契約 MediaSequenceAudioTrack+範圍；純函式）；沒有時回傳 None（=原本的行為）."""
     value = sequence.get("audio_track")
     if value is None:
         return None
@@ -114,30 +177,42 @@ def plan_audio_track(sequence: Mapping[str, Any]) -> AudioTrack | None:
     try:
         return parse_audio_track(value, path="sequence.audio_track")
     except MediaError as exc:
-        raise ComponentError("INVALID_ARGUMENT", exc.message, details={"field_paths": list(exc.field_paths)}) from exc
+        raise ComponentError(
+            "INVALID_ARGUMENT",
+            exc.message,
+            details={"field_paths": list(exc.field_paths)},
+        ) from exc
 
 
 def plan_fit(sequence: Mapping[str, Any]) -> str | None:
-    """``sequence.fit``（contain／cover）；缺少時回傳 None（＝原本的等比縮小＋黑邊，縮放演算法也不變）。"""
+    """``sequence.fit``（contain／cover）；缺少時回傳 None（=原本的等比縮小+黑邊，縮放演算法也不變）."""
     value = sequence.get("fit")
     if value is None:
         return None
     if value not in FITS:
-        raise ComponentError("INVALID_ARGUMENT", f"sequence.fit 必須是 {' 或 '.join(FITS)}（目前 {value!r}）")
+        raise ComponentError(
+            "INVALID_ARGUMENT",
+            f"sequence.fit 必須是 {' 或 '.join(FITS)}（目前 {value!r}）",
+        )
     return str(value)
 
 
-def plan_soundtrack(track: AudioTrack, source: AudioSource, *, total_frames: int, fps: Fraction) -> SoundtrackPlan:
-    """序列總長（計畫幀數）的外部音軌計畫；起點超過來源音軌 → INVALID_ARGUMENT（純函式）。"""
-
+def plan_soundtrack(
+    track: AudioTrack, source: AudioSource, *, total_frames: int, fps: Fraction
+) -> SoundtrackPlan:
+    """序列總長（計畫幀數）的外部音軌計畫；起點超過來源音軌 → INVALID_ARGUMENT（純函式）."""
     try:
         return _plan_soundtrack(track, source, total_frames=total_frames, fps=fps)
     except MediaError as exc:
-        raise ComponentError("INVALID_ARGUMENT", exc.message, details={"field_paths": list(exc.field_paths)}) from exc
+        raise ComponentError(
+            "INVALID_ARGUMENT",
+            exc.message,
+            details={"field_paths": list(exc.field_paths)},
+        ) from exc
 
 
 def _ignored_audio_effects(plan: SequencePlan | None) -> list[str]:
-    """使用 audio_track 時，片段上的聲音效果不套用：逐一寫進 notes（不默默忽略）。"""
+    """使用 audio_track 時，片段上的聲音效果不套用：逐一寫進 notes（不默默忽略）."""
     notes: list[str] = []
     for clip in plan.clips if plan is not None else ():
         fx = clip.effects
@@ -151,42 +226,62 @@ def _ignored_audio_effects(plan: SequencePlan | None) -> list[str]:
         if fx.fade.audio_in or fx.fade.audio_out:
             ignored.append("聲音淡入淡出")
         if ignored:
-            notes.append(f"片段 {clip.index + 1} 的{'、'.join(ignored)}未套用（聲音改用 audio_track）")
+            notes.append(
+                f"片段 {clip.index + 1} 的{'、'.join(ignored)}未套用（聲音改用 audio_track）"
+            )
     return notes
 
 
 def _frames_at(clip: Mapping[str, Any], fps: Fraction) -> int:
-    """片段裁切後的幀數換算成序列影格率（四捨五入；同影格率時就是原幀數）。"""
+    """片段裁切後的幀數換算成序列影格率（四捨五入；同影格率時就是原幀數）."""
     clip_fps = _fps_of(clip["asset"].get("fps")) or fps
     return int(Fraction(clip["frames"]) * fps / clip_fps + Fraction(1, 2))
 
 
 def plan_effects(clips: list[dict[str, Any]], fps: Fraction) -> SequencePlan | None:
-    """有效果的序列：回傳 ``phasyn_media.effects.SequencePlan``（每段輸出幀數、總長、轉場分組）；全部沒有效果時回傳 None。
+    """有效果的序列：回傳 ``phasyn_media.effects.SequencePlan``（每段輸出幀數、總長、轉場分組）；全部沒有效果時回傳 None.
 
     效果與片段長度不相容（轉場比片段長、淡入淡出超過片段、文字超出範圍、最後一段設轉場）→ INVALID_ARGUMENT。
     """
-
     try:
-        parsed = [parse_effects(c.get("effects"), path=f"sequence.clips[{i}].effects") for i, c in enumerate(clips)]
+        parsed = [
+            parse_effects(c.get("effects"), path=f"sequence.clips[{i}].effects")
+            for i, c in enumerate(clips)
+        ]
         if all(fx is None for fx in parsed):
             return None
         return plan_sequence([_frames_at(c, fps) for c in clips], parsed, fps)
     except MediaError as exc:
-        raise ComponentError("INVALID_ARGUMENT", exc.message, details={"field_paths": list(exc.field_paths)}) from exc
+        raise ComponentError(
+            "INVALID_ARGUMENT",
+            exc.message,
+            details={"field_paths": list(exc.field_paths)},
+        ) from exc
+
+
+class _ConcatGraphOptionsRequired(TypedDict):
+    width: int
+    height: int
+    fps: Fraction
+    has_audio: list[bool]
+
+
+class _ConcatGraphOptions(_ConcatGraphOptionsRequired, total=False):
+    audio: bool
+    fit: str | None
 
 
 def _filter_graph(
-    clips: list[dict[str, Any]],
-    *,
-    width: int,
-    height: int,
-    fps: Fraction,
-    has_audio: list[bool],
-    audio: bool = True,
-    fit: str | None = None,
+    clips: list[dict[str, Any]], **options: Unpack[_ConcatGraphOptions]
 ) -> tuple[str, list[str]]:
-    """沒有效果的接合圖；audio=False 時只接影片（輸出只有 ``[v]``，聲音由 audio_track 提供）。"""
+    """沒有效果的接合圖；audio=False 時只接影片（輸出只有 ``[v]``，聲音由 audio_track 提供）."""
+    validate_keywords(options, _ConcatGraphOptions)
+    width = options["width"]
+    height = options["height"]
+    fps = options["fps"]
+    has_audio = options["has_audio"]
+    audio = options.get("audio", True)
+    fit = options.get("fit")
     parts: list[str] = []
     notes: list[str] = []
     rate = f"{fps.numerator}/{fps.denominator}"
@@ -220,8 +315,10 @@ def _filter_graph(
     return ";".join(parts), notes
 
 
-def _clip_record(clip: Mapping[str, Any], planned: PlannedClip | None) -> dict[str, Any]:
-    """actual_settings.concat.clips 的一筆；有效果的序列另外記錄套用速度後的幀數與正規化後的效果。"""
+def _clip_record(
+    clip: Mapping[str, Any], planned: PlannedClip | None
+) -> dict[str, Any]:
+    """actual_settings.concat.clips 的一筆；有效果的序列另外記錄套用速度後的幀數與正規化後的效果."""
     record: dict[str, Any] = {
         "asset_id": clip["asset"].get("asset_id"),
         "file_id": clip["asset"]["file"].get("file_id"),
@@ -232,7 +329,9 @@ def _clip_record(clip: Mapping[str, Any], planned: PlannedClip | None) -> dict[s
     if planned is not None:
         record["frames_out"] = planned.frames
         record["start_frame"] = planned.start_frame
-        record["effects"] = planned.effects.as_dict() if planned.effects is not None else None
+        record["effects"] = (
+            planned.effects.as_dict() if planned.effects is not None else None
+        )
     return record
 
 
@@ -243,6 +342,8 @@ class ConcatProvider(BaseProvider):
 
     @classmethod
     def describe(cls, settings: Mapping[str, Any] | None) -> Description:
+        """Return the input, output, and settings contract for this provider."""
+        del settings  # The static port contract is independent of settings.
         return Description(
             provider_id=cls.provider_id,
             kind="media.concat",
@@ -251,18 +352,38 @@ class ConcatProvider(BaseProvider):
                 Port(
                     "sequence",
                     "media.sequence.v1",
-                    True,
-                    "inline",
-                    "{clips: [{asset: media.asset.v1, in_frame, out_frame|null, effects?}], width?, height?, fps?, "
-                    "fit?: contain|cover, audio_track?: {file: FileRef, start_seconds, gain_db?}}（fit＝片段縮放方式；"
-                    "audio_track＝聲音改用該檔音軌，長度固定為序列總長）",
+                    required=True,
+                    transport="inline",
+                    description="{clips: [{asset: media.asset.v1, in_frame, out_frame|null, effects?}], width?, height?, fps?, "
+                    "fit?: contain|cover, audio_track?: {file: FileRef, start_seconds, gain_db?}}（fit\uff1d片段縮放方式；"
+                    "audio_track\uff1d聲音改用該檔音軌，長度固定為序列總長）",
                 )
             ],
-            outputs=[Port("asset", "media.asset.v1", True, "inline", "接合後的完整 MP4 Asset（h264＋aac）")],
-            settings_schema=settings_schema(invoke_properties=PARAMS, device_kinds=("cpu",)),
-            parameters_schema={"type": "object", "properties": PARAMS, "additionalProperties": False},
+            outputs=[
+                Port(
+                    "asset",
+                    "media.asset.v1",
+                    required=True,
+                    transport="inline",
+                    description="接合後的完整 MP4 Asset（h264\uff0baac）",
+                )
+            ],
+            settings_schema=settings_schema(
+                invoke_properties=PARAMS, device_kinds=("cpu",)
+            ),
+            parameters_schema={
+                "type": "object",
+                "properties": PARAMS,
+                "additionalProperties": False,
+            },
             default_settings={
-                "load": {"device": {"kind": "cpu", "id": "cpu", "resource_group": "cpu-concat"}},
+                "load": {
+                    "device": {
+                        "kind": "cpu",
+                        "id": "cpu",
+                        "resource_group": "cpu-concat",
+                    }
+                },
                 "invoke": {},
                 "recording": normalize_recording({"mode": "detailed"}),
             },
@@ -270,35 +391,62 @@ class ConcatProvider(BaseProvider):
         )
 
     def invoke(self, ctx: RunContext) -> None:
-        params: dict[str, Any] = {k: v.get("default") for k, v in PARAMS.items()} | dict(ctx.parameters)
+        """Process the submitted inputs and publish the resulting media."""
+        params: dict[str, Any] = {
+            k: v.get("default") for k, v in PARAMS.items()
+        } | dict(ctx.parameters)
         value = ctx.input("sequence").value
         if isinstance(value, Mapping) and "timeline" in value:
             export_timeline(ctx, value, params)
             return
+        if params["audio_only"]:
+            raise ComponentError("INVALID_ARGUMENT", "純音訊匯出需要多軌時間軸")
         clips, sequence = plan_clips(value)
-        track = plan_audio_track(sequence)  # None: the clips provide the sound, as before audio_track existed
+        track = plan_audio_track(
+            sequence
+        )  # None: the clips provide the sound, as before audio_track existed
         width, height, fps = _geometry(sequence, clips[0]["asset"])
-        fit = plan_fit(sequence)  # None: aspect-preserving scale plus black bars, as before fit existed
+        fit = plan_fit(
+            sequence
+        )  # None: aspect-preserving scale plus black bars, as before fit existed
         for index, clip in enumerate(clips):
             clip_fps = _fps_of(clip["asset"].get("fps"))
             if clip_fps is not None:
                 _check_fps(clip_fps, f"片段 {index + 1} ")
-        plan = plan_effects(clips, fps)  # None: no effects anywhere, keep the plain concat graph
+        plan = plan_effects(
+            clips, fps
+        )  # None: no effects anywhere, keep the plain concat graph
         rec = ctx.recorder
         with rec.phase("input"):
             inputs = _probe_inputs(ctx, clips, plan, width=width, height=height)
-            track_input = _resolve_audio_track(ctx, track) if track is not None else None
+            track_input = (
+                _resolve_audio_track(ctx, track) if track is not None else None
+            )
         graph, notes, expected, tolerance = _video_graph(
-            clips, plan, inputs, width=width, height=height, fps=fps, audio=track is None, fit=fit
+            clips,
+            plan,
+            inputs,
+            width=width,
+            height=height,
+            fps=fps,
+            audio=track is None,
+            fit=fit,
         )
         _check_output_size(expected, fps)
         soundtrack: SoundtrackPlan | None = None
         if track is not None and track_input is not None:
             # sound length = the planned sequence length (frames / fps); video frames are verified as usual
-            soundtrack = plan_soundtrack(track, track_input[1], total_frames=expected, fps=fps)
+            soundtrack = plan_soundtrack(
+                track, track_input[1], total_frames=expected, fps=fps
+            )
             graph = f"{graph};{soundtrack_chain(inputs.count, soundtrack)}"
             notes = [*notes, *soundtrack.notes, *_ignored_audio_effects(plan)]
-        out = ctx.new_file(None, "video/mp4", {"kind": "final", "sequence": True}, type_id="media.video.v1")
+        out = ctx.new_file(
+            None,
+            "video/mp4",
+            {"kind": "final", "sequence": True},
+            type_id="media.video.v1",
+        )
         tmp = Path(ctx.work_dir) / f"{out.file_id}.concat.mp4"
         t0 = time.perf_counter_ns()
         try:
@@ -317,11 +465,21 @@ class ConcatProvider(BaseProvider):
                 soundtrack=soundtrack, measured=measured,
             )  # fmt: skip
         except BaseException:
-            tmp.unlink(missing_ok=True)  # never leave a half-written export in the work directory
+            tmp.unlink(
+                missing_ok=True
+            )  # never leave a half-written export in the work directory
             raise
         encode_ms = (time.perf_counter_ns() - t0) / 1e6
-        rec.log("info", "序列接合完成", clips=len(clips), expected_frames=expected, actual_frames=actual)
-        rec.part_value("concat", "encode_wall_ms", encode_ms, unit="ms", method="host_monotonic")
+        rec.log(
+            "info",
+            "序列接合完成",
+            clips=len(clips),
+            expected_frames=expected,
+            actual_frames=actual,
+        )
+        rec.part_value(
+            "concat", "encode_wall_ms", encode_ms, unit="ms", method="host_monotonic"
+        )
         rec.record_cost(
             "concat",
             work=actual * width * height,
@@ -342,7 +500,10 @@ class ConcatProvider(BaseProvider):
             "metadata": out.metadata,
         }
         record: dict[str, Any] = {
-            "clips": [_clip_record(c, None if plan is None else plan.clips[i]) for i, c in enumerate(clips)],
+            "clips": [
+                _clip_record(c, None if plan is None else plan.clips[i])
+                for i, c in enumerate(clips)
+            ],
             "expected_frames": expected,
             "encoder": {
                 "video": "libx264",
@@ -396,32 +557,47 @@ class _Inputs:
         return len(self.clip_paths) + len(self.title_paths)
 
     def title_inputs(self) -> dict[int, int]:
-        return {index: len(self.clip_paths) + k for k, index in enumerate(sorted(self.title_paths))}
+        return {
+            index: len(self.clip_paths) + k
+            for k, index in enumerate(sorted(self.title_paths))
+        }
 
 
-def _geometry(sequence: Mapping[str, Any], first: Mapping[str, Any]) -> tuple[int, int, Fraction]:
+def _geometry(
+    sequence: Mapping[str, Any], first: Mapping[str, Any]
+) -> tuple[int, int, Fraction]:
     width = int(sequence.get("width") or first.get("width") or 0)
     height = int(sequence.get("height") or first.get("height") or 0)
     fps = _fps_of(sequence.get("fps")) or _fps_of(first.get("fps")) or Fraction(24, 1)
     if width <= 0 or height <= 0 or width % 2 or height % 2:
-        raise ComponentError("INVALID_ARGUMENT", f"序列解析度不合法：{width}×{height}（需為正偶數）")
+        raise ComponentError(
+            "INVALID_ARGUMENT", f"序列解析度不合法：{width}×{height}（需為正偶數）"
+        )
     limits = DEFAULT_LIMITS
-    if width > limits.max_width or height > limits.max_height or width * height > limits.max_pixels:
+    if (
+        width > limits.max_width
+        or height > limits.max_height
+        or width * height > limits.max_pixels
+    ):
         raise ComponentError(
             "INPUT_TOO_LARGE",
             f"序列解析度 {width}×{height} 超過上限（{limits.max_width}×{limits.max_height}、{limits.max_pixels} 像素）",
-            details={"width": width, "height": height, "limit_pixels": limits.max_pixels},
+            details={
+                "width": width,
+                "height": height,
+                "limit_pixels": limits.max_pixels,
+            },
         )
     _check_fps(fps, "序列")
     return width, height, fps
 
 
 def _check_fps(fps: Fraction, what: str) -> None:
-    """A frame rate outside 1–240 fps would turn a few frames into hours of output (or the reverse)."""
+    """A frame rate outside 1-240 fps would turn a few frames into hours of output (or the reverse)."""
     if not MIN_FPS <= fps <= MAX_FPS:
         raise ComponentError(
             "INVALID_ARGUMENT",
-            f"{what}的 fps {fps.numerator}/{fps.denominator} 不在 {MIN_FPS}–{MAX_FPS} 之間",
+            f"{what}的 fps {fps.numerator}/{fps.denominator} 不在 {MIN_FPS}\u2013{MAX_FPS} 之間",
             details={"fps": f"{fps.numerator}/{fps.denominator}"},
         )
 
@@ -440,7 +616,12 @@ def _check_output_size(expected: int, fps: Fraction) -> None:
 
 
 def _probe_inputs(
-    ctx: RunContext, clips: list[dict[str, Any]], plan: SequencePlan | None, *, width: int, height: int
+    ctx: RunContext,
+    clips: list[dict[str, Any]],
+    plan: SequencePlan | None,
+    *,
+    width: int,
+    height: int,
 ) -> _Inputs:
 
     inputs = _Inputs()
@@ -452,7 +633,9 @@ def _probe_inputs(
         except MediaError as exc:
             raise media_failure(ctx, exc, what=f"片段 {index + 1} 探測失敗") from exc
         if info.kind != "video":
-            raise ComponentError("INVALID_ARGUMENT", f"片段 {index + 1} 不是影片（{info.kind}）")
+            raise ComponentError(
+                "INVALID_ARGUMENT", f"片段 {index + 1} 不是影片（{info.kind}）"
+            )
         inputs.clip_paths.append(path)
         inputs.has_audio.append(bool(info.has_audio))
     for planned in plan.clips if plan is not None else ():
@@ -464,9 +647,14 @@ def _probe_inputs(
         try:
             info = probe(path, count_frames=False, cancel=ctx.cancel_token)
         except MediaError as exc:
-            raise media_failure(ctx, exc, what=f"片段 {planned.index + 1} 的文字圖層探測失敗") from exc
+            raise media_failure(
+                ctx, exc, what=f"片段 {planned.index + 1} 的文字圖層探測失敗"
+            ) from exc
         if info.kind != "image":
-            raise ComponentError("INVALID_ARGUMENT", f"片段 {planned.index + 1} 的文字圖層不是圖片（{info.kind}）")
+            raise ComponentError(
+                "INVALID_ARGUMENT",
+                f"片段 {planned.index + 1} 的文字圖層不是圖片（{info.kind}）",
+            )
         if (info.width, info.height) != (width, height):
             inputs.notes.append(
                 f"片段 {planned.index + 1} 的文字圖層 {info.width}×{info.height} 已縮放成 {width}×{height}"
@@ -475,23 +663,44 @@ def _probe_inputs(
     return inputs
 
 
+class _ConcatVideoOptionsRequired(TypedDict):
+    width: int
+    height: int
+    fps: Fraction
+    audio: bool
+
+
+class _ConcatVideoOptions(_ConcatVideoOptionsRequired, total=False):
+    fit: str | None
+
+
 def _video_graph(
     clips: list[dict[str, Any]],
     plan: SequencePlan | None,
     inputs: _Inputs,
-    *,
-    width: int,
-    height: int,
-    fps: Fraction,
-    audio: bool,
-    fit: str | None = None,
+    **options: Unpack[_ConcatVideoOptions],
 ) -> tuple[str, list[str], int, int]:
     """(filtergraph, notes, expected output frames, allowed frame difference)."""
+    validate_keywords(options, _ConcatVideoOptions)
+    width = options["width"]
+    height = options["height"]
+    fps = options["fps"]
+    audio = options["audio"]
+    fit = options.get("fit")
     if plan is None:
         graph, notes = _filter_graph(
-            clips, width=width, height=height, fps=fps, has_audio=inputs.has_audio, audio=audio, fit=fit
+            clips,
+            width=width,
+            height=height,
+            fps=fps,
+            has_audio=inputs.has_audio,
+            audio=audio,
+            fit=fit,
         )
-        expected = sum(round(Fraction(c["frames"]) / (_fps_of(c["asset"].get("fps")) or fps) * fps) for c in clips)
+        expected = sum(
+            round(Fraction(c["frames"]) / (_fps_of(c["asset"].get("fps")) or fps) * fps)
+            for c in clips
+        )
         return graph, notes, expected, len(clips)
 
     sources = [
@@ -505,15 +714,23 @@ def _video_graph(
         for i, c in enumerate(clips)
     ]
     graph, notes = filter_graph(
-        sources, plan, width=width, height=height, fps=fps, title_inputs=inputs.title_inputs(), audio=audio, fit=fit
+        sources,
+        plan,
+        width=width,
+        height=height,
+        fps=fps,
+        title_inputs=inputs.title_inputs(),
+        audio=audio,
+        fit=fit,
     )
     # every segment is pinned to its planned frames and transition overlaps are whole frames: exact match
     return graph, inputs.notes + notes, plan.total_frames, 0
 
 
-def _input_args(path: Path, limits: MediaLimits, *, demuxer: str | None = None) -> list[str]:
+def _input_args(
+    path: Path, limits: MediaLimits, *, demuxer: str | None = None
+) -> list[str]:
     """One whitelisted ``file:`` input: FFmpeg can never follow it to other files or URLs."""
-
     forced = ["-f", demuxer] if demuxer else []
     return [
         "-protocol_whitelist", "file", "-format_whitelist", limits.format_whitelist, *limits.decoder_flags,
@@ -521,19 +738,28 @@ def _input_args(path: Path, limits: MediaLimits, *, demuxer: str | None = None) 
     ]  # fmt: skip
 
 
+class _ConcatEncodeOptions(TypedDict):
+    graph: str
+    params: Mapping[str, Any]
+    fps: Fraction
+    output: Path
+    measure_audio: bool
+
+
 def _encode_and_verify(
     ctx: RunContext,
     inputs: _Inputs,
     *,
     audio_input: Path | None,
-    graph: str,
-    params: Mapping[str, Any],
-    fps: Fraction,
-    output: Path,
-    measure_audio: bool,
+    **options: Unpack[_ConcatEncodeOptions],
 ) -> tuple[int, int | None]:
     """Run the single FFmpeg encode, then count the output frames (and audio samples when asked)."""
-
+    validate_keywords(options, _ConcatEncodeOptions)
+    graph = options["graph"]
+    params = options["params"]
+    fps = options["fps"]
+    output = options["output"]
+    measure_audio = options["measure_audio"]
     limits = DEFAULT_LIMITS
     argv: list[str] = [find_ffmpeg(), "-hide_banner", "-nostdin", "-nostats", "-y"]
     marks: dict[str, str] = {str(output): "<output>", input_url(output): "<output>"}
@@ -543,10 +769,14 @@ def _encode_and_verify(
     for index in sorted(inputs.title_paths):
         path = inputs.title_paths[index]
         argv += _input_args(path, limits, demuxer="png_pipe")
-        marks.update({str(path): f"<title {index + 1}>", input_url(path): f"<title {index + 1}>"})
+        marks.update(
+            {str(path): f"<title {index + 1}>", input_url(path): f"<title {index + 1}>"}
+        )
     if audio_input is not None:
         argv += _input_args(audio_input, limits)
-        marks.update({str(audio_input): "<audio_track>", input_url(audio_input): "<audio_track>"})
+        marks.update(
+            {str(audio_input): "<audio_track>", input_url(audio_input): "<audio_track>"}
+        )
     argv += [
         "-filter_complex", graph, "-map", "[v]", "-map", "[a]",
         # the export carries no tags or chapters of its materials (a camera file's title, date or GPS position)
@@ -567,7 +797,10 @@ def _encode_and_verify(
             )
         if result.returncode != 0:
             detail = summarize_stderr(redact(result.stderr, marks), 600)
-            raise ComponentError("MEDIA_TOOL_FAILED", "FFmpeg 接合失敗" + (f"：{detail}" if detail else ""))
+            raise ComponentError(
+                "MEDIA_TOOL_FAILED",
+                "FFmpeg 接合失敗" + (f"：{detail}" if detail else ""),
+            )
         with ctx.recorder.phase("verify"):
             info = probe(output, count_frames=True, cancel=ctx.cancel_token)
             measured = _audio_samples(output, ctx) if measure_audio else None
@@ -576,15 +809,19 @@ def _encode_and_verify(
     return int(info.frame_count or 0), measured
 
 
+class _AudioLengthCheck(TypedDict):
+    effects: bool
+    soundtrack: SoundtrackPlan | None
+    measured: int | None
+
+
 def _check_lengths(
-    *,
-    actual: int,
-    expected: int,
-    tolerance: int,
-    effects: bool,
-    soundtrack: SoundtrackPlan | None,
-    measured: int | None,
+    *, actual: int, expected: int, tolerance: int, **options: Unpack[_AudioLengthCheck]
 ) -> None:
+    validate_keywords(options, _AudioLengthCheck)
+    effects = options["effects"]
+    soundtrack = options["soundtrack"]
+    measured = options["measured"]
     if abs(actual - expected) > tolerance:
         what = "計畫（含速度與轉場）的" if effects else "裁切後應有的"
         raise ComponentError(
@@ -592,27 +829,37 @@ def _check_lengths(
             f"接合後實際 {actual} 幀，與{what} {expected} 幀不符",
             details={"expected_frames": expected, "actual_frames": actual},
         )
-    if soundtrack is not None and (measured is None or abs(measured - soundtrack.samples) > 1):
+    if soundtrack is not None and (
+        measured is None or abs(measured - soundtrack.samples) > 1
+    ):
         raise ComponentError(
             "MEDIA_INCOMPLETE",
             f"匯出的聲音長度 {measured} samples 與序列總長 {soundtrack.samples} samples（48 kHz）不符",
-            details={"expected_samples": soundtrack.samples, "actual_samples": measured},
+            details={
+                "expected_samples": soundtrack.samples,
+                "actual_samples": measured,
+            },
         )
 
 
-def _resolve_audio_track(ctx: RunContext, track: AudioTrack) -> tuple[Path, AudioSource]:
+def _resolve_audio_track(
+    ctx: RunContext, track: AudioTrack
+) -> tuple[Path, AudioSource]:
     """Materialise the audio_track file and read its timeline.
 
     Not a video or audio file, or no audio stream -> ``INVALID_ARGUMENT`` (never replaced by silence).
     """
-
     fields = {"field_paths": ["sequence.audio_track.file"]}
     ctx.check_cancelled()
     path = ctx.resolve_file(track.file)
     try:
         info = probe(path, count_frames=False, cancel=ctx.cancel_token)
         if info.kind not in ("video", "audio"):
-            raise ComponentError("INVALID_ARGUMENT", f"audio_track 的檔案不是影片或聲音（{info.kind}）", details=fields)
+            raise ComponentError(
+                "INVALID_ARGUMENT",
+                f"audio_track 的檔案不是影片或聲音（{info.kind}）",
+                details=fields,
+            )
         if not info.has_audio:
             raise ComponentError(
                 "INVALID_ARGUMENT",
@@ -627,7 +874,6 @@ def _resolve_audio_track(ctx: RunContext, track: AudioTrack) -> tuple[Path, Audi
 
 def _audio_samples(path: Path, ctx: RunContext) -> int | None:
     """Real length of the export's first audio stream in 48 kHz samples (packet scan: end minus start)."""
-
     timeline = scan_timeline(path, cancel=ctx.cancel_token)
     audio = timeline.of_type("audio")
     if not audio or audio[0].packets <= 0:
@@ -636,4 +882,10 @@ def _audio_samples(path: Path, ctx: RunContext) -> int | None:
     return round((stream.end_seconds - stream.start_seconds) * AUDIO_RATE)
 
 
-__all__ = ["ConcatProvider", "plan_audio_track", "plan_clips", "plan_effects", "plan_soundtrack"]
+__all__ = [
+    "ConcatProvider",
+    "plan_audio_track",
+    "plan_clips",
+    "plan_effects",
+    "plan_soundtrack",
+]

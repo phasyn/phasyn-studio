@@ -13,10 +13,10 @@ export const VARIANT_REF2VA = "ref2va";
 export function componentVariant(component: ComponentDescriptor): string {
   const settings: unknown = component.settings;
   const pick = (load: unknown): string | null => {
-    const options = isRecord(load) ? load.provider_options : null;
-    return isRecord(options) && typeof options.variant === "string" ? options.variant : null;
+    const options = isRecord(load) ? load["provider_options"] : null;
+    return isRecord(options) && typeof options["variant"] === "string" ? options["variant"] : null;
   };
   if (!isRecord(settings)) return VARIANT_FL2VA;
-  const stored = isRecord(settings.stored) ? settings.stored.load : null;
-  return pick(settings.loaded) ?? pick(stored) ?? VARIANT_FL2VA;
+  const stored = isRecord(settings["stored"]) ? settings["stored"]["load"] : null;
+  return pick(settings["loaded"]) ?? pick(stored) ?? VARIANT_FL2VA;
 }

@@ -1,3 +1,4 @@
+import { optionalField } from "@/lib/json";
 // Submitting Video Studio runs: render shots (several shots = one batch run), render variants of one shot (its seed,
 // a reference's file and its route varied, model/variants.ts; every variant a take of the shot), render the variants
 // of several shots in one batch run (model/variantBatch.ts) and export the sequence. With lanes chosen for the project
@@ -10,16 +11,17 @@
 import { useCallback, useRef, useState } from "react";
 import type { Catalog, StudioProject, StudioShot, StudioTimeline, TimelineSource } from "@/api/generated/contracts";
 import { isApiError } from "@/api/http";
-import { useCreateRun } from "@/api/runs";
+import { submitStudioRender, useCreateRun } from "@/api/runs";
 import type { NoticeInput } from "@/features/studio-shell";
 import { exportTarget, prepareTimelineExport, sequenceExport } from "../editor/export";
+import { exportDigest, exportNote, exportSignature } from "../components/exportSnapshot";
 import { proxyRequest } from "../editor/proxy";
 import type { SegmentEtaEstimator } from "../model/eta";
 import { useProjectLanes } from "../model/lanePrefs";
 import { laneSummary, MIN_LANES, splitLanes } from "../model/lanes";
 import type { ExportOptions } from "../model/pipelines";
 import { localId, type ProjectAction } from "../model/project";
-import { planRender, renderTakes } from "../model/renderPlan";
+import { planRender, renderTakeDrafts } from "../model/renderPlan";
 import { engineUnavailable, type Engine } from "../model/routes";
 import { drawSeeds, MAX_VARIANT_TAKES, MIN_VARIANT_TAKES, type ShotVariant, type ShotVariants } from "../model/variants";
 import { errorText } from "../swap/errors";
@@ -35,6 +37,7 @@ const variantBranches = (shot: StudioShot, variants: readonly ShotVariant[]): St
 export interface StudioRenderInput {
   project: StudioProject;
   dispatch: (action: ProjectAction) => void;
+  transact: (change: (saved: StudioProject) => Promise<StudioProject>) => Promise<void>;
   engine: Engine;
   catalog: Catalog | undefined;
   notify: (notice: NoticeInput) => void;
@@ -42,9 +45,9 @@ export interface StudioRenderInput {
   estimator: SegmentEtaEstimator;
 }
 
-const renderLink = (projectId: string, runId?: string) => `/studio/render?project=${encodeURIComponent(projectId)}${runId ? `&run=${encodeURIComponent(runId)}` : ""}`;
+const renderLink = (projectId: string, runId?: string) => `/studio/render?project=${encodeURIComponent(projectId)}${(runId != null && runId !== "") ? `&run=${encodeURIComponent(runId)}` : ""}`;
 
-export function useStudioRender({ project, dispatch, engine, catalog, notify, estimator }: StudioRenderInput) {
+export function useStudioRender({ project, dispatch, transact, engine, catalog, notify, estimator }: StudioRenderInput) {
   const { mutateAsync: postRun } = useCreateRun();
   // The lanes chosen for this project in this browser (model/lanePrefs.ts): every render below uses them
   const storedLanes = useProjectLanes(project.project_id);
@@ -64,7 +67,7 @@ export function useStudioRender({ project, dispatch, engine, catalog, notify, es
   const submitRender = useCallback(
     async (requested: StudioShot[], label: string | undefined, noticeTitle: string): Promise<boolean> => {
       const unavailable = engineUnavailable(engine);
-      if (unavailable) {
+      if (unavailable != null && unavailable !== "") {
         notify({ tone: "warning", title: t("渲染引擎還不能判斷"), detail: unavailable, link: { label: t("開啟渲染引擎"), to: "#engine" } });
         return false;
       }
@@ -86,7 +89,7 @@ export function useStudioRender({ project, dispatch, engine, catalog, notify, es
         const laneOf = new Map((split?.shots ?? []).map((shot) => [shot.shot_id, shot.route]));
         const branches = split ? requested.map((shot) => ({ ...shot, route: laneOf.get(shot.shot_id) ?? shot.route })) : requested;
         const takeIds = branches.map(() => localId("t"));
-        const { plan, problem } = planRender(project, branches, takeIds, { routes: engine.routes, catalog }, { label });
+        const { plan, problem } = planRender(project, branches, takeIds, { routes: engine.routes, catalog }, { ...(label === undefined ? {} : { label }) });
         if (!plan) {
           notify({ tone: "warning", title: t("無法渲染"), detail: problem, link: { label: t("開啟渲染引擎"), to: "#engine" } });
           return false;
@@ -96,16 +99,18 @@ export function useStudioRender({ project, dispatch, engine, catalog, notify, es
           notify({ tone: "warning", title: t("無法渲染"), detail: t("這個 run 有 {steps} 個步驟，超過一個 run 的上限 {max}：少選幾個鏡頭、seed、檔案或路線", { steps, max: MAX_RUN_STEPS }) });
           return false;
         }
-        const run = await postRun(plan.body);
-        for (const move of split?.moves ?? []) dispatch({ type: "updateShot", shotId: move.shotId, patch: { route: move.to } });
-        dispatch({ type: "addTakes", takes: renderTakes(project, branches, plan, takeIds, run) });
+        const { run, refreshError } = await submitStudioRender(transact, postRun, {
+          medium: "video", run: plan.body, takes: renderTakeDrafts(project, branches, plan, takeIds),
+          route_moves: (split?.moves ?? []).map((move) => ({ shot_id: move.shotId, from_route: move.from, to_route: move.to })),
+        });
         const unsplit = pickedRoutes && storedLanes.length >= MIN_LANES ? t("變體各自指定路線，這次不分流。") : undefined;
         notify({
           tone: "info",
           title: noticeTitle,
-          detail: split ? laneSummary(split) : unsplit,
+          ...optionalField("detail", split ? laneSummary(split) : unsplit),
           link: { label: t("查看渲染進度"), to: renderLink(project.project_id, run.run_id) },
         });
+        if (refreshError !== undefined) notify({ tone: "warning", title: t("已建立 Take，重新載入專案即可查看"), detail: errorText(refreshError) });
         return true;
       } catch (error) {
         const active = isApiError(error) && error.code === "RUN_ACTIVE";
@@ -113,14 +118,14 @@ export function useStudioRender({ project, dispatch, engine, catalog, notify, es
           tone: "danger",
           title: active ? t("目前有其他 run 正在執行") : t("無法開始渲染"),
           detail: active ? t("主控的同時執行數已滿；等其中一個 run 結束，或在「渲染」取消一個後再試。") : errorText(error),
-          link: active ? { label: t("查看執行中的 run"), to: renderLink(project.project_id) } : undefined,
+          ...(active ? { link: { label: t("查看執行中的 run"), to: renderLink(project.project_id) } } : {}),
         });
         return false;
       } finally {
         end();
       }
     },
-    [catalog, dispatch, engine, estimator, notify, postRun, project, storedLanes],
+    [catalog, engine, estimator, notify, postRun, project, storedLanes, transact],
   );
 
   const renderShots = useCallback(
@@ -196,18 +201,18 @@ export function useStudioRender({ project, dispatch, engine, catalog, notify, es
       const shot = project.shots.find((item) => item.shot_id === shotId);
       if (!shot) return;
       const seeds = drawSeeds(Array.from({ length: Math.max(MIN_VARIANT_TAKES, Math.min(MAX_VARIANT_TAKES, count)) }, () => ({ kind: "random" as const })));
-      await renderVariants(shotId, seeds.map((seed) => ({ seed, route: shot.route, references: shot.references })));
+      await renderVariants(shotId, seeds.map((seed) => ({ seed, route: shot.route, ...(shot.references ? { references: shot.references } : {}) })));
     },
     [project, renderVariants],
   );
 
   const exportSequence = useCallback(
-    async (options: ExportOptions = {}) => {
-      if (busyRef.current) return;
+    async (options: ExportOptions = {}): Promise<boolean> => {
+      if (busyRef.current) return false;
       const component = engine.concat.component;
       if (!engine.concat.usable || !component) {
-        notify({ tone: "warning", title: t("序列匯出元件無法使用"), detail: engine.concat.reason ?? undefined, link: { label: t("開啟渲染引擎"), to: "#engine" } });
-        return;
+        notify({ tone: "warning", title: t("序列匯出元件無法使用"), ...(engine.concat.reason == null ? {} : { detail: engine.concat.reason }), link: { label: t("開啟渲染引擎"), to: "#engine" } });
+        return false;
       }
       // The same request as the character-swap panel's export: the project's one timeline
       begin("export");
@@ -216,9 +221,12 @@ export function useStudioRender({ project, dispatch, engine, catalog, notify, es
         const result = sequenceExport(captured, exportTarget(component), options);
         if (!result.body) {
           notify({ tone: "warning", title: t("序列還不能匯出"), detail: result.problems.join(t("；")) });
-          return;
+          return false;
         }
-        const run = await postRun(result.body);
+        // Rasterizing captions can add fresh FileRefs without changing this edit. Keep the pre-raster snapshot identity as well as the runnable body.
+        const authored = sequenceExport(project, exportTarget(component), options);
+        const fingerprint = await exportDigest(exportSignature(authored.body));
+        const run = await postRun({ ...result.body, origin: { ...result.body.origin, note: exportNote(project.project_id, project.revision, fingerprint) } });
         dispatch({
           type: "addExport",
           record: { export_id: localId("x"), run_id: run.run_id, created_at: run.created_at, state: "rendering", shot_ids: result.shotIds, asset: null, error: null, frames: null },
@@ -228,8 +236,10 @@ export function useStudioRender({ project, dispatch, engine, catalog, notify, es
           title: t("開始匯出序列（{clipsCount} 個片段）", { clipsCount: result.clips }),
           link: { label: t("查看匯出進度"), to: renderLink(project.project_id, run.run_id) },
         });
+        return true;
       } catch (error) {
         notify({ tone: "danger", title: t("無法開始匯出"), detail: errorText(error) });
+        return false;
       } finally {
         end();
       }
@@ -241,7 +251,7 @@ export function useStudioRender({ project, dispatch, engine, catalog, notify, es
     if (busyRef.current) return;
     const component = engine.concat.component;
     if (!engine.concat.usable || !component) {
-      notify({ tone: "warning", title: t("序列匯出元件無法使用"), detail: engine.concat.reason ?? undefined });
+      notify({ tone: "warning", title: t("序列匯出元件無法使用"), ...(engine.concat.reason == null ? {} : { detail: engine.concat.reason }) });
       return;
     }
     begin("export");

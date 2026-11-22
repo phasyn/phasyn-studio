@@ -5,7 +5,7 @@
 import { t } from "@/i18n";
 
 /** A reference picture or video size; null when it is not known yet (then the segment gets no estimate). */
-type Size = { width: number | null; height: number | null };
+interface Size { width: number | null; height: number | null }
 
 export interface SegmentEtaInput {
   /** Compute route (pipeline_id); null when none is selected. */

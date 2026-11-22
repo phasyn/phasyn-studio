@@ -1,7 +1,7 @@
 // 目錄載入：只載入目前語言的 src/i18n/catalogs/<locale>/*.json（Vite 動態 import，各檔獨立 chunk）。
 // 單一檔案不存在、讀不到或格式錯就略過該檔（那些原文顯示繁中），不讓整個介面失敗。
 import { detectLocale, SOURCE_LOCALE, type Locale } from "./locale";
-import { isCatalogEntry, type CatalogEntry } from "./message";
+import { isCatalogObject, isCatalogEntry, type CatalogEntry } from "./message";
 import { activate } from "./store";
 
 export type CatalogLoaders = Readonly<Record<string, () => Promise<unknown>>>;
@@ -35,12 +35,12 @@ export async function loadCatalogs(locale: Locale, loaders: CatalogLoaders): Pro
   results.forEach((result, index) => {
     const path = paths[index] ?? "";
     const data = result.status === "fulfilled" ? result.value : undefined;
-    if (typeof data !== "object" || data === null || Array.isArray(data)) {
+    if (!isCatalogObject(data)) {
       report.failed.push(path);
       return;
     }
     report.files.push(path);
-    for (const [source, entry] of Object.entries(data as Record<string, unknown>)) {
+    for (const [source, entry] of Object.entries(data)) {
       if (!isCatalogEntry(entry)) {
         report.invalid += 1;
         continue;

@@ -112,7 +112,7 @@ export function variantCombos(axes: VariantAxes): VariantCombo[] {
 /** Why the choices make no run (nothing on an axis, too few or too many takes); null when they do. */
 export function choicesProblem(axes: VariantAxes): string | null {
   if (axes.seeds.length === 0) return t("至少選一個 seed");
-  if (axes.files && axes.files.items.length === 0) return t("至少選一個 @{alias} 的檔案", { alias: axes.files.ref.alias });
+  if (axes.files?.items.length === 0) return t("至少選一個 @{alias} 的檔案", { alias: axes.files.ref.alias });
   if (axes.routes.length === 0) return t("至少選一條路線");
   const count = variantCount(axes);
   if (count < MIN_VARIANT_TAKES) return t("至少要 {min} 個 take：再多選一個 seed、檔案或路線", { min: MIN_VARIANT_TAKES });
@@ -159,7 +159,7 @@ export function previewShots(shot: StudioShot, axes: VariantAxes): StudioShot[] 
 
 /** A long file name cut in the middle, its start and its end with the extension kept: 「night-…smallblur.mp4」. */
 export function shortFileName(name: string, max = 20): string {
-  const chars = [...name];
+  const chars = Array.from(name);
   if (chars.length <= max) return name;
   const tail = Math.ceil(((max - 1) * 2) / 3);
   return `${chars.slice(0, max - 1 - tail).join("")}…${chars.slice(-tail).join("")}`;
@@ -180,7 +180,7 @@ const badgeOf = (parts: readonly string[]): VariantBadge => (parts.length > 0 ? 
 export function comboBadge(shot: StudioShot, axes: VariantAxes, combo: VariantCombo, routeLabel: (routeId: string) => string): VariantBadge {
   const parts: string[] = [];
   const seed = axes.seeds[combo.seed];
-  if (seed?.kind === "fixed") parts.push(`seed ${seed.seed}`);
+  if (seed?.kind === "fixed") parts.push(`seed ${String(seed.seed)}`);
   else if (seed?.kind === "random") parts.push(t("隨機 seed {number}", { number: axes.seeds.slice(0, combo.seed + 1).filter((item) => item.kind === "random").length }));
   const ref = axes.files?.ref;
   if (ref && combo.item && combo.item.item_id !== ref.item_id) parts.push(`@${ref.alias} ${shortFileName(combo.item.name)}`);
@@ -237,7 +237,7 @@ function referenceParts(sent: readonly StudioTakeReference[], current: readonly 
 export function variantBadge(take: StudioTake, shot: StudioShot, library: readonly StudioLibraryItem[], routeLabel: (routeId: string) => string): VariantBadge | null {
   if (!isVariantTake(shot, take)) return null;
   const parts: string[] = [];
-  if (shot.seed === RANDOM_SEED || take.seed !== shot.seed) parts.push(`seed ${take.seed}`);
+  if (take.seed !== null && (shot.seed === RANDOM_SEED || take.seed !== shot.seed)) parts.push(`seed ${String(take.seed)}`);
   if (take.task === "ref2va") parts.push(...referenceParts(take.references ?? [], takeReferences(shot.references ?? [], library), library));
   if (take.route !== shot.route) parts.push(routePart(routeLabel(take.route)));
   return badgeOf(parts);
@@ -320,7 +320,7 @@ function referencesFromTake(
 export function takeSettings(take: StudioTake, shot: StudioShot, library: readonly StudioLibraryItem[], newRefId: () => string): TakeSettings {
   const patch: ShotPatch = {};
   const changes: string[] = [];
-  if (take.seed !== shot.seed) {
+  if (take.seed !== null && take.seed !== shot.seed) {
     patch.seed = take.seed;
     changes.push("seed");
   }

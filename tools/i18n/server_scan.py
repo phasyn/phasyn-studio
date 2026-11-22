@@ -42,6 +42,8 @@ SOURCE_DIRS = [
     "runtimes/h3/src",
     "runtimes/captioner/src",
     "runtimes/qimg/src",
+    "runtimes/rife/src",
+    "runtimes/seedvr2/src",
 ]
 # The H3 numerical recipe raises only dynamic diagnostics (f-strings) that never reach a catalog.
 SKIP_SUBTREES = ("runtimes/h3/src/phasyn_h3/recipe/",)
@@ -226,6 +228,15 @@ def classify(node: ast.Constant, parents: dict[ast.AST, ast.AST]) -> tuple[str, 
         return "include", group_for_name(p.arg), None
     if isinstance(p, ast.Call):
         name = callee_name(p)
+        if (
+            isinstance(p.func, ast.Attribute)
+            and isinstance(p.func.value, ast.Name)
+            and p.func.value.id == "re"
+            and name in {"compile", "search", "match", "fullmatch"}
+            and p.args
+            and p.args[0] is child
+        ):
+            return "skip:pattern", "", None
         if name in LOG_CALLS:
             return "skip:log", "", None
         if name in INTERNAL_EXC:

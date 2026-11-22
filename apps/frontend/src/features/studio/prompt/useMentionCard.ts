@@ -12,7 +12,7 @@ function markUnder(layer: HTMLElement | null, x: number, y: number): number | nu
   if (!layer) return null;
   for (const element of layer.querySelectorAll<HTMLElement>("[data-resolved]")) {
     for (const rect of element.getClientRects()) {
-      if (x >= rect.left - SLOP && x <= rect.right + SLOP && y >= rect.top - SLOP && y <= rect.bottom + SLOP) return Number(element.dataset.markStart);
+      if (x >= rect.left - SLOP && x <= rect.right + SLOP && y >= rect.top - SLOP && y <= rect.bottom + SLOP) return Number(element.dataset["markStart"]);
     }
   }
   return null;
@@ -31,22 +31,22 @@ export interface MentionCardTracker {
 export function useMentionCard(layer: RefObject<HTMLElement | null>, aliases: ReadonlySet<string>): MentionCardTracker {
   const [pointer, setPointer] = useState<number | null>(null);
   const [caret, setCaret] = useState<number | null>(null);
-  const frame = useRef(0);
-  const point = useRef<{ x: number; y: number } | null>(null);
-  useEffect(() => () => cancelAnimationFrame(frame.current), []);
+  const frameRef = useRef(0);
+  const pointRef = useRef<{ x: number; y: number } | null>(null);
+  useEffect(() => () => { cancelAnimationFrame(frameRef.current); }, []);
 
   const hidePointer = () => {
-    point.current = null;
+    pointRef.current = null;
     setPointer(null);
   };
   return {
     target: pointer !== null ? { start: pointer, fromCaret: false } : caret !== null ? { start: caret, fromCaret: true } : null,
     onPointerMove: (event) => {
-      point.current = { x: event.clientX, y: event.clientY };
-      if (frame.current !== 0) return;
-      frame.current = requestAnimationFrame(() => {
-        frame.current = 0;
-        const at = point.current;
+      pointRef.current = { x: event.clientX, y: event.clientY };
+      if (frameRef.current !== 0) return;
+      frameRef.current = requestAnimationFrame(() => {
+        frameRef.current = 0;
+        const at = pointRef.current;
         setPointer(at ? markUnder(layer.current, at.x, at.y) : null);
       });
     },

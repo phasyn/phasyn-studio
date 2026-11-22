@@ -1,0 +1,66 @@
+{
+  "pipeline_id": "h3-decode-take-local",
+  "label": "H3 影音解碼與封裝",
+  "inputs": [
+    {
+      "name": "video_latent",
+      "type_id": "video.final-latent.v1",
+      "required": true,
+      "transport": "file",
+      "description": "同一個去噪任務的 video_latent 輸出。"
+    },
+    {
+      "name": "audio_latent",
+      "type_id": "audio.final-latent.v1",
+      "required": true,
+      "transport": "file",
+      "description": "同一個去噪任務的 audio_latent 輸出。"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "video",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "vae-gpu0",
+      "inputs": {
+        "latent": {
+          "from_input": "video_latent"
+        }
+      },
+      "parameters": {}
+    },
+    {
+      "step_id": "audio",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "audio-gpu1",
+      "inputs": {
+        "latent": {
+          "from_input": "audio_latent"
+        }
+      },
+      "parameters": {}
+    },
+    {
+      "step_id": "mux",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "mux",
+      "inputs": {
+        "video": {
+          "from_step": "video",
+          "output": "asset"
+        },
+        "audio": {
+          "from_step": "audio",
+          "output": "audio"
+        }
+      },
+      "parameters": {}
+    }
+  ],
+  "outputs": {
+    "final": {
+      "from_step": "mux",
+      "output": "asset"
+    }
+  }
+}

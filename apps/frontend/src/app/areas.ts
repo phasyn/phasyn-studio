@@ -59,16 +59,16 @@ export function rememberStudio(memory: StudioMemory, pathname: string, search: s
   const area = areaOf(pathname);
   if (area !== "image" && area !== "studio") return memory;
   const raw = new URLSearchParams(search).get("project");
-  const projectId = raw && raw.trim() ? raw : null;
+  const projectId = (raw != null && raw !== "") && raw.trim() ? raw : null;
   const workspace = area === "studio" ? (pathname.split("/").filter(Boolean)[1] ?? null) : null;
-  const videoWorkspace = workspace && VIDEO_WORKSPACES.has(workspace) ? workspace : memory.videoWorkspace;
+  const videoWorkspace = (workspace != null && workspace !== "") && VIDEO_WORKSPACES.has(workspace) ? workspace : memory.videoWorkspace;
   if (projectId === memory.projectId && videoWorkspace === memory.videoWorkspace) return memory;
   return { projectId, videoWorkspace };
 }
 
 /** 側欄的連結：Image／Video Studio 帶著同一個專案（Video Studio 回到上次的工作區）；其他工作區是固定入口。 */
 export function areaLink(area: AreaSpec, memory: StudioMemory): string {
-  if (area.id === "image") return memory.projectId ? imageStudioPath(memory.projectId) : area.to;
-  if (area.id === "studio") return memory.projectId ? videoStudioPath(memory.videoWorkspace ?? "generate", memory.projectId) : area.to;
+  if (area.id === "image") return (memory.projectId != null && memory.projectId !== "") ? imageStudioPath(memory.projectId) : area.to;
+  if (area.id === "studio") return (memory.projectId != null && memory.projectId !== "") ? videoStudioPath(memory.videoWorkspace ?? "generate", memory.projectId) : area.to;
   return area.to;
 }

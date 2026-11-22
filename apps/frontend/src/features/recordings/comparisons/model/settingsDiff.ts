@@ -1,3 +1,4 @@
+import { toJsonObject as record } from "@/lib/json";
 // settings_diff 正規化：伺服器項目可能是「每筆一值」（values 陣列或以 recording_id 為鍵）或成對的
 // before／after（config_diff 格式，可能附 recording ID）。統一成「路徑 × recording」的格子；
 // 伺服器沒給的格子才嘗試從該 recording 的 context.settings 依路徑讀出，並標示來源，讀不到就是「未知」。
@@ -20,9 +21,6 @@ export interface DiffRow {
   raw: Record<string, unknown> | null;
 }
 
-function record(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
-}
 
 function str(value: unknown): string | null {
   return typeof value === "string" && value ? value : null;
@@ -30,8 +28,8 @@ function str(value: unknown): string | null {
 
 function cellFromEntry(entry: unknown): DiffCell {
   const rec = record(entry);
-  if (rec && "present" in rec && typeof rec.present === "boolean") {
-    return rec.present ? { state: "present", value: rec.value, resolved: false } : { state: "absent", resolved: false };
+  if (rec && "present" in rec && typeof rec["present"] === "boolean") {
+    return rec["present"] ? { state: "present", value: rec["value"], resolved: false } : { state: "absent", resolved: false };
   }
   return { state: "present", value: entry, resolved: false };
 }
@@ -63,9 +61,9 @@ function pairIds(item: Record<string, unknown>, ids: readonly string[]): [string
     const list = item[key];
     if (Array.isArray(list) && list.length === 2) return [str(list[0]), str(list[1])];
   }
-  const base = str(item.baseline_id) ?? str(item.base_id) ?? str(item.before_recording_id) ?? ids[0] ?? null;
+  const base = str(item["baseline_id"]) ?? str(item["base_id"]) ?? str(item["before_recording_id"]) ?? ids[0] ?? null;
   const other =
-    str(item.after_recording_id) ?? str(item.recording_id) ?? str(item.other_id) ?? str(item.against) ?? str(item.compared_id) ?? (ids.length === 2 ? (ids[1] ?? null) : null);
+    str(item["after_recording_id"]) ?? str(item["recording_id"]) ?? str(item["other_id"]) ?? str(item["against"]) ?? str(item["compared_id"]) ?? (ids.length === 2 ? (ids[1] ?? null) : null);
   return [base, other];
 }
 
@@ -77,7 +75,7 @@ function cellsEqual(a: DiffCell, b: DiffCell): boolean {
 }
 
 export function normalizeSettingsDiff(
-  items: ReadonlyArray<Record<string, unknown>>,
+  items: readonly Record<string, unknown>[],
   ids: readonly string[],
   contexts: ReadonlyMap<string, RecordingContext> = new Map(),
 ): DiffRow[] {
@@ -93,9 +91,9 @@ export function normalizeSettingsDiff(
   const indexOf = (id: string | null) => (id === null ? -1 : ids.indexOf(id));
 
   items.forEach((item, itemIndex) => {
-    const path = str(item.path) ?? t("（未命名項目 {itemIndex}）", { itemIndex: itemIndex + 1 });
+    const path = str(item["path"]) ?? t("（未命名項目 {itemIndex}）", { itemIndex: itemIndex + 1 });
     const row = ensure(path);
-    const values = item.values ?? item.per_recording ?? item.by_recording;
+    const values = item["values"] ?? item["per_recording"] ?? item["by_recording"];
     if (Array.isArray(values)) {
       values.forEach((entry, index) => {
         if (index < ids.length) row.cells[index] = cellFromEntry(entry);
@@ -114,10 +112,10 @@ export function normalizeSettingsDiff(
       const baseIndex = indexOf(baseId);
       const otherIndex = indexOf(otherId);
       if (baseIndex >= 0) {
-        row.cells[baseIndex] = item.before_present === false ? { state: "absent", resolved: false } : { state: "present", value: item.before, resolved: false };
+        row.cells[baseIndex] = item["before_present"] === false ? { state: "absent", resolved: false } : { state: "present", value: item["before"], resolved: false };
       }
       if (otherIndex >= 0) {
-        row.cells[otherIndex] = item.after_present === false ? { state: "absent", resolved: false } : { state: "present", value: item.after, resolved: false };
+        row.cells[otherIndex] = item["after_present"] === false ? { state: "absent", resolved: false } : { state: "present", value: item["after"], resolved: false };
       }
       if (baseIndex < 0 || otherIndex < 0) row.raw = item;
       return;

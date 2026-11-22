@@ -221,10 +221,10 @@ export function clipProperties(clip: TimelineClip, kind: "video" | "audio", fram
   for (const [index, effect] of (clip.effect_stack ?? []).entries()) {
     const group = effectTitle(effect, index);
     for (const spec of EFFECT_PARAMETERS[effect.kind]) {
-      add(effectKey(effect.effect_id, spec.param), { label: spec.label, group, unit: spec.unit }, (target, value) => ({
+      add(effectKey(effect.effect_id, spec.param), { label: spec.label, group, unit: spec.unit }, (target, value) => target.effect_stack ? ({
         ...target,
-        effect_stack: target.effect_stack?.map((item) => (item.effect_id === effect.effect_id ? withEffectParameter(item, spec.param, value) : item)),
-      }));
+        effect_stack: target.effect_stack.map((item) => (item.effect_id === effect.effect_id ? withEffectParameter(item, spec.param, value) : item)),
+      }) : target);
     }
   }
   if (clip.mask) {

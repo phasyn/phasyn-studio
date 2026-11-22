@@ -63,17 +63,17 @@ export function ConformMode({ clipId, applied, onApplied, onClose }: ToolProps) 
     if (!clip) return;
     const title = clipTitle(project, timeline, clip);
     const edit =
-      selected === "retime" && options?.retime?.ok
+      selected === "retime" && (options?.retime?.ok === true)
         ? { timeline: options.retime.plan.timeline, label: retimeLabel(title) }
-        : selected === "shift" && options?.shift?.ok
+        : selected === "shift" && (options?.shift?.ok === true)
           ? { timeline: options.shift.plan.timeline, label: shiftLabel(title, options.shift.plan.lag) }
-          : selected === "cut" && plan?.ok
+          : selected === "cut" && (plan?.ok === true)
             ? { timeline: plan.plan.timeline, label: conformLabel(title, plan.plan.anchors.length) }
             : null;
     if (edit && editor.commit(edit.timeline, edit.label)) onApplied(edit.label);
   };
   const shotId = timeline.sources.find((source) => source.source_id === clip?.source_id)?.shot_id ?? null;
-  const generateHref = shotId ? `/studio/generate?project=${encodeURIComponent(project.project_id)}&shot=${encodeURIComponent(shotId)}` : null;
+  const generateHref = (shotId != null && shotId !== "") ? `/studio/generate?project=${encodeURIComponent(project.project_id)}&shot=${encodeURIComponent(shotId)}` : null;
   // The edits that can be made; without one, the cut plan's refusal keeps the button (and its reason) as before
   const ready = options ? readyMethods(options) : [];
   const offered = ready.length > 0 || (plan !== null && !plan.ok && !plan.settled);
@@ -90,7 +90,7 @@ export function ConformMode({ clipId, applied, onApplied, onClose }: ToolProps) 
       >
         {target.ok && clip && analysis ? <Result analysis={analysis} target={target} clip={clip} plan={plan} options={options} selected={selected} onSelect={setChoice} generateHref={generateHref} onLeave={onClose} /> : null}
       </ToolBody>
-      <ToolFooter applied={applied} onUndone={() => onApplied(null)} reading={target.ok ? { status: status?.status ?? null, start: () => startConform(target), cancel: cancelConform } : null}>
+      <ToolFooter applied={applied} onUndone={() => { onApplied(null); }} reading={target.ok ? { status: status?.status ?? null, start: () => { startConform(target); }, cancel: cancelConform } : null}>
         {applied === null && offered ? (
           <ActionButton variant="primary" icon={<ApplyIcon aria-hidden />} disabledReason={blocked} onClick={apply}>
             {t("套用")}
@@ -129,17 +129,17 @@ function Result({ analysis, target, clip, plan, options, selected, onSelect, gen
       <Verdict
         verdict={verdict}
         icon={recommended ? METHOD_ICON[recommended] : TONE_ICON[verdict.tone]}
-        regenerate={generateHref && (unmatched || worse) ? { href: generateHref, label: t("到「鏡頭」重新生成這段"), onLeave } : null}
+        regenerate={(generateHref != null && generateHref !== "") && (unmatched || worse) ? { href: generateHref, label: t("到「鏡頭」重新生成這段"), onLeave } : null}
       />
       {options && options.listed.length > 0 ? <MethodChoice options={options} selected={selected} onSelect={onSelect} /> : null}
       <Facts className="text-caption">
         <Fact label={t("原片的切點")}>{analysis.originalCuts.length === 0 ? t("沒有") : t("{count} 個：{times}", { count: analysis.originalCuts.length, times: formatList(analysis.originalCuts.map(at)) })}</Fact>
         <Fact label={t("生成的切點")}>{analysis.takeCuts.length === 0 ? t("沒有") : t("{count} 個：{times}", { count: analysis.takeCuts.length, times: formatList(analysis.takeCuts.map(at)) })}</Fact>
       </Facts>
-      {analysis.timing.matched > 0 ? <OnTime before={analysis.timing} after={score ? score.timing : plan?.ok ? plan.plan.after : null} /> : null}
+      {analysis.timing.matched > 0 ? <OnTime before={analysis.timing} after={score ? score.timing : (plan?.ok === true) ? plan.plan.after : null} /> : null}
       <PairTable analysis={analysis} plan={motion ? null : plan} at={at} originalAt={originalAt} />
-      {!motion && plan?.ok ? <SpanTable plan={plan.plan} at={at} /> : null}
-      {!motion && plan?.ok ? <PlanNote plan={plan.plan} /> : null}
+      {!motion && (plan?.ok === true) ? <SpanTable plan={plan.plan} at={at} /> : null}
+      {!motion && (plan?.ok === true) ? <PlanNote plan={plan.plan} /> : null}
       {motion && options ? <MotionNote options={options} method={motion} /> : null}
     </>
   );
@@ -160,7 +160,7 @@ function OnTime({ before, after }: { before: CutTiming; after: CutTiming | null 
           <span aria-hidden className="block h-1.5 overflow-hidden rounded-full bg-raised">
             <span
               className={cn("block h-full origin-left rounded-full transition-transform duration-(--duration-slow) ease-standard", row.tone)}
-              style={{ transform: `scaleX(${row.timing.matched > 0 ? row.timing.onTime / row.timing.matched : 0})` }}
+              style={{ transform: `scaleX(${String(row.timing.matched > 0 ? row.timing.onTime / row.timing.matched : 0)})` }}
             />
           </span>
           <span className="machine text-right text-fg">{t("{onTime}／{matched}", { onTime: row.timing.onTime, matched: row.timing.matched })}</span>
@@ -197,13 +197,13 @@ function PairTable({ analysis, plan, at, originalAt }: { analysis: ConformAnalys
           </thead>
           <tbody>
             {rows.map((row, index) => (
-              <tr key={`${index}:${row.original ?? "-"}:${row.take ?? "-"}`} ref={reveal(index)} className="border-t border-line-subtle align-top">
+              <tr key={`${String(index)}:${String(row.original ?? "-")}:${String(row.take ?? "-")}`} ref={reveal(index)} className="border-t border-line-subtle align-top">
                 <td className="px-2 py-1.5">
                   {row.original === null ? (
                     <span className="text-fg-tertiary">—</span>
                   ) : (
                     <>
-                      {row.atEnd ? <span className="block text-fg">{t("片段結尾")}</span> : <span className="machine block text-fg">{at(row.original)}</span>}
+                      {(row.atEnd === true) ? <span className="block text-fg">{t("片段結尾")}</span> : <span className="machine block text-fg">{at(row.original)}</span>}
                       <span className="machine block text-caption text-fg-tertiary">{t("原片 {time}", { time: originalAt(row.original) })}</span>
                     </>
                   )}
@@ -248,9 +248,9 @@ function SpanTable({ plan, at }: { plan: ConformPlan; at: (frame: number) => str
           </thead>
           <tbody>
             {plan.spans.map((span, index) => (
-              <tr key={`${span.output.from}:${span.take.from}`} ref={reveal(index)} className="border-t border-line-subtle align-top">
+              <tr key={`${String(span.output.from)}:${String(span.take.from)}`} ref={reveal(index)} className="border-t border-line-subtle align-top">
                 <td className="machine px-2 py-1.5 text-fg">{span.output.from === span.output.to ? <span className="text-fg-tertiary">—</span> : `${at(span.output.from)}–${at(span.output.to)}`}</td>
-                <td className="machine px-2 py-1.5 text-fg-secondary">{`${span.take.to - span.take.from} → ${span.output.to - span.output.from}`}</td>
+                <td className="machine px-2 py-1.5 text-fg-secondary">{`${String(span.take.to - span.take.from)} → ${String(span.output.to - span.output.from)}`}</td>
                 <td className={cn("px-2 py-1.5 text-caption [overflow-wrap:anywhere]", spanChanges(span) ? "text-brand-cyan" : "text-fg-tertiary")}>{spanText(span, at)}</td>
               </tr>
             ))}

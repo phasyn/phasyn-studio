@@ -5,7 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { apiJson } from "@/api/http";
+import { contractJson } from "@/api/http";
 import { recordingApiPath } from "@/api/recordings";
 import { ErrorCallout } from "@/components/common/ErrorCallout";
 import { Button } from "@/components/ui/button";
@@ -20,11 +20,11 @@ import { T } from "@/i18n/T";
 export function RecordingDeleteButton({ recordingId, runId, label }: { recordingId: string; runId: string | null; label: string }) {
   const [open, setOpen] = useState(false);
   // The safe choice takes focus first (the run link and the copy button come before it in the dialog)
-  const cancelButton = useRef<HTMLButtonElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
   const client = useQueryClient();
   const navigate = useNavigate();
   const remove = useMutation({
-    mutationFn: () => apiJson<{ recording_id: string; deleted: boolean }>(recordingApiPath(recordingId), { method: "DELETE" }),
+    mutationFn: () => contractJson("DeletedRecording", recordingApiPath(recordingId), { method: "DELETE" }),
     retry: false,
     onSuccess: () => {
       client.removeQueries({ queryKey: recordingKeys.detail(recordingId) });
@@ -35,14 +35,14 @@ export function RecordingDeleteButton({ recordingId, runId, label }: { recording
   });
   return (
     <>
-      <Button size="sm" variant="danger" icon={<Trash2 aria-hidden />} onClick={() => setOpen(true)}>
+      <Button size="sm" variant="danger" icon={<Trash2 aria-hidden />} onClick={() => { setOpen(true); }}>
         {t("刪除")}
       </Button>
-      <Dialog open={open} onOpenChange={(next) => (remove.isPending ? undefined : setOpen(next))}>
+      <Dialog open={open} onOpenChange={(next) => { if (!(remove.isPending)) { setOpen(next); } }}>
         <DialogContent
           onOpenAutoFocus={(event) => {
             event.preventDefault();
-            cancelButton.current?.focus();
+            cancelButtonRef.current?.focus();
           }}
         >
           <DialogHeader>
@@ -54,9 +54,9 @@ export function RecordingDeleteButton({ recordingId, runId, label }: { recording
           <DialogBody className="grid gap-2">
             <p className="text-caption text-fg-secondary">{t("刪除後從 Node 補回的入口：")}</p>
             <ul className="grid list-disc gap-1 pl-5 text-caption text-fg-secondary">
-              {runId ? (
+              {(runId != null && runId !== "") ? (
                 <li>
-                  <T source={"所屬 run <0>{runId}</0> 的頁面：會列出主控缺少的紀錄，用「查詢 Node 本機紀錄」補回。"} values={{ runId: shortId(runId) }} slots={[<Link to={runPath(runId)} className="machine" />]} />
+                  <T source={"所屬 run <0>{runId}</0> 的頁面：會列出主控缺少的紀錄，用「查詢 Node 本機紀錄」補回。"} values={{ runId: shortId(runId) }} slots={[<Link key="slot-0" to={runPath(runId)} className="machine" />]} />
                 </li>
               ) : null}
               <li>{t("這筆紀錄的頁面（ID 見下方，可複製）：會顯示「找不到此 recording」，用「從 Node 補抓」補回。")}</li>
@@ -68,10 +68,10 @@ export function RecordingDeleteButton({ recordingId, runId, label }: { recording
             {remove.isError ? <ErrorCallout error={remove.error} write title={t("沒有刪除")} /> : null}
           </DialogBody>
           <DialogFooter>
-            <Button ref={cancelButton} variant="quiet" onClick={() => setOpen(false)} disabled={remove.isPending}>
+            <Button ref={cancelButtonRef} variant="quiet" onClick={() => { setOpen(false); }} disabled={remove.isPending}>
               {t("取消")}
             </Button>
-            <Button variant="danger-confirm" icon={<Trash2 aria-hidden />} pending={remove.isPending} onClick={() => remove.mutate()}>
+            <Button variant="danger-confirm" icon={<Trash2 aria-hidden />} pending={remove.isPending} onClick={() => { remove.mutate(); }}>
               {t("刪除紀錄")}
             </Button>
           </DialogFooter>

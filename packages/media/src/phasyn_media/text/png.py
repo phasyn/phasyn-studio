@@ -12,18 +12,30 @@ from __future__ import annotations
 import struct
 import zlib
 
+
 SIGNATURE = b"\x89PNG\r\n\x1a\n"
 NO_FILTER = 0
 BYTES_PER_PIXEL = 4
 HEADER_BYTES = 33  # signature, then the complete IHDR chunk
 
 _IHDR = struct.Struct(">IIBBBBB")
-_RGBA_8 = (8, 6, 0, 0, 0)  # bit depth, colour type RGBA, deflate, adaptive filtering, no interlace
+_RGBA_8 = (
+    8,
+    6,
+    0,
+    0,
+    0,
+)  # bit depth, colour type RGBA, deflate, adaptive filtering, no interlace
 _COMPRESSION_LEVEL = 3
 
 
 def _chunk(kind: bytes, payload: bytes) -> bytes:
-    return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", zlib.crc32(kind + payload))
+    return (
+        struct.pack(">I", len(payload))
+        + kind
+        + payload
+        + struct.pack(">I", zlib.crc32(kind + payload))
+    )
 
 
 def encode_rgba(width: int, height: int, scanlines: bytes) -> bytes:
@@ -36,7 +48,12 @@ def encode_rgba(width: int, height: int, scanlines: bytes) -> bytes:
         raise ValueError("scan line data does not match the picture size")
     header = _IHDR.pack(width, height, *_RGBA_8)
     data = zlib.compress(scanlines, _COMPRESSION_LEVEL)
-    return SIGNATURE + _chunk(b"IHDR", header) + _chunk(b"IDAT", data) + _chunk(b"IEND", b"")
+    return (
+        SIGNATURE
+        + _chunk(b"IHDR", header)
+        + _chunk(b"IDAT", data)
+        + _chunk(b"IEND", b"")
+    )
 
 
 def read_rgba_size(header: bytes) -> tuple[int, int] | None:

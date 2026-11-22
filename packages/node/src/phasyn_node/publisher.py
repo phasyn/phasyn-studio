@@ -1,4 +1,4 @@
-"""紀錄 best-effort 批次上報。
+"""紀錄 best-effort 批次上報.
 
 來源：元件程序 telemetry pipe 的 record，以及 Node 自己的 Recorder（``publish=`` callable）。
 本機 JSONL 已經是權威；這裡只是有界佇列 + 每 ``publish_interval_ms`` 或滿一批時 POST
@@ -18,9 +18,11 @@ import logging
 import threading
 import time
 from collections.abc import Mapping
+from http import HTTPStatus
 from typing import Any
 
 import httpx
+
 
 log = logging.getLogger("phasyn_node.publisher")
 
@@ -34,21 +36,40 @@ SEND_TIMEOUT = httpx.Timeout(10.0, connect=3.0)
 
 
 def _dumps(obj: Any) -> bytes:
-    return json.dumps(obj, ensure_ascii=False, allow_nan=False, separators=(",", ":")).encode("utf-8")
+    return json.dumps(
+        obj, ensure_ascii=False, allow_nan=False, separators=(",", ":")
+    ).encode("utf-8")
+
+
+FAILURE_LOG_INTERVAL_S = 30.0
 
 
 class TelemetryPublisher:
+    """Queue local recording metadata for delivery to the controller."""
+
     def __init__(
-        self, *, node_id: str, controller_url: str, client: httpx.AsyncClient, recording: Mapping[str, Any]
+        self,
+        *,
+        node_id: str,
+        controller_url: str,
+        client: httpx.AsyncClient,
+        recording: Mapping[str, Any],
     ) -> None:
+        """Set up the delivery queue and controller endpoint."""
         self.node_id = node_id
         self.url = f"{controller_url}/api/telemetry/batches"
         self._client = client
-        self.interval_s = max(0.1, int(recording.get("publish_interval_ms", 1000)) / 1000)
-        self.batch_events = max(1, min(MAX_EVENTS, int(recording.get("batch_max_events", 256))))
+        self.interval_s = max(
+            0.1, int(recording.get("publish_interval_ms", 1000)) / 1000
+        )
+        self.batch_events = max(
+            1, min(MAX_EVENTS, int(recording.get("batch_max_events", 256)))
+        )
         self.batch_bytes = max(4096, int(recording.get("batch_max_bytes", 256 * 1024)))
         self.queue_events = max(1, int(recording.get("queue_max_events", 8192)))
-        self.queue_bytes = max(65536, int(recording.get("queue_max_bytes", 16 * 1024 * 1024)))
+        self.queue_bytes = max(
+            65536, int(recording.get("queue_max_bytes", 16 * 1024 * 1024))
+        )
         self._lock = threading.Lock()
         self._critical: collections.deque[tuple[str, bytes]] = collections.deque()
         self._critical_bytes = 0
@@ -71,7 +92,7 @@ class TelemetryPublisher:
 
     # ------------------------------------------------------------------ producer side (any thread)
     def enqueue(self, record: Mapping[str, Any]) -> bool:
-        """thread-safe、非阻塞。佇列滿或 record 無法序列化就丟棄並回 False（Recorder 會計數）。"""
+        """thread-safe、非阻塞。佇列滿或 record 無法序列化就丟棄並回 False（Recorder 會計數）."""
         if self._closed:
             return False
         kind = record.get("record")
@@ -84,20 +105,32 @@ class TelemetryPublisher:
             with self._lock:
                 self.stats["records_dropped"] += 1
             return False
+        return self._enqueue_payload(str(kind), payload)
+
+    def _enqueue_payload(self, kind: str, payload: bytes) -> bool:
         size = len(payload)
         with self._lock:
             if size > MAX_RECORD_BYTES:
                 self.stats["records_dropped"] += 1
                 return False
             if kind == "event":
-                if len(self._events) >= self.queue_events or self._event_bytes + size > self.queue_bytes:
+                if (
+                    len(self._events) >= self.queue_events
+                    or self._event_bytes + size > self.queue_bytes
+                ):
                     self.stats["records_dropped"] += 1
                     return False
                 self._events.append(payload)
                 self._event_bytes += size
-                full = len(self._events) >= self.batch_events or self._event_bytes >= self.batch_bytes
+                full = (
+                    len(self._events) >= self.batch_events
+                    or self._event_bytes >= self.batch_bytes
+                )
             else:
-                if len(self._critical) >= CRITICAL_QUEUE_RECORDS or self._critical_bytes + size > CRITICAL_QUEUE_BYTES:
+                if (
+                    len(self._critical) >= CRITICAL_QUEUE_RECORDS
+                    or self._critical_bytes + size > CRITICAL_QUEUE_BYTES
+                ):
                     self.stats["records_dropped"] += 1
                     return False
                 self._critical.append((str(kind), payload))
@@ -115,12 +148,11 @@ class TelemetryPublisher:
         loop, event = self._loop, self._wake
         if loop is None or event is None or loop.is_closed():
             return
-        try:
+        with contextlib.suppress(RuntimeError):
             loop.call_soon_threadsafe(event.set)
-        except RuntimeError:
-            pass
 
     def pending(self) -> int:
+        """Return the number of records awaiting delivery."""
         with self._lock:
             return len(self._events) + len(self._critical)
 
@@ -131,7 +163,11 @@ class TelemetryPublisher:
             summaries: list[bytes] = []
             events: list[bytes] = []
             size = 0
-            while self._critical and len(contexts) < MAX_CONTEXTS and len(summaries) < MAX_SUMMARIES:
+            while (
+                self._critical
+                and len(contexts) < MAX_CONTEXTS
+                and len(summaries) < MAX_SUMMARIES
+            ):
                 kind, payload = self._critical[0]
                 if size and size + len(payload) > self.batch_bytes:
                     break
@@ -169,24 +205,32 @@ class TelemetryPublisher:
     async def _send(self, body: bytes, count: int) -> bool:
         try:
             response = await self._client.post(
-                self.url, content=body, headers={"Content-Type": "application/json"}, timeout=SEND_TIMEOUT
+                self.url,
+                content=body,
+                headers={"Content-Type": "application/json"},
+                timeout=SEND_TIMEOUT,
             )
         except httpx.HTTPError as exc:
             self._failed(count, f"{type(exc).__name__}: {exc}")
             return False
-        if response.status_code >= 300:
+        if response.status_code >= HTTPStatus.MULTIPLE_CHOICES:
             self._failed(count, f"HTTP {response.status_code}")
             return False
         self.stats["batches_sent"] += 1
         self.stats["records_sent"] += count
+        ack = None
         try:
             ack = response.json()
-            rejected = int(ack.get("rejected_events", 0)) if isinstance(ack, dict) else 0
+            rejected = (
+                int(ack.get("rejected_events", 0)) if isinstance(ack, dict) else 0
+            )
         except (ValueError, TypeError):
             rejected = 0
         if rejected:
             log.warning(
-                "主控拒收 %d 筆紀錄事件：%s", rejected, str(ack.get("message"))[:500] if isinstance(ack, dict) else ""
+                "主控拒收 %d 筆紀錄事件：%s",
+                rejected,
+                str(ack.get("message"))[:500] if isinstance(ack, dict) else "",
             )
         return True
 
@@ -194,13 +238,16 @@ class TelemetryPublisher:
         self.stats["batches_failed"] += 1
         self.stats["records_lost_in_failed_batches"] += count
         now = time.monotonic()
-        if now - self._last_failure_log > 30:
+        if now - self._last_failure_log > FAILURE_LOG_INTERVAL_S:
             self._last_failure_log = now
             log.warning(
-                "紀錄批次上報失敗，已丟棄 %d 筆（不重試；本機 JSONL 仍完整，可由主控手動補抓）：%s", count, reason
+                "紀錄批次上報失敗，已丟棄 %d 筆（不重試；本機 JSONL 仍完整，可由主控手動補抓）：%s",
+                count,
+                reason,
             )
 
     async def drain(self, *, max_batches: int | None = None) -> None:
+        """Deliver pending recording metadata."""
         sent = 0
         while max_batches is None or sent < max_batches:
             batch = self._take_batch()
@@ -213,13 +260,12 @@ class TelemetryPublisher:
 
     # ------------------------------------------------------------------ lifecycle
     async def run(self) -> None:
+        """Deliver recording updates until shutdown."""
         self._loop = asyncio.get_running_loop()
         self._wake = asyncio.Event()
         while True:
-            try:
+            with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self._wake.wait(), timeout=self.interval_s)
-            except TimeoutError:
-                pass
             self._wake.clear()
             try:
                 await self.drain()
@@ -229,10 +275,12 @@ class TelemetryPublisher:
                 log.exception("紀錄上報迴圈發生錯誤（已忽略，不影響元件呼叫）")
 
     def start(self) -> None:
+        """Start the telemetry delivery worker."""
         if self._task is None:
             self._task = asyncio.create_task(self.run(), name="telemetry-publisher")
 
     async def close(self, *, flush_timeout: float = 2.0) -> None:
+        """Finish telemetry delivery and stop the worker."""
         if self._task is not None:
             self._task.cancel()
             with contextlib.suppress(asyncio.CancelledError, Exception):
@@ -240,8 +288,12 @@ class TelemetryPublisher:
             self._task = None
         try:
             await asyncio.wait_for(self.drain(), timeout=flush_timeout)
-        except (TimeoutError, Exception) as exc:
-            log.info("關閉前的紀錄上報未完成（%s）；未送出的部分仍在本機 JSONL", type(exc).__name__)
+        except Exception as exc:
+            log.info(
+                "關閉前的紀錄上報未完成（%s）；未送出的部分仍在本機 JSONL",
+                type(exc).__name__,
+                exc_info=True,
+            )
         self._closed = True
         with self._lock:
             leftover = len(self._events) + len(self._critical)

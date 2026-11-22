@@ -1,7 +1,8 @@
+import { isRecord } from "@/lib/json";
 // Shell state shared by both Studios: the document's save state and conflict actions, notifications and the engine
 // sheet. Kept apart from each Studio's workspace context so that saving, a notice or opening the sheet re-renders only
 // the shell parts, and the value is memoized so it changes only when one of these does.
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, use, useMemo, useState } from "react";
 import type { AutosaveDocument } from "./document/useAutosaveDocument";
 import type { SaveStatus, VersionedDoc } from "./document/docReducer";
 import { useNotices, type Notice, type NoticeInput } from "./notices/useNotices";
@@ -28,12 +29,12 @@ export interface ConflictPreview {
 
 /** A short name for an unsaved edit: its type and the ids it names (no prompt or other content). */
 function actionLabel(action: unknown): string {
-  if (action === null || typeof action !== "object") return String(action);
-  const record = action as Record<string, unknown>;
+  if (!isRecord(action)) return String(action);
+  const record = action;
   const ids = Object.entries(record)
     .filter(([key, value]) => key !== "type" && /(Id|_id)$/u.test(key) && (typeof value === "string" || typeof value === "number"))
     .map(([key, value]) => `${key}=${String(value)}`);
-  const type = typeof record.type === "string" ? record.type : "edit";
+  const type = typeof record["type"] === "string" ? record["type"] : "edit";
   return ids.length > 0 ? `${type} (${ids.join(", ")})` : type;
 }
 
@@ -59,7 +60,7 @@ export interface StudioShellValue {
 export const StudioShellContext = createContext<StudioShellValue | null>(null);
 
 export function useStudioShell(): StudioShellValue {
-  const value = useContext(StudioShellContext);
+  const value = use(StudioShellContext);
   if (!value) throw new Error(t("useStudioShell 必須在 Studio 的 Provider 內使用"));
   return value;
 }

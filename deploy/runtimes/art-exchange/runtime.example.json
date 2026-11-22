@@ -1,0 +1,6 @@
+{
+  "runtime_id": "art-exchange",
+  "python": "../runtimes/art-exchange/.venv/bin/python",
+  "module": "phasyn_components.runtime_host",
+  "env": {}
+}

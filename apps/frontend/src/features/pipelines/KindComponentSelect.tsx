@@ -1,4 +1,4 @@
-import { useCatalog, useProviderIndex } from "@/api/catalog";
+import { componentAvailability, useCatalog, useProviderIndex } from "@/api/catalog";
 import type { ComponentDescriptor } from "@/api/generated/contracts";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { SyntheticBadge } from "@/components/common/SyntheticNotice";
@@ -59,8 +59,9 @@ export function KindComponentSelect({
             <p className="flex flex-wrap items-center gap-2 text-caption text-fg-tertiary">
               <StatusBadge kind="component" value={selected.descriptor.state} />
               <code className="machine">{selected.descriptor.provider_id}</code>
-              {selected.provider?.synthetic ? <SyntheticBadge kind="test" /> : null}
-              {selected.descriptor.state !== "ready" ? <span className="text-warning">{t("未就緒：run 會在此步回報錯誤，請先到元件頁啟動。")}</span> : null}
+              {(selected.provider?.synthetic === true) ? <SyntheticBadge kind="test" /> : null}
+              {componentAvailability(selected.descriptor) === "unavailable" ? <span className="text-warning">{t("未就緒：run 會在此步回報錯誤，請先到元件頁啟動。")}</span>
+                : componentAvailability(selected.descriptor) === "on_use" ? <span>{t("使用時載入：run 到這一步會先載入模型，會多等一些時間。")}</span> : null}
             </p>
           ) : null}
         </>

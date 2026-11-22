@@ -133,7 +133,7 @@ export function batchVariantPlan(project: StudioProject, shots: readonly StudioS
   if (branches.length === 0) problem = t("沒有可以渲染變體的鏡頭");
   else {
     // The run as the batch sends it: one plan for every take (step ids, inputs, the contract's step limit)
-    const result = planRender(project, branches, branches.map((_branch, index) => `preflight-${index}`), { ...context, randomSeed: () => 0 });
+    const result = planRender(project, branches, branches.map((_branch, index) => `preflight-${String(index)}`), { ...context, randomSeed: () => 0 });
     const steps = result.plan?.body.pipeline.steps.length ?? 0;
     if (!result.plan) problem = result.problem;
     else if (steps > MAX_RUN_STEPS) problem = t("這個 run 有 {steps} 個步驟，超過一個 run 的上限 {max}：少選幾個鏡頭、seed、檔案或路線", { steps, max: MAX_RUN_STEPS });

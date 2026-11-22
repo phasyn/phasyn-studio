@@ -1,0 +1,25 @@
+{
+  "project_revision": 1,
+  "pipeline_id": "t2va-draft-local",
+  "prompt_input": "prompt",
+  "seed_step": "dit",
+  "output_key": "final",
+  "qc_pipeline_id": "review-take-local",
+  "qc_input": "video",
+  "qc_output": "report",
+  "shots": [
+    {
+      "shot_id": "REPLACE_WITH_FIRST_SHOT_ID"
+    },
+    {
+      "shot_id": "REPLACE_WITH_SECOND_SHOT_ID"
+    }
+  ],
+  "variants": 2,
+  "seed": 42,
+  "budget": {
+    "max_runs": 8,
+    "max_step_attempts": 32,
+    "timeout_seconds": 7200
+  }
+}

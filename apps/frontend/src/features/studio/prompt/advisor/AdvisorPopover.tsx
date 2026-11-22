@@ -100,7 +100,7 @@ export function AdvisorPopover({ text, empty, issues, blockedReason, onApplyFix,
   }, [focusStatus, statusRef]);
 
   const apply = (item: Finding) => {
-    if (!item.fix || blockedReason) return;
+    if (!item.fix || (blockedReason != null && blockedReason !== "")) return;
     const next = item.fix.apply(text);
     const message =
       next === text
@@ -129,7 +129,7 @@ export function AdvisorPopover({ text, empty, issues, blockedReason, onApplyFix,
       ) : (
         <ul ref={listRef} tabIndex={-1} aria-label={t("目前的問題")} className="grid divide-y divide-line-subtle rounded-lg border border-line-subtle bg-canvas/60">
           {shown.map(({ key, item }, index) => (
-            <IssueRow key={key} index={index} item={item} blockedReason={blockedReason} onApply={() => apply(item)} />
+            <IssueRow key={key} index={index} item={item} blockedReason={blockedReason} onApply={() => { apply(item); }} />
           ))}
         </ul>
       )}

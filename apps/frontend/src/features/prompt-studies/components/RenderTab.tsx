@@ -72,7 +72,7 @@ export function RenderCenter({ ws, render }: { ws: Workspace; render: RenderCont
         <label htmlFor="prompt-render-task" className="text-caption text-fg-secondary">
           {t("任務")}
         </label>
-        <Select id="prompt-render-task" compact className="w-auto max-w-full min-w-64" value={task.task_id} onChange={(event) => render.setTaskId(event.target.value)}>
+        <Select id="prompt-render-task" compact className="w-auto max-w-full min-w-64" value={task.task_id} onChange={(event) => { render.setTaskId(event.target.value); }}>
           {tasks.map((item) => (
             <option key={item.task_id} value={item.task_id}>
               {t("{versionLabel} · {created_at} · {itemCount} 張", { versionLabel: versionLabel(study, item.base_version_id), created_at: formatDateTime(item.created_at), itemCount: rendersOf(item).length })}
@@ -141,7 +141,7 @@ export function RenderInspector({ ws, render }: { ws: Workspace; render: RenderC
                 providerId={ROLE_PROVIDER[role]}
                 choices={ws.choices[role]}
                 value={ws.chosen[role]}
-                onChange={(key) => ws.setComponent(role, key)}
+                onChange={(key) => { ws.setComponent(role, key); }}
                 loading={ws.catalogLoading}
                 disabled={runner.state.busy}
               />

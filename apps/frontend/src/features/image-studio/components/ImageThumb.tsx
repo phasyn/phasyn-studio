@@ -29,7 +29,7 @@ export function ImageThumb({
   const broken = url !== null && failed === url;
   return (
     <span className={cn("relative grid shrink-0 place-items-center overflow-hidden rounded-sm border border-line-subtle", BACKDROP_CLASS[backdrop], className)}>
-      {url && !broken ? (
+      {(url != null && url !== "") && !broken ? (
         <span className={cn("block size-full", imgClassName)}>
           <img
             src={url}
@@ -37,8 +37,8 @@ export function ImageThumb({
             loading="lazy"
             decoding="async"
             draggable={false}
-            onLoad={() => setLoaded(url)}
-            onError={() => setFailed(url)}
+            onLoad={() => { setLoaded(url); }}
+            onError={() => { setFailed(url); }}
             data-loaded={loaded === url || undefined}
             className={cn("size-full opacity-0 transition-opacity duration-(--duration-base) ease-standard data-[loaded]:opacity-100", fit === "cover" ? "object-cover" : "object-contain")}
           />

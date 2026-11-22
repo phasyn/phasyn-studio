@@ -100,7 +100,7 @@ function actionPrefix(action: StepAction, include: boolean): string {
 
 function imageText(study: PromptStudy, spec: StepSpec): string {
   const where = spec.split === "search" ? t("（搜尋，第 {round} 輪）", { round: spec.round + 1 }) : t("（{split}）", { split: splitText(spec.split) });
-  return `${versionLabel(study, spec.versionId)} ${spec.variant} · seed ${spec.seed}${where}`;
+  return `${versionLabel(study, spec.versionId)} ${spec.variant} · seed ${String(spec.seed)}${where}`;
 }
 
 export interface DescribeOptions {

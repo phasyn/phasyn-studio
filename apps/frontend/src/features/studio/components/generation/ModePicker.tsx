@@ -1,13 +1,14 @@
-// The 方式 popover of the generation row: the four ways a shot is generated (參考素材, 接續上一鏡, 首幀圖片, 只用文字),
-// each with one line of what it uses. Choosing one sets the route and the first frame together (model/generationMode.ts)
+// The 方式 popover of the generation row: the ways a shot is generated (參考素材, 接續上一鏡, 首幀圖片, 只用文字, and
+// 表演影片 / 音訊驅動, which drive a character image with media chosen in the References tab), each with one line of what
+// it uses. Choosing one sets the route and the first frame together (model/generationMode.ts)
 // and leaves one notice with 復原. A 方式 whose route is not ready says so in place with the engine sheet on that route's
 // components; one that no saved route can render says it has to be created under 元件修改. 首幀圖片 asks for the image
-// first, as a second step of the same popover. Below the list: the first-frame detail of the current 方式, and the route
+// first, as a second step of the same popover, which can also take one native frame out of a video (從影片取一格). Below the list: the first-frame detail of the current 方式, and the route
 // in use (自動 when it is the one the 方式 picks, 指定 when another one was pinned) with 變更… for the engine sheet, and
 // under it the route's caveat when it has one (a DiT of fewer than 4 steps). The full route label is the tooltip.
 // Keyboard: ↑／↓ move between the 方式, Enter chooses; the current one has focus when the popover opens.
 // Motion: the 方式 reveal one after another and each step fades in; tints change on the fast timing.
-import { Check, Cpu, ExternalLink } from "lucide-react";
+import { Check, Cpu, ExternalLink, Film } from "lucide-react";
 import { useId, useMemo, useRef, useState, type KeyboardEvent, type Ref } from "react";
 import { Link } from "react-router";
 import type { StudioLibraryItem, StudioShot } from "@/api/generated/contracts";
@@ -24,6 +25,8 @@ import { useStudio, type StudioContextValue } from "../../studioContext";
 import { FirstFrameDetail, FirstFrameImagePicker } from "../ContinuityControl";
 import { ReadyDot, RouteCaveatLine } from "../routeParts";
 import { showEngine } from "./engineView";
+import { FrameFromVideo } from "./FrameFromVideo";
+import { onUseText, useOnUseLoad } from "./loadOnUse";
 import type { AppliedMode } from "./ModeNotice";
 import { firstFrameImagesProblem, MODE_ICON, MODE_LABEL, modeHint, routeFace } from "./modeText";
 import { t } from "@/i18n";
@@ -47,17 +50,19 @@ function modeOptions(shot: StudioShot, { project, engine, catalog }: Pick<Studio
     const current = reading.mode === mode;
     const base: ModeOption = { mode, current, blocked: null, missing: false, notReady: null };
     if (engine.status !== "ready") return { ...base, blocked: engine.status === "error" ? t("讀不到路線：{error}", { error: engine.error ?? t("未知錯誤") }) : t("還在讀取路線") };
-    const target = route && routeFitsMode(route, mode) ? route : rankModeRoutes(mode, { routes: engine.routes, catalog, project, shot })[0];
+    const target = route && routeFitsMode(route, mode) && route.placement === null ? route : rankModeRoutes(mode, { routes: engine.routes, catalog, project, shot })[0];
     if (!target) return { ...base, missing: true, blocked: t("還沒有能這樣生成的路線") };
     if (mode === "continue" && !current) {
       const problem = predecessor(project, shot.shot_id).problem;
-      if (problem) return { ...base, blocked: problem };
+      if (problem != null && problem !== "") return { ...base, blocked: problem };
     }
     if (mode === "image" && !current) {
       const problem = firstFrameImagesProblem(project);
-      if (problem) return { ...base, blocked: problem };
+      if (problem != null && problem !== "") return { ...base, blocked: problem };
     }
     if (routeReadyForMode(target, mode, catalog)) return base;
+    // The best route is one the owner keeps off this machine (no ready one elsewhere): starting components will not help
+    if (target.placement !== null) return { ...base, blocked: target.placement };
     const support = mode === "continue" ? routeContinuity(target, catalog) : null;
     const block = routeBlock(target, support?.frame ? [support.frame] : []);
     return { ...base, notReady: { route: target, text: block === "start" ? t("需要的元件還沒啟動") : t("路線有問題，渲染會被擋下"), detail: support?.summary ?? target.summary } };
@@ -73,12 +78,13 @@ function describeChange(
   const parts: string[] = [];
   if (routeChanged) {
     const face = routeFace(route, catalog);
-    parts.push(face.machine ? t("路線換成「{name}」（{machine}）", { name: face.name, machine: face.machine }) : t("路線換成「{name}」", { name: face.name }));
+    parts.push((face.machine != null && face.machine !== "") ? t("路線換成「{name}」（{machine}）", { name: face.name, machine: face.machine }) : t("路線換成「{name}」", { name: face.name }));
   }
-  if (mode === "continue") parts.push(t("首幀取自「{title}」的最後一格", { title: predecessor(project, shot.shot_id).previous?.shot.title || t("前一個鏡頭") }));
+  if (mode === "continue") parts.push(t("首幀取自「{title}」的最後一格", { title: (predecessor(project, shot.shot_id).previous?.shot.title ?? "") || t("前一個鏡頭") }));
   else if (mode === "image" && item) parts.push(t("首幀用「{name}」", { name: item.name }));
   else if (continuityMode(shot) !== "none") parts.push(t("不再使用首幀"));
-  if (mode !== "references" && (shot.references?.length ?? 0) > 0) parts.push(t("參考素材不會送出（仍保留在鏡頭裡）"));
+  if (mode === "performance" || mode === "audio") parts.push(t("在「參考」分頁選角色圖片與驅動素材"));
+  else if (mode !== "references" && (shot.references?.length ?? 0) > 0) parts.push(t("參考素材不會送出（仍保留在鏡頭裡）"));
   if (!ready) parts.push(t("路線還沒準備好"));
   return parts.join(t("；"));
 }
@@ -96,7 +102,7 @@ function OptionRow({ option, hint, onChoose, onEngine, onLeave, ref }: { option:
         data-autofocus={option.current ? "" : undefined}
         aria-pressed={option.current}
         aria-disabled={disabled || undefined}
-        aria-describedby={note ? `${id}-hint ${id}-note` : `${id}-hint`}
+        aria-describedby={(note != null && note !== "") ? `${id}-hint ${id}-note` : `${id}-hint`}
         title={option.blocked ?? undefined}
         onClick={onChoose}
         className={cn(
@@ -121,13 +127,13 @@ function OptionRow({ option, hint, onChoose, onEngine, onLeave, ref }: { option:
           {hint}
         </span>
       </button>
-      {note ? (
+      {(note != null && note !== "") ? (
         <div id={`${id}-note`} className={cn("flex min-w-0 items-center gap-2 pr-1 pl-11 text-caption", option.notReady ? "text-warning" : "text-fg-tertiary")}>
           <span className="min-w-0 flex-1 [overflow-wrap:anywhere]" title={option.notReady?.detail}>
             {note}
           </span>
           {option.notReady ? (
-            <Button size="sm" variant="quiet" className="min-h-7 shrink-0 px-2" icon={<Cpu aria-hidden />} onClick={() => option.notReady && onEngine(option.notReady.route.id)}>
+            <Button size="sm" variant="quiet" className="min-h-7 shrink-0 px-2" icon={<Cpu aria-hidden />} onClick={() => { if (option.notReady) onEngine(option.notReady.route.id); }}>
               {t("開啟渲染引擎")}
             </Button>
           ) : option.missing ? (
@@ -149,6 +155,7 @@ function RouteLine({ shot, mode, onChange }: { shot: StudioShot; mode: Generatio
   const shots = useMemo(() => [shot], [shot]);
   const { eta } = useRenderEta(shots);
   const face = route ? routeFace(route, catalog) : null;
+  const load = useOnUseLoad(route);
   const auto = route !== null && mode !== null && rankModeRoutes(mode, { routes: engine.routes, catalog, project, shot })[0]?.id === route.id;
   const name = <span className="min-w-0 truncate" />;
   return (
@@ -159,14 +166,18 @@ function RouteLine({ shot, mode, onChange }: { shot: StudioShot; mode: Generatio
           <span className="flex min-w-0 flex-1 items-center gap-1.5 text-fg" title={route.ready ? face.title : `${face.title}\n${route.summary}`}>
             {mode === null ? (
               <span className="min-w-0 truncate">{face.name}</span>
-            ) : auto ? (
-              <T source={"自動：<0>{name}</0>"} values={{ name: face.name }} slots={[name]} />
             ) : (
-              <T source={"指定：<0>{name}</0>"} values={{ name: face.name }} slots={[name]} />
+              // The 「自動：」 prefix never wraps; only the route name truncates
+              <span className="flex min-w-0 items-center whitespace-nowrap">
+                {auto
+                  ? <T source={"自動：<0>{name}</0>"} values={{ name: face.name }} slots={[name]} />
+                  : <T source={"指定：<0>{name}</0>"} values={{ name: face.name }} slots={[name]} />}
+              </span>
             )}
-            {face.machine ? <span className="shrink-0 text-fg-tertiary">{`· ${face.machine}`}</span> : null}
+            {(face.machine != null && face.machine !== "") ? <span className="shrink-0 text-fg-tertiary">{`· ${face.machine}`}</span> : null}
             <ReadyDot ready={route.ready} />
-            <span className="sr-only">{route.ready ? t("就緒") : t("未就緒：{summary}", { summary: route.summary })}</span>
+            {route.ready && load ? <span className="shrink-0 text-info">{onUseText(load)}</span> : null}
+            <span className="sr-only">{route.ready ? (load ? "" : t("就緒")) : t("未就緒：{summary}", { summary: route.summary })}</span>
             {eta ? (
               <span className="machine shrink-0 text-fg-tertiary" title={planEtaText(eta)}>
                 {t("約 {time}", { time: formatEtaClock(eta.totalSeconds) })}
@@ -188,12 +199,12 @@ function RouteLine({ shot, mode, onChange }: { shot: StudioShot; mode: Generatio
 export function ModePicker({ shot, onApplied, onClose }: { shot: StudioShot; onApplied: (applied: Omit<AppliedMode, "id">) => void; onClose: (restoreFocus: boolean) => void }) {
   const studio = useStudio();
   const { project, engine, catalog, dispatch, setEngineOpen } = studio;
-  const root = useRef<HTMLDivElement>(null);
-  const [step, setStep] = useState<"modes" | "image">("modes");
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [step, setStep] = useState<"modes" | "image" | "frame">("modes");
   const reading = readMode(shot, findRoute(engine.routes, shot.route), engine.status === "ready");
   const options = modeOptions(shot, studio);
 
-  const focusLater = (selector: string) => window.requestAnimationFrame(() => root.current?.querySelector<HTMLElement>(selector)?.focus({ preventScroll: true }));
+  const focusLater = (selector: string) => window.requestAnimationFrame(() => rootRef.current?.querySelector<HTMLElement>(selector)?.focus({ preventScroll: true }));
   // Focus goes back to the 方式 field first: the sheet returns it there when it closes
   const openEngine = (view: Parameters<typeof showEngine>[0]) => {
     onClose(true);
@@ -219,7 +230,7 @@ export function ModePicker({ shot, onApplied, onClose }: { shot: StudioShot; onA
     onClose(true);
   };
   const choose = (option: ModeOption) => {
-    if (option.blocked) return;
+    if (option.blocked != null && option.blocked !== "") return;
     if (option.mode === "image") {
       setStep("image");
       focusLater("input[type='search']");
@@ -236,34 +247,63 @@ export function ModePicker({ shot, onApplied, onClose }: { shot: StudioShot; onA
     event.preventDefault();
   };
 
-  if (step === "image") {
+  if (step === "frame") {
     return (
-      <div ref={root} className="flex min-h-0 flex-col animate-reveal">
-        <FirstFrameImagePicker
+      <div ref={rootRef} className="flex min-h-0 flex-col animate-reveal">
+        <FrameFromVideo
           shot={shot}
-          onPick={(item) => apply("image", item)}
+          onDone={() => { onClose(true); }}
           onBack={() => {
-            setStep("modes");
-            focusLater("[data-mode-option='image']");
+            setStep("image");
+            focusLater("[data-frame-from-video]");
           }}
         />
       </div>
     );
   }
+  if (step === "image") {
+    return (
+      <div ref={rootRef} className="flex min-h-0 flex-col animate-reveal">
+        <FirstFrameImagePicker
+          shot={shot}
+          onPick={(item) => { apply("image", item); }}
+          onBack={() => {
+            setStep("modes");
+            focusLater("[data-mode-option='image']");
+          }}
+        />
+        <div className="shrink-0 border-t border-white/8 p-1.5">
+          <Button
+            size="sm"
+            variant="quiet"
+            data-frame-from-video=""
+            className="w-full justify-start"
+            icon={<Film aria-hidden />}
+            onClick={() => {
+              setStep("frame");
+              focusLater("[data-autofocus]");
+            }}
+          >
+            {t("從影片取一格…")}
+          </Button>
+        </div>
+      </div>
+    );
+  }
   return (
-    <div ref={root} className="flex min-h-0 flex-col animate-reveal">
+    <div ref={rootRef} className="flex min-h-0 flex-col animate-reveal">
       <p className="flex h-10 shrink-0 items-center border-b border-white/8 px-3 text-data font-semibold text-fg">{t("生成方式")}</p>
       <div className="min-h-0 overflow-y-auto p-1.5">
-        <div role="group" aria-label={t("生成方式")} className="grid gap-1" onKeyDown={onListKeyDown}>
+        <div /* eslint-disable-line jsx-a11y-x/no-noninteractive-element-interactions -- Keyboard events from this panel’s focusable controls bubble here so navigation and dismissal share one handler. */  role="group" aria-label={t("生成方式")} className="grid gap-1" onKeyDown={onListKeyDown}>
           {options.map((option, index) => (
             <OptionRow
               key={option.mode}
               ref={reveal(index)}
               option={option}
               hint={modeHint(option.mode, project, shot)}
-              onChoose={() => choose(option)}
-              onEngine={(routeId) => openEngine({ tab: "components", routeId })}
-              onLeave={() => onClose(false)}
+              onChoose={() => { choose(option); }}
+              onEngine={(routeId) => { openEngine({ tab: "components", routeId }); }}
+              onLeave={() => { onClose(false); }}
             />
           ))}
         </div>
@@ -279,7 +319,7 @@ export function ModePicker({ shot, onApplied, onClose }: { shot: StudioShot; onA
           </div>
         ) : null}
       </div>
-      <RouteLine shot={shot} mode={reading.mode} onChange={() => openEngine({ tab: "routes", routeId: null })} />
+      <RouteLine shot={shot} mode={reading.mode} onChange={() => { openEngine({ tab: "routes", routeId: null }); }} />
     </div>
   );
 }

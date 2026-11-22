@@ -20,7 +20,7 @@ import { formatList } from "@/i18n/format";
 
 const BULK_PAGE_LIMIT = 20;
 
-function StepEventsTable({ steps }: { steps: Array<{ seq: number; data: StepData }> }) {
+function StepEventsTable({ steps }: { steps: { seq: number; data: StepData }[] }) {
   const [limit, setLimit] = useState(100);
   return (
     <div className="grid gap-2">
@@ -34,10 +34,10 @@ function StepEventsTable({ steps }: { steps: Array<{ seq: number; data: StepData
               <Th scope="col">{t("CFG 分支")}</Th>
               <Th scope="col">sigma</Th>
               <Th scope="col">
-                <T source={"host 時間<0>host monotonic</0>"} slots={[<span className="block font-normal" />]} />
+                <T source={"host 時間<0>host monotonic</0>"} slots={[<span key="slot-0" className="block font-normal" />]} />
               </Th>
               <Th scope="col">
-                <T source={"GPU event 區間<0>cuda_event，非 kernel 時間</0>"} slots={[<span className="block font-normal" />]} />
+                <T source={"GPU event 區間<0>cuda_event，非 kernel 時間</0>"} slots={[<span key="slot-0" className="block font-normal" />]} />
               </Th>
               <Th scope="col">seq</Th>
             </tr>
@@ -61,7 +61,7 @@ function StepEventsTable({ steps }: { steps: Array<{ seq: number; data: StepData
       {steps.length > 100 ? (
         <LoadMoreButton
           className="justify-self-start"
-          onLoad={() => setLimit((current) => current + 200)}
+          onLoad={() => { setLimit((current) => current + 200); }}
           pending={false}
           hasMore={steps.length > limit}
           label={t("再顯示 {min} 筆（共 {stepsCount}）", { min: Math.min(200, Math.max(0, steps.length - limit)), stepsCount: steps.length })}
@@ -88,11 +88,11 @@ function StreamTimeline({
   const events = useStreamEvents(recordingId, streamId);
   const [asTable, setAsTable] = useState(false);
   const [bulk, setBulk] = useState(false);
-  const alive = useRef(true);
+  const aliveRef = useRef(true);
   useEffect(() => {
-    alive.current = true;
+    aliveRef.current = true;
     return () => {
-      alive.current = false;
+      aliveRef.current = false;
     };
   }, []);
   const pages = useMemo(() => events.data?.pages ?? [], [events.data]);
@@ -109,17 +109,17 @@ function StreamTimeline({
     try {
       let result = await events.fetchNextPage();
       let count = 1;
-      while (alive.current && result.hasNextPage && !result.isError && count < BULK_PAGE_LIMIT) {
+      while (aliveRef.current && result.hasNextPage && !result.isError && count < BULK_PAGE_LIMIT) {
         result = await result.fetchNextPage();
         count += 1;
       }
     } finally {
-      if (alive.current) setBulk(false);
+      if (aliveRef.current) setBulk(false);
     }
   };
 
   if (!events.data) {
-    if (events.error) return <QueryErrorCallout error={events.error} title={t("stream {streamId} 讀取失敗", { streamId })} onRetry={() => void events.refetch()} />;
+    if (events.error != null) return <QueryErrorCallout error={events.error} title={t("stream {streamId} 讀取失敗", { streamId })} onRetry={() => void events.refetch()} />;
     return <LoadingBlock label={t("讀取 stream {streamId} 的事件…", { streamId })} rows={3} />;
   }
   const firstSeq = flat[0]?.seq;
@@ -156,7 +156,7 @@ function StreamTimeline({
             variant="quiet"
             aria-pressed={asTable}
             icon={asTable ? <ChartColumn aria-hidden /> : <Table2 aria-hidden />}
-            onClick={() => setAsTable((current) => !current)}
+            onClick={() => { setAsTable((current) => !current); }}
             className="pointer-coarse:min-h-11"
           >
             {asTable ? t("以圖表檢視") : t("以表格檢視")}
@@ -168,7 +168,7 @@ function StreamTimeline({
           <p>
             {t("{map}{value}。時間軸不補畫缺段內容；可用「讀取此 Node 歷史紀錄」明確補抓 log。", { map: formatList(gaps
               .slice(0, 6)
-              .map((gap) => (gap.type === "gap" ? `seq ${gap.fromSeq}–${gap.toSeq}` : t("seq {afterSeq} 之後（伺服器回報 gap）", { afterSeq: gap.afterSeq })))), value: gaps.length > 6 ? t(" 等 {gapsCount} 處", { gapsCount: gaps.length }) : "" })}
+              .map((gap) => (gap.type === "gap" ? `seq ${String(gap.fromSeq)}–${String(gap.toSeq)}` : t("seq {afterSeq} 之後（伺服器回報 gap）", { afterSeq: gap.afterSeq })))), value: gaps.length > 6 ? t(" 等 {gapsCount} 處", { gapsCount: gaps.length }) : "" })}
           </p>
         </Callout>
       ) : null}
@@ -231,11 +231,11 @@ function TraceSection({ recording }: { recording: Recording }) {
       </h3>
       {mode !== "trace" ? (
         <p className="text-data text-fg-secondary">
-          <T source={"recorder 模式為 <0>{mode}</0>，沒有錄製 profiler trace：kernel 時間、啟動延遲與 kernel 數不可得，也不由 span 或 GPU event 推算。"} values={{ mode }} slots={[<code className="machine" />]} />
+          <T source={"recorder 模式為 <0>{mode}</0>，沒有錄製 profiler trace：kernel 時間、啟動延遲與 kernel 數不可得，也不由 span 或 GPU event 推算。"} values={{ mode }} slots={[<code key="slot-0" className="machine" />]} />
         </p>
       ) : !requested ? (
         <div className="flex flex-wrap items-center gap-3">
-          <Button size="sm" icon={<Cpu aria-hidden />} onClick={() => setRequested(true)}>
+          <Button size="sm" icon={<Cpu aria-hidden />} onClick={() => { setRequested(true); }}>
             {t("載入 trace")}
           </Button>
           <span className="text-caption text-fg-tertiary">
@@ -252,11 +252,11 @@ function TraceSection({ recording }: { recording: Recording }) {
         ) : (
           <QueryErrorCallout error={trace.error} title={t("trace 讀取失敗")} onRetry={() => void trace.refetch()} />
         )
-      ) : trace.data && "tooLarge" in trace.data ? (
+      ) : "tooLarge" in trace.data ? (
         <Callout tone="info" title={t("trace 檔案過大，不在頁面內解析")}>
           <p>{t("大小 {tooLarge}。請用「匯出 → trace」下載後以相容的 Chrome trace viewer 離線開啟。", { tooLarge: formatBytes(trace.data.tooLarge) })}</p>
         </Callout>
-      ) : trace.data?.group ? (
+      ) : trace.data.group ? (
         <div className="grid gap-2 rounded-lg border border-line-subtle bg-sunken p-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-data font-semibold text-fg">{t("trace 時鐘")}</span>
@@ -272,7 +272,7 @@ function TraceSection({ recording }: { recording: Recording }) {
             group={trace.data.group}
             label={t("profiler trace 的 GPU 活動泳道圖")}
             selectedKey={selectedKey}
-            onSelect={(item) => setSelectedKey(item.key)}
+            onSelect={(item) => { setSelectedKey(item.key); }}
           />
         </div>
       ) : (
@@ -307,13 +307,13 @@ export function TimelineTab({
               key={stream.stream_id}
               recordingId={id}
               streamId={stream.stream_id}
-              multiStream={(streams.data?.streams.length ?? 0) > 1}
+              multiStream={streams.data.streams.length > 1}
               selectedKey={selectedKey}
               onSelect={onSelectItem}
             />
           ))
         )
-      ) : streams.error ? (
+      ) : (streams.error != null) ? (
         <QueryErrorCallout error={streams.error} title={t("無法列出事件 stream")} onRetry={() => void streams.refetch()} />
       ) : (
         <LoadingBlock label={t("列出事件 stream…")} />

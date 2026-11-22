@@ -41,7 +41,7 @@ describe("ControlBar：互斥群組（exclusive_group）", () => {
     expect(within(dialog).getByText("停止 dit-b 並啟動 dit-a？")).toBeInTheDocument();
     expect(within(dialog).getByRole("list", { name: "會被停止的元件" })).toHaveTextContent("dit-b");
     await user.click(within(dialog).getByRole("button", { name: "停止並啟動" }));
-    await waitFor(() => expect(controlBodies(calls)).toEqual([{ action: "start" }, { action: "start", replace_exclusive: true }]));
+    await waitFor(() => { expect(controlBodies(calls)).toEqual([{ action: "start" }, { action: "start", replace_exclusive: true }]); });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
@@ -53,7 +53,7 @@ describe("ControlBar：互斥群組（exclusive_group）", () => {
     await user.click(screen.getByRole("button", { name: "啟動" }));
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "取消" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => { expect(screen.queryByRole("dialog")).not.toBeInTheDocument(); });
     expect(controlBodies(calls)).toEqual([]);
   });
 

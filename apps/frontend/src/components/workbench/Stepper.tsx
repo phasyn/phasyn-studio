@@ -38,7 +38,7 @@ const STATE_TEXT: Record<StepState, string> = {
  */
 export function Stepper({
   steps,
-  label = t("步驟"),
+  label: labelProp,
   onSelect,
   size = "md",
   className,
@@ -51,6 +51,7 @@ export function Stepper({
   size?: "sm" | "md";
   className?: string;
 }) {
+  const label = labelProp ?? t("步驟");
   const small = size === "sm";
   return (
     // min-h-fit＋shrink-0：水平捲動的容器放在高度受限的 grid／flex 裡（例如對話框內容）時不會被壓扁
@@ -63,7 +64,7 @@ export function Stepper({
             <StepNode index={index} state={step.state} small={small} />
             <span className="grid min-w-0 text-left">
               <span className={cn("truncate font-medium", small ? "text-caption" : "text-data")}>{step.label}</span>
-              {step.detail && !small ? (
+              {(step.detail != null && step.detail !== "") && !small ? (
                 <span className={cn("truncate text-[11px] leading-4", step.state === "active" ? "text-[#fff]/80" : step.state === "error" ? "text-danger" : "text-fg-tertiary")}>
                   {step.detail}
                 </span>
@@ -95,8 +96,8 @@ export function Stepper({
                 <button
                   type="button"
                   aria-current={current}
-                  onClick={() => onSelect(step.id)}
-                  title={step.detail ? t("{label}：{detail}", { label: step.label, detail: step.detail }) : step.label}
+                  onClick={() => { onSelect(step.id); }}
+                  title={(step.detail != null && step.detail !== "") ? t("{label}：{detail}", { label: step.label, detail: step.detail }) : step.label}
                   className={cn(
                     shell,
                     "pressable cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
@@ -106,7 +107,7 @@ export function Stepper({
                   {content}
                 </button>
               ) : (
-                <span className={shell} aria-current={current} title={step.detail ? t("{label}：{detail}", { label: step.label, detail: step.detail }) : undefined}>
+                <span className={shell} aria-current={current} title={(step.detail != null && step.detail !== "") ? t("{label}：{detail}", { label: step.label, detail: step.detail }) : undefined}>
                   {content}
                 </span>
               )}

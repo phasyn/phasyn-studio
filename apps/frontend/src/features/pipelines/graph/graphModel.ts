@@ -164,11 +164,11 @@ export function measuredDuration(view: Pick<RunStepView, "state" | "started_at" 
   const start = isoToMs(view.started_at);
   const end = isoToMs(view.finished_at);
   if (start === null) {
-    if (view.started_at) return { ms: null, reason: t("開始時間無法解析") };
+    if (view.started_at != null && view.started_at !== "") return { ms: null, reason: t("開始時間無法解析") };
     return { ms: null, reason: NOT_STARTED.has(view.state) ? t("未開始") : t("沒有開始時間") };
   }
   if (end === null) {
-    if (view.finished_at) return { ms: null, reason: t("結束時間無法解析") };
+    if (view.finished_at != null && view.finished_at !== "") return { ms: null, reason: t("結束時間無法解析") };
     return { ms: null, reason: view.state === "running" ? t("尚未結束") : t("沒有結束時間") };
   }
   if (end < start) return { ms: null, reason: t("結束早於開始（時戳異常）") };
@@ -186,7 +186,7 @@ function stepRunInfo(stepId: string, run: WireRun): StepRunInfo {
     durationMs: duration.ms,
     durationReason: known ? duration.reason : t("run 沒有這一步的紀錄"),
     errorCode: view.error?.code ?? null,
-    errorMessage: view.error?.message || null,
+    errorMessage: (view.error?.message ?? "") || null,
     remoteOutcomeUnknown: view.remote_outcome_unknown || view.error?.remote_outcome_unknown === true,
   };
 }
@@ -255,7 +255,7 @@ export function buildGraphModel(pipeline: WirePipeline, lookup: DescriptorLookup
     const context = contexts.get(stepId);
     if (!context) return null;
     const declared = context.descriptor?.outputs.find((port) => port.name === output)?.type_id;
-    if (declared) return declared;
+    if (declared != null && declared !== "") return declared;
     return context.runView?.outputs[output]?.type_id ?? null;
   };
 
@@ -315,7 +315,7 @@ export function buildGraphModel(pipeline: WirePipeline, lookup: DescriptorLookup
     for (const [name, binding] of bindings) {
       if (inPorts.some((port) => port.name === name)) continue;
       const typeId = "from_step" in binding ? outputType(binding.from_step, binding.output) : bindingType(binding, pipeline, lookup);
-      inPorts.push(makePort(name, "in", typeId || null, { missing: descriptor !== null }));
+      inPorts.push(makePort(name, "in", (typeId ?? "") || null, { missing: descriptor !== null }));
     }
     const outPorts: GraphPort[] = descriptor ? descriptor.outputs.map((port) => fromDescriptor(port, "out")) : [];
     const runOutputs = context.runView ? Object.keys(context.runView.outputs) : [];
@@ -356,19 +356,19 @@ export function buildGraphModel(pipeline: WirePipeline, lookup: DescriptorLookup
     }
 
     const rawNodeLabel = step.node_id ? (options.nodeLabel?.(step.node_id) ?? null) : null;
-    const nodeLabel = rawNodeLabel ? placeLabel(descriptor?.device, rawNodeLabel) : null;
+    const nodeLabel = (rawNodeLabel != null && rawNodeLabel !== "") ? placeLabel(descriptor?.device, rawNodeLabel) : null;
     const componentId = step.component_id || null;
     nodes.push({
       key,
       kind: "step",
       id: sid,
       title: sid,
-      subtitle: componentId ? [componentId, nodeLabel].filter(Boolean).join(" · ") : t("尚未選擇 instance"),
+      subtitle: (componentId != null && componentId !== "") ? [componentId, nodeLabel].filter(Boolean).join(" · ") : t("尚未選擇 instance"),
       tone: descriptor ? kind.tone : "neutral",
       providerId: descriptor?.provider_id ?? null,
-      kindLabel: descriptor ? kind.label : componentId ? t("未知元件") : t("尚未選擇 instance"),
+      kindLabel: descriptor ? kind.label : (componentId != null && componentId !== "") ? t("未知元件") : t("尚未選擇 instance"),
       componentId,
-      componentLabel: descriptor?.label || null,
+      componentLabel: (descriptor?.label ?? "") || null,
       nodeId: step.node_id || null,
       nodeLabel,
       unknownComponent: descriptor === null,
@@ -421,11 +421,11 @@ export interface NodeBadge {
 export function nodeBadges(node: GraphNode): NodeBadge[] {
   const badges: NodeBadge[] = [];
   const push = (kind: NodeBadgeKind, tone: Tone, label: string, title: string, mono = false) => badges.push({ kind, tone, label, title, mono });
-  if (node.run?.errorCode) push("error-code", "danger", node.run.errorCode, node.run.errorMessage ? t("{errorCode}：{errorMessage}", { errorCode: node.run.errorCode, errorMessage: tServer(node.run.errorMessage) }) : node.run.errorCode, true);
-  if (node.run?.remoteOutcomeUnknown) push("remote-unknown", "warning", t("遠端結果未知"), t("逾時或連線中斷：Node 端是否完成未知（不自動重送）"));
+  if (node.run?.errorCode != null && node.run.errorCode !== "") push("error-code", "danger", node.run.errorCode, (node.run.errorMessage != null && node.run.errorMessage !== "") ? t("{errorCode}：{errorMessage}", { errorCode: node.run.errorCode, errorMessage: tServer(node.run.errorMessage) }) : node.run.errorCode, true);
+  if (node.run?.remoteOutcomeUnknown === true) push("remote-unknown", "warning", t("遠端結果未知"), t("逾時或連線中斷：Node 端是否完成未知（不自動重送）"));
   if (node.issues.errors > 0) push("errors", "danger", t("{errors} 錯誤", { errors: node.issues.errors }), node.issues.messages.join("\n"));
   if (node.issues.warnings > 0) push("warnings", "warning", t("{warnings} 警告", { warnings: node.issues.warnings }), node.issues.messages.join("\n"));
-  if (node.unknownComponent && node.componentId) push("unknown-component", "neutral", t("未知元件"), t("目錄中找不到這個元件（可能已刪除，或 Node 離線）；接點由接線推得，請改選其他 instance"));
+  if (node.unknownComponent && (node.componentId != null && node.componentId !== "")) push("unknown-component", "neutral", t("未知元件"), t("目錄中找不到這個元件（可能已刪除，或 Node 離線）；接點由接線推得，請改選其他 instance"));
   if (node.cyclic) push("cycle", "warning", t("循環"), t("此步驟在接線循環中（CYCLIC_PIPELINE），伺服器會拒絕"));
   if (node.kind === "input" && node.outputs[0] && !node.outputs[0].connected) push("unused", "neutral", t("未使用"), t("沒有任何步驟使用這個輸入"));
   return badges;
@@ -464,7 +464,7 @@ export function describeExports(node: Pick<GraphNode, "id" | "outputs">): string
   return node.outputs.flatMap((port) =>
     port.exports.map((item) => {
       const state = producedText(item.produced);
-      return t("{name}（{id}.{name2}{value}）", { name: item.name, id: node.id, name2: port.name, value: state ? t("，{state}", { state }) : "" });
+      return t("{name}（{id}.{name2}{value}）", { name: item.name, id: node.id, name2: port.name, value: (state != null && state !== "") ? t("，{state}", { state }) : "" });
     }),
   );
 }
@@ -475,12 +475,12 @@ export function describeNode(node: GraphNode, stateLabel: string | null, duratio
   if (node.kind === "input") parts.push(t("流程輸入 {id}", { id: node.id }), node.outputs[0]?.typeId ?? t("型別未知"), node.required ? t("必填") : t("選填"));
   else {
     parts.push(t("步驟 {id}", { id: node.id }));
-    if (node.componentId) parts.push(t("元件 {componentId}{value}", { componentId: node.componentId, value: node.nodeLabel ? t("（{nodeLabel}）", { nodeLabel: node.nodeLabel }) : "" }));
+    if (node.componentId != null && node.componentId !== "") parts.push(t("元件 {componentId}{value}", { componentId: node.componentId, value: (node.nodeLabel != null && node.nodeLabel !== "") ? t("（{nodeLabel}）", { nodeLabel: node.nodeLabel }) : "" }));
     if (node.unknownComponent) parts.push(t("未知元件"));
-    if (stateLabel) parts.push(t("狀態 {stateLabel}", { stateLabel }));
-    if (durationText) parts.push(durationText);
-    if (node.run?.errorCode) parts.push(t("錯誤 {errorCode}", { errorCode: node.run.errorCode }));
-    if (node.run?.remoteOutcomeUnknown) parts.push(t("遠端結果未知"));
+    if (stateLabel != null && stateLabel !== "") parts.push(t("狀態 {stateLabel}", { stateLabel }));
+    if (durationText != null && durationText !== "") parts.push(durationText);
+    if (node.run?.errorCode != null && node.run.errorCode !== "") parts.push(t("錯誤 {errorCode}", { errorCode: node.run.errorCode }));
+    if (node.run?.remoteOutcomeUnknown === true) parts.push(t("遠端結果未知"));
     if (node.cyclic) parts.push(t("在接線循環中"));
     const exports = describeExports(node);
     if (exports.length > 0) parts.push(t("流程輸出 {exports}", { exports: formatList(exports) }));

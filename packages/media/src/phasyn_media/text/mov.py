@@ -17,6 +17,13 @@ from fractions import Fraction
 from itertools import groupby
 from typing import BinaryIO
 
+
+_TRACK_HEADER_BYTES = 84
+_MEDIA_HEADER_BYTES = 24
+_SIZE_HEADER_BYTES = 12
+_MIN_DESCRIPTION_BYTES = 16
+
+
 _ATOM_HEADER = struct.Struct(">I4s")
 _IDENTITY_MATRIX = struct.pack(">9i", 0x10000, 0, 0, 0, 0x10000, 0, 0, 0, 0x40000000)
 _TRACK_ID = 1
@@ -59,7 +66,10 @@ _FILE_TYPE = _atom(b"ftyp", b"qt  ", struct.pack(">I", 0x200), b"qt  ")
 class MovieWriter:
     """Writes the movie to a seekable stream positioned at its start."""
 
-    def __init__(self, stream: BinaryIO, width: int, height: int, timescale: int) -> None:
+    def __init__(
+        self, stream: BinaryIO, width: int, height: int, timescale: int
+    ) -> None:
+        """Prepare the frame samples and movie destination."""
         self._stream = stream
         self._width = width
         self._height = height
@@ -71,6 +81,7 @@ class MovieWriter:
 
     @property
     def samples(self) -> int:
+        """Return the number of samples written to the movie."""
         return len(self._sizes)
 
     def add_sample(self, data: bytes, duration: int) -> None:
@@ -106,17 +117,33 @@ class MovieWriter:
             _TRACK_ENABLED_IN_MOVIE,
             struct.pack(">IIIII", 0, 0, _TRACK_ID, 0, duration),
             bytes(8),
-            struct.pack(">hhhH", 0, 0, 0, 0),  # layer, alternate group, volume, reserved
+            struct.pack(
+                ">hhhH", 0, 0, 0, 0
+            ),  # layer, alternate group, volume, reserved
             _IDENTITY_MATRIX,
             struct.pack(">II", self._width << 16, self._height << 16),
         )
-        media_header = _full_atom(b"mdhd", 0, struct.pack(">IIIIHH", 0, 0, self._timescale, duration, 0, 0))
-        media_handler = _full_atom(b"hdlr", 0, b"mhlr", b"vide", bytes(12), _pascal(b"VideoHandler"))
-        video_header = _full_atom(b"vmhd", 1, struct.pack(">HHHH", 0x40, 0x8000, 0x8000, 0x8000))
-        data_handler = _full_atom(b"hdlr", 0, b"dhlr", b"alis", bytes(12), _pascal(b"DataHandler"))
-        data_reference = _full_atom(b"dref", 0, struct.pack(">I", 1), _full_atom(b"alis", _SELF_CONTAINED))
+        media_header = _full_atom(
+            b"mdhd", 0, struct.pack(">IIIIHH", 0, 0, self._timescale, duration, 0, 0)
+        )
+        media_handler = _full_atom(
+            b"hdlr", 0, b"mhlr", b"vide", bytes(12), _pascal(b"VideoHandler")
+        )
+        video_header = _full_atom(
+            b"vmhd", 1, struct.pack(">HHHH", 0x40, 0x8000, 0x8000, 0x8000)
+        )
+        data_handler = _full_atom(
+            b"hdlr", 0, b"dhlr", b"alis", bytes(12), _pascal(b"DataHandler")
+        )
+        data_reference = _full_atom(
+            b"dref", 0, struct.pack(">I", 1), _full_atom(b"alis", _SELF_CONTAINED)
+        )
         media_information = _atom(
-            b"minf", video_header, data_handler, _atom(b"dinf", data_reference), self._sample_table(first_sample_at)
+            b"minf",
+            video_header,
+            data_handler,
+            _atom(b"dinf", data_reference),
+            self._sample_table(first_sample_at),
         )
         media = _atom(b"mdia", media_header, media_handler, media_information)
         return _atom(b"moov", header, _atom(b"trak", track_header, media))
@@ -126,19 +153,33 @@ class MovieWriter:
             b"png ",
             bytes(6),
             struct.pack(">H", 1),  # data reference index
-            struct.pack(">HHIII", 0, 0, 0, 0, _LOSSLESS_QUALITY),  # version, revision, vendor, qualities
+            struct.pack(
+                ">HHIII", 0, 0, 0, 0, _LOSSLESS_QUALITY
+            ),  # version, revision, vendor, qualities
             struct.pack(">HHIIIH", self._width, self._height, _DPI_72, _DPI_72, 0, 1),
             _pascal(b"PNG").ljust(32, b"\0"),
             struct.pack(">Hh", _DEPTH_RGBA, _NO_COLOR_TABLE),
         )
-        runs = [(len(list(group)), duration) for duration, group in groupby(self._durations)]
+        runs = [
+            (len(list(group)), duration) for duration, group in groupby(self._durations)
+        ]
         return _atom(
             b"stbl",
             _full_atom(b"stsd", 0, struct.pack(">I", 1), description),
-            _full_atom(b"stts", 0, struct.pack(">I", len(runs)), *(struct.pack(">II", *run) for run in runs)),
-            _full_atom(b"stsc", 0, struct.pack(">IIII", 1, 1, len(self._sizes), 1)),  # one chunk holds every sample
             _full_atom(
-                b"stsz", 0, struct.pack(">II", 0, len(self._sizes)), struct.pack(f">{len(self._sizes)}I", *self._sizes)
+                b"stts",
+                0,
+                struct.pack(">I", len(runs)),
+                *(struct.pack(">II", *run) for run in runs),
+            ),
+            _full_atom(
+                b"stsc", 0, struct.pack(">IIII", 1, 1, len(self._sizes), 1)
+            ),  # one chunk holds every sample
+            _full_atom(
+                b"stsz",
+                0,
+                struct.pack(">II", 0, len(self._sizes)),
+                struct.pack(f">{len(self._sizes)}I", *self._sizes),
             ),
             _full_atom(b"stco", 0, struct.pack(">II", 1, first_sample_at)),
         )
@@ -182,7 +223,11 @@ def _movie_atom(stream: BinaryIO, file_size: int) -> bytes | None:
         if size < _ATOM_HEADER.size or offset + size > file_size:
             return None
         if kind == b"moov":
-            return stream.read(size - _ATOM_HEADER.size) if size <= _MAX_MOVIE_ATOM else None
+            return (
+                stream.read(size - _ATOM_HEADER.size)
+                if size <= _MAX_MOVIE_ATOM
+                else None
+            )
         offset += size
     return None
 
@@ -197,9 +242,16 @@ def read_summary(stream: BinaryIO, file_size: int) -> MovieSummary | None:
     table = _children(_children(media.get(b"minf", b"")).get(b"stbl", b""))
     track_header, media_header = track.get(b"tkhd", b""), media.get(b"mdhd", b"")
     sizes, description = table.get(b"stsz", b""), table.get(b"stsd", b"")
-    if len(track_header) != 84 or len(media_header) != 24 or len(sizes) < 12 or len(description) < 16:
+    if (
+        len(track_header) != _TRACK_HEADER_BYTES
+        or len(media_header) != _MEDIA_HEADER_BYTES
+        or len(sizes) < _SIZE_HEADER_BYTES
+        or len(description) < _MIN_DESCRIPTION_BYTES
+    ):
         return None
     width, height = struct.unpack_from(">II", track_header, 76)
     timescale, duration = struct.unpack_from(">II", media_header, 12)
     (samples,) = struct.unpack_from(">I", sizes, 8)
-    return MovieSummary(width >> 16, height >> 16, timescale, duration, samples, description[12:16])
+    return MovieSummary(
+        width >> 16, height >> 16, timescale, duration, samples, description[12:16]
+    )

@@ -70,7 +70,7 @@ export async function maskPng(draft: MaskDraft): Promise<Blob> {
   if (!context) throw new Error(t("瀏覽器無法建立遮罩畫布"));
   const pixels = maskExportPixels(draft.data);
   context.putImageData(new ImageData(new Uint8ClampedArray(pixels), draft.width, draft.height), 0, 0);
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+  const blob = await new Promise<Blob | null>((resolve) => { canvas.toBlob(resolve, "image/png"); });
   if (!blob) throw new Error(t("瀏覽器無法匯出遮罩 PNG"));
   return blob;
 }

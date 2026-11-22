@@ -43,12 +43,12 @@ export function TaskLog({ study, onOpen }: { study: PromptStudy; onOpen: (task: 
             return (
               <Tr key={task.task_id}>
                 <Td>
-                  <button type="button" onClick={() => onOpen(task)} className="pressable group grid gap-0.5 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-focus" title={t("開啟對應的分頁")}>
+                  <button type="button" onClick={() => { onOpen(task); }} className="pressable group grid gap-0.5 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-focus" title={t("開啟對應的分頁")}>
                     <span className="text-fg group-hover:text-action-fg group-hover:underline">{TASK_LABELS[task.kind]}</span>
                     <code className="machine text-caption text-fg-tertiary">{task.task_id}</code>
                   </button>
                 </Td>
-                <Td className="text-fg-secondary">{task.base_version_id ? versionLabel(study, task.base_version_id) : "—"}</Td>
+                <Td className="text-fg-secondary">{(task.base_version_id != null && task.base_version_id !== "") ? versionLabel(study, task.base_version_id) : "—"}</Td>
                 <Td>
                   <TaskStateChip task={task} />
                   {note ? (
@@ -62,7 +62,7 @@ export function TaskLog({ study, onOpen }: { study: PromptStudy; onOpen: (task: 
                 </Td>
                 <Td className="text-right">
                   <span className="machine text-fg-secondary">{task.run_ids.length}</span>
-                  {last ? (
+                  {(last != null && last !== "") ? (
                     <Link to={runPath(last)} className="machine block text-caption" title={t("最後一個 run：{last}", { last })}>
                       {last.slice(0, 8)}
                     </Link>
@@ -72,7 +72,7 @@ export function TaskLog({ study, onOpen }: { study: PromptStudy; onOpen: (task: 
                 <Td className="text-caption">
                   {task.error ? (
                     <span className="text-danger" title={stepErrorText(task.error) || undefined}>
-                      {`${task.error.code}${task.error.remote_outcome_unknown ? t("（遠端結果未知）") : ""}`}
+                      {`${task.error.code}${(task.error.remote_outcome_unknown === true) ? t("（遠端結果未知）") : ""}`}
                     </span>
                   ) : (
                     <span className="text-fg-tertiary">{stopReasonText(task.stop_reason)}</span>

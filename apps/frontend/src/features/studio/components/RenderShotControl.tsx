@@ -1,11 +1,12 @@
 // 「渲染鏡頭」：在 Studio 工具列右側、「渲染引擎」左邊的大按鈕（一定顯示文字），渲染選取的鏡頭。按鈕也說出代價與鏡頭的
-// 狀態：有成本紀錄時第二行是預估時間（「約 4:20」；區間、紀錄次數與記憶體風險在提示裡，連同 Ctrl+Enter），鏡頭需要更新
+// 狀態：路線的元件要在使用時載入時第二行是「使用時載入（約 N 秒）」，否則有成本紀錄時第二行是預估時間（「約 4:20」；區間、紀錄次數與記憶體風險在提示裡，連同 Ctrl+Enter），鏡頭需要更新
 // 或沒有完成時圖示左邊、垂直置中有一個狀態點（琥珀＝需要更新或中斷、紅＝失敗；在按鈕左側留白裡，不壓到文字），那句話在
 // 提示與無障礙描述裡。
-// 不能渲染時按鈕保持可聚焦並以提示說明原因，旁邊多一個帶去修的按鈕：元件沒準備好時「開啟渲染引擎」，插件規則、prompt、
-// 參考素材或鏡頭設定的問題則切到「鏡頭」工作區屬性面板的對應分頁（逐項原因在它的提示裡）。第一次按下時向瀏覽器要一次通知
+// 不能渲染時按鈕保持可聚焦並以提示說明原因。元件沒準備好時不另外放按鈕：旁邊的「渲染引擎」轉成琥珀色、說明原因，按下開到
+// 要啟動的元件（chrome/EngineButton.tsx）；插件規則、prompt、參考素材或鏡頭設定的問題則旁邊多一個帶去修的按鈕，切到「鏡頭」
+// 工作區屬性面板的對應分頁（逐項原因在它的提示裡）。第一次按下時向瀏覽器要一次通知
 // 權限（渲染結束時通知；chrome/renderAlerts.ts）。
-import { Clapperboard, Cpu, Images, PenLine, Puzzle, SlidersHorizontal, TriangleAlert, type LucideIcon } from "lucide-react";
+import { Clapperboard, Images, PenLine, Puzzle, SlidersHorizontal, TriangleAlert, type LucideIcon } from "lucide-react";
 import { memo, useId, useMemo, type Ref } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import type { StudioShot } from "@/api/generated/contracts";
@@ -16,10 +17,12 @@ import type { PlanEtaState } from "../hooks/usePlanEta";
 import { renderDisabledReason, useRenderBlock } from "../hooks/useRenderBlock";
 import { ETA_RISK_DETAIL, ETA_RISK_LABEL, ETA_UNAVAILABLE, formatEtaClock, missingEtaReason, planEtaText } from "../model/eta";
 import { activeTake, changedSinceTake, shotStatus, type ShotStatus } from "../model/project";
+import { findRoute } from "../model/routes";
 import type { RenderProblem, RenderProblemKind } from "../model/renderPlan";
 import { useRenderActivity } from "../renderActivityContext";
 import { useStudio } from "../studioContext";
 import { askRenderAlerts } from "./chrome/renderAlerts";
+import { onUseText, useOnUseLoad } from "./generation/loadOnUse";
 import { revealInspectorTab, type InspectorTab } from "./inspector/inspectorTab";
 import { t, tServer } from "@/i18n";
 import { formatList } from "@/i18n/format";
@@ -33,11 +36,12 @@ function statusText(shot: StudioShot, project: Parameters<typeof shotStatus>[1],
   const latest = shot.takes.at(-1);
   const error = latest?.error ? `${latest.error.code} ${tServer(latest.error.message)}` : null;
   if (status === "rendering") return live ? t("渲染中") : t("渲染中；進度在「渲染」工作區。");
-  if (status === "ready" && active) return t("使用 take {active}（seed {seed}）。", { active: shot.takes.indexOf(active) + 1, seed: active.seed });
+  if (status === "ready" && active?.seed === null) return t("{label}（使用中）", { label: t("take {number}", { number: shot.takes.indexOf(active) + 1 }) });
+  if (status === "ready" && active && active.seed !== null) return t("使用 take {active}（seed {seed}）。", { active: shot.takes.indexOf(active) + 1, seed: active.seed });
   if (status === "stale" && active) return t("使用中的 take 是舊設定（已變更：{changedSinceTake}）；重新渲染才會反映。", { changedSinceTake: formatList(changedSinceTake(active, shot, project)) });
-  if (status === "failed" && error) return t("最近一次失敗：{error}", { error });
-  if (status === "cancelled") return error ? t("最近一次已取消：{error}", { error }) : t("最近一次已取消。");
-  if (status === "interrupted") return error ? t("最近一次中斷：{error}", { error }) : t("最近一次中斷");
+  if (status === "failed" && (error != null && error !== "")) return t("最近一次失敗：{error}", { error });
+  if (status === "cancelled") return (error != null && error !== "") ? t("最近一次已取消：{error}", { error }) : t("最近一次已取消。");
+  if (status === "interrupted") return (error != null && error !== "") ? t("最近一次中斷：{error}", { error }) : t("最近一次中斷");
   return t("還沒渲染過。");
 }
 
@@ -70,8 +74,8 @@ function RenderIcon({ status }: { status: ShotStatus }) {
   return (
     <span aria-hidden className="relative inline-grid shrink-0">
       <Clapperboard />
-      {/* left of the icon, vertically centred (UI #26): in the button's left padding, clear of the label */}
-      {dot ? <span key={status} className={cn("absolute top-1/2 -left-3 size-2 -translate-y-1/2 rounded-full ring-2 ring-black/35 animate-pop-in", dot)} /> : null}
+      {/* left of the icon, vertically centred: in the button's left padding, clear of the label */}
+      {(dot != null && dot !== "") ? <span key={status} className={cn("absolute top-1/2 -left-3 size-2 -translate-y-1/2 rounded-full ring-2 ring-black/35 animate-pop-in", dot)} /> : null}
     </span>
   );
 }
@@ -99,7 +103,7 @@ export function RenderShotControl({ buttonRef, compact = false }: { buttonRef?: 
       </ActionButton>
     );
   }
-  return <RenderShotButton shot={shot} live={live} buttonRef={buttonRef} compact={compact} />;
+  return <RenderShotButton shot={shot} live={live} {...(buttonRef === undefined ? {} : { buttonRef })} compact={compact} />;
 }
 
 interface RenderShotButtonProps {
@@ -111,9 +115,11 @@ interface RenderShotButtonProps {
   compact: boolean;
 }
 
-/** Where each kind of problem is fixed: the engine dialog, or a tab of the generate workspace's inspector. */
-const FIX: Readonly<Record<RenderProblemKind, { icon: LucideIcon; label: () => string; tab: InspectorTab | null }>> = {
-  engine: { icon: Cpu, label: () => t("開啟渲染引擎"), tab: null },
+/** Problems the toolbar's 「渲染引擎」 button speaks for (it turns amber and opens the sheet on them): no fix button here. */
+type FixKind = Exclude<RenderProblemKind, "engine">;
+
+/** Where each other kind of problem is fixed: a tab of the generate workspace's inspector. */
+const FIX: Readonly<Record<FixKind, { icon: LucideIcon; label: () => string; tab: InspectorTab }>> = {
   plugins: { icon: Puzzle, label: () => t("插件規則不符"), tab: "plugins" },
   prompt: { icon: PenLine, label: () => t("修正 prompt"), tab: "prompt" },
   references: { icon: Images, label: () => t("檢查參考素材"), tab: "references" },
@@ -121,20 +127,15 @@ const FIX: Readonly<Record<RenderProblemKind, { icon: LucideIcon; label: () => s
 };
 
 /** The way to fix what blocks the render; its tooltip lists every reason on its own line. */
-function PreflightFix({ problem, compact }: { problem: RenderProblem; compact: boolean }) {
-  const { setEngineOpen } = useStudio();
+function PreflightFix({ problem, kind, compact }: { problem: RenderProblem; kind: FixKind; compact: boolean }) {
   const { workspace } = useParams();
   const [params] = useSearchParams();
   const navigate = useNavigate();
-  const fix = FIX[problem.kind];
+  const fix = FIX[kind];
   const Icon = fix.icon;
   const reasons = problem.items.length > 0 ? problem.items.map((item) => `• ${item}`).join("\n") : problem.text;
   const detail = problem.items.length > 0 ? problem.items.join(t("；")) : problem.text;
   const open = () => {
-    if (fix.tab === null) {
-      setEngineOpen(true);
-      return;
-    }
     revealInspectorTab(fix.tab);
     if (workspace !== "generate") void navigate({ pathname: "/studio/generate", search: `?${params.toString()}` });
   };
@@ -154,14 +155,16 @@ function PreflightFix({ problem, compact }: { problem: RenderProblem; compact: b
 
 // Memoised: it renders again with the project or the selection, not with every tick of a running render
 const RenderShotButton = memo(function RenderShotButton({ shot, live, buttonRef, compact }: RenderShotButtonProps) {
-  const { project, renderShots, busy } = useStudio();
+  const { project, renderShots, busy, engine } = useStudio();
   const block = useRenderBlock(shot);
+  // Components of the shot's route that load when the render uses them: the second line says so (the estimate moves to the tooltip)
+  const load = useOnUseLoad(findRoute(engine.routes, shot.route));
   const shots = useMemo(() => [shot], [shot]);
   const eta = useRenderEta(shots);
   const descriptionId = useId();
   const status = shotStatus(shot, project);
   const reason = renderDisabledReason(block, busy) ?? block.problem ?? null;
-  const lines = [...etaLines(eta), statusText(shot, project, live)];
+  const lines = [...(load ? [onUseText(load)] : []), ...etaLines(eta), statusText(shot, project, live)];
   return (
     <div className="flex shrink-0 items-center gap-2">
       <ActionButton
@@ -181,7 +184,9 @@ const RenderShotButton = memo(function RenderShotButton({ shot, live, buttonRef,
       >
         <span className="grid justify-items-start leading-tight">
           <span>{t("渲染鏡頭")}</span>
-          {eta.eta ? (
+          {load ? (
+            <span className="flex items-center gap-1 text-[11px] font-normal animate-fade-in">{onUseText(load)}</span>
+          ) : eta.eta ? (
             <span className="machine flex items-center gap-1 text-[11px] font-normal animate-fade-in">
               {t("約 {left}", { left: formatEtaClock(eta.eta.totalSeconds) })}
               {eta.risks.worst ? <TriangleAlert aria-hidden className="size-3!" /> : null}
@@ -192,7 +197,7 @@ const RenderShotButton = memo(function RenderShotButton({ shot, live, buttonRef,
       <span id={descriptionId} hidden>
         {lines.join("\n")}
       </span>
-      {block.preflight ? <PreflightFix problem={block.preflight} compact={compact} /> : null}
+      {block.preflight && block.preflight.kind !== "engine" ? <PreflightFix problem={block.preflight} kind={block.preflight.kind} compact={compact} /> : null}
     </div>
   );
 });

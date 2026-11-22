@@ -62,7 +62,7 @@ function RecordingFacts({
       }
       icon={<kind.icon aria-hidden className={TEXT_TONE[kind.tone]} />}
       // 基準（第 1 筆）與比較表的基準欄用同一個淡品牌底色
-      className={index === 0 ? "bg-brand-soft/35" : undefined}
+      {...(index === 0 ? { className: "bg-brand-soft/35" } : {})}
       actions={
         <>
           {index > 0 ? <ToolButton label={t("設為基準：#{index} {name}", { index: index + 1, name })} icon={<ArrowUpToLine aria-hidden />} onClick={onMakeBase} /> : null}
@@ -100,7 +100,7 @@ function RecordingFacts({
               {context.recording.mode}
             </PropertyRow>
             <PropertyRow label="run">
-              {context.run_id ? (
+              {(context.run_id != null && context.run_id !== "") ? (
                 <Link to={runPath(context.run_id)} className="machine text-data">
                   {context.run_id.slice(0, 8)}
                 </Link>
@@ -112,7 +112,7 @@ function RecordingFacts({
               <IdText value={column.id} />
             </PropertyRow>
           </PropertyGrid>
-        ) : column.error ? (
+        ) : (column.error != null) ? (
           <p className="text-data text-danger">
             {t("讀取失敗：{headline}", { headline: describeError(column.error).headline })}
             <span className="mt-1 block">
@@ -168,7 +168,7 @@ export function ComparisonInspector({ columns, onChange }: { columns: readonly C
   const tabs = [
     { id: "list", label: t("比較對象"), count: ids.length },
     { id: "browse", label: t("從最近紀錄挑選") },
-  ];
+  ] as const;
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -180,13 +180,13 @@ export function ComparisonInspector({ columns, onChange }: { columns: readonly C
         description={t("依序比較，第 1 筆是設定差異的基準；清單只存在網址（?ids=），可直接分享。")}
         actions={
           storeDiffers ? (
-            <Button size="sm" icon={<ListPlus aria-hidden />} onClick={() => onChange(compare.ids)} className="pointer-coarse:min-h-11">
+            <Button size="sm" icon={<ListPlus aria-hidden />} onClick={() => { onChange(compare.ids); }} className="pointer-coarse:min-h-11">
               {t("改用紀錄頁的比較清單（{idsCount} 筆）", { idsCount: compare.ids.length })}
             </Button>
           ) : null
         }
       />
-      <PanelTabs tabs={tabs} value={tab} onChange={(id) => setTab(id as TabId)} idPrefix="comparison-inspector" label={t("比較對象分頁")} variant="underline" />
+      <PanelTabs tabs={tabs} value={tab} onChange={setTab} idPrefix="comparison-inspector" label={t("比較對象分頁")} variant="underline" />
       <DockBody role="tabpanel" id={`comparison-inspector-panel-${tab}`} aria-labelledby={`comparison-inspector-tab-${tab}`}>
         {tab === "list" ? (
           <div ref={listRef} className="grid content-start">
@@ -195,7 +195,7 @@ export function ComparisonInspector({ columns, onChange }: { columns: readonly C
               tabIndex={-1}
               className="border-b border-line-subtle px-3 py-2 text-caption text-fg-tertiary outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
             >
-              <T source={"比較對象 <0>{idsCount}/{maxCompare}</0>：設為基準會把該筆移到第 1 欄。"} values={{ idsCount: ids.length, maxCompare: MAX_COMPARE }} slots={[<span className="machine" />]} />
+              <T source={"比較對象 <0>{idsCount}/{maxCompare}</0>：設為基準會把該筆移到第 1 欄。"} values={{ idsCount: ids.length, maxCompare: MAX_COMPARE }} slots={[<span key="slot-0" className="machine" />]} />
             </p>
             {columns.length === 0 ? (
               <EmptyState size="compact" mark title={t("尚未選擇 recording")} description={t("從「從最近紀錄挑選」或下方以 recording_id 加入。")} />
@@ -206,8 +206,8 @@ export function ComparisonInspector({ columns, onChange }: { columns: readonly C
                   column={column}
                   index={index}
                   nodeName={(nodeId) => nodeLabel(catalog.data, nodeId)}
-                  onMakeBase={() => reorder([column.id, ...ids.filter((id) => id !== column.id)])}
-                  onRemove={() => reorder(ids.filter((id) => id !== column.id))}
+                  onMakeBase={() => { reorder([column.id, ...ids.filter((id) => id !== column.id)]); }}
+                  onRemove={() => { reorder(ids.filter((id) => id !== column.id)); }}
                 />
               ))
             )}

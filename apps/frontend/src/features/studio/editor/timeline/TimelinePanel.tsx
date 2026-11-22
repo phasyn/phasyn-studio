@@ -72,21 +72,21 @@ export function TimelinePanel({ density, collapsed = false, actions, className }
   const { timeline, fps, totalFrames, problem, playhead, transport, view } = editor;
   const compact = density === "compact";
   const headerWidth = compact ? COMPACT_HEADER_WIDTH : TRACK_HEADER_WIDTH;
-  const scroller = useRef<HTMLDivElement>(null);
-  const { width: scrollerWidth } = useElementSize(scroller);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const { width: scrollerWidth } = useElementSize(scrollerRef);
   const viewport = Math.max(0, scrollerWidth - headerWidth);
   const zoom = useTimelineZoom(view);
   const [scrollLeft, setScrollLeft] = useState(() => view.getScroll());
-  const anchor = useRef<{ frame: number; x: number } | null>(null);
+  const anchorRef = useRef<{ frame: number; x: number } | null>(null);
   const [captionsShown, setCaptionsShown] = usePersistentFlag("studio.nle.captions.track", true);
   const [menu, setMenu] = useState<OpenMenu | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const menuId = useId();
   const sizes = useTrackSizes(editor.project.project_id);
-  const gestures = useTimelineGesture(editor, scroller, { zoom, headerWidth, behaviour: compact ? "rearrange" : "edit" });
+  const gestures = useTimelineGesture(editor, scrollerRef, { zoom, headerWidth, behaviour: compact ? "rearrange" : "edit" });
   // Sources and effects are dropped on the full timeline only: the compact one rearranges what is already there
-  const sourceDrop = useSourceDrop(editor, scroller, { zoom, headerWidth });
-  const effectDrop = useEffectDrop(editor, scroller, { zoom, headerWidth });
+  const sourceDrop = useSourceDrop(editor, scrollerRef, { zoom, headerWidth });
+  const effectDrop = useEffectDrop(editor, scrollerRef, { zoom, headerWidth });
   const drop = compact ? null : sourceDrop.preview;
   const effect = compact ? null : effectDrop.preview;
   const guide = gestures.preview?.guide ?? drop?.guide ?? null;
@@ -105,59 +105,60 @@ export function TimelinePanel({ density, collapsed = false, actions, className }
     ? []
     : (gestures.preview?.timeline?.clips.filter((clip) => {
         const original = timeline.clips.find((item) => item.clip_id === clip.clip_id);
-        return original && (clip.track_id !== original.track_id || clip.start_frame !== original.start_frame || clip.in_frame !== original.in_frame || clip.out_frame !== original.out_frame || clipDuration(clip) !== clipDuration(original));
+        return original !== undefined && (clip.track_id !== original.track_id || clip.start_frame !== original.start_frame || clip.in_frame !== original.in_frame || clip.out_frame !== original.out_frame || clipDuration(clip) !== clipDuration(original));
       }) ?? []);
   const dimmed = new Set(ghosts.map((clip) => clip.clip_id));
 
   // The view is shared with the other workspace's timeline: start where it was left
   useLayoutEffect(() => {
-    const node = scroller.current;
+    const node = scrollerRef.current;
     if (node) node.scrollLeft = view.getScroll();
   }, [view]);
   useLayoutEffect(() => {
-    const node = scroller.current;
-    if (!node || !anchor.current) return;
-    node.scrollLeft = Math.max(0, anchor.current.frame * zoom - anchor.current.x);
-    anchor.current = null;
+    const node = scrollerRef.current;
+    if (!node || !anchorRef.current) return;
+    node.scrollLeft = Math.max(0, anchorRef.current.frame * zoom - anchorRef.current.x);
+    anchorRef.current = null;
   }, [zoom]);
 
   /** Zoom keeping the frame under `x` (px from the left edge of the clips; default: the middle of the view) in place. */
   const setZoom = (next: number, x = viewport / 2) => {
     gestures.cancel();
-    const current = scroller.current?.scrollLeft ?? scrollLeft;
-    anchor.current = { frame: (current + x) / zoom, x };
+    const current = scrollerRef.current?.scrollLeft ?? scrollLeft;
+    anchorRef.current = { frame: (current + x) / zoom, x };
     view.setZoom(next);
   };
   const fit = () => {
     gestures.cancel();
-    anchor.current = { frame: 0, x: 0 };
+    anchorRef.current = { frame: 0, x: 0 };
     const next = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, Math.max(1, viewport - 32) / Math.max(Math.round(fps * 5), totalFrames)));
-    if (next === zoom && scroller.current) scroller.current.scrollLeft = 0;
+    if (next === zoom && scrollerRef.current) scrollerRef.current.scrollLeft = 0;
     view.setZoom(next);
   };
   const wheel = useEffectEvent((event: WheelEvent) => {
     if (!event.ctrlKey && !event.metaKey && !event.altKey) return;
     event.preventDefault();
-    const node = scroller.current;
+    const node = scrollerRef.current;
     if (node) setZoom(zoom * Math.exp(-event.deltaY * 0.005), Math.max(0, event.clientX - node.getBoundingClientRect().left - headerWidth));
   });
   useEffect(() => {
-    const node = scroller.current;
+    const node = scrollerRef.current;
     if (!node) return;
-    const listener = (event: WheelEvent) => wheel(event);
+    const listener = (event: WheelEvent) => { wheel(event); };
     node.addEventListener("wheel", listener, { passive: false });
-    return () => node.removeEventListener("wheel", listener);
+    return () => { node.removeEventListener("wheel", listener); };
   }, []);
   // The key map's fit and zoom commands reach whichever timeline is mounted
   const zoomRequest = useEffectEvent((event: Event) => {
-    const kind = (event as CustomEvent<string>).detail;
+    if (!(event instanceof CustomEvent) || typeof event.detail !== "string") return;
+    const kind: string = event.detail;
     if (kind === "fit") fit();
     else setZoom(kind === "in" ? zoom * 1.5 : zoom / 1.5);
   });
   useEffect(() => {
-    const listener = (event: Event) => zoomRequest(event);
+    const listener = (event: Event) => { zoomRequest(event); };
     window.addEventListener(TIMELINE_ZOOM_EVENT, listener);
-    return () => window.removeEventListener(TIMELINE_ZOOM_EVENT, listener);
+    return () => { window.removeEventListener(TIMELINE_ZOOM_EVENT, listener); };
   }, []);
 
   const openMenu = (event: MouseEvent<HTMLElement>, label: string, items: MenuItem[]) => {
@@ -166,19 +167,19 @@ export function TimelinePanel({ density, collapsed = false, actions, className }
     const point = event.type === "contextmenu" && event.clientX + event.clientY > 0;
     setMenu({ label, items, anchor: point ? { kind: "point", x: event.clientX, y: event.clientY } : { kind: "element", element: event.currentTarget }, returnFocus: event.currentTarget });
   };
-  const frameAtX = (clientX: number) => Math.max(0, Math.round((clientX - (scroller.current?.getBoundingClientRect().left ?? 0) - headerWidth + (scroller.current?.scrollLeft ?? 0)) / zoom));
+  const frameAtX = (clientX: number) => Math.max(0, Math.round((clientX - (scrollerRef.current?.getBoundingClientRect().left ?? 0) - headerWidth + (scrollerRef.current?.scrollLeft ?? 0)) / zoom));
 
   const rowHeight = (track: TimelineTrack) => (compact ? TRACK_HEIGHTS.s : TRACK_HEIGHTS[sizes.of(track.track_id)]);
   const cursor = compact ? "cursor-grab active:cursor-grabbing" : TOOL_CURSOR[editor.tool];
   const showCaptions = !compact && captionsShown && timeline.captions.length > 0;
 
   return (
-    <section
+    <section /* eslint-disable-line jsx-a11y-x/no-noninteractive-element-interactions -- The timeline container observes its child controls to track the active editing panel. */
       data-editor-panel="timeline"
       data-keep-focus=""
       aria-label={t("時間軸")}
       className={cn(PANEL, !collapsed && "h-full", editor.focus.panel === "timeline" && !compact && "border-brand-cyan/70", className)}
-      onPointerDownCapture={() => editor.focus.setPanel("timeline")}
+      onPointerDownCapture={() => { editor.focus.setPanel("timeline"); }}
       onKeyDown={(event) => {
         if (event.key !== "Escape" || event.defaultPrevented || event.nativeEvent.isComposing || !gestures.cancel()) return;
         event.preventDefault();
@@ -188,10 +189,10 @@ export function TimelinePanel({ density, collapsed = false, actions, className }
       {compact ? (
         <CompactTimelineHeader editor={editor} zoom={zoom} onZoom={setZoom} onFit={fit} actions={actions} />
       ) : (
-        <TimelineHeader editor={editor} zoom={zoom} onZoom={setZoom} onFit={fit} captionsShown={captionsShown} onToggleCaptions={() => setCaptionsShown(!captionsShown)} trackSize={sizes.base} onTrackSize={sizes.setBase} />
+        <TimelineHeader editor={editor} zoom={zoom} onZoom={setZoom} onFit={fit} captionsShown={captionsShown} onToggleCaptions={() => { setCaptionsShown(!captionsShown); }} trackSize={sizes.base} onTrackSize={sizes.setBase} />
       )}
       <div
-        ref={scroller}
+        ref={scrollerRef}
         hidden={collapsed}
         className={cn("relative min-h-0 flex-1 overflow-auto overscroll-contain bg-sunken [scrollbar-width:thin]", collapsed && "hidden")}
         {...(compact ? {} : bothDrops(sourceDrop.handlers, effectDrop.handlers))}
@@ -211,10 +212,10 @@ export function TimelinePanel({ density, collapsed = false, actions, className }
               width={graphWidth}
               scrollLeft={scrollLeft}
               viewport={viewport}
-              onSeek={(frame) => transport.seek(frame)}
-              onStep={(frames) => transport.step(frames)}
-              onMarkerMove={compact ? undefined : (marker, frame) => void editor.commit({ ...timeline, markers: timeline.markers.map((item) => (item.marker_id === marker.marker_id ? { ...item, frame } : item)) })}
-              onContextMenu={compact ? undefined : (event) => openMenu(event, t("時間尺的動作"), rulerMenu(editor))}
+              onSeek={(frame) => { transport.seek(frame); }}
+              onStep={(frames) => { transport.step(frames); }}
+              {...(compact ? {} : { onMarkerMove: (marker, frame) => void editor.commit({ ...timeline, markers: timeline.markers.map((item) => (item.marker_id === marker.marker_id ? { ...item, frame } : item)) }) })}
+              {...(compact ? {} : { onContextMenu: (event) => { openMenu(event, t("時間尺的動作"), rulerMenu(editor)); } })}
             />
           </div>
           {showCaptions ? <CaptionTrack editor={editor} zoom={zoom} width={graphWidth} headerWidth={headerWidth} /> : null}
@@ -235,9 +236,9 @@ export function TimelinePanel({ density, collapsed = false, actions, className }
                     width={headerWidth}
                     size={sizes.of(track.track_id)}
                     startRenaming={renaming === track.track_id}
-                    onRenamed={() => setRenaming(null)}
-                    onResize={(size) => sizes.setTrack(track.track_id, size)}
-                    onMenu={(event) => openMenu(event, t("{name} 的軌道選單", { name: track.name }), trackMenu(editor, track, () => setRenaming(track.track_id)))}
+                    onRenamed={() => { setRenaming(null); }}
+                    onResize={(size) => { sizes.setTrack(track.track_id, size); }}
+                    onMenu={(event) => { openMenu(event, t("{name} 的軌道選單", { name: track.name }), trackMenu(editor, track, () => { setRenaming(track.track_id); })); }}
                   />
                 )}
                 <div
@@ -246,7 +247,7 @@ export function TimelinePanel({ density, collapsed = false, actions, className }
                   onPointerDown={(event) => {
                     if (event.button === 0 && event.target === event.currentTarget) editor.setSelected([]);
                   }}
-                  onContextMenu={compact ? undefined : (event) => (event.target === event.currentTarget ? openMenu(event, t("時間軸的動作"), gapMenu(editor, frameAtX(event.clientX))) : undefined)}
+                  onContextMenu={compact ? undefined : (event) => { if (event.target === event.currentTarget) { openMenu(event, t("時間軸的動作"), gapMenu(editor, frameAtX(event.clientX))); } }}
                 >
                   {ordered.map((clip, index) => {
                     const previous = ordered[index - 1];
@@ -277,11 +278,11 @@ export function TimelinePanel({ density, collapsed = false, actions, className }
                         cursor={track.locked ? "cursor-not-allowed" : cursor}
                         viewStart={scrollLeft}
                         gestures={gestures}
-                        onSelect={(extend) => editor.select(clip.clip_id, extend)}
-                        onContextMenu={compact ? undefined : (event) => {
+                        onSelect={(extend) => { editor.select(clip.clip_id, extend); }}
+                        {...(compact ? {} : { onContextMenu: (event) => {
                           if (!selected.has(clip.clip_id)) editor.select(clip.clip_id);
                           openMenu(event, t("「{name}」的動作", { name: clip.name }), clipMenu(editor, clip));
-                        }}
+                        } })}
                       />
                     );
                   })}
@@ -300,9 +301,9 @@ export function TimelinePanel({ density, collapsed = false, actions, className }
                         selected={editor.selectedTransition === clip.clip_id}
                         editable={!compact && !track.locked}
                         lacking={repeated.outgoing + repeated.incoming > 0}
-                        onSelect={() => editor.selectTransition(clip.clip_id)}
+                        onSelect={() => { editor.selectTransition(clip.clip_id); }}
                         onResize={(frames) => void editor.command({ type: "transition", clipId: clip.clip_id, kind: transition.kind, frames: Math.max(1, transition.frames + frames), linked: editor.linked })}
-                        onContextMenu={compact ? undefined : (event) => openMenu(event, t("轉場的動作"), transitionMenu(editor, clip))}
+                        {...(compact ? {} : { onContextMenu: (event) => { openMenu(event, t("轉場的動作"), transitionMenu(editor, clip)); } })}
                       />
                     );
                   })}
@@ -317,21 +318,21 @@ export function TimelinePanel({ density, collapsed = false, actions, className }
                         {clip.name}
                       </span>
                     ))}
-                  {gestures.preview?.error && gestures.preview.trackId === track.track_id ? (
+                  {(gestures.preview?.error != null && gestures.preview.error !== "") && gestures.preview.trackId === track.track_id ? (
                     <span className="pointer-events-none absolute inset-y-[3px] z-20 rounded-[5px] border-2 border-danger bg-danger/15" style={{ left: Math.max(0, gestures.preview.start * zoom), width: Math.max(2, gestures.preview.length * zoom) }} />
                   ) : null}
                   {drop && drop.length > 0 && drop.trackIds.includes(track.track_id) ? (
                     <span
                       className={cn(
                         "pointer-events-none absolute inset-y-[3px] z-20 overflow-hidden rounded-[5px] border-2 px-1.5 text-caption leading-5 text-fg",
-                        drop.error ? "border-danger bg-danger/15" : "border-brand-cyan bg-raised/90",
+                        (drop.error != null && drop.error !== "") ? "border-danger bg-danger/15" : "border-brand-cyan bg-raised/90",
                       )}
                       style={{ left: drop.start * zoom, width: Math.max(2, drop.length * zoom) }}
                     >
                       {drop.name}
                     </span>
                   ) : null}
-                  {drop?.mode === "insert" && !drop.error ? (
+                  {drop?.mode === "insert" && !(drop.error != null && drop.error !== "") ? (
                     <span className="pointer-events-none absolute inset-y-0 z-20 w-0.5 -translate-x-px bg-brand-cyan" style={{ left: drop.start * zoom }} />
                   ) : null}
                   <EffectDropMarks effect={effect} trackId={track.track_id} zoom={zoom} />
@@ -340,9 +341,9 @@ export function TimelinePanel({ density, collapsed = false, actions, className }
               </div>
             );
           })}
-          <Playhead playhead={playhead} zoom={zoom} offset={headerWidth} scrollerRef={scroller} />
+          <Playhead playhead={playhead} zoom={zoom} offset={headerWidth} scrollerRef={scrollerRef} />
         </div>
-        {timeline.clips.length === 0 && !problem ? (
+        {timeline.clips.length === 0 && !(problem != null && problem !== "") ? (
           <div className="pointer-events-none absolute inset-x-0 bottom-0 grid place-items-center overflow-hidden" style={{ top: RULER_HEIGHT, left: headerWidth }}>
             <EmptyState
               size="compact"
@@ -354,7 +355,7 @@ export function TimelinePanel({ density, collapsed = false, actions, className }
             />
           </div>
         ) : null}
-        {problem ? (
+        {(problem != null && problem !== "") ? (
           <p role="alert" className="pointer-events-none absolute inset-x-0 top-10 mx-auto flex w-fit max-w-[80%] items-start gap-2 rounded-lg border border-warning/40 bg-surface px-3 py-2 text-data text-warning">
             <TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
             {problem}
@@ -369,18 +370,18 @@ export function TimelinePanel({ density, collapsed = false, actions, className }
             scrollLeft={scrollLeft}
             zoom={zoom}
             onScroll={(left) => {
-              if (scroller.current) scroller.current.scrollLeft = Math.max(0, left);
+              if (scrollerRef.current) scrollerRef.current.scrollLeft = Math.max(0, left);
             }}
             onZoom={(next, firstFrame) => {
               gestures.cancel();
-              anchor.current = { frame: firstFrame, x: 0 };
+              anchorRef.current = { frame: firstFrame, x: 0 };
               view.setZoom(next);
             }}
           />
         </div>
         <TimelineStatus gestureError={gestures.preview?.error ?? null} drop={drop} effect={effect} totalFrames={totalFrames} fps={fps} />
       </div>
-      {menu ? <ActionMenu id={menuId} label={menu.label} items={menu.items} anchor={menu.anchor} returnFocus={menu.returnFocus} onClose={() => setMenu(null)} /> : null}
+      {menu ? <ActionMenu id={menuId} label={menu.label} items={menu.items} anchor={menu.anchor} returnFocus={menu.returnFocus} onClose={() => { setMenu(null); }} /> : null}
     </section>
   );
 }

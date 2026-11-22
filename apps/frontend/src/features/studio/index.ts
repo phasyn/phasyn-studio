@@ -16,6 +16,7 @@ export {
 } from "./model/routes";
 export { runRecordingsOptions, stepLogOptions } from "./hooks/useRunProgress";
 export { useRunSlots, type RunSlots } from "./hooks/useRunSlots";
+export { useFilmProgress } from "./hooks/useFilmProgress";
 export { newLocalId } from "./references/ids";
 export { addBlockedReason, IMAGE_MASK_NOTE, newReference } from "./references/materials";
 export { libraryName, readMediaFacts } from "./references/media";

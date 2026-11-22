@@ -34,8 +34,8 @@ export function CaptionWorkspace({
   sceneBlock: string | null;
   onNext: () => void;
 }) {
-  if (!captionRunId) {
-    return <EmptyState icon={<Captions />} title={t("尚未產生 caption")} description={sceneBlock ? t("目前還不能產生：{sceneBlock}。", { sceneBlock }) : t("在檢視器選擇 caption 元件與參數後按「產生 caption」。")} />;
+  if (!(captionRunId != null && captionRunId !== "")) {
+    return <EmptyState icon={<Captions />} title={t("尚未產生 caption")} description={(sceneBlock != null && sceneBlock !== "") ? t("目前還不能產生：{sceneBlock}。", { sceneBlock }) : t("在檢視器選擇 caption 元件與參數後按「產生 caption」。")} />;
   }
   const run = captionRun.data;
   if (!run) {
@@ -115,7 +115,7 @@ export function CaptionInspector({
       note={t("training caption 只用觀測事實；uncertain 事件預設排除；generation edits 只進入 generation prompt。")}
       actions={
         <>
-          {step.uploadError ? <ErrorCallout error={step.uploadError} write title={t("無法送出 caption run")} /> : null}
+          {(step.uploadError != null) ? <ErrorCallout error={step.uploadError} write title={t("無法送出 caption run")} /> : null}
           {step.create.isError ? <RunCreateError error={step.create.error} title={t("建立 caption run 失敗")} /> : null}
           <div className="flex flex-wrap items-center gap-2">
             <ActionButton
@@ -144,7 +144,7 @@ export function CaptionInspector({
       </PropertySection>
       <RunSection title="caption run" runId={captionRunId} run={captionRun} label="caption.compile" emptyText={t("尚未產生 caption。")} errorTitle={t("無法讀取 caption run")} />
       <PropertySection title={t("元件")} icon={<Cpu aria-hidden />}>
-        <KindComponentSelect id="caption-component" label={t("caption 元件（caption.compile）")} kind="caption.compile" value={step.choice} onChange={(value) => step.setChoice(value)} />
+        <KindComponentSelect id="caption-component" label={t("caption 元件（caption.compile）")} kind="caption.compile" value={step.choice} onChange={(value) => { step.setChoice(value); }} />
       </PropertySection>
       {step.descriptor ? (
         <PropertySection title={t("參數")} icon={<SlidersHorizontal aria-hidden />}>

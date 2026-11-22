@@ -6,6 +6,6 @@ import { t } from "@/i18n";
 export function useFileOwnerLabel(nodeId: string): string {
   const controller = useController();
   const catalog = useCatalog();
-  if (controller.data && controller.data.controller_id === nodeId) return t("主控（{hostname}）", { hostname: controller.data.hostname });
+  if (controller.data?.controller_id === nodeId) return t("主控（{hostname}）", { hostname: controller.data.hostname });
   return nodeLabel(catalog.data, nodeId);
 }

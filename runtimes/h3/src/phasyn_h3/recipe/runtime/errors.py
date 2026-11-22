@@ -6,9 +6,18 @@ machine ``reason_code`` that diagnostics reuse.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TypedDict, Unpack
 
 from phasyn_h3.recipe.abi.errors import diagnostic
+
+from ._arguments import validate_keywords
+
+
+class _ErrorDetails(TypedDict, total=False):
+    error_code: str | None
+    field_path: str | None
+    expected: Any
+    actual: Any
 
 
 class ShimError(Exception):
@@ -17,15 +26,14 @@ class ShimError(Exception):
     error_code = "MODEL_ERROR"
 
     def __init__(
-        self,
-        reason_code: str,
-        message: str,
-        *,
-        error_code: str | None = None,
-        field_path: str | None = None,
-        expected: Any = None,
-        actual: Any = None,
+        self, reason_code: str, message: str, **arguments: Unpack[_ErrorDetails]
     ) -> None:
+        """Capture the native runtime failure and its diagnostic details."""
+        validate_keywords(arguments, _ErrorDetails)
+        error_code = arguments.get("error_code")
+        field_path = arguments.get("field_path")
+        expected = arguments.get("expected")
+        actual = arguments.get("actual")
         super().__init__(message)
         self.reason_code = reason_code
         self.message = message
@@ -36,6 +44,7 @@ class ShimError(Exception):
         self.actual = actual
 
     def as_diagnostic(self) -> dict[str, Any]:
+        """Format the failure as a runtime diagnostic."""
         return diagnostic(
             self.error_code,
             f"[{self.reason_code}] {self.message}",
@@ -45,45 +54,96 @@ class ShimError(Exception):
         )
 
 
-class UnsupportedCombination(ShimError):
+class UnsupportedCombinationError(ShimError):
     """A profile/plan asks for something the pinned runtime cannot honour."""
 
     error_code = "UNSUPPORTED_COMBINATION"
 
 
-class InvalidStageInput(ShimError):
+UnsupportedCombinationError.__name__ = "UnsupportedCombination"
+UnsupportedCombinationError.__qualname__ = "UnsupportedCombination"
+UnsupportedCombination = UnsupportedCombinationError
+
+
+class InvalidStageInputError(ShimError):
     """A stage input is missing, malformed or fails integrity checks."""
 
     error_code = "INVALID_ARGUMENT"
 
 
-class IntegrityMismatch(ShimError):
+InvalidStageInputError.__name__ = "InvalidStageInput"
+InvalidStageInputError.__qualname__ = "InvalidStageInput"
+InvalidStageInput = InvalidStageInputError
+
+
+class IntegrityMismatchError(ShimError):
+    """Report a difference from the expected artifact identity."""
+
     error_code = "INTEGRITY_MISMATCH"
 
 
-class EncoderContractMismatch(ShimError):
+IntegrityMismatchError.__name__ = "IntegrityMismatch"
+IntegrityMismatchError.__qualname__ = "IntegrityMismatch"
+IntegrityMismatch = IntegrityMismatchError
+
+
+class EncoderContractMismatchError(ShimError):
+    """Report conditioning incompatible with the encoder contract."""
+
     error_code = "ENCODER_CONTRACT_MISMATCH"
 
 
-class ModelFilesMissing(ShimError):
+EncoderContractMismatchError.__name__ = "EncoderContractMismatch"
+EncoderContractMismatchError.__qualname__ = "EncoderContractMismatch"
+EncoderContractMismatch = EncoderContractMismatchError
+
+
+class ModelFilesMissingError(ShimError):
     """Weights are not on disk; the runtime never downloads (offline enforcement)."""
 
     error_code = "MODEL_ERROR"
 
 
-class AdalnCacheMiss(ShimError):
+ModelFilesMissingError.__name__ = "ModelFilesMissing"
+ModelFilesMissingError.__qualname__ = "ModelFilesMissing"
+ModelFilesMissing = ModelFilesMissingError
+
+
+class AdalnCacheMissError(ShimError):
+    """Identify an AdaLN entry absent from the configured cache."""
+
     error_code = "UNSUPPORTED_COMBINATION"
 
     def __init__(self, message: str, **kwargs: Any) -> None:
+        """Record the missing AdaLN entry."""
         super().__init__("ADALN_CACHE_MISS", message, **kwargs)
 
 
-class ComponentBusy(ShimError):
+AdalnCacheMissError.__name__ = "AdalnCacheMiss"
+AdalnCacheMissError.__qualname__ = "AdalnCacheMiss"
+AdalnCacheMiss = AdalnCacheMissError
+
+
+class ComponentBusyError(ShimError):
+    """Report a resident component currently held by another operation."""
+
     error_code = "STATE_CONFLICT"
 
 
-class GpuOutOfMemory(ShimError):
+ComponentBusyError.__name__ = "ComponentBusy"
+ComponentBusyError.__qualname__ = "ComponentBusy"
+ComponentBusy = ComponentBusyError
+
+
+class GpuOutOfMemoryError(ShimError):
+    """Report a failed GPU allocation from the native stage."""
+
     error_code = "GPU_OOM"
+
+
+GpuOutOfMemoryError.__name__ = "GpuOutOfMemory"
+GpuOutOfMemoryError.__qualname__ = "GpuOutOfMemory"
+GpuOutOfMemory = GpuOutOfMemoryError
 
 
 def classify_exception(exc: BaseException) -> str:
@@ -99,7 +159,11 @@ def classify_exception(exc: BaseException) -> str:
         return code
     names = {cls.__name__ for cls in type(exc).__mro__}
     text = f"{type(exc).__name__}: {exc}".lower()
-    if "OutOfMemoryError" in names or "out of memory" in text or "cuda_error_out_of_memory" in text:
+    if (
+        "OutOfMemoryError" in names
+        or "out of memory" in text
+        or "cuda_error_out_of_memory" in text
+    ):
         return "GPU_OOM"
     if isinstance(exc, MemoryError):
         return "HOST_OOM"

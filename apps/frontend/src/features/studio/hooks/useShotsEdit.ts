@@ -1,13 +1,15 @@
 // Edits of several shots at once: the shot list's multi-selection bar (時長, 路線) and the engine sheet's 路線 tab while
 // the list has a multi-selection. Every shot whose value differs gets the new one; the dispatches of one event reach the
 // autosave together, so it is one document edit, saved once, and a notice says how many shots changed. A route goes
-// only to the shots whose first-frame setting can render on it (model/generationMode.ts shotFitsTask): the others keep
+// only to the shots whose first-frame setting can render on it (model/generationMode.ts shotFitsRoute; an edit-tool
+// route of the Edit workspace goes to none): the others keep
 // theirs, because the 方式 sets the route and the first frame together and a mismatch could not render, and the notice
 // says how many kept theirs.
 import type { StudioShot } from "@/api/generated/contracts";
 import { t } from "@/i18n";
 import { formatDuration } from "../model/frames";
-import { shotFitsTask } from "../model/generationMode";
+import { shotFitsRoute, shotFitsTask } from "../model/generationMode";
+import { SHOT_PURPOSES } from "../model/providerTraits";
 import { routeName, type RouteTask, type StudioRoute } from "../model/routes";
 import { useStudio } from "../studioContext";
 
@@ -26,16 +28,23 @@ export function taskUnfitReason(shots: readonly StudioShot[], task: RouteTask): 
     : t("選取的鏡頭都用首幀，只能用首幀路線：先在生成列把方式改成「參考素材」或「只用文字」");
 }
 
+/** Why none of these shots can use the route (an edit tool's route, or the other kind of first frame); null when one can. */
+export function routeUnfitReason(shots: readonly StudioShot[], route: StudioRoute): string | null {
+  if (!route.renderable || !SHOT_PURPOSES.has(route.purpose)) return t("這類路線用在剪輯工作區的延展、重繪與控制工具，不從鏡頭直接渲染");
+  if (shots.some((shot) => shotFitsRoute(shot, route))) return null;
+  return taskUnfitReason(shots, route.purpose === "first-frame" ? "fl2va" : "t2va");
+}
+
 export function useShotsEdit(): ShotsEdit {
-  const { dispatch, notify } = useStudio();
+  const { dispatch, notify, project } = useStudio();
   return {
     setFrames(shots, frames) {
       const changing = shots.filter((shot) => shot.frames !== frames);
       for (const shot of changing) dispatch({ type: "updateShot", shotId: shot.shot_id, patch: { frames } });
-      if (changing.length > 0) notify({ tone: "success", title: t("已把 {count} 個鏡頭的時長改成 {duration}", { count: changing.length, duration: formatDuration(frames) }) });
+      if (changing.length > 0) notify({ tone: "success", title: t("已把 {count} 個鏡頭的時長改成 {duration}", { count: changing.length, duration: formatDuration(frames, project.format.fps.num / project.format.fps.den) }) });
     },
     setRoute(shots, route) {
-      const fitting = shots.filter((shot) => shotFitsTask(shot, route.capability));
+      const fitting = shots.filter((shot) => shotFitsRoute(shot, route));
       const changing = fitting.filter((shot) => shot.route !== route.id);
       for (const shot of changing) dispatch({ type: "updateShot", shotId: shot.shot_id, patch: { route: route.id } });
       if (changing.length === 0) return;
@@ -43,7 +52,7 @@ export function useShotsEdit(): ShotsEdit {
       notify({
         tone: "success",
         title: t("已把 {count} 個鏡頭改用「{route}」", { count: changing.length, route: routeName(route.label).name }),
-        detail: kept > 0 ? t("另外 {count} 個鏡頭的方式不能用這條路線，維持原本的路線", { count: kept }) : undefined,
+        ...(kept > 0 ? { detail: t("另外 {count} 個鏡頭的方式不能用這條路線，維持原本的路線", { count: kept }) } : {}),
       });
     },
   };

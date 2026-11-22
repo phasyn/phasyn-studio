@@ -37,14 +37,14 @@ interface Kept {
 
 export function BatchDeleteDialog({ shotIds, onClose, onRemoved, onFocusList }: BatchDeleteDialogProps) {
   const { project, timeline, fps, dispatch, notify } = useEditor();
-  const removed = useRef(false);
+  const removedRef = useRef(false);
   const kept: Kept[] = [];
   const removable: StudioShot[] = [];
   const shots = (shotIds ?? []).flatMap((shotId) => project.shots.filter((shot) => shot.shot_id === shotId));
   for (const shot of shots) {
     const removal = project.timeline ? withoutShot(project.timeline, shot.shot_id) : null;
     const reason = deleteBlockedReason(shot) ?? (removal && !removal.ok ? t("時間軸上這個鏡頭的片段無法移除：{reason}", { reason: removal.error }) : null);
-    if (reason) kept.push({ shot, reason });
+    if (reason != null && reason !== "") kept.push({ shot, reason });
     else removable.push(shot);
   }
   const clips = removable.flatMap((shot) => shotClips(timeline, shot.shot_id));
@@ -54,7 +54,7 @@ export function BatchDeleteDialog({ shotIds, onClose, onRemoved, onFocusList }: 
     if (removable.length === 0) return;
     for (const shot of removable) dispatch({ type: "removeShot", shotId: shot.shot_id });
     notify({ tone: "success", title: t("已移除 {count} 個鏡頭", { count: removable.length }) });
-    removed.current = true;
+    removedRef.current = true;
     onRemoved(removable.map((shot) => shot.shot_id));
     onClose();
   };
@@ -67,10 +67,10 @@ export function BatchDeleteDialog({ shotIds, onClose, onRemoved, onFocusList }: 
     >
       {shotIds ? (
         <DialogContent
-          onKeyDown={(event) => event.stopPropagation()}
+          onKeyDown={(event) => { event.stopPropagation(); }}
           onCloseAutoFocus={(event) => {
-            if (!removed.current) return;
-            removed.current = false;
+            if (!removedRef.current) return;
+            removedRef.current = false;
             event.preventDefault();
             onFocusList();
           }}

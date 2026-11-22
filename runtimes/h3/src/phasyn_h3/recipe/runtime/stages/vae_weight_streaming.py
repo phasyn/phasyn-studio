@@ -45,13 +45,15 @@ import os
 import time
 from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
+from importlib import import_module
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from .. import pins
 from ..errors import UnsupportedCombination
-from ..host_store import host_room_bytes
+from ..host_store import _register, host_room_bytes
 from ..lifecycle import HostMemoryInsufficient
+
 
 SOURCES = ("nvme", "pinned_host")
 PRECISIONS = ("fp32", "fp16")
@@ -74,7 +76,10 @@ def check_sources() -> None:
 
 def _invalid(message: str, **kwargs: Any) -> UnsupportedCombination:
     return UnsupportedCombination(
-        "WEIGHT_STREAMING_INVALID", message, field_path="provider_options.weight_streaming", **kwargs
+        "WEIGHT_STREAMING_INVALID",
+        message,
+        field_path="provider_options.weight_streaming",
+        **kwargs,
     )
 
 
@@ -86,10 +91,13 @@ class StreamingConfig:
     source: str = "nvme"
     slots: int = DEFAULT_SLOTS
     precision: str = "fp32"
-    tiles_per_pass: int | None = None  # None: every tile of a temporal clip in one weight pass
+    tiles_per_pass: int | None = (
+        None  # None: every tile of a temporal clip in one weight pass
+    )
 
     @classmethod
     def from_mapping(cls, raw: Mapping[str, Any]) -> StreamingConfig:
+        """Validate the settings supplied for this streaming policy."""
         if not isinstance(raw, Mapping):
             raise _invalid("weight_streaming 必須是 object")
         unknown = sorted(set(raw) - CONFIG_KEYS)
@@ -100,18 +108,35 @@ class StreamingConfig:
         precision = raw.get("precision", "fp32")
         tiles = raw.get("tiles_per_pass")
         if source not in SOURCES:
-            raise _invalid(f"weight_streaming.source 必須是 {'／'.join(SOURCES)}", actual=source)
-        if type(slots) is not int or not MIN_SLOTS <= slots <= MAX_SLOTS:
-            raise _invalid(f"weight_streaming.slots 必須是 {MIN_SLOTS}..{MAX_SLOTS} 的整數", actual=slots)
-        if precision not in PRECISIONS:
-            raise _invalid(f"weight_streaming.precision 必須是 {'／'.join(PRECISIONS)}", actual=precision)
-        if tiles is not None and (type(tiles) is not int or not 1 <= tiles <= MAX_TILES_PER_PASS):
             raise _invalid(
-                f"weight_streaming.tiles_per_pass 必須是 1..{MAX_TILES_PER_PASS} 的整數或 null", actual=tiles
+                f"weight_streaming.source 必須是 {'／'.join(SOURCES)}", actual=source
             )
-        return cls(source=str(source), slots=int(slots), precision=str(precision), tiles_per_pass=tiles)
+        if type(slots) is not int or not MIN_SLOTS <= slots <= MAX_SLOTS:
+            raise _invalid(
+                f"weight_streaming.slots 必須是 {MIN_SLOTS}..{MAX_SLOTS} 的整數",
+                actual=slots,
+            )
+        if precision not in PRECISIONS:
+            raise _invalid(
+                f"weight_streaming.precision 必須是 {'／'.join(PRECISIONS)}",
+                actual=precision,
+            )
+        if tiles is not None and (
+            type(tiles) is not int or not 1 <= tiles <= MAX_TILES_PER_PASS
+        ):
+            raise _invalid(
+                f"weight_streaming.tiles_per_pass 必須是 1..{MAX_TILES_PER_PASS} 的整數或 null",
+                actual=tiles,
+            )
+        return cls(
+            source=str(source),
+            slots=int(slots),
+            precision=str(precision),
+            tiles_per_pass=tiles,
+        )
 
     def as_dict(self) -> dict[str, Any]:
+        """Serialize the resolved values used by the runtime."""
         return {
             "source": self.source,
             "slots": self.slots,
@@ -127,13 +152,17 @@ class BlockSpan:
 
     start: int
     end: int
-    tensors: tuple[tuple[str, tuple[int, ...], int, int], ...]  # (name inside the block, shape, offset, nbytes)
+    tensors: tuple[
+        tuple[str, tuple[int, ...], int, int], ...
+    ]  # (name inside the block, shape, offset, nbytes)
 
     @property
     def nbytes(self) -> int:
+        """Return the size of the represented tensor data in bytes."""
         return self.end - self.start
 
     def tensor(self, local: str) -> tuple[tuple[int, ...], int, int]:
+        """Read the selected tensor from this block."""
         for name, shape, offset, nbytes in self.tensors:
             if name == local:
                 return shape, offset, nbytes
@@ -142,40 +171,53 @@ class BlockSpan:
 
 @dataclass(frozen=True)
 class BlockIndex:
+    """Index the tensors and sizes of the streamed VAE blocks."""
+
     path: str
     file_size: int
     blocks: tuple[BlockSpan, ...]
-    shell: tuple[str, ...]  # tensors of the decode half that are not block tensors (read at load)
+    shell: tuple[
+        str, ...
+    ]  # tensors of the decode half that are not block tensors (read at load)
     shell_bytes: int
 
     @property
     def num_blocks(self) -> int:
+        """Return the number of indexed blocks."""
         return len(self.blocks)
 
     @property
     def block_bytes(self) -> int:
+        """Return the byte size of the selected VAE block."""
         return sum(b.nbytes for b in self.blocks)
 
     @property
     def max_block_bytes(self) -> int:
+        """Return the largest streamed block size."""
         return max(b.nbytes for b in self.blocks)
 
     @property
     def local_names(self) -> tuple[str, ...]:
+        """Return the names of tensors in the selected block."""
         return tuple(sorted(name for name, *_ in self.blocks[0].tensors))
 
     def truncated(self, count: int) -> BlockIndex:
         """The first ``count`` blocks only — for equivalence checks against a truncated resident decoder."""
         if not 1 <= count <= self.num_blocks:
             raise ValueError(f"count {count} outside 1..{self.num_blocks}")
-        return BlockIndex(self.path, self.file_size, self.blocks[:count], self.shell, self.shell_bytes)
+        return BlockIndex(
+            self.path, self.file_size, self.blocks[:count], self.shell, self.shell_bytes
+        )
 
 
-def block_index(path: str | Path, header: Any, *, keep: Iterable[str], num_blocks: int) -> BlockIndex:
+def block_index(
+    path: str | Path, header: Any, *, keep: Iterable[str], num_blocks: int
+) -> BlockIndex:
     """Split the decode half's tensors (``keep``) of a safetensors header into the decoder blocks and the shell.
 
     Refuses (``WEIGHT_STREAMING_LAYOUT``) unless blocks ``0..num_blocks-1`` all exist, hold only F32 tensors, each
-    occupy one contiguous byte range (one read per block) and have the same tensor names and shapes."""
+    occupy one contiguous byte range (one read per block) and have the same tensor names and shapes.
+    """
     base = int(header.data_offset)
     per: dict[int, list[tuple[str, tuple[int, ...], int, int, str]]] = {}
     shell: list[str] = []
@@ -188,8 +230,17 @@ def block_index(path: str | Path, header: Any, *, keep: Iterable[str], num_block
             continue
         index_text, _, local = name[len(BLOCK_PREFIX) :].partition(".")
         if not index_text.isdigit() or not local:
-            raise UnsupportedCombination("WEIGHT_STREAMING_LAYOUT", f"無法解析的 decoder block tensor 名稱 {name}")
-        entry = (local, tuple(int(d) for d in info.shape), base + int(info.start), int(info.byte_length), info.dtype)
+            raise UnsupportedCombination(
+                "WEIGHT_STREAMING_LAYOUT",
+                f"無法解析的 decoder block tensor 名稱 {name}",
+            )
+        entry = (
+            local,
+            tuple(int(d) for d in info.shape),
+            base + int(info.start),
+            int(info.byte_length),
+            info.dtype,
+        )
         per.setdefault(int(index_text), []).append(entry)
     if sorted(per) != list(range(num_blocks)):
         raise UnsupportedCombination(
@@ -205,29 +256,48 @@ def block_index(path: str | Path, header: Any, *, keep: Iterable[str], num_block
         not_f32 = sorted(t[0] for t in items if t[4] != "F32")
         if not_f32:
             raise UnsupportedCombination(
-                "WEIGHT_STREAMING_LAYOUT", f"block {i} 的 {not_f32[:3]} 不是 F32（串流只讀 FP32 checkpoint）"
+                "WEIGHT_STREAMING_LAYOUT",
+                f"block {i} 的 {not_f32[:3]} 不是 F32（串流只讀 FP32 checkpoint）",
             )
         start, end = items[0][2], items[-1][2] + items[-1][3]
         if sum(t[3] for t in items) != end - start:
-            raise UnsupportedCombination("WEIGHT_STREAMING_LAYOUT", f"block {i} 在 checkpoint 裡不是連續的一段")
+            raise UnsupportedCombination(
+                "WEIGHT_STREAMING_LAYOUT", f"block {i} 在 checkpoint 裡不是連續的一段"
+            )
         names = sorted((t[0], t[1]) for t in items)
         if signature is None:
             signature = names
         elif names != signature:
-            raise UnsupportedCombination("WEIGHT_STREAMING_LAYOUT", f"block {i} 的 tensor 與 block 0 不同")
-        blocks.append(BlockSpan(start, end, tuple((t[0], t[1], t[2], t[3]) for t in items)))
-    return BlockIndex(str(path), int(Path(path).stat().st_size), tuple(blocks), tuple(sorted(shell)), shell_bytes)
+            raise UnsupportedCombination(
+                "WEIGHT_STREAMING_LAYOUT", f"block {i} 的 tensor 與 block 0 不同"
+            )
+        blocks.append(
+            BlockSpan(start, end, tuple((t[0], t[1], t[2], t[3]) for t in items))
+        )
+    return BlockIndex(
+        str(path),
+        int(Path(path).stat().st_size),
+        tuple(blocks),
+        tuple(sorted(shell)),
+        shell_bytes,
+    )
 
 
 # ---------------------------------------------------------------------------- host side
 class DirectReader:
-    """``O_DIRECT`` reads of checkpoint byte ranges into page-aligned host buffers.  Nothing goes through the page
-    cache: the reads are not charged to the component's memory and evict nothing."""
+    """``O_DIRECT`` reads of checkpoint byte ranges into page-aligned host buffers.
+
+    Nothing goes through the page cache: the reads are not charged to the component's memory and evict nothing (E33d: 9.7 GB per clip in 1.4 s).
+    """
 
     def __init__(self, path: str, file_size: int) -> None:
+        """Open the indexed source used for streamed reads."""
         flag = getattr(os, "O_DIRECT", None)
         if flag is None:
-            raise UnsupportedCombination("WEIGHT_STREAMING_DIRECT_IO_UNAVAILABLE", "此平台沒有 O_DIRECT（source=nvme）")
+            raise UnsupportedCombination(
+                "WEIGHT_STREAMING_DIRECT_IO_UNAVAILABLE",
+                "此平台沒有 O_DIRECT（source=nvme）",
+            )
         try:
             self.fd = os.open(path, os.O_RDONLY | flag)
         except OSError as exc:
@@ -241,6 +311,7 @@ class DirectReader:
 
     @staticmethod
     def aligned(start: int, end: int) -> tuple[int, int]:
+        """Return the size rounded to the required alignment."""
         a = DIRECT_IO_ALIGN
         return start // a * a, -(-end // a) * a
 
@@ -260,13 +331,16 @@ class DirectReader:
         while got < need:
             n = os.preadv(self.fd, [buf[got : a1 - a0]], a0 + got)
             if n <= 0:
-                raise OSError(f"short O_DIRECT read at byte {a0 + got} of the checkpoint")
+                raise OSError(
+                    f"short O_DIRECT read at byte {a0 + got} of the checkpoint"
+                )
             got += n
         self.seconds += time.perf_counter() - t0
         self.bytes_read += got
         return start - a0
 
     def close(self) -> None:
+        """Release the resources owned by this instance."""
         if self.fd >= 0:
             os.close(self.fd)
             self.fd = -1
@@ -277,9 +351,8 @@ def _host_buffer(torch: Any, nbytes: int, *, pin: bool) -> tuple[Any, bool]:
 
     ``torch.empty(..., pin_memory=True)`` would round the request up to a power of two (the caching host
     allocator: a 256 MiB + 8 KiB staging buffer takes 512 MiB, a 9.0 GiB host copy 16 GiB); registering plain
-    pages locks exactly what is used, and the registration ends with the storage (``host_store._register``)."""
-    from ..host_store import _register
-
+    pages locks exactly what is used, and the registration ends with the storage (``host_store._register``).
+    """
     raw = torch.empty(nbytes + DIRECT_IO_ALIGN, dtype=torch.uint8)
     pad = (-int(raw.data_ptr())) % DIRECT_IO_ALIGN
     pinned = bool(pin and _register(raw))
@@ -288,11 +361,13 @@ def _host_buffer(torch: Any, nbytes: int, *, pin: bool) -> tuple[Any, bool]:
 
 def _read_tensor_bytes(path: str, offset: int, nbytes: int) -> bytes:
     """A small buffered read (``scale2`` vectors, the load-time probe)."""
-    with open(path, "rb", buffering=0) as fh:
+    with Path(path).open("rb", buffering=0) as fh:
         fh.seek(offset)
         data = fh.read(nbytes)
     if len(data) != nbytes:
-        raise UnsupportedCombination("WEIGHT_STREAMING_LAYOUT", f"checkpoint 在 {offset} 讀不到 {nbytes} B")
+        raise UnsupportedCombination(
+            "WEIGHT_STREAMING_LAYOUT", f"checkpoint 在 {offset} 讀不到 {nbytes} B"
+        )
     return data
 
 
@@ -301,9 +376,13 @@ class WeightStreamingState:
 
     ``slots``: meta ``TransformerBlock`` templates built by the decoder's own constructor (the first ``slots``
     blocks), materialized on the device for each decode only.  ``source=nvme``: one page-locked staging buffer
-    per slot (one block each); ``source=pinned_host``: every block's bytes in one page-locked host buffer."""
+    per slot (one block each); ``source=pinned_host``: every block's bytes in one page-locked host buffer.
+    """
 
-    def __init__(self, *, config: StreamingConfig, index: BlockIndex, slots: list[Any], pin: bool) -> None:
+    def __init__(
+        self, *, config: StreamingConfig, index: BlockIndex, slots: list[Any], pin: bool
+    ) -> None:
+        """Set up the buffers used to stream VAE weights."""
         import torch
 
         self.config = config
@@ -343,7 +422,9 @@ class WeightStreamingState:
                 view = memoryview(self.store.numpy())
                 offset = 0
                 for span, (a0, a1) in zip(index.blocks, spans, strict=True):
-                    base = self.reader.read_into(span.start, span.end, view[offset : offset + (a1 - a0)])
+                    base = self.reader.read_into(
+                        span.start, span.end, view[offset : offset + (a1 - a0)]
+                    )
                     self.store_offsets.append(offset + base)
                     offset += a1 - a0
                 self._probe(torch)
@@ -360,12 +441,18 @@ class WeightStreamingState:
         for k, slot in enumerate(self.slots):
             have = {name: tuple(t.shape) for name, t in _slot_tensors(slot).items()}
             if have != want:
-                diff = sorted(set(have) ^ set(want)) or sorted(n for n in want if have.get(n) != want[n])
+                diff = sorted(set(have) ^ set(want)) or sorted(
+                    n for n in want if have.get(n) != want[n]
+                )
                 raise UnsupportedCombination(
-                    "WEIGHT_STREAMING_LAYOUT", f"slot {k} 與 checkpoint block 的 tensor 不同：{diff[:4]}"
+                    "WEIGHT_STREAMING_LAYOUT",
+                    f"slot {k} 與 checkpoint block 的 tensor 不同：{diff[:4]}",
                 )
             for name, t in _slot_tensors(slot).items():
-                half = self.config.precision == "fp16" and name.rsplit(".", 1)[0] in FP16_LINEARS
+                half = (
+                    self.config.precision == "fp16"
+                    and name.rsplit(".", 1)[0] in FP16_LINEARS
+                )
                 expected = torch.float16 if half else torch.float32
                 if t.dtype != expected:
                     raise UnsupportedCombination(
@@ -390,15 +477,19 @@ class WeightStreamingState:
 
     def _probe(self, torch: Any) -> None:
         """Block 0 read the streaming way equals the same bytes read through the page cache (head and tail)."""
+        del torch
         span = self.index.blocks[0]
         got = self.block_bytes(0)
         edge = min(DIRECT_IO_ALIGN, span.nbytes)
         head = bytes(got[:edge].numpy().tobytes())
         tail = bytes(got[span.nbytes - edge :].numpy().tobytes())
-        if head != _read_tensor_bytes(self.index.path, span.start, edge) or tail != _read_tensor_bytes(
-            self.index.path, span.end - edge, edge
-        ):
-            raise UnsupportedCombination("WEIGHT_STREAMING_PROBE", "O_DIRECT 讀出的 block 0 與一般讀取不同；不串流")
+        if head != _read_tensor_bytes(
+            self.index.path, span.start, edge
+        ) or tail != _read_tensor_bytes(self.index.path, span.end - edge, edge):
+            raise UnsupportedCombination(
+                "WEIGHT_STREAMING_PROBE",
+                "O_DIRECT 讀出的 block 0 與一般讀取不同；不串流",
+            )
 
     # -- per-block bytes
     def block_bytes(self, j: int) -> Any:
@@ -407,13 +498,14 @@ class WeightStreamingState:
         if self.config.source == "pinned_host":
             off = self.store_offsets[j]
             return self.store[off : off + span.nbytes]
-        assert self.reader is not None
+        if self.reader is None:
+            raise RuntimeError("self.reader is unavailable in this stage")
         buf = self.staging[j % self.config.slots]
         base = self.reader.read_into(span.start, span.end, memoryview(buf.numpy()))
         return buf[base : base + span.nbytes]
 
     def slot_linear_dtypes(self) -> set[Any]:
-        """dtypes of the four block linears as the slots hold them (``decode_video``'s FP32 check)."""
+        """Dtypes of the four block linears as the slots hold them (``decode_video``'s FP32 check)."""
         out = set()
         for slot in self.slots:
             for name in FP16_LINEARS:
@@ -421,6 +513,7 @@ class WeightStreamingState:
         return out
 
     def check_precision(self, precision: str) -> None:
+        """Validate the precision allowed by the streaming policy."""
         if precision != self.config.precision:
             raise UnsupportedCombination(
                 "WEIGHT_STREAMING_PRECISION_MISMATCH",
@@ -436,6 +529,7 @@ class WeightStreamingState:
         return self.host_bytes + scale, self.pinned_bytes
 
     def facts(self) -> dict[str, Any]:
+        """Return the observed runtime facts for reporting."""
         return {
             **self.config.as_dict(),
             "blocks": self.index.num_blocks,
@@ -449,10 +543,15 @@ class WeightStreamingState:
             "direct_io": True,
             "probe": "o_direct_matches_buffered_read",
             "load_seconds": round(self.load_seconds, 6),
-            **({"store_read_seconds": round(self.reader.seconds, 6)} if self.reader and self.store is not None else {}),
+            **(
+                {"store_read_seconds": round(self.reader.seconds, 6)}
+                if self.reader and self.store is not None
+                else {}
+            ),
         }
 
     def close(self) -> None:
+        """Release the resources owned by this instance."""
         if self.reader is not None:
             self.reader.close()
         self.staging = []
@@ -462,13 +561,15 @@ class WeightStreamingState:
 
 
 def _slot_tensors(slot: Any) -> dict[str, Any]:
-    return {**dict(slot.named_parameters()), **{n: b for n, b in slot.named_buffers() if b is not None}}
+    return {
+        **dict(slot.named_parameters()),
+        **{n: b for n, b in slot.named_buffers() if b is not None},
+    }
 
 
 # ---------------------------------------------------------------------------- loader helpers
 def detach_blocks(vae: Any, config: StreamingConfig) -> list[Any]:
-    """Meta-constructed decode half -> streaming shell: the decoder keeps no blocks; the first ``config.slots``
-    blocks (built by the decoder's own constructor, still on meta) become the slot templates."""
+    """Meta-constructed decode half -> streaming shell: the decoder keeps no blocks; the first ``config.slots`` blocks (built by the decoder's own constructor, still on meta) become the slot templates."""
     import torch
 
     dec = vae.decoder
@@ -476,7 +577,9 @@ def detach_blocks(vae: Any, config: StreamingConfig) -> list[Any]:
     if len(blocks) < config.slots:
         raise _invalid(f"decoder 只有 {len(blocks)} 層，少於 slots={config.slots}")
     if not all(t.is_meta for b in blocks for t in _slot_tensors(b).values()):
-        raise _invalid("weight_streaming 的 decoder 必須以 meta 建構（block 從不在 host 配置）")
+        raise _invalid(
+            "weight_streaming 的 decoder 必須以 meta 建構（block 從不在 host 配置）"
+        )
     slots = blocks[: config.slots]
     dec.transformer_blocks = torch.nn.ModuleList()
     for slot in slots:
@@ -491,8 +594,7 @@ def detach_blocks(vae: Any, config: StreamingConfig) -> list[Any]:
 
 @contextlib.contextmanager
 def blocks_attached(vae: Any, slots: list[Any]) -> Iterator[None]:
-    """The slot templates as the decoder's blocks for a moment (``optimize_vae`` installs the same quality-gated
-    attention forwards on them as on the 36 resident blocks); always detached again."""
+    """The slot templates as the decoder's blocks for a moment (``optimize_vae`` installs the same quality-gated attention forwards on them as on the 36 resident blocks); always detached again."""
     import torch
 
     dec = vae.decoder
@@ -508,16 +610,29 @@ def rebuild_rope_buffers(vae: Any) -> int:
 
     The shell is built on meta, so the buffer the checkpoint does not carry is recomputed with the arguments
     ``ViT3DDecoder.__init__`` passes (``RotaryEmbeddingND(rope_apply_dim, rope_theta, n_dim=3, use_angle=True)``;
-    both constructors are source-pinned)."""
-    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.base_module import RotaryEmbeddingND
+    both constructors are source-pinned).
+    """
+    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.base_module import (  # type: ignore[import-untyped]
+        RotaryEmbeddingND,
+    )
 
     dec = vae.decoder
     pe = dec.pos_embed
     if not isinstance(pe, RotaryEmbeddingND) or not pe.inv_freq.is_meta:
         return 0
-    fresh = RotaryEmbeddingND(pe.dim, float(dec.config.rope_theta), n_dim=pe.n_dim, use_angle=pe.angle_scale != 1.0)
-    if fresh.inv_freq.dtype != pe.inv_freq.dtype or fresh.inv_freq.shape != pe.inv_freq.shape:
-        raise UnsupportedCombination("WEIGHT_STREAMING_LAYOUT", "重建的 RoPE inv_freq 與 decoder 宣告的不同")
+    fresh = RotaryEmbeddingND(
+        pe.dim,
+        float(dec.config.rope_theta),
+        n_dim=pe.n_dim,
+        use_angle=pe.angle_scale != 1.0,
+    )
+    if (
+        fresh.inv_freq.dtype != pe.inv_freq.dtype
+        or fresh.inv_freq.shape != pe.inv_freq.shape
+    ):
+        raise UnsupportedCombination(
+            "WEIGHT_STREAMING_LAYOUT", "重建的 RoPE inv_freq 與 decoder 宣告的不同"
+        )
     pe.inv_freq = fresh.inv_freq
     return 1
 
@@ -546,6 +661,7 @@ class BlockStreamer:
     """Device slots for one decode: block j lands in slot ``j % slots``; ``blocks()`` yields them in order."""
 
     def __init__(self, state: WeightStreamingState, device: Any) -> None:
+        """Prepare the buffers and streams used to load VAE blocks."""
         import torch
 
         self.torch = torch
@@ -553,12 +669,19 @@ class BlockStreamer:
         self.device = torch.device(device)
         self.cuda = self.device.type == "cuda"
         if state.config.precision == "fp16" and not self.cuda:
-            raise UnsupportedCombination("WEIGHT_STREAMING_PRECISION_MISMATCH", "fp16 權重串流只在 CUDA 上（autocast）")
+            raise UnsupportedCombination(
+                "WEIGHT_STREAMING_PRECISION_MISMATCH",
+                "fp16 權重串流只在 CUDA 上（autocast）",
+            )
         self.nslots = state.config.slots
         self.passes = 0
         self.h2d_bytes = 0
         self.h2d_submit_seconds = 0.0
-        self.read0 = (state.reader.bytes_read, state.reader.seconds) if state.reader is not None else (0, 0.0)
+        self.read0 = (
+            (state.reader.bytes_read, state.reader.seconds)
+            if state.reader is not None
+            else (0, 0.0)
+        )
         self.slots = state.slots
         self.landing: Any = None
         try:
@@ -566,20 +689,31 @@ class BlockStreamer:
                 slot.to_empty(device=self.device)
             self.maps = [_slot_tensors(slot) for slot in self.slots]
             self.scale2 = [t.to(self.device) for t in state.scale2]
-            if state.config.precision == "fp16":  # FP32 landing buffer for the on-device rounding of the linears
+            if (
+                state.config.precision == "fp16"
+            ):  # FP32 landing buffer for the on-device rounding of the linears
                 largest = max(n for _name, _s, _o, n in state.index.blocks[0].tensors)
-                self.landing = torch.empty(largest // 4, dtype=torch.float32, device=self.device)
-        except BaseException:  # e.g. out of memory for the second slot: no slot keeps device memory
+                self.landing = torch.empty(
+                    largest // 4, dtype=torch.float32, device=self.device
+                )
+        except (
+            BaseException
+        ):  # e.g. out of memory for the second slot: no slot keeps device memory
             self.landing = None
             for slot in self.slots:
                 slot.to_empty(device="meta")
             raise
-        self.copy_stream: Any = torch.cuda.Stream(self.device) if self.cuda else None
+        self.copy_stream: Any = torch.cuda.Stream(self.device) if self.cuda else None  # type: ignore[no-untyped-call]
         self.loaded: list[Any] = [None] * self.nslots
         self.free: list[Any] = [None] * self.nslots
 
     def slot_bytes(self) -> int:
-        return sum(int(t.numel()) * int(t.element_size()) for m in self.maps for t in m.values())
+        """Return the byte capacity of a streaming slot."""
+        return sum(
+            int(t.numel()) * int(t.element_size())
+            for m in self.maps
+            for t in m.values()
+        )
 
     def _fill(self, j: int) -> None:
         """Bring block j into slot ``j % slots`` (CUDA: on the copy stream, after the slot's previous block)."""
@@ -587,16 +721,28 @@ class BlockStreamer:
         s = j % self.nslots
         span = self.state.index.blocks[j]
         if self.loaded[s] is not None:
-            self.loaded[s].synchronize()  # the copy of block j - slots out of staging s has completed
+            self.loaded[
+                s
+            ].synchronize()  # the copy of block j - slots out of staging s has completed
         src_u8 = self.state.block_bytes(j)
         params = self.maps[s]
-        stream = torch.cuda.stream(self.copy_stream) if self.cuda else contextlib.nullcontext()
+        stream = (
+            torch.cuda.stream(self.copy_stream)
+            if self.cuda
+            else contextlib.nullcontext()
+        )
         with stream:
             if self.cuda and self.free[s] is not None:
-                self.copy_stream.wait_event(self.free[s])  # compute of block j - slots has released slot s
+                self.copy_stream.wait_event(
+                    self.free[s]
+                )  # compute of block j - slots has released slot s
             t0 = time.perf_counter()
             for local, shape, offset, nbytes in span.tensors:
-                src = src_u8[offset - span.start : offset - span.start + nbytes].view(torch.float32).view(shape)
+                src = (
+                    src_u8[offset - span.start : offset - span.start + nbytes]
+                    .view(torch.float32)
+                    .view(shape)
+                )
                 dst = params[local]
                 if dst.dtype == torch.float32:
                     dst.copy_(src, non_blocking=self.cuda)
@@ -650,19 +796,33 @@ class BlockStreamer:
             slot.to_empty(device="meta")
 
     def facts(self) -> dict[str, Any]:
+        """Return the observed runtime facts for reporting."""
         reader = self.state.reader
-        read = (reader.bytes_read - self.read0[0], reader.seconds - self.read0[1]) if reader else (0, 0.0)
+        read = (
+            (reader.bytes_read - self.read0[0], reader.seconds - self.read0[1])
+            if reader
+            else (0, 0.0)
+        )
         return {
             "weight_passes": self.passes,
-            "weight_bytes_read": int(read[0]) if self.state.config.source == "nvme" else 0,
-            "weight_read_seconds": round(float(read[1]), 6) if self.state.config.source == "nvme" else 0.0,
+            "weight_bytes_read": int(read[0])
+            if self.state.config.source == "nvme"
+            else 0,
+            "weight_read_seconds": round(float(read[1]), 6)
+            if self.state.config.source == "nvme"
+            else 0.0,
             "weight_h2d_bytes": int(self.h2d_bytes),
             "weight_h2d_submit_seconds": round(self.h2d_submit_seconds, 6),
         }
 
 
-class _Captured(Exception):
+class _CapturedError(Exception):
     pass
+
+
+_CapturedError.__name__ = "_Captured"
+_CapturedError.__qualname__ = "_Captured"
+_Captured = _CapturedError
 
 
 class _TileState:
@@ -679,8 +839,7 @@ _MISSING = object()
 
 @contextlib.contextmanager
 def _blocks_function(dec: Any, fn: Any) -> Iterator[None]:
-    """``fn`` as the decoder's ``forward_transformer_blocks`` for one call; the previous one (the shell's refusal)
-    comes back afterwards."""
+    """``fn`` as the decoder's ``forward_transformer_blocks`` for one call; the previous one (the shell's refusal) comes back afterwards."""
     saved = dec.__dict__.get("forward_transformer_blocks", _MISSING)
     dec.forward_transformer_blocks = fn
     try:
@@ -692,11 +851,18 @@ def _blocks_function(dec: Any, fn: Any) -> Iterator[None]:
             dec.forward_transformer_blocks = saved
 
 
-class LayerMajorTiles:
-    """Replacement for ``AutoencoderKL._run_tile_tasks(tiles, idx, self.decode, stack_tiling)`` (klvae.py:371-390,
-    called by ``tiled_decode``): ``tiles_per_pass`` tiles (all of a clip by default) per weight pass."""
+class _TileTaskOptions(NamedTuple):
+    stack_tiling: bool
+    cls_agg: Any = None
 
-    def __init__(self, vae: Any, streamer: BlockStreamer, tiles_per_pass: int | None) -> None:
+
+class LayerMajorTiles:
+    """Replacement for ``AutoencoderKL._run_tile_tasks(tiles, idx, self.decode, stack_tiling)`` (klvae.py:371-390, called by ``tiled_decode``): ``tiles_per_pass`` tiles (all of a clip by default) per weight pass."""
+
+    def __init__(
+        self, vae: Any, streamer: BlockStreamer, tiles_per_pass: int | None
+    ) -> None:
+        """Arrange tiles for layer-major execution."""
         self.vae = vae
         self.dec = vae.decoder
         self.streamer = streamer
@@ -720,31 +886,43 @@ class LayerMajorTiles:
 
     def _epilogue(self, z2: Any, hidden: Any) -> Any:
         """``ViT3DDecoder.forward`` with the blocks' result in place of ``forward_transformer_blocks`` (unchanged code)."""
-        with _blocks_function(self.dec, lambda hidden_states, rotary_pos_emb: hidden):
+        with _blocks_function(self.dec, lambda _hidden_states, _rotary_pos_emb: hidden):
             return self.dec(z2)
 
     def _run_pass(self, states: list[_TileState]) -> None:
-        from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae import base_module, vae_vit
+        from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae import (  # type: ignore[import-untyped]
+            base_module,
+            vae_vit,
+        )
 
-        fused = bool(vae_vit._fused_blocks_available(self.streamer.slots, states[0].hidden))
+        fused = bool(
+            vae_vit._fused_blocks_available(self.streamer.slots, states[0].hidden)
+        )
         self.fused = fused if self.fused is None else (self.fused and fused)
-        if fused:
-            from sglang.kernels.ops.diffusion import h3_vae_rmsnorm, h3_vae_scale_add_rmsnorm
+        fused_ops = import_module("sglang.kernels.ops.diffusion") if fused else None
         for i, blk in self.streamer.blocks():
             for st in states:
-                if not fused:  # ViTBase.forward_transformer_blocks, unfused loop
+                if (
+                    fused_ops is None
+                ):  # ViTBase.forward_transformer_blocks, unfused loop
                     st.hidden = blk(st.hidden, st.rope)
                     continue
                 # vae_vit._run_fused_transformer_blocks, one block at a time
                 if st.pending is None:
-                    normed = h3_vae_rmsnorm(st.hidden, blk.norm1.weight, blk.norm1.eps)
+                    normed = fused_ops.h3_vae_rmsnorm(
+                        st.hidden, blk.norm1.weight, blk.norm1.eps
+                    )
                 else:
-                    st.hidden, normed = h3_vae_scale_add_rmsnorm(
-                        st.hidden, st.pending, st.pending_scale, blk.norm1.weight, blk.norm1.eps
+                    st.hidden, normed = fused_ops.h3_vae_scale_add_rmsnorm(
+                        st.hidden,
+                        st.pending,
+                        st.pending_scale,
+                        blk.norm1.weight,
+                        blk.norm1.eps,
                     )
                 attn_output = blk.attn(normed, st.rope)
                 del normed
-                st.hidden, normed = h3_vae_scale_add_rmsnorm(
+                st.hidden, normed = fused_ops.h3_vae_scale_add_rmsnorm(
                     st.hidden, attn_output, blk.scale1, blk.norm2.weight, blk.norm2.eps
                 )
                 del attn_output
@@ -753,16 +931,30 @@ class LayerMajorTiles:
                 st.pending_scale = self.streamer.scale2[i]
         if fused:
             for st in states:
-                st.hidden = base_module._scaled_residual_add(st.hidden, st.pending, st.pending_scale)
+                st.hidden = base_module._scaled_residual_add(
+                    st.hidden, st.pending, st.pending_scale
+                )
                 st.pending = st.pending_scale = None
 
-    def __call__(self, tiles: Any, tile_indices: Any, forward_fn: Any, stack_tiling: bool, cls_agg: Any = None) -> Any:
+    def __call__(
+        self,
+        tiles: Any,
+        tile_indices: Any,
+        forward_fn: Any,
+        *tile_settings: Any,
+        **tile_options: Any,
+    ) -> Any:
+        """Apply the layer to the grouped VAE tiles."""
+        stack_tiling, cls_agg = _TileTaskOptions(*tile_settings, **tile_options)
         if cls_agg is not None or stack_tiling:
             raise UnsupportedCombination(
-                "WEIGHT_STREAMING_STACK_TILING", "權重串流只取代未堆疊的 tile 解碼（stack_tiling=False、無 cls 聚合）"
+                "WEIGHT_STREAMING_STACK_TILING",
+                "權重串流只取代未堆疊的 tile 解碼（stack_tiling=False、無 cls 聚合）",
             )
         if getattr(forward_fn, "__func__", None) is not self.decode_fn:
-            raise UnsupportedCombination("WEIGHT_STREAMING_FORWARD", "權重串流只取代 tiled_decode 的 self.decode")
+            raise UnsupportedCombination(
+                "WEIGHT_STREAMING_FORWARD", "權重串流只取代 tiled_decode 的 self.decode"
+            )
         self.calls += 1
         outputs: list[Any] = []
         indices = list(tile_indices)
@@ -770,7 +962,9 @@ class LayerMajorTiles:
         for g0 in range(0, len(indices), group):
             states = []
             for idx in indices[g0 : g0 + group]:
-                z2 = self.vae.post_quant_conv(tiles[idx])  # AutoencoderKLLegacy.decode, first line
+                z2 = self.vae.post_quant_conv(
+                    tiles[idx]
+                )  # AutoencoderKLLegacy.decode, first line
                 hidden, rope = self._prologue(z2)
                 states.append(_TileState(z2, hidden, rope))
             self._run_pass(states)
@@ -783,45 +977,67 @@ class LayerMajorTiles:
 
 
 @contextlib.contextmanager
-def weight_streaming_scope(vae: Any, *, device: Any, precision: str) -> Iterator[dict[str, Any]]:
+def weight_streaming_scope(
+    vae: Any, *, device: Any, precision: str
+) -> Iterator[dict[str, Any]]:
     """Scope one decode of a streaming shell: slots on the device, ``_run_tile_tasks`` replaced; always restores.
 
-    Yields the facts dict, completed when the scope ends (passes, bytes read and copied, device peaks)."""
+    Yields the facts dict, completed when the scope ends (passes, bytes read and copied, device peaks).
+    """
     import torch
-    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.klvae import _resolve_temporal_stream_cat
+    from sglang.multimodal_gen.runtime.models.vaes.minimax_h3_video_vae.klvae import (  # type: ignore[import-untyped]
+        _resolve_temporal_stream_cat,
+    )
 
     state = streaming_state(vae)
     if state is None:
-        raise UnsupportedCombination("WEIGHT_STREAMING_NOT_LOADED", "此 video VAE 不是以 weight_streaming 載入的")
+        raise UnsupportedCombination(
+            "WEIGHT_STREAMING_NOT_LOADED", "此 video VAE 不是以 weight_streaming 載入的"
+        )
     check_sources()
     state.check_precision(precision)
     if "_run_tile_tasks" in vae.__dict__:
         raise UnsupportedCombination(
-            "WEIGHT_STREAMING_CONFLICT", "_run_tile_tasks 已被另一個包裝取代（tile batching？）"
+            "WEIGHT_STREAMING_CONFLICT",
+            "_run_tile_tasks 已被另一個包裝取代（tile batching？）",
         )
     if not getattr(vae, "decoder_tiling", False) or getattr(vae, "stack_tiling", False):
         raise UnsupportedCombination(
-            "WEIGHT_STREAMING_STACK_TILING", "權重串流需要 decoder_tiling=True、stack_tiling=False（逐 tile 解碼）"
+            "WEIGHT_STREAMING_STACK_TILING",
+            "權重串流需要 decoder_tiling=True、stack_tiling=False（逐 tile 解碼）",
         )
     if vae.training or not _resolve_temporal_stream_cat():
         raise UnsupportedCombination(
-            "WEIGHT_STREAMING_TEMPORAL", "權重串流需要串流的時間解碼（MINIMAX_H3_VAE_DECODER_STREAM_TEMPORAL_CAT=1）"
+            "WEIGHT_STREAMING_TEMPORAL",
+            "權重串流需要串流的時間解碼（MINIMAX_H3_VAE_DECODER_STREAM_TEMPORAL_CAT=1）",
         )
     facts: dict[str, Any] = {**state.config.as_dict(), "blocks": state.index.num_blocks}
-    streamer = BlockStreamer(state, device)  # gives every slot back to meta itself if it cannot be built
+    streamer = BlockStreamer(
+        state, device
+    )  # gives every slot back to meta itself if it cannot be built
     try:
         runner = LayerMajorTiles(vae, streamer, state.config.tiles_per_pass)
         facts["device_slot_bytes"] = streamer.slot_bytes()
         vae._run_tile_tasks = runner
         yield facts
-        facts.update({"tile_calls": runner.calls, "tiles": runner.tiles, "fused_norm_path": runner.fused})
+        facts.update(
+            {
+                "tile_calls": runner.calls,
+                "tiles": runner.tiles,
+                "fused_norm_path": runner.fused,
+            }
+        )
     finally:
         vae.__dict__.pop("_run_tile_tasks", None)
         streamer.close()
         facts.update(streamer.facts())
         if streamer.cuda:
-            facts["peak_allocated_bytes"] = int(torch.cuda.max_memory_allocated(streamer.device))
-            facts["peak_reserved_bytes"] = int(torch.cuda.max_memory_reserved(streamer.device))
+            facts["peak_allocated_bytes"] = int(
+                torch.cuda.max_memory_allocated(streamer.device)
+            )
+            facts["peak_reserved_bytes"] = int(
+                torch.cuda.max_memory_reserved(streamer.device)
+            )
 
 
 __all__ = [

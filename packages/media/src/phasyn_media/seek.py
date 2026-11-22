@@ -29,6 +29,7 @@ from typing import Any
 
 from .errors import MediaError
 
+
 MICROSECONDS = 1_000_000
 # FFmpeg drops what lies before the seek time: stay this far before the packet that must survive.
 SEEK_GUARD = Fraction(1, 1000)
@@ -46,6 +47,7 @@ class StreamClock:
 
     @property
     def start_seconds(self) -> Fraction:
+        """Return the presentation start time in seconds."""
         return self.start_pts * self.time_base
 
 
@@ -85,17 +87,31 @@ def _clock(stream: Mapping[str, Any], first_packets: Mapping[int, int]) -> Strea
     index, start = stream.get("index"), stream.get("start_pts")
     base = _fraction(stream.get("time_base"))
     if isinstance(index, int) and not isinstance(start, int):
-        start = first_packets.get(index)  # no start in the header: the stream starts at its first packet
-    if not isinstance(index, int) or not isinstance(start, int) or base is None or base <= 0:
+        start = first_packets.get(
+            index
+        )  # no start in the header: the stream starts at its first packet
+    if (
+        not isinstance(index, int)
+        or not isinstance(start, int)
+        or base is None
+        or base <= 0
+    ):
         raise MediaError("INVALID_ARGUMENT", "原始素材缺少串流時間基準或起始時間")
     return StreamClock(index, base, start)
 
 
-def _timed_streams(document: Mapping[str, Any]) -> tuple[list[Mapping[str, Any]], list[Mapping[str, Any]]]:
+def _timed_streams(
+    document: Mapping[str, Any],
+) -> tuple[list[Mapping[str, Any]], list[Mapping[str, Any]]]:
     """The video streams that are a picture (cover art is not) and the audio streams of a header."""
-    streams = [item for item in document.get("streams") or [] if isinstance(item, Mapping)]
+    streams = [
+        item for item in document.get("streams") or [] if isinstance(item, Mapping)
+    ]
     videos = [
-        s for s in streams if s.get("codec_type") == "video" and not (s.get("disposition") or {}).get("attached_pic")
+        s
+        for s in streams
+        if s.get("codec_type") == "video"
+        and not (s.get("disposition") or {}).get("attached_pic")
     ]
     return videos, [s for s in streams if s.get("codec_type") == "audio"]
 
@@ -106,10 +122,15 @@ def lacks_start(document: Mapping[str, Any]) -> bool:
     :func:`source_timing` then needs the timestamp of the first packet of such a stream.
     """
     videos, audios = _timed_streams(document)
-    return any(not isinstance(stream.get("start_pts"), int) for stream in (*videos[:1], *audios[:1]))
+    return any(
+        not isinstance(stream.get("start_pts"), int)
+        for stream in (*videos[:1], *audios[:1])
+    )
 
 
-def source_timing(document: Mapping[str, Any], first_packets: Mapping[int, int] | None = None) -> SourceTiming:
+def source_timing(
+    document: Mapping[str, Any], first_packets: Mapping[int, int] | None = None
+) -> SourceTiming:
     """Read ``format=start_time`` and ``stream=index,codec_type,time_base,start_pts,sample_rate,disposition``.
 
     ``first_packets`` maps a stream index to the timestamp of its first packet; it stands in for a
@@ -150,7 +171,9 @@ def parse_packets(text: str, *, limit: int) -> dict[int, list[tuple[int, int]]]:
     packets: dict[int, list[tuple[int, int]]] = {}
     count = 0
     for line in text.splitlines():
-        fields = dict(part.partition("=")[::2] for part in line.strip().split("|") if "=" in part)
+        fields = dict(
+            part.partition("=")[::2] for part in line.strip().split("|") if "=" in part
+        )
         try:
             stream, pts = int(fields["stream_index"]), int(fields["pts"])
         except (KeyError, ValueError):
@@ -159,11 +182,15 @@ def parse_packets(text: str, *, limit: int) -> dict[int, list[tuple[int, int]]]:
         count += 1
         if count > limit:
             raise MediaError("RESOURCE_EXHAUSTED", "片段範圍的 packet 數量超過掃描上限")
-        packets.setdefault(stream, []).append((pts, int(duration) if duration.lstrip("-").isdigit() else 0))
+        packets.setdefault(stream, []).append(
+            (pts, int(duration) if duration.lstrip("-").isdigit() else 0)
+        )
     return packets
 
 
-def video_seek(packet_pts: int, clock: StreamClock, timing: SourceTiming) -> Fraction | None:
+def video_seek(
+    packet_pts: int, clock: StreamClock, timing: SourceTiming
+) -> Fraction | None:
     """``-ss`` seconds that keep the packet ``packet_pts`` and everything after it; ``None`` reads from the start."""
     seconds = packet_pts * clock.time_base - timing.container_start - SEEK_GUARD
     return seconds if seconds > 0 else None
@@ -174,7 +201,9 @@ class AudioCut:
     """Where an audio clip's decode is cut and how its 48 kHz samples line up with the clip origin."""
 
     seek: Fraction | None  # ``-ss`` seconds, or ``None`` to read from the start
-    start_pts: int | None  # first source sample kept, as a stream timestamp; ``None`` keeps the whole decode
+    start_pts: (
+        int | None
+    )  # first source sample kept, as a stream timestamp; ``None`` keeps the whole decode
     lead_samples: int  # 48 kHz samples between the kept start and the first sample the clip uses (>= 0)
     silence_samples: int  # 48 kHz samples of silence before the stream starts (the clip begins earlier)
     # Streams whose timestamps count samples: the timestamp of the first sample of the kept decode and the
@@ -186,10 +215,14 @@ class AudioCut:
 def sample_exact(timing: SourceTiming) -> bool:
     """True when stream timestamps count samples (MP4/MOV); Matroska's millisecond clock does not."""
     clock, rate = timing.audio, timing.audio_rate
-    return clock is not None and rate is not None and clock.time_base == Fraction(1, rate)
+    return (
+        clock is not None and rate is not None and clock.time_base == Fraction(1, rate)
+    )
 
 
-def audio_cut(timing: SourceTiming, first_sample: int, *, output_rate: int = 48000) -> AudioCut:
+def audio_cut(
+    timing: SourceTiming, first_sample: int, *, output_rate: int = 48000
+) -> AudioCut:
     """Plan the decode of the 48 kHz samples from ``first_sample`` on (counted from the clip origin).
 
     The 48 kHz grid of a source starts at its first audio sample, as when the whole stream is resampled.
@@ -198,20 +231,35 @@ def audio_cut(timing: SourceTiming, first_sample: int, *, output_rate: int = 480
     clock, rate = timing.audio, timing.audio_rate
     if clock is None or rate is None:
         raise MediaError("INVALID_ARGUMENT", "原始素材沒有音訊")
-    offset = near((clock.start_seconds - timing.origin_seconds) * output_rate)  # stream start on the clip grid
+    offset = near(
+        (clock.start_seconds - timing.origin_seconds) * output_rate
+    )  # stream start on the clip grid
     wanted = first_sample - offset  # index on the stream's own 48 kHz grid
     silence = max(0, -wanted)
     wanted = max(0, wanted)
     if not sample_exact(timing):
         return AudioCut(None, None, wanted, silence)
-    period = output_rate // math.gcd(rate, output_rate)  # 48 kHz samples per common grid step
+    period = output_rate // math.gcd(
+        rate, output_rate
+    )  # 48 kHz samples per common grid step
     preroll = math.ceil(AUDIO_PREROLL_SECONDS * output_rate)
     anchor = max(0, (wanted - preroll) // period * period)
     if anchor == 0:
         return AudioCut(None, None, wanted, silence, clock.start_pts, rate)
-    start_pts = clock.start_pts + anchor * rate // output_rate  # exact: anchor is on the common grid
-    seconds = start_pts * clock.time_base - timing.container_start - AUDIO_PREROLL_SECONDS
-    return AudioCut(seconds if seconds > 0 else None, start_pts, wanted - anchor, silence, start_pts, rate)
+    start_pts = (
+        clock.start_pts + anchor * rate // output_rate
+    )  # exact: anchor is on the common grid
+    seconds = (
+        start_pts * clock.time_base - timing.container_start - AUDIO_PREROLL_SECONDS
+    )
+    return AudioCut(
+        seconds if seconds > 0 else None,
+        start_pts,
+        wanted - anchor,
+        silence,
+        start_pts,
+        rate,
+    )
 
 
 __all__ = [

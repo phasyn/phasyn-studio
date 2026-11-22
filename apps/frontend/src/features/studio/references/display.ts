@@ -7,7 +7,7 @@ import { t } from "@/i18n";
 export function itemFacts(item: StudioLibraryItem): string {
   const parts: string[] = [];
   if (item.kind !== "image") parts.push(item.duration_seconds === null ? t("長度未知") : t("{duration_seconds} 秒", { duration_seconds: formatSeconds(item.duration_seconds, 1) }));
-  if (item.width !== null && item.height !== null) parts.push(`${item.width}×${item.height}`);
+  if (item.width !== null && item.height !== null) parts.push(`${String(item.width)}×${String(item.height)}`);
   if (item.kind === "video") parts.push(item.has_audio === null ? t("音軌未知") : item.has_audio ? t("有音軌") : t("無音軌"));
   return parts.join(" · ");
 }

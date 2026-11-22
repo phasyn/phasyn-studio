@@ -1,0 +1,368 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "type": {
+      "const": "art.exchange-manifest.v1"
+    },
+    "canvas": {
+      "type": "object",
+      "properties": {
+        "crop_matrix": {
+          "type": "array",
+          "items": {
+            "type": "number",
+            "minimum": -1000000,
+            "maximum": 1000000
+          },
+          "minItems": 9,
+          "maxItems": 9,
+          "default": [
+            1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            1
+          ],
+          "description": "Row-major 3x3 source-to-canvas transform, documented without applying it."
+        },
+        "camera_note": {
+          "type": "string",
+          "maxLength": 1024,
+          "default": ""
+        },
+        "color_note": {
+          "type": "string",
+          "maxLength": 512,
+          "default": ""
+        },
+        "alpha_interpretation": {
+          "enum": [
+            "unspecified",
+            "straight",
+            "premultiplied"
+          ],
+          "default": "unspecified"
+        }
+      },
+      "required": [
+        "crop_matrix",
+        "camera_note",
+        "color_note",
+        "alpha_interpretation"
+      ],
+      "additionalProperties": false
+    },
+    "media": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/plate"
+        },
+        "mask": {
+          "$ref": "#/$defs/plate"
+        },
+        "depth": {
+          "$ref": "#/$defs/plate"
+        },
+        "pose": {
+          "$ref": "#/$defs/plate"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schema_version",
+    "type",
+    "canvas",
+    "media"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "file": {
+      "type": "object",
+      "properties": {
+        "node_id": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "file_id": {
+          "type": "string",
+          "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10737418240
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "media_type": {
+          "type": "string",
+          "maxLength": 128
+        }
+      },
+      "required": [
+        "node_id",
+        "file_id",
+        "size_bytes",
+        "sha256",
+        "media_type"
+      ],
+      "additionalProperties": false
+    },
+    "rate": {
+      "type": "object",
+      "properties": {
+        "num": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "den": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "num",
+        "den"
+      ],
+      "additionalProperties": false
+    },
+    "clock": {
+      "type": "object",
+      "properties": {
+        "first_pts": {
+          "type": "integer",
+          "minimum": -9223372036854775808,
+          "maximum": 9223372036854775807
+        },
+        "end_pts_exclusive": {
+          "type": "integer",
+          "minimum": -9223372036854775808,
+          "maximum": 9223372036854775807
+        },
+        "time_base": {
+          "$ref": "#/$defs/rate"
+        },
+        "presentation_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "frame_count": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000
+        }
+      },
+      "required": [
+        "first_pts",
+        "end_pts_exclusive",
+        "time_base",
+        "presentation_sha256",
+        "frame_count"
+      ],
+      "additionalProperties": false
+    },
+    "plate": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "enum": [
+            "source",
+            "mask",
+            "depth",
+            "pose"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "image",
+            "video"
+          ]
+        },
+        "file": {
+          "$ref": "#/$defs/file"
+        },
+        "member": {
+          "type": "string",
+          "pattern": "^media/(source|mask|depth|pose)\\.(png|jpg|bmp|tif|webp|mkv|webm|mov|mp4)$"
+        },
+        "media_type": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8192
+        },
+        "sample_aspect_ratio": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 128
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "rotation_degrees": {
+          "type": "integer",
+          "minimum": -9223372036854775808,
+          "maximum": 9223372036854775807
+        },
+        "pixel_format": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "alpha_channel": {
+          "type": "boolean"
+        },
+        "color": {
+          "type": "object",
+          "properties": {
+            "primaries": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "transfer": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "matrix": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "range": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 128
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "primaries",
+            "transfer",
+            "matrix",
+            "range"
+          ],
+          "additionalProperties": false
+        },
+        "fps": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/rate"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "clock": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/clock"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "has_audio": {
+          "type": "boolean"
+        },
+        "audio_sample_rate": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 192000
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "audio_channels": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "role",
+        "kind",
+        "file",
+        "member",
+        "media_type",
+        "width",
+        "height",
+        "sample_aspect_ratio",
+        "rotation_degrees",
+        "pixel_format",
+        "alpha_channel",
+        "color",
+        "fps",
+        "clock",
+        "has_audio",
+        "audio_sample_rate",
+        "audio_channels"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

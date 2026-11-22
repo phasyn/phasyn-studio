@@ -1,3 +1,4 @@
+import { hasSlotContent } from "@/lib/dom";
 // Confirming the cancellation of one run, shared by the shell's active-run chip, Video Studio and the run pages.
 // One click sends one POST /api/runs/{id}/cancel (never retried automatically; a click while it is in flight does
 // nothing); the server's answer shows as accepted or not accepted, and a failed request as a write error.
@@ -27,14 +28,14 @@ export interface CancelRunDialogProps {
 
 export function CancelRunDialog({ run, open, onOpenChange, scope, onCloseAutoFocus }: CancelRunDialogProps) {
   const cancel = useCancelRun(run.run_id);
-  const inFlight = useRef(false);
+  const inFlightRef = useRef(false);
   const label = runDisplayName(run);
   const send = () => {
-    if (inFlight.current) return;
-    inFlight.current = true;
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     cancel.mutate(undefined, {
       onSettled: () => {
-        inFlight.current = false;
+        inFlightRef.current = false;
       },
     });
   };
@@ -46,7 +47,7 @@ export function CancelRunDialog({ run, open, onOpenChange, scope, onCloseAutoFoc
           <DialogDescription>{t("進行中的步驟會被中止（只結束這個 run 呼叫的元件程序），run 會變成「已取消」；不會自動重跑，已完成步驟的輸出保留。")}</DialogDescription>
         </DialogHeader>
         <DialogBody className="grid gap-3">
-          {scope ? <p className="text-data text-fg-secondary">{scope}</p> : null}
+          {hasSlotContent(scope) ? <p className="text-data text-fg-secondary">{scope}</p> : null}
           <p className="machine text-caption text-fg-tertiary">{run.run_id}</p>
           {cancel.isSuccess ? (
             <Callout tone={cancel.data.accepted ? "info" : "warning"} title={cancel.data.accepted ? t("已受理取消") : t("取消未受理")}>
@@ -56,7 +57,7 @@ export function CancelRunDialog({ run, open, onOpenChange, scope, onCloseAutoFoc
           {cancel.isError ? <ErrorCallout error={cancel.error} write title={t("取消請求失敗")} /> : null}
         </DialogBody>
         <DialogFooter>
-          <Button variant="quiet" onClick={() => onOpenChange(false)}>
+          <Button variant="quiet" onClick={() => { onOpenChange(false); }}>
             {cancel.isSuccess ? t("關閉") : t("不要取消")}
           </Button>
           {cancel.isSuccess ? null : (

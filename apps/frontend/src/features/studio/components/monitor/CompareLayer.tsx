@@ -21,7 +21,7 @@ export interface CompareChips {
 function Chip({ letter, text, className }: { letter: string; text: string | null; className: string }) {
   return (
     <span aria-hidden className={cn(HUD_CHIP, "pointer-events-none absolute top-2 z-10 max-w-[calc(50%-1rem)] truncate", className)}>
-      {text ? `${letter} ${text}` : letter}
+      {(text != null && text !== "") ? `${letter} ${text}` : letter}
     </span>
   );
 }
@@ -50,7 +50,7 @@ function WipeHandle({ value, onChange }: { value: number; onChange: (value: numb
       aria-valuemin={0}
       aria-valuemax={100}
       aria-valuenow={percent}
-      aria-valuetext={`${percent}%`}
+      aria-valuetext={`${String(percent)}%`}
       data-arrow-keys=""
       onPointerDown={(event) => {
         if (event.button !== 0) return;
@@ -62,7 +62,7 @@ function WipeHandle({ value, onChange }: { value: number; onChange: (value: numb
       }}
       onKeyDown={keys}
       className="group/wipe absolute inset-y-0 z-10 w-6 -translate-x-1/2 cursor-ew-resize touch-none outline-none"
-      style={{ left: `${value}%` }}
+      style={{ left: `${String(value)}%` }}
     >
       <span aria-hidden className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-brand-cyan shadow-glow-sm" />
       <span
@@ -88,7 +88,7 @@ export function CompareLayer({ primary, src, mode, fps, chips }: { primary: RefO
       if (Math.abs(b.currentTime - a.currentTime) > allowed) b.currentTime = a.currentTime;
     };
     const play = () => void b.play().catch(() => undefined);
-    const pause = () => b.pause();
+    const pause = () => { b.pause(); };
     // A new B joins where A is (and plays along when A plays)
     const join = () => {
       sync();
@@ -120,7 +120,7 @@ export function CompareLayer({ primary, src, mode, fps, chips }: { primary: RefO
         preload="auto"
         aria-hidden
         className={cn("pointer-events-none absolute object-contain animate-fade-in", side ? "inset-y-0 right-0 h-full w-1/2" : "inset-0 size-full")}
-        style={side ? undefined : { clipPath: `inset(0 0 0 ${wipe}%)` }}
+        style={side ? undefined : { clipPath: `inset(0 0 0 ${String(wipe)}%)` }}
       />
       {side ? <span aria-hidden className="pointer-events-none absolute inset-y-0 left-1/2 w-px bg-line-strong" /> : <WipeHandle value={wipe} onChange={setWipe} />}
       <Chip letter="A" text={chips.a} className="left-2" />

@@ -2,7 +2,7 @@
 // 用途：「載入這組參數」、設定是否已變更、比較兩個 take。純函式；讀舊資料時缺欄位就是 null／不比較，不猜值。
 import type { FileRef } from "@/api/generated/contracts";
 import { isFileRef } from "@/api/types";
-import { isRecord } from "@/lib/json";
+import { isListed, isRecord } from "@/lib/json";
 import type { DecodeMode, ImageLibraryItem, ImageMode, PreviewMode, SeedMode, SigmaSchedule, StudioImageShot, StudioImageTake } from "../types";
 import { RANDOM_SEED } from "./constants";
 import { orderedReferences } from "./references";
@@ -56,34 +56,34 @@ const num = (value: unknown): number | null => (typeof value === "number" && Num
 const str = (value: unknown): string | null => (typeof value === "string" ? value : null);
 
 function oneOf<T extends string>(value: unknown, allowed: readonly T[]): T | null {
-  return typeof value === "string" && (allowed as readonly string[]).includes(value) ? (value as T) : null;
+  return isListed(value, allowed) ? value : null;
 }
 
 /** 讀回 params_snapshot；必要欄位缺少或型別不符時 null（舊資料或別人寫的資料）。 */
 export function parseSnapshot(raw: unknown): ImageParamsSnapshot | null {
-  if (!isRecord(raw) || raw.v !== 1) return null;
-  const mode = oneOf(raw.mode, ["t2i", "i2i"] as const);
-  const seedMode = oneOf(raw.seed_mode, ["fixed", "increment", "random"] as const);
-  const sigma = oneOf(raw.sigma_schedule, ["native", "karras", "exponential"] as const);
-  const decode = oneOf(raw.decode, ["full", "tiled"] as const);
-  const preview = isRecord(raw.preview) ? raw.preview : null;
-  const previewMode = preview ? oneOf(preview.mode, ["off", "vae_thumbnail", "linear_fit"] as const) : null;
-  const outputs = isRecord(raw.outputs) ? raw.outputs : null;
-  const imageOutput = outputs ? str(outputs.image) : null;
-  const fields = [num(raw.width), num(raw.height), num(raw.seed), num(raw.requested_seed), num(raw.batch), num(raw.batch_index), num(raw.steps), num(raw.guidance), num(raw.reference_resolution)];
-  if (!mode || !seedMode || !sigma || !decode || !previewMode || !imageOutput || fields.some((value) => value === null)) return null;
-  const [width, height, seed, requestedSeed, batch, batchIndex, steps, guidance, referenceResolution] = fields as number[];
-  const references = Array.isArray(raw.references)
-    ? raw.references.flatMap((item): SnapshotReference[] => {
-        if (!isRecord(item) || typeof item.item_id !== "string" || num(item.order) === null) return [];
-        return [{ item_id: item.item_id, order: num(item.order) ?? 0, file: isFileRef(item.file) ? item.file : null }];
+  if (!isRecord(raw) || raw["v"] !== 1) return null;
+  const mode = oneOf(raw["mode"], ["t2i", "i2i"] as const);
+  const seedMode = oneOf(raw["seed_mode"], ["fixed", "increment", "random"] as const);
+  const sigma = oneOf(raw["sigma_schedule"], ["native", "karras", "exponential"] as const);
+  const decode = oneOf(raw["decode"], ["full", "tiled"] as const);
+  const preview = isRecord(raw["preview"]) ? raw["preview"] : null;
+  const previewMode = preview ? oneOf(preview["mode"], ["off", "vae_thumbnail", "linear_fit"] as const) : null;
+  const outputs = isRecord(raw["outputs"]) ? raw["outputs"] : null;
+  const imageOutput = outputs ? str(outputs["image"]) : null;
+  const fields = [num(raw["width"]), num(raw["height"]), num(raw["seed"]), num(raw["requested_seed"]), num(raw["batch"]), num(raw["batch_index"]), num(raw["steps"]), num(raw["guidance"]), num(raw["reference_resolution"])];
+  if (!mode || !seedMode || !sigma || !decode || !previewMode || !(imageOutput != null && imageOutput !== "") || !fields.every((value): value is number => value !== null)) return null;
+  const [width, height, seed, requestedSeed, batch, batchIndex, steps, guidance, referenceResolution] = fields;
+  const references = Array.isArray(raw["references"])
+    ? raw["references"].flatMap((item): SnapshotReference[] => {
+        if (!isRecord(item) || typeof item["item_id"] !== "string" || num(item["order"]) === null) return [];
+        return [{ item_id: item["item_id"], order: num(item["order"]) ?? 0, file: isFileRef(item["file"]) ? item["file"] : null }];
       })
     : [];
   return {
     v: 1,
     mode,
-    prompt: str(raw.prompt) ?? "",
-    negative_prompt: str(raw.negative_prompt) ?? "",
+    prompt: str(raw["prompt"]) ?? "",
+    negative_prompt: str(raw["negative_prompt"]) ?? "",
     width: width ?? 0,
     height: height ?? 0,
     seed: seed ?? 0,
@@ -94,18 +94,18 @@ export function parseSnapshot(raw: unknown): ImageParamsSnapshot | null {
     steps: steps ?? 0,
     guidance: guidance ?? 0,
     sigma_schedule: sigma,
-    flow_shift_mu: num(raw.flow_shift_mu),
-    route: str(raw.route) ?? "",
+    flow_shift_mu: num(raw["flow_shift_mu"]),
+    route: str(raw["route"]) ?? "",
     references,
-    base_index: num(raw.base_index),
+    base_index: num(raw["base_index"]),
     reference_resolution: referenceResolution ?? 0,
-    mask_item_id: str(raw.mask_item_id),
-    mask_file: isFileRef(raw.mask_file) ? raw.mask_file : null,
-    mask_invert: raw.mask_invert === true,
+    mask_item_id: str(raw["mask_item_id"]),
+    mask_file: isFileRef(raw["mask_file"]) ? raw["mask_file"] : null,
+    mask_invert: raw["mask_invert"] === true,
     decode,
-    preview: { mode: previewMode, every: num(preview?.every) ?? 1 },
-    outputs: { image: imageOutput, image_white: outputs ? str(outputs.image_white) : null },
-    auto_library: raw.auto_library === true,
+    preview: { mode: previewMode, every: num(preview?.["every"]) ?? 1 },
+    outputs: { image: imageOutput, image_white: outputs ? str(outputs["image_white"]) : null },
+    auto_library: raw["auto_library"] === true,
   };
 }
 
@@ -193,7 +193,7 @@ export function snapshotDiff(a: ImageParamsSnapshot, b: ImageParamsSnapshot): [s
     if (l !== r) rows.push([label, l, r]);
   };
   add("seed", a.seed, b.seed);
-  add(t("尺寸"), `${a.width}×${a.height}`, `${b.width}×${b.height}`);
+  add(t("尺寸"), `${String(a.width)}×${String(a.height)}`, `${String(b.width)}×${String(b.height)}`);
   add(t("步數"), a.steps, b.steps);
   add("guidance", a.guidance, b.guidance);
   add(t("sigma 排程"), a.sigma_schedule, b.sigma_schedule);

@@ -70,7 +70,7 @@ export function ProjectPanel() {
   const menuId = useId();
   // The file picker is found by its id, not through a ref: the toolbar's Import handler is built during render
   const pickerId = useId();
-  const body = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const loadedId = editor.source?.source_id ?? null;
   const [query, setQuery] = useState("");
   const [kind, setKind] = useState<KindFilter>("all");
@@ -87,19 +87,19 @@ export function ProjectPanel() {
     shotId: null,
     library: project.library ?? [],
     references: NO_REFERENCES,
-    onLibraryChange: (library) => dispatch({ type: "setLibrary", library }),
+    onLibraryChange: (library) => { dispatch({ type: "setLibrary", library }); },
     onReferencesChange: () => undefined,
   });
   // The queue belongs to this panel and stops with it: leaving the panel (another tab of its group) while files are
   // still on their way ends them, and that is said instead of passing unnoticed
   const uploading = uploads.tasks.some((task) => task.state === "waiting" || task.state === "reading" || task.state === "uploading");
-  const unfinished = useRef(false);
+  const unfinishedRef = useRef(false);
   useEffect(() => {
-    unfinished.current = uploading;
+    unfinishedRef.current = uploading;
   }, [uploading]);
   useEffect(
     () => () => {
-      if (unfinished.current) notify({ tone: "warning", title: t("匯入已中止"), detail: t("離開「專案」面板時還沒上傳完的檔案沒有加入專案；請回到面板重新匯入。") });
+      if (unfinishedRef.current) notify({ tone: "warning", title: t("匯入已中止"), detail: t("離開「專案」面板時還沒上傳完的檔案沒有加入專案；請回到面板重新匯入。") });
     },
     [notify],
   );
@@ -127,7 +127,7 @@ export function ProjectPanel() {
   // Not on a click: the list must not move under the pointer between the two presses of a double click (the arrow keys
   // move the focus, which scrolls by itself)
   const showSelected = useEffectEvent(() => {
-    const scroller = body.current;
+    const scroller = bodyRef.current;
     const entry = selectedId === null ? null : scroller?.querySelector<HTMLElement>(`[data-media-item="${CSS.escape(selectedId)}"]`);
     if (scroller && entry) scrollIntoBody(scroller, entry);
   });
@@ -154,7 +154,7 @@ export function ProjectPanel() {
   };
   const keys = (event: KeyboardEvent<HTMLDivElement>) => {
     const entry = event.target instanceof HTMLElement ? event.target : null;
-    const at = shown.findIndex((item) => item.id === entry?.dataset.mediaItem);
+    const at = shown.findIndex((item) => item.id === entry?.dataset["mediaItem"]);
     const current = shown[at];
     if (!entry || !current || event.altKey || event.ctrlKey || event.metaKey) return;
     if (event.key === "Enter") {
@@ -192,15 +192,15 @@ export function ProjectPanel() {
     menuId,
     menuOpen: menu?.itemId === item.id,
     applying: applying === item.id,
-    onSelect: () => setSelectedId(item.id),
-    onOpen: () => open(item),
-    onMenu: (anchor, entry) => setMenu({ itemId: item.id, anchor, returnFocus: entry }),
-    onMenuClose: () => setMenu(null),
-    onApplyShorter: () => applyShorter(item),
+    onSelect: () => { setSelectedId(item.id); },
+    onOpen: () => { open(item); },
+    onMenu: (anchor, entry) => { setMenu({ itemId: item.id, anchor, returnFocus: entry }); },
+    onMenuClose: () => { setMenu(null); },
+    onApplyShorter: () => { applyShorter(item); },
   });
 
   return (
-    <div
+    <div /* eslint-disable-line jsx-a11y-x/no-static-element-interactions -- This drop target complements the keyboard-accessible file picker in the same panel. */
       className="relative flex min-h-0 flex-1 flex-col"
       onDragEnter={(event) => {
         if (!carriesFiles(event)) return;
@@ -249,11 +249,11 @@ export function ProjectPanel() {
           addFiles(files);
         }}
       />
-      <div ref={body} className="@container flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div ref={bodyRef} className="@container flex min-h-0 flex-1 flex-col overflow-y-auto">
         {uploads.tasks.length > 0 ? (
           <ul aria-label={t("上傳")} aria-live="polite" className={cn(CARD, "mx-2 mt-2 grid shrink-0 gap-0.5 p-1")}>
             {uploads.tasks.map((task) => (
-              <ReferenceUploadRow key={task.key} task={task} onRetry={() => uploads.retry(task.key)} onDismiss={() => uploads.dismiss(task.key)} />
+              <ReferenceUploadRow key={task.key} task={task} onRetry={() => { uploads.retry(task.key); }} onDismiss={() => { uploads.dismiss(task.key); }} />
             ))}
           </ul>
         ) : null}
@@ -280,7 +280,7 @@ export function ProjectPanel() {
             />
           </div>
         ) : (
-          <div id={gridId} role="grid" aria-label={t("專案素材清單")} data-delete-keys="" onKeyDown={keys} className={view === "grid" ? GRID : LIST}>
+          <div tabIndex={-1} id={gridId} role="grid" aria-label={t("專案素材清單")} data-delete-keys="" onKeyDown={keys} className={view === "grid" ? GRID : LIST}>
             {shown.map((item, index) =>
               view === "grid" ? <MediaCell key={item.id} {...entryProps(item, index)} /> : <MediaRow key={item.id} {...entryProps(item, index)} />,
             )}
@@ -301,10 +301,10 @@ export function ProjectPanel() {
         <ActionMenu
           id={menuId}
           label={t("「{name}」的動作", { name: menuItem.name })}
-          items={mediaMenu(editor, menuItem, { open: () => open(menuItem), applyShorter: () => applyShorter(menuItem) })}
+          items={mediaMenu(editor, menuItem, { open: () => { open(menuItem); }, applyShorter: () => { applyShorter(menuItem); } })}
           anchor={menu.anchor}
           returnFocus={menu.returnFocus}
-          onClose={() => setMenu(null)}
+          onClose={() => { setMenu(null); }}
         />
       ) : null}
     </div>

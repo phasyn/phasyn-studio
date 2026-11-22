@@ -1,8 +1,8 @@
-"""凍結 rubric、逐區段加權損失、共同 seeds 排名與 A/B＋B/A 確認。
+"""凍結 rubric、逐區段加權損失、共同 seeds 排名與 A/B+B/A 確認.
 
-- rubric 在任務開始時由「當時的場景＋有意修改」凍結；之後修訂出的新場景不會改變評分基準。
-  ``sha256``＝canonical JSON ``{applicable_sections, initial_scene, intentional_changes}`` 的 SHA-256。
-- 損失＝Σ 權重×懲罰 ÷ 可判斷權重（match 0、minor 1、major 2、missing 3；uncertain／not_applicable 不計分
+- rubric 在任務開始時由「當時的場景+有意修改」凍結；之後修訂出的新場景不會改變評分基準。
+  ``sha256``=canonical JSON ``{applicable_sections, initial_scene, intentional_changes}`` 的 SHA-256。
+- 損失=Σ 權重×懲罰 ÷ 可判斷權重（match 0、minor 1、major 2、missing 3；uncertain／not_applicable 不計分
   但降低可判斷權重）。可判斷權重 < 75%、模型宣告無法判斷或沒有可判斷區段 → unverified、loss=null（不是 0）。
 - 排名：不完整、未驗證或不同 rubric 的評估不能獲勝；挑戰者平均損失至少低 0.05 才有資格進入雙順序確認；
   代表圖取最接近平均損失的 seed（兩者不同時取現任最小 seed）。
@@ -17,7 +17,14 @@ from typing import Any
 
 from phasyn_components.canonical import digest
 
-from .scene import SECTION_KEYS, SceneError, scene_sha256, section_text, validate_intentional_changes
+from .scene import (
+    SECTION_KEYS,
+    SceneError,
+    scene_sha256,
+    section_text,
+    validate_intentional_changes,
+)
+
 
 SCORER_VERSION = "prompt-score/1"
 WEIGHTS: dict[str, int] = {
@@ -35,11 +42,13 @@ VERIFIED_FRACTION = 0.75
 IMPROVEMENT_THRESHOLD = 0.05
 # Fixed instruction for revising a scene from a comparison (its first three differences); the Inference Studio
 # frontend sends it explicitly with revise.
-REFINE_FROM_COMPARISON_INSTRUCTION = "只優先修正比較中前三個可見差異，遵循凍結意圖並逐字保留所有鎖定區段及其證據。"
+REFINE_FROM_COMPARISON_INSTRUCTION = (
+    "只優先修正比較中前三個可見差異，遵循凍結意圖並逐字保留所有鎖定區段及其證據。"
+)
 
 
 class EvaluationError(ValueError):
-    """評估資料不一致（不同 rubric、seed 不齊、沒有可判斷候選…）。"""
+    """評估資料不一致（不同 rubric、seed 不齊、沒有可判斷候選…）."""
 
 
 def freeze_rubric(
@@ -48,18 +57,26 @@ def freeze_rubric(
     *,
     applicable_sections: Iterable[str] | None = None,
 ) -> dict[str, Any]:
-    """適用區段來自原圖場景（非空區段），不是候選的判斷；沒有可見文字時 visible_text 不罰也不送分。"""
+    """適用區段來自原圖場景（非空區段），不是候選的判斷；沒有可見文字時 visible_text 不罰也不送分."""
     changes = validate_intentional_changes(scene, intentional_changes)
     language = str(scene["prompt_language"])
     applicable = (
         set(applicable_sections)
         if applicable_sections is not None
-        else {key for key in SECTION_KEYS if section_text(scene["sections"][key], language).strip()}
+        else {
+            key
+            for key in SECTION_KEYS
+            if section_text(scene["sections"][key], language).strip()
+        }
     )
     if not applicable or not applicable.issubset(SECTION_KEYS):
         raise SceneError("rubric 必須至少有一個有效適用區段")
     ordered = [key for key in SECTION_KEYS if key in applicable]
-    data = {"initial_scene": scene, "intentional_changes": changes, "applicable_sections": ordered}
+    data = {
+        "initial_scene": scene,
+        "intentional_changes": changes,
+        "applicable_sections": ordered,
+    }
     return {
         "sha256": digest(data),
         "scene_sha256": scene_sha256(scene),
@@ -68,8 +85,10 @@ def freeze_rubric(
     }
 
 
-def evaluate_comparison(comparison: Mapping[str, Any], rubric: Mapping[str, Any]) -> dict[str, Any]:
-    """PromptComparison × PromptRubric → PromptScore（逐區段明細）。"""
+def evaluate_comparison(
+    comparison: Mapping[str, Any], rubric: Mapping[str, Any]
+) -> dict[str, Any]:
+    """PromptComparison × PromptRubric → PromptScore（逐區段明細）."""
     applicable = list(rubric["applicable_sections"])
     intentional = set(rubric["intentional_changes"])
     applicable_weight = sum(WEIGHTS[key] for key in applicable)
@@ -89,14 +108,18 @@ def evaluate_comparison(comparison: Mapping[str, Any], rubric: Mapping[str, Any]
             "applicable": is_applicable,
             "intentional": key in intentional,
             "penalty": penalty,
-            "weighted_penalty": float(WEIGHTS[key] * penalty) if penalty is not None else None,
+            "weighted_penalty": float(WEIGHTS[key] * penalty)
+            if penalty is not None
+            else None,
         }
     fraction = evaluable_weight / applicable_weight if applicable_weight else 0.0
     reasons: list[str] = []
     if fraction < VERIFIED_FRACTION:
         reasons.append(f"可判斷權重 {fraction:.3f} 低於 {VERIFIED_FRACTION}")
     if comparison.get("unjudgeable_reason") is not None:
-        reasons.append(f"模型宣告無法判斷：{str(comparison['unjudgeable_reason'])[:400]}")
+        reasons.append(
+            f"模型宣告無法判斷：{str(comparison['unjudgeable_reason'])[:400]}"
+        )
     if not evaluable_weight:
         reasons.append("沒有可判斷的適用區段")
     unverified = bool(reasons)
@@ -113,6 +136,8 @@ def evaluate_comparison(comparison: Mapping[str, Any], rubric: Mapping[str, Any]
 
 @dataclass(frozen=True)
 class Ranked:
+    """A scored candidate and its original position."""
+
     version_id: str
     version_number: int
     variant: str
@@ -121,6 +146,7 @@ class Ranked:
     rows: tuple[Mapping[str, Any], ...]
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize this value for the runtime contract."""
         return {
             "version_id": self.version_id,
             "version_number": self.version_number,
@@ -132,15 +158,19 @@ class Ranked:
 
 
 def rank_candidates(
-    rows: Iterable[Mapping[str, Any]], search_seeds: Iterable[int], *, rubric_sha256: str | None = None
+    rows: Iterable[Mapping[str, Any]],
+    search_seeds: Iterable[int],
+    *,
+    rubric_sha256: str | None = None,
 ) -> list[Ranked]:
-    """只用 split=search 的評估；同候選必須在每個共同 seed 都有已驗證的 loss 才算完整。"""
+    """只用 split=search 的評估；同候選必須在每個共同 seed 都有已驗證的 loss 才算完整."""
     seeds = tuple(int(seed) for seed in search_seeds)
     if not seeds or len(seeds) != len(set(seeds)):
         raise EvaluationError("搜尋 seeds 必須非空且不重複")
     search = [row for row in rows if row["split"] == "search"]
     if len({row["rubric_sha256"] for row in search}) > 1 or (
-        rubric_sha256 is not None and any(row["rubric_sha256"] != rubric_sha256 for row in search)
+        rubric_sha256 is not None
+        and any(row["rubric_sha256"] != rubric_sha256 for row in search)
     ):
         raise EvaluationError("不同 rubric 的評估不可直接排名")
     grouped: dict[tuple[str, str], list[Mapping[str, Any]]] = {}
@@ -161,7 +191,11 @@ def rank_candidates(
         complete = set(by_seed) == set(seeds) and all(
             row["loss"] is not None and not row["unverified"] for row in group
         )
-        average = mean(float(row["loss"]) for row in group if row["loss"] is not None) if complete else None
+        average = (
+            mean(float(row["loss"]) for row in group if row["loss"] is not None)
+            if complete
+            else None
+        )
         ranked.append(
             Ranked(
                 version_id,
@@ -184,6 +218,7 @@ def rank_candidates(
 
 
 def select_initial(ranked: Iterable[Ranked]) -> Ranked:
+    """Select initial candidates according to the ranking policy."""
     valid = [item for item in ranked if item.complete and item.mean_loss is not None]
     if not valid:
         raise EvaluationError("沒有完整且可判斷的候選結果")
@@ -207,6 +242,7 @@ def _require_common_experiment(first: Ranked, second: Ranked) -> None:
 
 
 def improvement_eligible(incumbent: Ranked, challenger: Ranked) -> bool:
+    """Check whether a candidate may enter the improvement round."""
     if not incumbent.complete or not challenger.complete:
         return False
     if incumbent.mean_loss is None or challenger.mean_loss is None:
@@ -216,6 +252,7 @@ def improvement_eligible(incumbent: Ranked, challenger: Ranked) -> bool:
 
 
 def representative_pair(incumbent: Ranked, challenger: Ranked) -> dict[str, int]:
+    """Select a representative pair from the ranked candidates."""
     if not incumbent.complete or not challenger.complete:
         raise EvaluationError("代表圖需來自完整候選")
     if incumbent.mean_loss is None or challenger.mean_loss is None:
@@ -226,35 +263,50 @@ def representative_pair(incumbent: Ranked, challenger: Ranked) -> dict[str, int]
     first = min(
         incumbent.rows,
         key=lambda row: (
-            abs(float(row["loss"]) - incumbent_mean) if row["loss"] is not None else float("inf"),
+            abs(float(row["loss"]) - incumbent_mean)
+            if row["loss"] is not None
+            else float("inf"),
             int(row["seed"]),
         ),
     )
     second = min(
         challenger.rows,
         key=lambda row: (
-            abs(float(row["loss"]) - challenger_mean) if row["loss"] is not None else float("inf"),
+            abs(float(row["loss"]) - challenger_mean)
+            if row["loss"] is not None
+            else float("inf"),
             int(row["seed"]),
         ),
     )
-    seed = int(first["seed"]) if first["seed"] == second["seed"] else min(int(row["seed"]) for row in incumbent.rows)
+    seed = (
+        int(first["seed"])
+        if first["seed"] == second["seed"]
+        else min(int(row["seed"]) for row in incumbent.rows)
+    )
     return {"seed": seed, "incumbent_seed": seed, "challenger_seed": seed}
 
 
-def pairwise_confirms(ab_winner: str, ba_winner: str, *, challenger_first: bool = False) -> bool:
-    """預設第一次 A＝現任、B＝挑戰者，第二次交換圖片；兩次都選挑戰者才確認。"""
+def pairwise_confirms(
+    ab_winner: str, ba_winner: str, *, challenger_first: bool = False
+) -> bool:
+    """預設第一次 A=現任、B=挑戰者，第二次交換圖片；兩次都選挑戰者才確認."""
     expected_first, expected_second = ("A", "B") if challenger_first else ("B", "A")
     return ab_winner == expected_first and ba_winner == expected_second
 
 
 def ranking(evaluations: Mapping[str, Any]) -> dict[str, Any]:
-    """PromptEvaluationSet → PromptRanking（op=rank）。"""
+    """PromptEvaluationSet → PromptRanking（op=rank）."""
     ranked = rank_candidates(
-        evaluations["items"], evaluations["search_seeds"], rubric_sha256=str(evaluations["rubric_sha256"])
+        evaluations["items"],
+        evaluations["search_seeds"],
+        rubric_sha256=str(evaluations["rubric_sha256"]),
     )
     try:
         best = select_initial(ranked)
-        initial: dict[str, str] | None = {"version_id": best.version_id, "variant": best.variant}
+        initial: dict[str, str] | None = {
+            "version_id": best.version_id,
+            "variant": best.variant,
+        }
         initial_reason = None
     except EvaluationError as exc:
         initial, initial_reason = None, str(exc)
@@ -263,8 +315,12 @@ def ranking(evaluations: Mapping[str, Any]) -> dict[str, Any]:
     challenger_ref = evaluations.get("challenger")
     if incumbent_ref is not None and challenger_ref is not None:
         by_key = {(item.version_id, item.variant): item for item in ranked}
-        incumbent = by_key.get((str(incumbent_ref["version_id"]), str(incumbent_ref["variant"])))
-        challenger = by_key.get((str(challenger_ref["version_id"]), str(challenger_ref["variant"])))
+        incumbent = by_key.get(
+            (str(incumbent_ref["version_id"]), str(incumbent_ref["variant"]))
+        )
+        challenger = by_key.get(
+            (str(challenger_ref["version_id"]), str(challenger_ref["variant"]))
+        )
         if incumbent is None or challenger is None:
             improvement = {
                 "eligible": False,
@@ -290,7 +346,9 @@ def ranking(evaluations: Mapping[str, Any]) -> dict[str, Any]:
                 "delta": delta,
                 "threshold": IMPROVEMENT_THRESHOLD,
                 "reason": reason,
-                "representative_pair": representative_pair(incumbent, challenger) if eligible else None,
+                "representative_pair": representative_pair(incumbent, challenger)
+                if eligible
+                else None,
             }
     return {
         "ranked": [item.to_dict() for item in ranked],

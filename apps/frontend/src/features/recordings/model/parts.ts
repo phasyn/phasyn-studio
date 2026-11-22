@@ -1,3 +1,4 @@
+import { toJsonObject as record } from "@/lib/json";
 // summary.part_totals → 可排序的部件列。host 時間是 inclusive（含子部件）host span；
 // gpu_event_ms 是 CUDA event 區間並附 coverage；未知值保持 null，排序時一律排最後。
 import type { RecordingSummary } from "@/api/generated/contracts";
@@ -18,7 +19,7 @@ export interface PartRow {
   gpuEventMs: number | null;
   gpuEventCoverage: string | null;
   coverageReason: string | null;
-  counters: Array<[string, number | null]>;
+  counters: [string, number | null][];
   transfers: PartTransfer[];
   raw: Record<string, unknown>;
 }
@@ -31,30 +32,27 @@ function str(value: unknown): string | null {
   return typeof value === "string" && value !== "" ? value : null;
 }
 
-function record(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
-}
 
 export function partRows(summary: RecordingSummary): PartRow[] {
   return Object.entries(summary.part_totals)
     .filter((entry): entry is [string, Record<string, unknown>] => entry[1] !== undefined)
     .map(([part, totals]) => {
-      const counters = record(totals.counters);
-      const transfers = record(totals.transfers);
+      const counters = record(totals["counters"]);
+      const transfers = record(totals["transfers"]);
       return {
         part,
         depth: part.split(".").length - 1,
-        calls: num(totals.calls),
-        hostMsInclusive: num(totals.host_ms_inclusive),
-        hostMsExclusive: num(totals.host_ms_exclusive),
-        gpuEventMs: num(totals.gpu_event_ms),
-        gpuEventCoverage: str(totals.gpu_event_coverage) ?? str(totals.coverage),
-        coverageReason: str(totals.coverage_reason) ?? str(totals.reason),
+        calls: num(totals["calls"]),
+        hostMsInclusive: num(totals["host_ms_inclusive"]),
+        hostMsExclusive: num(totals["host_ms_exclusive"]),
+        gpuEventMs: num(totals["gpu_event_ms"]),
+        gpuEventCoverage: str(totals["gpu_event_coverage"]) ?? str(totals["coverage"]),
+        coverageReason: str(totals["coverage_reason"]) ?? str(totals["reason"]),
         counters: counters ? Object.entries(counters).map(([name, value]) => [name, num(value)] as [string, number | null]) : [],
         transfers: transfers
           ? Object.entries(transfers).map(([category, value]) => {
               const entry = record(value);
-              return { category, count: num(entry?.count), bytes: num(entry?.bytes) };
+              return { category, count: num(entry?.["count"]), bytes: num(entry?.["bytes"]) };
             })
           : [],
         raw: totals,

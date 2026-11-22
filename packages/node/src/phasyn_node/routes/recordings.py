@@ -14,11 +14,13 @@ from phasyn_server.http import json_response
 from phasyn_server.recordings import events_page, export_response, list_page
 from starlette.responses import JSONResponse, Response
 
+
 if TYPE_CHECKING:
     from ..service import NodeService
 
 
 def routes(service: NodeService) -> APIRouter:
+    """Register the NodeGateway endpoints for this resource."""
     router = APIRouter()
 
     @router.get("/api/recordings")
@@ -36,7 +38,9 @@ def routes(service: NodeService) -> APIRouter:
     async def recording_events(recording_id: str, request: Request) -> JSONResponse:
         rid = require_uuid(recording_id, "recording_id")
         await service.index.refresh_one(rid)
-        return json_response(await events_page(service.index.store, rid, request.query_params))
+        return json_response(
+            await events_page(service.index.store, rid, request.query_params)
+        )
 
     @router.get("/api/recordings/{recording_id}/export")
     async def export(recording_id: str, request: Request) -> Response:

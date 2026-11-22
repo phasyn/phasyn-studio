@@ -97,8 +97,8 @@ export interface CurveGraphProps {
 
 export function CurveGraph({ property, owner, selected, locked, onSelect, onChange, onRemove }: CurveGraphProps) {
   const panel = useClipPanel();
-  const box = useRef<HTMLDivElement>(null);
-  const { width, height } = useElementSize(box);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const { width, height } = useElementSize(boxRef);
   const [drag, setDrag] = useState<PointDrag | null>(null);
   const [moved, setMoved] = useState<number | null>(null);
   const { unit } = property;
@@ -125,7 +125,7 @@ export function CurveGraph({ property, owner, selected, locked, onSelect, onChan
     const at = range.min + (frames * index) / samples;
     curve += `${index === 0 ? "M" : "L"}${x(at).toFixed(1)},${y(evaluateCurve(keys, at, property.value)).toFixed(1)}`;
   }
-  const guides = [0, 0.5, 1].map((fraction) => `M${PAD},${(PAD + fraction * plotHeight).toFixed(1)}H${(PAD + plotWidth).toFixed(1)}`).join("");
+  const guides = [0, 0.5, 1].map((fraction) => `M${String(PAD)},${(PAD + fraction * plotHeight).toFixed(1)}H${(PAD + plotWidth).toFixed(1)}`).join("");
 
   const dragged = (event: PointerEvent<SVGCircleElement>, key: TimelineKeyframe, from: PointDrag): PointDrag => {
     const slack = (delta: number) => Math.sign(delta) * Math.max(0, Math.abs(delta) - SLACK);
@@ -143,18 +143,18 @@ export function CurveGraph({ property, owner, selected, locked, onSelect, onChan
     const bySteps = event.key === "ArrowUp" ? large : event.key === "ArrowDown" ? -large : 0;
     if (byFrames !== 0 || bySteps !== 0) {
       event.preventDefault();
-      if (!locked && !event.repeat) change(key.frame, shifted(key, byFrames, bySteps));
+      if (!(locked != null && locked !== "") && !event.repeat) change(key.frame, shifted(key, byFrames, bySteps));
     } else if (event.key === "Enter") {
       event.preventDefault();
       onSelect(key);
     } else if (event.key === "Delete" || event.key === "Backspace") {
       event.preventDefault();
-      if (!locked && !event.repeat) onRemove(key);
+      if (!(locked != null && locked !== "") && !event.repeat) onRemove(key);
     }
   };
 
   return (
-    <div ref={box} className="relative h-full min-w-0 flex-1 overflow-hidden rounded-md border border-line-subtle bg-sunken">
+    <div ref={boxRef} className="relative h-full min-w-0 flex-1 overflow-hidden rounded-md border border-line-subtle bg-sunken">
       {width > 0 && height > 0 ? (
         <svg
           width={width}
@@ -186,7 +186,7 @@ export function CurveGraph({ property, owner, selected, locked, onSelect, onChan
                 className={cn(
                   "outline-none focus-visible:stroke-focus",
                   chosen ? "fill-brand-cyan stroke-fg" : "fill-sunken stroke-brand-cyan",
-                  !locked && "cursor-grab active:cursor-grabbing",
+                  !(locked != null && locked !== "") && "cursor-grab active:cursor-grabbing",
                 )}
                 onPointerDown={(event) => {
                   if (event.button !== 0) return;
@@ -196,7 +196,7 @@ export function CurveGraph({ property, owner, selected, locked, onSelect, onChan
                   setDrag({ from: key.frame, frame: key.frame, value: key.value, x: event.clientX, y: event.clientY });
                 }}
                 onPointerMove={(event) => {
-                  if (drag?.from !== key.frame || locked || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
+                  if (drag?.from !== key.frame || (locked != null && locked !== "") || !event.currentTarget.hasPointerCapture(event.pointerId)) return;
                   setDrag(dragged(event, key, drag));
                 }}
                 onPointerUp={(event) => {
@@ -206,11 +206,11 @@ export function CurveGraph({ property, owner, selected, locked, onSelect, onChan
                   if (drag.frame === key.frame && drag.value === key.value) onSelect(key);
                   else change(key.frame, { frame: drag.frame, value: drag.value });
                 }}
-                onPointerCancel={() => setDrag(null)}
+                onPointerCancel={() => { setDrag(null); }}
                 onFocus={() => {
                   if (moved !== null) setMoved(null);
                 }}
-                onKeyDown={(event) => nudge(event, key)}
+                onKeyDown={(event) => { nudge(event, key); }}
               />
             );
           })}

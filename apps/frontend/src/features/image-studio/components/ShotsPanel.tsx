@@ -18,7 +18,7 @@ import type { MenuAnchor, MenuItem } from "@/components/ui/menuModel";
 import { isMenuKey } from "@/lib/keyboard";
 import { useImageStudio } from "../imageStudioContext";
 import { MODE_LABELS } from "../model/constants";
-import { changedSinceTake } from "../model/params";
+import { changedImageSettings } from "../model/declaredImage";
 import { activeImageTake, imageShots, imageShotStatus, localId, neighbourImageShotId } from "../model/shots";
 import type { ImageTakeState, StudioImageShot, StudioImageTake } from "../types";
 import { ImageThumb } from "./ImageThumb";
@@ -51,7 +51,7 @@ function ShotRow({ shot, index, count, selected, menuId, menuOpen, onOpenMenu, o
   onRequestDelete: (shotId: string) => void;
 }) {
   const { dispatch, selectShot, notSent } = useImageStudio();
-  const status = imageShotStatus(shot, (take) => changedSinceTake(take, shot), notSent.get(shot.image_shot_id) ?? null);
+  const status = imageShotStatus(shot, (take) => changedImageSettings(take, shot), notSent.get(shot.image_shot_id) ?? null);
   const take = activeImageTake(shot);
   const move = (delta: -1 | 1) => {
     const to = index + delta;
@@ -61,18 +61,18 @@ function ShotRow({ shot, index, count, selected, menuId, menuOpen, onOpenMenu, o
   };
   return (
     <li
-      onContextMenu={(event) => {
-        event.preventDefault();
-        const row = event.currentTarget.querySelector<HTMLElement>("[data-image-row]");
-        onOpenMenu(shot.image_shot_id, { kind: "point", x: event.clientX, y: event.clientY }, row, "first");
-      }}
+
       ref={reveal(index)}
       className={cn("group group/tile relative mx-1.5 flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors duration-(--duration-fast) active:bg-sunken", selected ? cn(ROW_SELECTED, ROW_MARKER) : "hover:bg-raised")}
     >
-      <button
+      <button onContextMenu={(event) => {
+        event.preventDefault();
+        const row = event.currentTarget;
+        onOpenMenu(shot.image_shot_id, { kind: "point", x: event.clientX, y: event.clientY }, row, "first");
+      }}
         type="button"
         data-image-row={shot.image_shot_id}
-        onClick={() => selectShot(shot.image_shot_id)}
+        onClick={() => { selectShot(shot.image_shot_id); }}
         onKeyDown={(event) => {
           if (isMenuKey(event)) {
             event.preventDefault();
@@ -101,7 +101,7 @@ function ShotRow({ shot, index, count, selected, menuId, menuOpen, onOpenMenu, o
           <span className="flex min-w-0 items-center gap-1.5 text-caption text-fg-tertiary">
             <ShotStatusMark status={status} compact />
             <ModeBadge mode={shot.mode} />
-            <span className="truncate">{`${shot.width}×${shot.height}${shot.takes.length > 0 ? t("・{takesCount} take", { takesCount: shot.takes.length }) : ""}`}</span>
+            <span className="truncate">{`${String(shot.width)}×${String(shot.height)}${shot.takes.length > 0 ? t("・{takesCount} take", { takesCount: shot.takes.length }) : ""}`}</span>
           </span>
         </span>
       </button>
@@ -109,7 +109,7 @@ function ShotRow({ shot, index, count, selected, menuId, menuOpen, onOpenMenu, o
         menuId={menuId}
         open={menuOpen}
         label={t("「{value}」的動作", { value: shot.title || t("未命名圖片") })}
-        onOpen={(element, focus) => onOpenMenu(shot.image_shot_id, { kind: "element", element }, element, focus)}
+        onOpen={(element, focus) => { onOpenMenu(shot.image_shot_id, { kind: "element", element }, element, focus); }}
         onClose={onCloseMenu}
         className="size-7 opacity-70 group-hover:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 [&_svg]:size-4"
       >
@@ -125,10 +125,10 @@ function DeleteShotDialog({ shotId, onClose }: { shotId: string | null; onClose:
   const runs = new Set(shot?.takes.map((take) => take.run_id) ?? []);
   const rendering = shot?.takes.some((take) => take.state === "rendering") ?? false;
   return (
-    <Dialog open={shot !== null} onOpenChange={(open) => (open ? undefined : onClose())}>
+    <Dialog open={shot !== null} onOpenChange={(open) => { if (!(open)) { onClose(); } }}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{t("刪除「{value}」？", { value: shot?.title || t("未命名圖片") })}</DialogTitle>
+          <DialogTitle>{t("刪除「{value}」？", { value: (shot?.title ?? "") || t("未命名圖片") })}</DialogTitle>
           <DialogDescription>{t("只從專案移除這張圖片的設定與 {value} 個 take 的紀錄。", { value: shot?.takes.length ?? 0 })}</DialogDescription>
         </DialogHeader>
         <DialogBody className="grid gap-2 text-data text-fg-secondary">
@@ -149,7 +149,7 @@ function DeleteShotDialog({ shotId, onClose }: { shotId: string | null; onClose:
               dispatch({ type: "removeImageShot", shotId: shot.image_shot_id });
               if (selectedShotId === shot.image_shot_id) selectShot(next);
               onClose();
-              if (next) focusRowLater(`[data-image-row="${next}"]`);
+              if (next != null && next !== "") focusRowLater(`[data-image-row="${next}"]`);
             }}
           >
             {t("從專案刪除")}
@@ -186,7 +186,7 @@ function ShotList() {
           icon: ArrowUp,
           shortcut: "Alt+↑",
           disabledReason: openIndex <= 0 ? t("已經是第一張") : null,
-          onSelect: () => dispatch({ type: "moveImageShot", shotId: openShot.image_shot_id, toIndex: openIndex - 1 }),
+          onSelect: () => { dispatch({ type: "moveImageShot", shotId: openShot.image_shot_id, toIndex: openIndex - 1 }); },
         },
         {
           id: "down",
@@ -194,15 +194,15 @@ function ShotList() {
           icon: ArrowDown,
           shortcut: "Alt+↓",
           disabledReason: openIndex >= shots.length - 1 ? t("已經是最後一張") : null,
-          onSelect: () => dispatch({ type: "moveImageShot", shotId: openShot.image_shot_id, toIndex: openIndex + 1 }),
+          onSelect: () => { dispatch({ type: "moveImageShot", shotId: openShot.image_shot_id, toIndex: openIndex + 1 }); },
         },
-        { id: "delete", label: t("刪除…"), icon: Trash2, tone: "danger", shortcut: "Delete", separatorBefore: true, onSelect: () => setPendingDelete(openShot.image_shot_id) },
+        { id: "delete", label: t("刪除…"), icon: Trash2, tone: "danger", shortcut: "Delete", separatorBefore: true, onSelect: () => { setPendingDelete(openShot.image_shot_id); } },
       ]
     : [];
   return (
     <div className="grid gap-2 py-2">
       <div className="px-2">
-        <Button size="sm" variant="secondary" icon={<Plus aria-hidden />} onClick={addShot} className="w-full">
+        <Button size="sm" variant="secondary" icon={<Plus aria-hidden />} onClick={() => { addShot(); }} className="w-full">
           {t("新增圖片")}
         </Button>
       </div>
@@ -221,16 +221,16 @@ function ShotList() {
                 if (selectedShotId !== id) selectShot(id);
                 setMenu({ id, anchor, returnFocus, focus });
               }}
-              onCloseMenu={() => setMenu(null)}
+              onCloseMenu={() => { setMenu(null); }}
               onRequestDelete={setPendingDelete}
             />
           ))}
         </ul>
       )}
       {menu && openShot ? (
-        <ActionMenu id={menuId} label={t("「{value}」的動作", { value: openShot.title || t("未命名圖片") })} items={items} anchor={menu.anchor} returnFocus={menu.returnFocus} initialFocus={menu.focus} onClose={() => setMenu(null)} />
+        <ActionMenu id={menuId} label={t("「{value}」的動作", { value: openShot.title || t("未命名圖片") })} items={items} anchor={menu.anchor} returnFocus={menu.returnFocus} initialFocus={menu.focus} onClose={() => { setMenu(null); }} />
       ) : null}
-      <DeleteShotDialog shotId={pendingDelete} onClose={() => setPendingDelete(null)} />
+      <DeleteShotDialog shotId={pendingDelete} onClose={() => { setPendingDelete(null); }} />
     </div>
   );
 }
@@ -273,18 +273,18 @@ function RunHistory() {
   const archivedCount = entries.filter((entry) => archivedRunIds.has(entry.runId)).length;
   const shown = showArchived ? entries : entries.filter((entry) => !archivedRunIds.has(entry.runId));
   const open = menu ? entries.find((entry) => entry.runId === menu.id) : undefined;
-  const view = (entry: RunEntry) => selectShot(entry.shot.image_shot_id, entry.takes[0]?.take_id ?? null);
+  const view = (entry: RunEntry) => { selectShot(entry.shot.image_shot_id, entry.takes[0]?.take_id ?? null); };
   const items: MenuItem[] = open
     ? [
-        { id: "view", label: t("在監看器查看"), icon: Images, onSelect: () => view(open) },
+        { id: "view", label: t("在監看器查看"), icon: Images, onSelect: () => { view(open); } },
         {
           id: "archive",
           label: archivedRunIds.has(open.runId) ? t("取消封存") : t("封存（檔案與紀錄保留）"),
           icon: archivedRunIds.has(open.runId) ? ArchiveRestore : Archive,
-          disabledReason: open.state === "rendering" ? t("生成中的 run 不能封存") : archiving ? t("正在處理另一個封存") : null,
+          disabledReason: open.state === "rendering" ? t("生成中的 run 不能封存") : (archiving != null && archiving !== "") ? t("正在處理另一個封存") : null,
           onSelect: () => {
             setArchiving(open.runId);
-            void setRunArchived(open.runId, !archivedRunIds.has(open.runId)).finally(() => setArchiving(null));
+            void setRunArchived(open.runId, !archivedRunIds.has(open.runId)).finally(() => { setArchiving(null); });
           },
         },
         { id: "records", label: t("在「紀錄・執行紀錄」開啟"), icon: ExternalLink, onSelect: () => void navigate(`/records/runs/${encodeURIComponent(open.runId)}`) },
@@ -295,7 +295,7 @@ function RunHistory() {
           tone: "danger",
           separatorBefore: true,
           disabledReason: open.state === "rendering" ? t("生成中的 run 不能刪除：先取消或等它結束") : null,
-          onSelect: () => deleteRuns([open.runId]),
+          onSelect: () => { deleteRuns([open.runId]); },
         },
       ]
     : [];
@@ -303,7 +303,7 @@ function RunHistory() {
     <div className="grid gap-1 py-2">
       {archivedCount > 0 ? (
         <label className="pressable mx-1.5 flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-caption text-fg-secondary hover:bg-raised has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-focus">
-          <input type="checkbox" className="size-3.5 accent-action" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />
+          <input type="checkbox" className="size-3.5 accent-action" checked={showArchived} onChange={(event) => { setShowArchived(event.target.checked); }} />
           <Archive aria-hidden className="size-3.5 text-fg-tertiary" />
           {t("顯示已封存（{archivedCount}）", { archivedCount })}
         </label>
@@ -319,7 +319,7 @@ function RunHistory() {
               <li key={entry.runId} ref={reveal(index)} className={"group group/tile flex items-center gap-1 px-1"}>
                 <button
                   type="button"
-                  onClick={() => view(entry)}
+                  onClick={() => { view(entry); }}
                   onKeyDown={(event) => {
                     if (!isMenuKey(event)) return;
                     event.preventDefault();
@@ -346,8 +346,8 @@ function RunHistory() {
                   menuId={menuId}
                   open={menu?.id === entry.runId}
                   label={t("run {runId} 的動作", { runId: entry.runId.slice(0, 8) })}
-                  onOpen={(element, focus) => setMenu({ id: entry.runId, anchor: { kind: "element", element }, returnFocus: element, focus })}
-                  onClose={() => setMenu(null)}
+                  onOpen={(element, focus) => { setMenu({ id: entry.runId, anchor: { kind: "element", element }, returnFocus: element, focus }); }}
+                  onClose={() => { setMenu(null); }}
                   className="size-7 [&_svg]:size-4"
                 >
                   <Ellipsis aria-hidden />
@@ -357,7 +357,7 @@ function RunHistory() {
           })}
         </ul>
       )}
-      {menu && open ? <ActionMenu id={menuId} label={t("run {runId} 的動作", { runId: open.runId.slice(0, 8) })} items={items} anchor={menu.anchor} returnFocus={menu.returnFocus} initialFocus={menu.focus} onClose={() => setMenu(null)} /> : null}
+      {menu && open ? <ActionMenu id={menuId} label={t("run {runId} 的動作", { runId: open.runId.slice(0, 8) })} items={items} anchor={menu.anchor} returnFocus={menu.returnFocus} initialFocus={menu.focus} onClose={() => { setMenu(null); }} /> : null}
     </div>
   );
 }

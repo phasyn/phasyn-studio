@@ -137,7 +137,7 @@ export function initialDraft(): SwapDraft {
 
 /** 段落設定（備註、沒有出現的角色）的 key：段落保留的畫面在原影片的範圍（幀）。 */
 export function segmentKey(plan: Pick<SegmentPlan, "start_frame">, segment: Pick<PlannedSegment, "timeline_start" | "timeline_end">): string {
-  return `${plan.start_frame + segment.timeline_start}-${plan.start_frame + segment.timeline_end}`;
+  return `${String(plan.start_frame + segment.timeline_start)}-${String(plan.start_frame + segment.timeline_end)}`;
 }
 
 /** 依目前的分段，把草稿的段落設定排成建立專案用的陣列與索引表（範圍對不上的設定不使用）。 */

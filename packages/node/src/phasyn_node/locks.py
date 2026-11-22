@@ -11,14 +11,15 @@ import threading
 
 
 class ResourceLocks:
-    """resource_group → holder。thread-safe；只提供 try-lock。"""
+    """resource_group → holder。thread-safe；只提供 try-lock."""
 
     def __init__(self) -> None:
+        """Initialize empty resource-group ownership."""
         self._lock = threading.Lock()
         self._holders: dict[str, str] = {}
 
     def try_acquire(self, group: str, holder: str) -> str | None:
-        """取得成功回 None；忙碌回目前持有者。"""
+        """取得成功回 None；忙碌回目前持有者."""
         with self._lock:
             current = self._holders.get(group)
             if current is not None:
@@ -27,15 +28,18 @@ class ResourceLocks:
             return None
 
     def release(self, group: str, holder: str) -> None:
+        """Release the group only when the supplied holder owns it."""
         with self._lock:
             if self._holders.get(group) == holder:
                 del self._holders[group]
 
     def holder(self, group: str) -> str | None:
+        """Return the current holder of the resource group."""
         with self._lock:
             return self._holders.get(group)
 
     def snapshot(self) -> dict[str, str]:
+        """Copy the current group-to-holder assignments."""
         with self._lock:
             return dict(self._holders)
 

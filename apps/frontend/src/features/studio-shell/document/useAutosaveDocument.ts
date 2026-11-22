@@ -15,6 +15,8 @@ import { resolveConflicts, type Side } from "./threeWayMerge";
 
 export interface AutosaveOptions<TDoc extends VersionedDoc, TAction> {
   initial: TDoc;
+  /** Checks the result of a field-by-field merge before writing the combined document. */
+  parseMerged: (candidate: unknown) => TDoc | Promise<TDoc>;
   /** createDocReducer(...) result; keep it module-level so its identity is stable. */
   reducer: DocReducer<TDoc, TAction>;
   save: (doc: TDoc, options: { keepalive?: boolean }) => Promise<TDoc>;
@@ -50,6 +52,8 @@ export interface AutosaveDocument<TDoc, TAction> {
    * A change the server makes to the document: saves the draft, hands the saved version to `change` (which answers
    * the document's new version) and continues from that answer. Rejects when the save or the change fails, and when
    * an edit came in while the change ran (the draft is kept; its next save meets the revision conflict as usual).
+   * Changes run one at a time, each on the version the previous one answered (two fix results that finish together
+   * would otherwise both write on the same revision, and the second would be lost).
    */
   transact: (change: (saved: TDoc) => Promise<TDoc>) => Promise<void>;
 }
@@ -67,28 +71,30 @@ const isConflict = (error: unknown) => isApiError(error) && error.code === "REVI
 
 const FLUSH_TIMEOUT_MS = 15_000;
 const FLUSH_POLL_MS = 100;
+const TRANSACT_POLL_MS = 16;
 
 export function useAutosaveDocument<TDoc extends VersionedDoc, TAction>(options: AutosaveOptions<TDoc, TAction>): AutosaveDocument<TDoc, TAction> {
   const { reducer, autosaveMs = 700 } = options;
   const [state, send] = useReducer(reducer, options.initial, initialDocState<TDoc, TAction>);
   const stateRef = useRef(state);
-  const mounted = useRef(true);
-  const io = useRef(options);
-  const flight = useRef<Flight<TDoc> | null>(null);
+  const mountedRef = useRef(true);
+  const isMounted = () => mountedRef.current;
+  const ioRef = useRef(options);
+  const flightRef = useRef<Flight<TDoc> | null>(null);
   /** The latest save that succeeded (it may not be in the state yet when the page leaves right after it). */
-  const lastSaved = useRef<{ seq: number; generation: number; doc: TDoc } | null>(null);
+  const lastSavedRef = useRef<{ seq: number; generation: number; doc: TDoc } | null>(null);
 
   // Imperative save calls after a synchronous form commit must observe that commit.
   // Keep this snapshot current during commit; debounce and network effects remain passive.
   useLayoutEffect(() => {
     stateRef.current = state;
-    io.current = options;
+    ioRef.current = options;
   });
 
   const runSave = useCallback(async (doc: TDoc, seq: number) => {
     const generation = stateRef.current.generation;
     send({ type: "saveStart" });
-    const request = io.current.save(doc, {});
+    const request = ioRef.current.save(doc, {});
     const current: Flight<TDoc> = {
       seq,
       generation,
@@ -97,29 +103,29 @@ export function useAutosaveDocument<TDoc extends VersionedDoc, TAction>(options:
         (error: unknown): FlightOutcome<TDoc> => (isConflict(error) ? { kind: "conflict" } : { kind: "failed" }),
       ),
     };
-    flight.current = current;
+    flightRef.current = current;
     try {
       const saved = await request;
-      lastSaved.current = { seq, generation, doc: saved };
-      io.current.publish(saved);
-      if (mounted.current) send({ type: "saveOk", saved, seq, generation });
+      lastSavedRef.current = { seq, generation, doc: saved };
+      ioRef.current.publish(saved);
+      if (mountedRef.current) send({ type: "saveOk", saved, seq, generation });
     } catch (error) {
-      if (!mounted.current) return;
+      if (!isMounted()) return;
       if (isConflict(error) && isApiError(error)) {
-        const stored = error.details.stored_revision;
+        const stored = error.details["stored_revision"];
         // One read of the server version; when it fails the conflict is shown as before
-        const latest = await io.current.fetchLatest(stateRef.current.base).then(
+        const latest = await ioRef.current.fetchLatest(stateRef.current.base).then(
           (doc): TDoc | undefined => doc,
           () => undefined,
         );
-        if (!mounted.current) return;
-        if (latest) io.current.publish(latest);
-        send({ type: "conflict", error, storedRevision: typeof stored === "number" ? stored : null, generation, latest });
+        if (!isMounted()) return;
+        if (latest) ioRef.current.publish(latest);
+        send({ type: "conflict", error, storedRevision: typeof stored === "number" ? stored : null, generation, ...(latest === undefined ? {} : { latest }) });
       } else {
         send({ type: "saveError", error, generation });
       }
     } finally {
-      if (flight.current === current) flight.current = null;
+      if (flightRef.current === current) flightRef.current = null;
     }
   }, []);
 
@@ -132,7 +138,7 @@ export function useAutosaveDocument<TDoc extends VersionedDoc, TAction>(options:
   useEffect(() => {
     if (state.status !== "dirty") return;
     const timer = window.setTimeout(saveNow, autosaveMs);
-    return () => window.clearTimeout(timer);
+    return () => { window.clearTimeout(timer); };
   }, [state.status, state.editSeq, saveNow, autosaveMs]);
 
   const flush = useCallback(async () => {
@@ -148,92 +154,109 @@ export function useAutosaveDocument<TDoc extends VersionedDoc, TAction>(options:
         await runSave(current.draft, current.editSeq);
         continue;
       }
-      await new Promise((resolve) => window.setTimeout(resolve, FLUSH_POLL_MS));
+      await new Promise((resolve) => void window.setTimeout(resolve, FLUSH_POLL_MS));
     }
     throw new Error(t("等待專案保存逾時"));
   }, [runSave]);
 
   const reload = useCallback(async () => {
-    const latest = await io.current.fetchLatest(stateRef.current.base);
-    if (!mounted.current) return;
+    const latest = await ioRef.current.fetchLatest(stateRef.current.base);
+    if (!isMounted()) return;
     send({ type: "reset", doc: latest });
-    io.current.publish(latest);
+    ioRef.current.publish(latest);
   }, []);
 
-  const refreshing = useRef(false);
+  const refreshingRef = useRef(false);
   const refresh = useCallback(async (revision: number) => {
     const current = stateRef.current;
-    if (refreshing.current || current.status !== "saved" || revision <= current.base.revision) return;
-    refreshing.current = true;
+    if (refreshingRef.current || current.status !== "saved" || revision <= current.base.revision) return;
+    refreshingRef.current = true;
     try {
-      const latest = await io.current.fetchLatest(current.base).then(
+      const latest = await ioRef.current.fetchLatest(current.base).then(
         (doc): TDoc | undefined => doc,
         () => undefined,
       );
-      if (!latest || !mounted.current) return;
+      if (!latest || !mountedRef.current) return;
       send({ type: "refresh", doc: latest });
-      io.current.publish(latest);
+      ioRef.current.publish(latest);
     } finally {
-      refreshing.current = false;
+      refreshingRef.current = false;
     }
   }, []);
 
   const overwrite = useCallback(
     async (choices: ReadonlyMap<string, Side> = new Map()) => {
-      const latest = await io.current.fetchLatest(stateRef.current.base);
-      if (!mounted.current) return;
+      const latest = await ioRef.current.fetchLatest(stateRef.current.base);
+      if (!isMounted()) return;
       const current = stateRef.current;
       // Never send the whole stale draft: a change saved elsewhere meanwhile (another tab muting A1) would be lost
-      const merged = resolveConflicts(current.base, latest, current.draft, choices) as TDoc;
+      const merged = await ioRef.current.parseMerged(resolveConflicts(current.base, latest, current.draft, choices));
+      if (!isMounted() || stateRef.current.generation !== current.generation || stateRef.current.editSeq !== current.editSeq) return;
       await runSave({ ...merged, revision: latest.revision }, current.editSeq);
     },
     [runSave],
   );
 
   const rebase = useCallback(async () => {
-    const latest = await io.current.fetchLatest(stateRef.current.base);
-    if (!mounted.current) return;
+    const latest = await ioRef.current.fetchLatest(stateRef.current.base);
+    if (!isMounted()) return;
     send({ type: "rebase", latest });
-    io.current.publish(latest);
+    ioRef.current.publish(latest);
   }, []);
 
   const previewConflict = useCallback(async () => {
-    const latest = await io.current.fetchLatest(stateRef.current.base);
+    const latest = await ioRef.current.fetchLatest(stateRef.current.base);
     const current = stateRef.current;
     return { base: current.base, latest, draft: current.draft, pending: current.pending.map((item) => item.action) };
   }, []);
 
+  /** The transact running now and those queued behind it (each starts when the one before has ended, either way). */
+  const transactQueueRef = useRef<Promise<void>>(Promise.resolve());
+  /** The generation the last transact's answer starts; the next transact waits until the state has reached it. */
+  const transactGenerationRef = useRef(-1);
+
   const transact = useCallback(
-    async (change: (saved: TDoc) => Promise<TDoc>) => {
-      await flush();
-      const started = stateRef.current;
-      const next = await change(started.base);
-      io.current.publish(next);
-      if (!mounted.current) return;
-      const current = stateRef.current;
-      if (current.generation !== started.generation || current.editSeq !== started.editSeq) throw new Error(t("套用期間專案又有新的修改；請重新整理後再試一次"));
-      send({ type: "reset", doc: next });
+    (change: (saved: TDoc) => Promise<TDoc>) => {
+      const run = transactQueueRef.current.then(async () => {
+        // The answer of the transact before this one is applied on the next render: start from it, not from the
+        // version it replaced (that would be a revision conflict on the server)
+        const deadline = Date.now() + FLUSH_TIMEOUT_MS;
+        while (isMounted() && stateRef.current.generation < transactGenerationRef.current && Date.now() < deadline) {
+          await new Promise((resolve) => void window.setTimeout(resolve, TRANSACT_POLL_MS));
+        }
+        await flush();
+        const started = stateRef.current;
+        const next = await change(started.base);
+        ioRef.current.publish(next);
+        if (!isMounted()) return;
+        const current = stateRef.current;
+        if (current.generation !== started.generation || current.editSeq !== started.editSeq) throw new Error(t("套用期間專案又有新的修改；請重新整理後再試一次"));
+        transactGenerationRef.current = started.generation + 1;
+        send({ type: "reset", doc: next });
+      });
+      transactQueueRef.current = run.catch(() => undefined);
+      return run;
     },
     [flush],
   );
 
   // Unmount (switching project or Studio): send the edits no save has taken yet, once, without retrying
   useEffect(() => {
-    mounted.current = true;
+    mountedRef.current = true;
     return () => {
-      mounted.current = false;
+      mountedRef.current = false;
       const current = stateRef.current;
       // Only this document version counts (a reload or a merge starts a new generation)
-      const inFlight = flight.current?.generation === current.generation ? flight.current : null;
-      const saved = lastSaved.current?.generation === current.generation && lastSaved.current.seq > current.savedSeq ? lastSaved.current : null;
+      const inFlight = flightRef.current?.generation === current.generation ? flightRef.current : null;
+      const saved = lastSavedRef.current?.generation === current.generation && lastSavedRef.current.seq > current.savedSeq ? lastSavedRef.current : null;
       // Saved up to savedSeq (or a save that just ended); the save in flight takes everything up to its seq.
       // After a conflict nothing is sent.
       if (current.status === "conflict" || current.editSeq <= Math.max(current.savedSeq, saved?.seq ?? 0, inFlight?.seq ?? 0)) return;
       const draft = current.draft;
       const sendOnce = (base: VersionedDoc) => {
-        void io.current
+        void ioRef.current
           .save({ ...draft, revision: base.revision, created_at: base.created_at, updated_at: base.updated_at }, { keepalive: true })
-          .then((saved) => io.current.publish(saved))
+          .then((saved) => { ioRef.current.publish(saved); })
           .catch(() => undefined);
       };
       if (!inFlight) {
@@ -255,10 +278,10 @@ export function useAutosaveDocument<TDoc extends VersionedDoc, TAction>(options:
       if (status === "dirty" || status === "saving" || status === "error" || status === "conflict") event.preventDefault();
     };
     window.addEventListener("beforeunload", warn);
-    return () => window.removeEventListener("beforeunload", warn);
+    return () => { window.removeEventListener("beforeunload", warn); };
   }, []);
 
-  const dispatch = useCallback((action: TAction) => send({ type: "edit", action }), []);
+  const dispatch = useCallback((action: TAction) => { send({ type: "edit", action }); }, []);
 
   return { state, dispatch, saveNow, flush, reload, refresh, overwrite, rebase, previewConflict, transact };
 }

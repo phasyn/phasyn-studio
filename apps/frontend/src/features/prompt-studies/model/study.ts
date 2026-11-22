@@ -1,6 +1,6 @@
 // 研究文件的純操作：建立、版本與任務查詢、結果參照、預算用量（與主控的計算規則相同）、接受條件。不送出任何請求。
 import type { ApiErrorBody } from "@/api/generated/contracts";
-import { isRecord } from "@/lib/json";
+import { changedItems, isRecord } from "@/lib/json";
 import type {
   CandidateRef,
   CaptionRef,
@@ -79,7 +79,7 @@ export function newStudy(input: { title: string; source: PromptStudySource; lang
 // ---------------------------------------------------------------- 版本
 
 export function findVersion(study: PromptStudy, versionId: string | null | undefined): PromptStudyVersion | null {
-  return versionId ? (study.versions.find((version) => version.version_id === versionId) ?? null) : null;
+  return (versionId != null && versionId !== "") ? (study.versions.find((version) => version.version_id === versionId) ?? null) : null;
 }
 
 export function versionIndex(study: PromptStudy, versionId: string): number {
@@ -88,9 +88,9 @@ export function versionIndex(study: PromptStudy, versionId: string): number {
 
 /** v1、v2…（版本的 number）；已不存在的版本顯示原始 ID 開頭。 */
 export function versionLabel(study: PromptStudy, versionId: string | null | undefined): string {
-  if (!versionId) return "—";
+  if (!(versionId != null && versionId !== "")) return "—";
   const version = findVersion(study, versionId);
-  return version ? `v${version.number}` : t("已移除的版本 {versionId}", { versionId: versionId.slice(0, 8) });
+  return version ? `v${String(version.number)}` : t("已移除的版本 {versionId}", { versionId: versionId.slice(0, 8) });
 }
 
 export function latestVersion(study: PromptStudy): PromptStudyVersion | null {
@@ -102,7 +102,7 @@ export function candidateLabel(study: PromptStudy, ref: CandidateRef): string {
 }
 
 export function sameCandidate(a: CandidateRef | null | undefined, b: CandidateRef | null | undefined): boolean {
-  return Boolean(a && b && a.version_id === b.version_id && a.variant === b.variant);
+  return a != null && a.version_id === b?.version_id && a.variant === b.variant;
 }
 
 /** 加在最後；number 依序遞增（主控檢查 1..n）。 */
@@ -113,7 +113,7 @@ export function addVersion(study: PromptStudy, version: Omit<PromptStudyVersion,
 // ---------------------------------------------------------------- 任務
 
 export function findTask(study: PromptStudy, taskId: string | null | undefined): PromptStudyTask | null {
-  return taskId ? (study.tasks.find((task) => task.task_id === taskId) ?? null) : null;
+  return (taskId != null && taskId !== "") ? (study.tasks.find((task) => task.task_id === taskId) ?? null) : null;
 }
 
 /** 尚未結束的任務（同一份研究一次只推進一個）。 */
@@ -153,15 +153,13 @@ export function newTask(input: { request: PromptTaskRequest; baseVersionId: stri
 
 /** 改一個任務（updated_at 一併更新）；找不到任務或沒有變化時原樣回傳。 */
 export function updateTask(study: PromptStudy, taskId: string, change: (task: PromptStudyTask) => PromptStudyTask, now: string): PromptStudy {
-  let changed = false;
-  const tasks = study.tasks.map((task) => {
+  const tasks = changedItems(study.tasks, (task) => {
     if (task.task_id !== taskId) return task;
     const next = change(task);
     if (next === task) return task;
-    changed = true;
     return { ...next, updated_at: now };
   });
-  return changed ? { ...study, tasks } : study;
+  return tasks !== null ? { ...study, tasks } : study;
 }
 
 export const captionOf = (task: PromptStudyTask): CaptionRef | null => task.result_refs.find((ref): ref is CaptionRef => ref.kind === "caption") ?? null;
@@ -177,7 +175,7 @@ export function referencedRunIds(task: PromptStudyTask): Set<string> {
   const out = new Set<string>();
   for (const ref of task.result_refs) {
     if (ref.kind === "version") {
-      if (ref.run_id) out.add(ref.run_id);
+      if (ref.run_id != null && ref.run_id !== "") out.add(ref.run_id);
     } else {
       out.add(ref.run_id);
     }
@@ -188,7 +186,7 @@ export function referencedRunIds(task: PromptStudyTask): Set<string> {
 /** 失敗紀錄裡的 run（task.error.details.run_id）。 */
 export function errorRunId(error: ApiErrorBody | null): string | null {
   const details = error?.details;
-  return isRecord(details) && typeof details.run_id === "string" ? details.run_id : null;
+  return isRecord(details) && typeof details["run_id"] === "string" ? details["run_id"] : null;
 }
 
 /**
@@ -198,7 +196,7 @@ export function errorRunId(error: ApiErrorBody | null): string | null {
 export function pendingRun(task: PromptStudyTask): { runId: string; failed: boolean } | null {
   const referenced = referencedRunIds(task);
   const last = task.run_ids[task.run_ids.length - 1];
-  if (!last || referenced.has(last)) return null;
+  if (!(last != null && last !== "") || referenced.has(last)) return null;
   return { runId: last, failed: errorRunId(task.error) === last };
 }
 
@@ -247,7 +245,7 @@ export function bestEvaluation(items: readonly EvaluationRef[]): EvaluationRef |
  * 有指定任務且其中有生成成功的圖時用那個任務；同一範圍內優先選誤差最低那張。
  */
 export function acceptanceSource(study: PromptStudy, ref: CandidateRef, preferTaskId: string | null = null): { task: PromptStudyTask; render: RenderRef } | null {
-  const sources: Array<{ task: PromptStudyTask; render: RenderRef }> = [];
+  const sources: { task: PromptStudyTask; render: RenderRef }[] = [];
   for (const task of study.tasks) {
     if (task.state === "running") continue;
     for (const render of rendersOf(task)) {
@@ -257,12 +255,12 @@ export function acceptanceSource(study: PromptStudy, ref: CandidateRef, preferTa
   const preferred = sources.filter((item) => item.task.task_id === preferTaskId);
   const pool = preferred.length > 0 ? preferred : sources;
   const best = bestEvaluation(pool.flatMap((item) => evaluationsOf(item.task).filter((evaluation) => evaluation.render_run_id === item.render.run_id)));
-  return pool.find((item) => best && item.render.run_id === best.render_run_id) ?? pool[0] ?? null;
+  return pool.find((item) => item.render.run_id === best?.render_run_id) ?? pool[0] ?? null;
 }
 
 /** 目前接受的候選（accepted_version_id＋acceptance.variant）。 */
 export function acceptedRef(study: PromptStudy): CandidateRef | null {
-  return study.accepted_version_id && study.acceptance ? { version_id: study.accepted_version_id, variant: study.acceptance.variant } : null;
+  return (study.accepted_version_id != null && study.accepted_version_id !== "") && study.acceptance ? { version_id: study.accepted_version_id, variant: study.acceptance.variant } : null;
 }
 
 /** 已評分評估的平均誤差（不可判斷的不算）；沒有時為 null。 */
@@ -308,5 +306,5 @@ const SPLIT_TEXT: Record<EvaluationRef["split"], string> = { search: t("搜尋")
 /** 「v3 core · seed 42 · 搜尋第 1 輪」。 */
 export function evaluationTitle(study: PromptStudy, item: Pick<EvaluationRef, "version_id" | "variant" | "seed" | "split" | "round">): string {
   const where = item.split === "search" ? t("搜尋第 {round} 輪", { round: item.round + 1 }) : SPLIT_TEXT[item.split];
-  return `${versionLabel(study, item.version_id)} ${item.variant} · seed ${item.seed} · ${where}`;
+  return `${versionLabel(study, item.version_id)} ${item.variant} · seed ${String(item.seed)} · ${where}`;
 }

@@ -14,7 +14,9 @@ from typing import Any
 from phasyn_components.settings import validate_definition, validate_settings
 
 
-def check_settings(definition: Mapping[str, Any], description: Mapping[str, Any]) -> None:
+def check_settings(
+    definition: Mapping[str, Any], description: Mapping[str, Any]
+) -> None:
     """422 ``UNSUPPORTED_SETTING`` (``details.errors`` lists the problems) unless the provider accepts every setting.
 
     The definition must satisfy the InstanceDefinition contract; its settings then go through the checks of

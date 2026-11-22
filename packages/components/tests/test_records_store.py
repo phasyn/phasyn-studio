@@ -7,10 +7,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
+from phasyn_components.errors import ComponentError
 from phasyn_components.recorder import Recorder
-from phasyn_components.records import RecordingStore
-from phasyn_components.records import store as store_module
+from phasyn_components.records import RecordingStore, store as store_module
 from phasyn_components.testing.ids import NODE_A_ID, uid
+
 
 RID = uid(100)
 
@@ -51,16 +53,25 @@ class _FailingDb:
         return getattr(self._db, name)
 
 
-@pytest.mark.parametrize("segment_bytes", [store_module.SEGMENT_BYTES, 1], ids=["one-segment", "rollover"])
+@pytest.mark.parametrize(
+    "segment_bytes", [store_module.SEGMENT_BYTES, 1], ids=["one-segment", "rollover"]
+)
 def test_ingest_after_a_failed_batch_keeps_offsets_exact(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, segment_bytes: int
 ) -> None:
-    monkeypatch.setattr(store_module, "SEGMENT_BYTES", segment_bytes)  # 1 = every event in its own segment
+    monkeypatch.setattr(
+        store_module, "SEGMENT_BYTES", segment_bytes
+    )  # 1 = every event in its own segment
     store = RecordingStore(tmp_path / "controller" / "recordings")
     real_db = store._db
     store._db = _FailingDb(real_db, fail_on_insert=3)  # type: ignore[assignment]
     with pytest.raises(sqlite3.OperationalError):
-        store.ingest_batch({"node_id": NODE_A_ID, "events": [_event(s, "first try") for s in (1, 2, 3, 4)]})
+        store.ingest_batch(
+            {
+                "node_id": NODE_A_ID,
+                "events": [_event(s, "first try") for s in (1, 2, 3, 4)],
+            }
+        )
     store._db = real_db  # the lines already appended for the rolled-back batch are still on disk
 
     sent = [_event(s) for s in (1, 2, 3, 4, 5)]
@@ -101,6 +112,39 @@ def test_rebuild_restores_the_same_view_from_files(tmp_path: Path) -> None:
         _local_recording(root, rid)
     store = RecordingStore(root)
     store.index_local()
-    before = (store.list({}, limit=10), [store.events(r, stream_id="runtime") for r in rids])
+    before = (
+        store.list({}, limit=10),
+        [store.events(r, stream_id="runtime") for r in rids],
+    )
     assert store.rebuild() > 0
-    assert (store.list({}, limit=10), [store.events(r, stream_id="runtime") for r in rids]) == before
+    assert (
+        store.list({}, limit=10),
+        [store.events(r, stream_id="runtime") for r in rids],
+    ) == before
+
+
+def test_missing_event_segment_preserves_indexed_recording_identity(
+    tmp_path: Path,
+) -> None:
+    store = RecordingStore(tmp_path / "recordings")
+    event = _event(1)
+    store.ingest_batch({"node_id": NODE_A_ID, "events": [event]})
+    original = store.get(RID)
+    segment = next((store.directory(RID) / "streams").glob("*.jsonl"))
+    payload = segment.read_bytes()
+    segment.unlink()
+
+    assert store.list({})["items"] == [original]
+    assert original["context"]["component_id"] == event["component_id"]
+    assert original["summary"]["context_available"] is False
+    assert original["summary"]["coverage"] == "partial"
+    with pytest.raises(ComponentError) as error:
+        store.events(RID, stream_id="runtime")
+    assert error.value.code == "INTEGRITY_MISMATCH"
+    assert error.value.details == {
+        "recording_id": RID,
+        "stream_id": "runtime",
+        "segment": 0,
+    }
+    segment.write_bytes(payload)
+    assert store.events(RID, stream_id="runtime")["events"] == [event]

@@ -87,7 +87,7 @@ export function recordRunFailed(study: PromptStudy, taskId: string, step: RunSte
     (task) => {
       const recorded: ApiErrorBody = { ...error, details: { ...(error.details ?? {}), run_id: runId, step: step.kind } };
       const next: PromptStudyTask = { ...task, error: recorded, message: encodeTaskNote({ kind: "failed", code: error.code }) };
-      return step.kind === "render" && runId ? mapRender(next, runId, (ref) => ({ ...ref, state: runState, error })) : next;
+      return step.kind === "render" && (runId != null && runId !== "") ? mapRender(next, runId, (ref) => ({ ...ref, state: runState, error })) : next;
     },
     now,
   );

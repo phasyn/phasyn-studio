@@ -20,6 +20,7 @@ export function residueLabel(state: ResidueState): string {
       return t("殘留待確認");
     case "clean":
       return t("已檢查無殘留");
+    case "unchecked":
     default:
       return t("未檢查殘留");
   }

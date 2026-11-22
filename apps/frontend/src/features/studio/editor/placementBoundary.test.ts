@@ -1,3 +1,4 @@
+import { fixtureValue } from "@/test/fixtures";
 // Data-integrity boundaries of the edits that put copied clips, attributes and transitions into a document: a paste
 // never leaves two clips overlapping on a track and keeps the pasted clips' offsets and layers; a transition placed on
 // an edit spot never takes more frames than either clip has beside its other transition and changes nothing a clip
@@ -55,7 +56,7 @@ function film(): StudioTimeline {
 
 function counter(): AllocateId {
   let serial = 0;
-  return (prefix) => `${prefix}-n${++serial}`;
+  return (prefix) => `${prefix}-n${String(++serial)}`;
 }
 
 /** Every track: each clip starts where the previous one ends, or overlaps it by exactly the previous one's transition. */
@@ -63,8 +64,8 @@ function expectNoOverlap(timeline: StudioTimeline): void {
   for (const { track_id } of timeline.tracks) {
     const ordered = trackClips(timeline, track_id);
     for (let index = 1; index < ordered.length; index += 1) {
-      const previous = ordered[index - 1]!;
-      const current = ordered[index]!;
+      const previous = fixtureValue(ordered[index - 1], "placementBoundary.test.ts");
+      const current = fixtureValue(ordered[index], "placementBoundary.test.ts");
       const overlap = clipEnd(previous) - current.start_frame;
       if (overlap > 0) expect(activeTransition(previous.effects)?.frames).toBe(overlap);
     }
@@ -93,10 +94,10 @@ describe("a paste never overlaps clips and keeps what was copied", () => {
     expectNoOverlap(result.value.timeline);
     expect(result.value.end).toBe(at + copied.value.duration);
     // Offsets, lengths, source ranges and layers as copied: the lowest copied track of each kind lands on V1 / A1
-    const pasted = result.value.selected.map((id) => result.value.timeline.clips.find((item) => item.clip_id === id)!);
+    const pasted = result.value.selected.map((id) => fixtureValue(result.value.timeline.clips.find((item) => item.clip_id === id), "placementBoundary.test.ts"));
     expect(pasted).toHaveLength(copied.value.clips.length);
     pasted.forEach((item, index) => {
-      const copy = copied.value.clips[index]!;
+      const copy = fixtureValue(copied.value.clips[index], "placementBoundary.test.ts");
       expect(item.start_frame).toBe(at + copy.start_frame);
       expect([clipDuration(item), item.in_frame, item.out_frame]).toEqual([clipDuration(copy), copy.in_frame, copy.out_frame]);
       expect(item.track_id).toBe(tracks.value.get(copy.track_id));
@@ -160,8 +161,8 @@ describe("a transition on an edit spot stays within both clips", () => {
     for (const spot of trackSpots(original, trackId)) {
       const plan = planAtSpot(original, spot, spec, true);
       if (!plan.ok || spot.kind !== "cut") continue;
-      const left = original.clips.find((item) => item.clip_id === spot.leftId)!;
-      const right = original.clips.find((item) => item.clip_id === spot.rightId)!;
+      const left = fixtureValue(original.clips.find((item) => item.clip_id === spot.leftId), "placementBoundary.test.ts");
+      const right = fixtureValue(original.clips.find((item) => item.clip_id === spot.rightId), "placementBoundary.test.ts");
       expect(plan.frames).toBeGreaterThanOrEqual(1);
       expect(plan.frames).toBeLessThanOrEqual(activeTransition(left.effects)?.frames ?? room(original, left, right));
     }
@@ -174,7 +175,7 @@ describe("a transition on an edit spot stays within both clips", () => {
     expectNoOverlap(result.timeline);
     expect(timelineDuration(result.timeline)).toBe(timelineDuration(original));
     for (const after of result.timeline.clips) {
-      const before = original.clips.find((item) => item.clip_id === after.clip_id)!;
+      const before = fixtureValue(original.clips.find((item) => item.clip_id === after.clip_id), "placementBoundary.test.ts");
       // A transition runs the clips on past their cut and a fade is drawn over them: between its cuts every clip shows
       // the frames it showed, where it showed them
       const shown = betweenCuts(original, before);
@@ -194,18 +195,18 @@ describe("a transition on an edit spot stays within both clips", () => {
 
   it("dissolves a free end of an upper track with opacity keys inside the clip, keeping its other keys", () => {
     const original = shortFilm();
-    const overlay = original.clips.find((item) => item.clip_id === "overlay")!;
-    const tail = trackSpots(original, "video-2").find((spot) => spot.kind === "tail")!;
+    const overlay = fixtureValue(original.clips.find((item) => item.clip_id === "overlay"), "placementBoundary.test.ts");
+    const tail = fixtureValue(trackSpots(original, "video-2").find((spot) => spot.kind === "tail"), "placementBoundary.test.ts");
     const result = applyAtSpots(original, [{ spot: tail, spec: DEFAULT_VIDEO_TRANSITION }], true, 12, counter());
     expect(result.applied).toBe(1);
     expect(timelineProblem(result.timeline)).toBeNull();
-    const keys: TimelineKeyframe[] = result.timeline.clips.find((item) => item.clip_id === "overlay")!.motion.keyframes.opacity ?? [];
+    const keys: TimelineKeyframe[] = fixtureValue(result.timeline.clips.find((item) => item.clip_id === "overlay"), "placementBoundary.test.ts").motion.keyframes.opacity ?? [];
     const { start_frame: from, end_frame: to } = windowBounds(overlay);
     expect(keys[0]).toEqual(overlay.motion.keyframes.opacity?.[0]);
     expect(keys.every((key) => key.frame >= from && key.frame < to)).toBe(true);
     expect(keys.at(-1)).toMatchObject({ frame: to - 1, value: 0 });
     // At the head the dissolve may only run up to the clip's first key
-    const head = trackSpots(result.timeline, "video-2").find((spot) => spot.kind === "head")!;
+    const head = fixtureValue(trackSpots(result.timeline, "video-2").find((spot) => spot.kind === "head"), "placementBoundary.test.ts");
     const refused = planAtSpot(result.timeline, head, { ...DEFAULT_VIDEO_TRANSITION }, true, 12);
     expect(refused.ok).toBe(true);
     if (refused.ok) expect(refused.frames).toBeLessThan(6);
@@ -221,16 +222,16 @@ describe("an adjustment layer and the transitions placed on its edges", () => {
     expect(timelineProblem(original)).toBeNull();
     const snapshot = structuredClone(original);
     const spots = trackSpots(original, "video-2");
-    const cut = spots.find((spot) => spot.kind === "cut")!;
+    const cut = fixtureValue(spots.find((spot) => spot.kind === "cut"), "placementBoundary.test.ts");
     for (const spec of [DEFAULT_VIDEO_TRANSITION, { ...DEFAULT_VIDEO_TRANSITION, kind: "push" as const }]) {
       expect(planAtSpot(original, cut, spec, true)).toEqual({ ok: false, reason: ADJUSTMENT_TRANSITION, applied: false });
     }
-    const tail = spots.find((spot) => spot.kind === "tail" && spot.clipId === "layer")!;
+    const tail = fixtureValue(spots.find((spot) => spot.kind === "tail" && spot.clipId === "layer"), "placementBoundary.test.ts");
     const result = applyAtSpots(original, [{ spot: tail, spec: DEFAULT_VIDEO_TRANSITION }], true, 12, counter());
     expect(original).toEqual(snapshot);
     expect(result.applied).toBe(1);
     expect(timelineProblem(result.timeline)).toBeNull();
-    const layer = result.timeline.clips.find((item) => item.clip_id === "layer")!;
+    const layer = fixtureValue(result.timeline.clips.find((item) => item.clip_id === "layer"), "placementBoundary.test.ts");
     expect(layer.motion.keyframes.opacity?.at(-1)).toMatchObject({ value: 0 });
   });
 });
@@ -247,7 +248,7 @@ describe("pasted attributes keep their keys inside the clip", () => {
     expect(original).toEqual(snapshot);
     if (!result.ok) throw new Error(result.error);
     expect(timelineProblem(result.value.timeline)).toBeNull();
-    const target = result.value.timeline.clips.find((item) => item.clip_id === "v-three")!;
+    const target = fixtureValue(result.value.timeline.clips.find((item) => item.clip_id === "v-three"), "placementBoundary.test.ts");
     const pasted = target.motion.keyframes.x ?? [];
     expect(pasted.length).toBeGreaterThan(0);
     expect(pasted.every((key) => key.frame >= 0 && key.frame <= clipDuration(target))).toBe(true);
@@ -256,7 +257,7 @@ describe("pasted attributes keep their keys inside the clip", () => {
     const stacked = structuredClone(original);
     const effect = { kind: "blur" as const, effect_id: "blur", enabled: true, radius: 2 };
     stacked.clips = stacked.clips.map((item) =>
-      item.clip_id === "v-two" ? { ...item, effect_stack: [effect] } : item.clip_id === "v-three" ? { ...item, effect_stack: Array.from({ length: 8 }, (_, index) => ({ ...effect, effect_id: `blur-${index}` })) } : item,
+      item.clip_id === "v-two" ? { ...item, effect_stack: [effect] } : item.clip_id === "v-three" ? { ...item, effect_stack: Array.from({ length: 8 }, (_, index) => ({ ...effect, effect_id: `blur-${String(index)}` })) } : item,
     );
     const source = copyClips(stacked, ["v-two"], false);
     if (!source.ok) throw new Error(source.error);

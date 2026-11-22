@@ -119,8 +119,7 @@ export function sameReferences(a: readonly StudioReference[], b: readonly Studio
     a.every((ref, index) => {
       const other = b[index];
       return (
-        other !== undefined &&
-        ref.ref_id === other.ref_id &&
+        ref.ref_id === other?.ref_id &&
         ref.kind === other.kind &&
         ref.alias === other.alias &&
         ref.item_id === other.item_id &&

@@ -37,6 +37,7 @@ from .plugin_manifest import (
 )
 from .plugin_package import Package, load_directory
 
+
 log = logging.getLogger("phasyn_components.plugins")
 
 BUILTIN_DIR = "studio-plugins"
@@ -45,8 +46,7 @@ SOURCE_ORDER: Mapping[str, int] = {"builtin": 0, "installed": 1, "dev": 2}
 
 @dataclass(frozen=True)
 class PluginRecord:
-    """One package of the registry: its content, or the reasons the content could not be loaded, plus the facts
-    the registry keeps about it (source, and for installed packages what was recorded at installation)."""
+    """One package of the registry: its content, or the reasons the content could not be loaded, plus the facts the registry keeps about it (source, and for installed packages what was recorded at installation)."""
 
     plugin_id: str
     source: str  # builtin | installed | dev
@@ -63,7 +63,11 @@ class PluginRecord:
 
 def _selectable(package: Package) -> list[str]:
     contributes = package.manifest.get("contributes") or {}
-    return [str(item["id"]) for kind in ("rules", "generation") for item in contributes.get(kind) or []]
+    return [
+        str(item["id"])
+        for kind in ("rules", "generation")
+        for item in contributes.get(kind) or []
+    ]
 
 
 def builtin_rule_ids(records: Iterable[PluginRecord]) -> frozenset[str]:
@@ -72,7 +76,8 @@ def builtin_rule_ids(records: Iterable[PluginRecord]) -> frozenset[str]:
         str(rule["id"])
         for record in records
         if record.source == "builtin" and record.package is not None
-        for rule in (record.package.manifest.get("contributes") or {}).get("rules") or []
+        for rule in (record.package.manifest.get("contributes") or {}).get("rules")
+        or []
     )
 
 
@@ -82,13 +87,21 @@ def _load_builtin(directory: Path, taken: set[str]) -> PluginRecord:
         package = load_directory(directory, builtin=True)
     except ComponentError as exc:
         return PluginRecord(plugin_id, "builtin", issues=tuple(issues_of(exc)))
-    problems = [] if package.plugin_id == plugin_id else [issue("builtin_id", path="id")]
+    problems = (
+        [] if package.plugin_id == plugin_id else [issue("builtin_id", path="id")]
+    )
     # Built-in contributions are referenced without a prefix, so their ids are unique across built-in packages.
-    problems += [issue("duplicate_id", path="contributes", id=name) for name in _selectable(package) if name in taken]
+    problems += [
+        issue("duplicate_id", path="contributes", id=name)
+        for name in _selectable(package)
+        if name in taken
+    ]
     if problems:
         return PluginRecord(plugin_id, "builtin", issues=tuple(problems))
     taken.update(_selectable(package))
-    return PluginRecord(plugin_id, "builtin", package, version=package.version, digest=package.digest)
+    return PluginRecord(
+        plugin_id, "builtin", package, version=package.version, digest=package.digest
+    )
 
 
 def load_builtin_records(contracts_dir: Path) -> list[PluginRecord]:
@@ -102,14 +115,18 @@ def load_builtin_records(contracts_dir: Path) -> list[PluginRecord]:
         return []  # this build ships no built-in packages
     try:
         with os.scandir(root) as entries:
-            names = sorted(entry.name for entry in entries if entry.is_dir(follow_symlinks=False))
+            names = sorted(
+                entry.name for entry in entries if entry.is_dir(follow_symlinks=False)
+            )
     except OSError:
         log.warning("找不到內建插件目錄 %s", BUILTIN_DIR)
         return []
     taken: set[str] = set()
     # A directory whose name is not a built-in id is not a package (a repository check refuses such a directory).
     return [
-        _load_builtin(root / name, taken) for name in names if is_plugin_id(name) and name.startswith(BUILTIN_PREFIX)
+        _load_builtin(root / name, taken)
+        for name in names
+        if is_plugin_id(name) and name.startswith(BUILTIN_PREFIX)
     ]
 
 
@@ -133,11 +150,22 @@ def _contributions(
                 refs.append(name)
             else:
                 where = f"contributes/presets/{index}/rules"
-                problems.append(issue("preset_rule_missing", path=where, preset=preset["id"], rule=name))
+                problems.append(
+                    issue(
+                        "preset_rule_missing",
+                        path=where,
+                        preset=preset["id"],
+                        rule=name,
+                    )
+                )
         presets.append({"preset": preset, "refs": refs})
     contributes = {
         "rules": [
-            {"ref": contribution_ref(plugin_id, rule["id"], builtin=builtin), "rev": rule_rev(rule), "rule": rule}
+            {
+                "ref": contribution_ref(plugin_id, rule["id"], builtin=builtin),
+                "rev": rule_rev(rule),
+                "rule": rule,
+            }
             for rule in rules
         ],
         "presets": presets,
@@ -182,30 +210,49 @@ def _unreadable_entry(record: PluginRecord) -> dict[str, Any]:
         "digest": record.digest,
         "size_bytes": 0,
         "file_count": 0,
-        "contributes": {"rules": [], "presets": [], "generation": [], "commands": [], "panels": []},
+        "contributes": {
+            "rules": [],
+            "presets": [],
+            "generation": [],
+            "commands": [],
+            "panels": [],
+        },
     }
 
 
-def plugin_entry(record: PluginRecord, *, host_version: str, builtin_rules: frozenset[str]) -> dict[str, Any]:
+def plugin_entry(
+    record: PluginRecord, *, host_version: str, builtin_rules: frozenset[str]
+) -> dict[str, Any]:
     """Contract ``StudioPlugin``: one registry row with the package's status and resolved contributions."""
     package = record.package
     if package is None:
         return _unreadable_entry(record)
     manifest = package.manifest
     builtin = record.source == "builtin"
-    contributes, unresolved = _contributions(package, builtin=builtin, builtin_rules=builtin_rules)
+    contributes, unresolved = _contributions(
+        package, builtin=builtin, builtin_rules=builtin_rules
+    )
     problems = [*compatibility_issues(manifest, host_version=host_version), *unresolved]
     author = manifest.get("author")
     return {
         **_facts(record),
-        "status": "incompatible" if problems else "disabled" if record.disabled else "ok",
+        "status": "incompatible"
+        if problems
+        else "disabled"
+        if record.disabled
+        else "ok",
         "problems": problems[:MAX_ISSUES],
         "version": package.version,
         "name": manifest["name"],
         "description": manifest.get("description"),
-        "author": {"name": author["name"], "url": author.get("url")} if author else None,
+        "author": {"name": author["name"], "url": author.get("url")}
+        if author
+        else None,
         "license": manifest.get("license"),
-        "engines": {"phasyn": manifest["engines"]["phasyn"], "plugin_api": manifest["engines"].get("plugin_api")},
+        "engines": {
+            "phasyn": manifest["engines"]["phasyn"],
+            "plugin_api": manifest["engines"].get("plugin_api"),
+        },
         "permissions": list(manifest.get("permissions") or []),
         "has_code": "main" in manifest,
         "digest": package.digest,
@@ -221,7 +268,9 @@ def plugin_detail(record: PluginRecord, entry: Mapping[str, Any]) -> dict[str, A
     return {
         "plugin": dict(entry),
         "manifest": package.manifest if package is not None else None,
-        "files": [item.to_dict() for item in package.files] if package is not None else [],
+        "files": [item.to_dict() for item in package.files]
+        if package is not None
+        else [],
         "consent": dict(record.consent) if record.consent is not None else None,
     }
 
@@ -236,11 +285,20 @@ def registry_document(
 ) -> dict[str, Any]:
     """Contract ``StudioPluginList``: built-in, installed and development packages, each group sorted by id."""
     builtin_rules = builtin_rule_ids(records)
-    ordered = sorted(records, key=lambda record: (SOURCE_ORDER[record.source], record.plugin_id))
+    ordered = sorted(
+        records, key=lambda record: (SOURCE_ORDER[record.source], record.plugin_id)
+    )
     return {
-        "items": [plugin_entry(record, host_version=host_version, builtin_rules=builtin_rules) for record in ordered],
+        "items": [
+            plugin_entry(record, host_version=host_version, builtin_rules=builtin_rules)
+            for record in ordered
+        ],
         "limits": limits.to_dict(),
-        "host": {"version": host_version, "manifest_version": MANIFEST_VERSION, "plugin_api": list(PLUGIN_APIS)},
+        "host": {
+            "version": host_version,
+            "manifest_version": MANIFEST_VERSION,
+            "plugin_api": list(PLUGIN_APIS),
+        },
         "install": install,
         "problems": [dict(item) for item in problems[:MAX_ISSUES]],
     }

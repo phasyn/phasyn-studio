@@ -76,10 +76,12 @@ export function SettingsDiffTable({
                   </details>
                 ) : null}
               </Th>
-              {row.cells.map((cell, index) => {
+              {columns.map((column, index) => {
+                const cell = row.cells[index];
+                if (!cell) return null;
                 const changed = row.changed[index] ?? false;
                 return (
-                  <Td key={columns[index]?.id ?? index} className={cn("min-w-[10rem]", index === 0 && BASELINE_CELL, changed && "bg-warning/8")}>
+                  <Td key={column.id} className={cn("min-w-[10rem]", index === 0 && BASELINE_CELL, changed && "bg-warning/8")}>
                     <CellText cell={cell} />
                     {changed ? (
                       <span className="mt-1 flex items-center gap-1 text-caption text-warning">

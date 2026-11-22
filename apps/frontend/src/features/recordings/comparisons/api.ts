@@ -1,7 +1,7 @@
 // 比較頁資料：GET /api/comparisons（2–8 筆）、各 recording 的 context（欄標題用），以及挑選用的最近紀錄。
 import { useQueries, useQuery } from "@tanstack/react-query";
-import type { Comparison, Recording } from "@/api/generated/contracts";
-import { apiJson } from "@/api/http";
+import type { Recording } from "@/api/generated/contracts";
+import { contractJson } from "@/api/http";
 import { fetchRecording, fetchRecordingPage, retryRead } from "@/api/recordings";
 import { recordingKeys } from "../api";
 import { MAX_COMPARE } from "../model/compareStore";
@@ -14,7 +14,7 @@ export const comparisonKeys = {
 export function useComparison(ids: readonly string[]) {
   return useQuery({
     queryKey: comparisonKeys.one(ids),
-    queryFn: ({ signal }) => apiJson<Comparison>("/api/comparisons", { query: { recording_ids: ids.join(",") }, signal }),
+    queryFn: ({ signal }) => contractJson("Comparison", "/api/comparisons", { query: { recording_ids: ids.join(",") }, signal }),
     enabled: ids.length >= 2 && ids.length <= MAX_COMPARE,
     staleTime: 30_000,
     retry: retryRead,
@@ -27,7 +27,7 @@ export interface RecordingQueryState {
   isPending: boolean;
 }
 
-function combineStates(results: ReadonlyArray<{ data: Recording | undefined; error: unknown; isPending: boolean }>): RecordingQueryState[] {
+function combineStates(results: readonly { data: Recording | undefined; error: unknown; isPending: boolean }[]): RecordingQueryState[] {
   return results.map((result) => ({ data: result.data, error: result.error, isPending: result.isPending }));
 }
 
@@ -47,7 +47,7 @@ export function useRecordingsByIds(ids: readonly string[]): RecordingQueryState[
 export function useRecentRecordings(componentId: string, enabled: boolean) {
   return useQuery({
     queryKey: comparisonKeys.recent(componentId),
-    queryFn: ({ signal }) => fetchRecordingPage({ component_id: componentId || undefined, limit: 20 }, signal),
+    queryFn: ({ signal }) => fetchRecordingPage({ ...(componentId ? { component_id: componentId } : {}), limit: 20 }, signal),
     enabled,
     staleTime: 15_000,
     retry: retryRead,

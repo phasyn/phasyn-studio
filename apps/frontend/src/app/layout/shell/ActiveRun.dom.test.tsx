@@ -13,7 +13,7 @@ describe("ActiveRun", () => {
     const active = run(pipeline("t2va-local", []), { run_id: RUN_ID, state: "running", label: "夜景" });
     const api = installFakeApi({
       "GET /api/runs": () => ({ items: [active], next_cursor: null }),
-      [`POST /api/runs/${RUN_ID}/cancel`]: () => ({ run_id: RUN_ID, accepted: true, message: "已送出取消" }),
+      [`POST /api/runs/${RUN_ID}/cancel`]: () => ({ call_id: null, process_exited: null, accepted: true, message: "已送出取消" }),
     });
     const { user } = renderWithProviders(<ActiveRun />);
 

@@ -20,17 +20,21 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
-import os
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast, override
 
 import httpx
 import pytest
 from node_testkit import assert_valid
 from phasyn_components.errors import ComponentError
 from phasyn_components.weights import WeightFile, WeightLicense, WeightPlan, WeightSet
+
 from phasyn_node import weights as weights_module
+from phasyn_node.service import NodeService
+from phasyn_node.supervisor import ComponentInstance
 from phasyn_node.weights import WeightsManager, part_path, plan_targets
+
 
 pytestmark = pytest.mark.anyio
 
@@ -47,7 +51,9 @@ def sha256(data: bytes) -> str:
 
 
 def git_oid(data: bytes) -> str:
-    return hashlib.sha1(b"blob %d\x00" % len(data) + data, usedforsecurity=False).hexdigest()
+    return hashlib.sha1(
+        b"blob %d\x00" % len(data) + data, usedforsecurity=False
+    ).hexdigest()
 
 
 def weight_set(
@@ -98,7 +104,9 @@ class Hub:
         self.requests.append(request)
         prefix = f"/{REPO}/resolve/{REV}/"
         if request.url.host == "hub.test" and self.redirect:
-            return httpx.Response(302, headers={"Location": f"https://cdn.test{request.url.path}"})
+            return httpx.Response(
+                302, headers={"Location": f"https://cdn.test{request.url.path}"}
+            )
         if self.status is not None:
             return httpx.Response(self.status, text="nope")
         path = request.url.path
@@ -108,18 +116,30 @@ class Hub:
             return httpx.Response(404)
         if self.short:
             return httpx.Response(200, content=data[: len(data) // 2])
+        return self._serve_content(request, data)
+
+    def _serve_content(self, request: httpx.Request, data: bytes) -> httpx.Response:
         ranged = request.headers.get("range")
         if ranged and not self.ignore_range:
             start = int(ranged.removeprefix("bytes=").removesuffix("-"))
             if start >= len(data):
                 return httpx.Response(416)
             return httpx.Response(
-                206, content=data[start:], headers={"Content-Range": f"bytes {start}-{len(data) - 1}/{len(data)}"}
+                206,
+                content=data[start:],
+                headers={"Content-Range": f"bytes {start}-{len(data) - 1}/{len(data)}"},
             )
         return httpx.Response(200, content=data)
 
     def paths(self) -> list[str]:
-        return [request.url.path.rsplit("/", 1)[-1] for request in self.requests if request.url.host == "hub.test"]
+        return [
+            request.url.path.rsplit("/", 1)[-1]
+            for request in self.requests
+            if request.url.host == "hub.test"
+        ]
+
+
+TEST_HUB_CREDENTIAL = "hf_secret"
 
 
 class Commands:
@@ -127,7 +147,9 @@ class Commands:
         self.plan = plan
         self.forgot = 0
 
-    async def weights(self, runtime: Any, provider_id: str, settings: Any) -> dict[str, Any]:
+    async def weights(
+        self, _runtime: Any, _provider_id: str, _settings: Any
+    ) -> dict[str, Any]:
         return self.plan.to_dict()
 
     def forget_unavailable(self) -> None:
@@ -180,7 +202,12 @@ def manager(
 ) -> tuple[WeightsManager, Service, Instance]:
     service = Service(plan)
     env = {"HF_ENDPOINT": ENDPOINT, **({"HF_TOKEN": token} if token else {})}
-    mgr = WeightsManager(service, roots=[tmp_path], transport=httpx.MockTransport(hub.handler), env=env)  # type: ignore[arg-type]
+    mgr = WeightsManager(
+        cast("NodeService", service),
+        roots=[tmp_path],
+        transport=httpx.MockTransport(hub.handler),
+        env=env,
+    )
     inst = Instance(tmp_path / "models")
     service.instances[inst.component_id] = inst
     return mgr, service, inst
@@ -200,7 +227,9 @@ async def download(mgr: WeightsManager, inst: Instance, **body: Any) -> dict[str
     return await finished(mgr, inst)
 
 
-async def test_a_wrong_hash_deletes_the_partial_file_and_fails_without_retrying(tmp_path: Path) -> None:
+async def test_a_wrong_hash_deletes_the_partial_file_and_fails_without_retrying(
+    tmp_path: Path,
+) -> None:
     good = {"model.safetensors": BIG}
     plan = WeightPlan(root=str(tmp_path / "models"), sets=(weight_set(good),))
     hub = Hub({"model.safetensors": bytes(reversed(BIG))})
@@ -219,22 +248,31 @@ async def test_the_token_goes_to_the_source_host_only(tmp_path: Path) -> None:
     files = {"config.json": SMALL}
     plan = WeightPlan(root=str(tmp_path / "models"), sets=(weight_set(files),))
     hub = Hub(files, redirect=True)
-    mgr, _service, inst = manager(tmp_path, plan, hub, token="hf_secret")
+    mgr, _service, inst = manager(tmp_path, plan, hub, token=TEST_HUB_CREDENTIAL)
 
     view = await mgr.view(inst)  # type: ignore[arg-type]
     assert view["source"] == {"endpoint": ENDPOINT, "token": True}
     assert "hf_secret" not in repr(view)
     job = await download(mgr, inst)
     assert job["state"] == "succeeded", job["error"]
-    by_host = {request.url.host: request.headers.get("authorization") for request in hub.requests}
+    by_host = {
+        request.url.host: request.headers.get("authorization")
+        for request in hub.requests
+    }
     assert by_host == {"hub.test": "Bearer hf_secret", "cdn.test": None}
 
 
-async def test_a_same_size_file_with_other_content_is_downloaded_not_linked(tmp_path: Path) -> None:
+async def test_a_same_size_file_with_other_content_is_downloaded_not_linked(
+    tmp_path: Path,
+) -> None:
     files = {"B/shared.bin": SHARED}
     plan = WeightPlan(
         root=str(tmp_path / "models"),
-        sets=(weight_set(files, dest="repo", links={"B/shared.bin": ("repo/A/shared.bin",)}),),
+        sets=(
+            weight_set(
+                files, dest="repo", links={"B/shared.bin": ("repo/A/shared.bin",)}
+            ),
+        ),
     )
     hub = Hub(files)
     mgr, _service, inst = manager(tmp_path, plan, hub)
@@ -247,10 +285,12 @@ async def test_a_same_size_file_with_other_content_is_downloaded_not_linked(tmp_
     assert job["files_linked"] == 0
     assert job["bytes_done"] == job["bytes_total"] == len(SHARED)
     linked = tmp_path / "models" / "repo" / "B" / "shared.bin"
-    assert linked.read_bytes() == SHARED and os.stat(linked).st_ino != os.stat(twin).st_ino
+    assert linked.read_bytes() == SHARED and linked.stat().st_ino != twin.stat().st_ino
 
 
-async def test_files_of_another_size_are_replaced_only_when_asked(tmp_path: Path) -> None:
+async def test_files_of_another_size_are_replaced_only_when_asked(
+    tmp_path: Path,
+) -> None:
     files = {"config.json": SMALL}
     plan = WeightPlan(root=str(tmp_path / "models"), sets=(weight_set(files),))
     mgr, _service, inst = manager(tmp_path, plan, Hub(files))
@@ -270,7 +310,9 @@ async def test_files_of_another_size_are_replaced_only_when_asked(tmp_path: Path
     assert target.read_bytes() == SMALL
 
 
-async def test_refusals_before_anything_is_written(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_refusals_before_anything_is_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     files = {"model.safetensors": BIG}
     plan = WeightPlan(root=str(tmp_path / "models"), sets=(weight_set(files),))
     mgr, _service, inst = manager(tmp_path, plan, Hub(files))
@@ -299,29 +341,34 @@ async def test_refusals_before_anything_is_written(tmp_path: Path, monkeypatch: 
 async def test_one_download_per_node_and_cancel_keeps_the_partial_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(weights_module, "CHUNK_BYTES", 1000)  # hand the first 3000 bytes over before the stream stalls
+    monkeypatch.setattr(
+        weights_module, "CHUNK_BYTES", 1000
+    )  # hand the first 3000 bytes over before the stream stalls
     files = {"model.safetensors": BIG}
     plan = WeightPlan(root=str(tmp_path / "models"), sets=(weight_set(files),))
     gate = asyncio.Event()
 
     class SlowStream(httpx.AsyncByteStream):
-        async def __aiter__(self):  # type: ignore[override]
+        @override
+        async def __aiter__(self) -> AsyncIterator[bytes]:
             yield BIG[:3000]
             await gate.wait()
             yield BIG[3000:]
 
-    def handler(request: httpx.Request) -> httpx.Response:
+    def handler(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, stream=SlowStream())
 
     service = Service(plan)
     mgr = WeightsManager(
-        service,  # type: ignore[arg-type]
+        cast("NodeService", service),
         roots=[tmp_path],
         transport=httpx.MockTransport(handler),
         env={"HF_ENDPOINT": ENDPOINT},
     )
     inst = Instance(tmp_path / "models")
-    started = await mgr.start(inst, {"accept_licenses": True})  # type: ignore[arg-type]
+    started = await mgr.start(
+        cast("ComponentInstance", inst), {"accept_licenses": True}
+    )
     target = tmp_path / "models" / "fake" / "model.safetensors"
     for _ in range(500):
         if mgr._jobs[inst.component_id].bytes_done == 3000:
@@ -342,14 +389,18 @@ async def test_one_download_per_node_and_cancel_keeps_the_partial_file(
     gate.set()
 
 
-async def test_weights_go_only_into_the_configured_model_directories(tmp_path: Path) -> None:
+async def test_weights_go_only_into_the_configured_model_directories(
+    tmp_path: Path,
+) -> None:
     """``load.model_path`` can be changed through the API, the Node configuration cannot: a root outside the
     configured model directories is neither inspected nor written to, also when a link leads out of them."""
     files = {"config.json": SMALL}
     outside = tmp_path / "elsewhere"
     outside.mkdir()
     (outside / "fake").mkdir()
-    (outside / "fake" / "config.json").write_bytes(b"x")  # another size: replace_mismatched would overwrite it
+    (outside / "fake" / "config.json").write_bytes(
+        b"x"
+    )  # another size: replace_mismatched would overwrite it
     allowed = tmp_path / "models"
     allowed.mkdir()
     (allowed / "escape").symlink_to(outside, target_is_directory=True)
@@ -357,21 +408,39 @@ async def test_weights_go_only_into_the_configured_model_directories(tmp_path: P
     env = {"HF_ENDPOINT": "https://user:mirror-secret@hub.test"}
     for root in (outside, allowed / "escape", tmp_path):
         service = Service(WeightPlan(root=str(root), sets=(weight_set(files),)))
-        mgr = WeightsManager(service, roots=[allowed], transport=httpx.MockTransport(hub.handler), env=env)  # type: ignore[arg-type]
+        mgr = WeightsManager(
+            cast("NodeService", service),
+            roots=[allowed],
+            transport=httpx.MockTransport(hub.handler),
+            env=env,
+        )
         inst = Instance(root)
         view = await mgr.view(inst)  # type: ignore[arg-type]
         assert_valid("WeightsView", view)
-        assert (view["root"], view["sets"], view["free_bytes"]) == (None, [], None), root
+        assert (view["root"], view["sets"], view["free_bytes"]) == (None, [], None), (
+            root
+        )
         assert view["notes"][0] == weights_module.ROOT_NOT_ALLOWED_REASON
-        assert view["source"]["endpoint"] == "https://hub.test" and "mirror-secret" not in repr(view)
+        assert view["source"][
+            "endpoint"
+        ] == "https://hub.test" and "mirror-secret" not in repr(view)
         with pytest.raises(ComponentError) as refused:
             await mgr.start(inst, {"accept_licenses": True, "replace_mismatched": True})  # type: ignore[arg-type]
         assert refused.value.code == "COMPONENT_NOT_CONFIGURED"
-    assert hub.requests == [] and (outside / "fake" / "config.json").read_bytes() == b"x"
-    assert sorted(path.name for path in tmp_path.iterdir()) == ["elsewhere", "models"]
+    assert (
+        hub.requests == [] and (outside / "fake" / "config.json").read_bytes() == b"x"
+    )
+    assert sorted(
+        path.name for path in await asyncio.to_thread(lambda: list(tmp_path.iterdir()))
+    ) == ["elsewhere", "models"]
 
     inside = Service(WeightPlan(root=str(allowed / "sub"), sets=(weight_set(files),)))
-    mgr = WeightsManager(inside, roots=[allowed], transport=httpx.MockTransport(hub.handler), env=env)  # type: ignore[arg-type]
+    mgr = WeightsManager(
+        cast("NodeService", inside),
+        roots=[allowed],
+        transport=httpx.MockTransport(hub.handler),
+        env=env,
+    )
     job = await download(mgr, Instance(allowed / "sub"))
     assert job["state"] == "succeeded", job["error"]
     assert (allowed / "sub" / "fake" / "config.json").read_bytes() == SMALL
@@ -382,7 +451,11 @@ def test_targets_share_one_location_once_and_refuse_two_different_files() -> Non
     first = weight_set({**license_file, "A/x.json": SMALL}, set_id="a", dest="repo")
     second = weight_set({**license_file, "B/x.json": SMALL}, set_id="b", dest="repo")
     targets = plan_targets(WeightPlan(root="/m", sets=(first, second)))
-    assert [target.rel for target in targets] == ["repo/LICENSE", "repo/A/x.json", "repo/B/x.json"]
+    assert [target.rel for target in targets] == [
+        "repo/LICENSE",
+        "repo/A/x.json",
+        "repo/B/x.json",
+    ]
 
     clash = weight_set({"LICENSE": b"other text\n"}, set_id="c", dest="repo")
     with pytest.raises(ComponentError):

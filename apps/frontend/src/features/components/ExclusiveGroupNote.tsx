@@ -22,7 +22,7 @@ export function ExclusiveGroupNote({
   return (
     <Callout tone="info" title={t("互斥群組 {group} 目前有其他元件佔用", { group: conflict.group })}>
       <p>{exclusiveReplaceNote(conflict)}</p>
-      {blocked ? <p>{blocked}</p> : null}
+      {(blocked != null && blocked !== "") ? <p>{blocked}</p> : null}
     </Callout>
   );
 }

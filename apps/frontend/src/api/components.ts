@@ -2,7 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { notePendingWrite, PENDING_WRITE_MS, withPendingWrites } from "./catalog";
 import type { Catalog, CancelResult, ComponentDescriptor, ComponentMetaPatch, ControlRequest, InstanceDefinition, SettingsPatch, SettingsView } from "./generated/contracts";
-import { apiJson } from "./http";
+import { contractJson } from "./http";
 import { qk } from "./keys";
 
 function componentPath(nodeId: string, componentId: string): string {
@@ -10,7 +10,7 @@ function componentPath(nodeId: string, componentId: string): string {
 }
 
 export function fetchSettings(nodeId: string, componentId: string, signal?: AbortSignal): Promise<SettingsView> {
-  return apiJson<SettingsView>(`${componentPath(nodeId, componentId)}/settings`, { signal });
+  return contractJson("SettingsView", `${componentPath(nodeId, componentId)}/settings`, { signal });
 }
 
 /** 從 Node 讀取目前的 stored／loaded（Node 離線時失敗，畫面改用目錄快照並標示過時）。 */
@@ -26,7 +26,7 @@ export function useComponentSettings(nodeId: string, componentId: string) {
 export function usePatchSettings(nodeId: string, componentId: string) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: SettingsPatch) => apiJson<SettingsView>(`${componentPath(nodeId, componentId)}/settings`, { method: "PATCH", json: body }),
+    mutationFn: (body: SettingsPatch) => contractJson("SettingsView", `${componentPath(nodeId, componentId)}/settings`, { method: "PATCH", json: body }),
     onSuccess: (view) => {
       client.setQueryData(qk.settings(nodeId, componentId), view);
       void client.invalidateQueries({ queryKey: qk.catalog() });
@@ -40,12 +40,12 @@ export function usePatchSettings(nodeId: string, componentId: string) {
  * idle members first). The request is never retried automatically.
  */
 export function controlComponent(nodeId: string, componentId: string, request: ControlRequest): Promise<ComponentDescriptor> {
-  return apiJson<ComponentDescriptor>(`${componentPath(nodeId, componentId)}/control`, { method: "POST", json: request });
+  return contractJson("ComponentDescriptor", `${componentPath(nodeId, componentId)}/control`, { method: "POST", json: request });
 }
 
 /** Cancels one call on the component (the Node answers whether it was still running). */
 export function cancelCall(nodeId: string, componentId: string, callId: string): Promise<CancelResult> {
-  return apiJson<CancelResult>(`${componentPath(nodeId, componentId)}/cancel`, { method: "POST", json: { call_id: callId } });
+  return contractJson("CancelResult", `${componentPath(nodeId, componentId)}/cancel`, { method: "POST", json: { call_id: callId } });
 }
 
 export function useControlComponent(nodeId: string, componentId: string) {
@@ -79,7 +79,7 @@ export function usePutComponent() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: ({ nodeId, definition }: PutComponentVars) =>
-      apiJson<ComponentDescriptor>(componentPath(nodeId, definition.component_id), { method: "PUT", json: definition }),
+      contractJson("ComponentDescriptor", componentPath(nodeId, definition.component_id), { method: "PUT", json: definition }),
     onSuccess: (descriptor) => {
       // Node 下一次上報快照前，新 instance 先出現在目錄中（可以立即選取）。
       notePendingWrite({ kind: "put", descriptor, until: Date.now() + PENDING_WRITE_MS });
@@ -97,7 +97,7 @@ export function usePatchComponentMeta(nodeId: string, componentId: string) {
   const client = useQueryClient();
   return useMutation({
     mutationKey: qk.componentMeta(nodeId, componentId),
-    mutationFn: (patch: ComponentMetaPatch) => apiJson<ComponentDescriptor>(`${componentPath(nodeId, componentId)}/meta`, { method: "PATCH", json: patch }),
+    mutationFn: (patch: ComponentMetaPatch) => contractJson("ComponentDescriptor", `${componentPath(nodeId, componentId)}/meta`, { method: "PATCH", json: patch }),
     retry: false,
     onSuccess: (descriptor) => {
       notePendingWrite({
@@ -129,7 +129,7 @@ export function useDeleteComponent(nodeId: string, componentId: string) {
   const client = useQueryClient();
   return useMutation({
     mutationKey: qk.componentDelete(nodeId, componentId),
-    mutationFn: () => apiJson<DeleteComponentResult>(componentPath(nodeId, componentId), { method: "DELETE" }),
+    mutationFn: () => contractJson("DeleteComponentResult", componentPath(nodeId, componentId), { method: "DELETE" }),
     retry: false,
     onSuccess: () => {
       notePendingWrite({ kind: "delete", nodeId, componentId, until: Date.now() + PENDING_WRITE_MS });

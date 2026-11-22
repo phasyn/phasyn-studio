@@ -32,7 +32,7 @@ export interface BatchToolbarProps {
 
 /** Why the batch cannot be sent now; null when it can. */
 function blockedReason(scope: BatchScope, count: number, blocked: number, outside: string | null): string | null {
-  if (outside) return outside;
+  if (outside != null && outside !== "") return outside;
   if (count > 0) return null;
   if (blocked > 0) return t("沒有可以渲染的鏡頭：{count} 個被擋下", { count: blocked });
   return scope.selection ? t("選取的鏡頭都還沒有 prompt 或正在渲染") : t("時間軸上沒有需要（重新）渲染且已有 prompt 的鏡頭");
@@ -45,7 +45,7 @@ function BlockedBadge({ blocked, onShow }: { blocked: readonly BlockedShot[]; on
   return (
     <button
       type="button"
-      onClick={() => onShow(first.shot.shot_id)}
+      onClick={() => { onShow(first.shot.shot_id); }}
       title={[t("按一下查看第一個被擋下的鏡頭"), ...reasons].join("\n")}
       className="pressable inline-flex h-8 shrink-0 items-center rounded-md border border-warning/40 bg-warning/12 px-2 text-caption font-medium whitespace-nowrap text-warning animate-pop-in hover:border-warning/70 hover:bg-warning/18 active:bg-warning/24"
     >
@@ -78,7 +78,7 @@ export function BatchToolbar({ scope, renderable, blocked, positions, onShowBloc
   };
   return (
     <div className="grid shrink-0 gap-1.5 border-b border-line-subtle p-2">
-      <Button size="sm" variant="secondary" icon={<Plus aria-hidden />} onClick={() => addShot()} title={t("新增鏡頭")} className="w-full min-w-0">
+      <Button size="sm" variant="secondary" icon={<Plus aria-hidden />} onClick={() => { addShot(); }} title={t("新增鏡頭")} className="w-full min-w-0">
         <span className="truncate">{t("新增鏡頭")}</span>
       </Button>
       <div className="flex min-w-0 items-center gap-1.5">
@@ -109,7 +109,7 @@ export function BatchToolbar({ scope, renderable, blocked, positions, onShowBloc
           blocked={blocked}
           positions={positions}
           unavailable={unavailable}
-          onClose={() => setConfirm((current) => (current ? { ...current, open: false } : current))}
+          onClose={() => { setConfirm((current) => (current ? { ...current, open: false } : current)); }}
         />
       ) : null}
     </div>

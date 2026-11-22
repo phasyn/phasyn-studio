@@ -1,3 +1,4 @@
+import { takeLabel } from "../../model/takeLabel";
 // Which takes the monitor shows and how (pure): the take strip's usable takes and the ones that wait under 「其他」,
 // the take in A, the B it is compared with and how the comparison is laid out, why a take cannot become the active
 // one or lend the shot its settings, and the words of a take card (its accessible name and tooltip).
@@ -49,7 +50,7 @@ export function viewedTake(shot: StudioShot, takeId: string | null): StudioTake 
 
 /** The pinned B take while it exists and has a video (B stays pinned while A moves). */
 export function pinnedCompare(shot: StudioShot, takeId: string | null): StudioTake | null {
-  const take = takeId ? shot.takes.find((item) => item.take_id === takeId) : undefined;
+  const take = (takeId != null && takeId !== "") ? shot.takes.find((item) => item.take_id === takeId) : undefined;
   return isPlayable(take) ? take : null;
 }
 
@@ -149,12 +150,12 @@ export function cardWords(facts: CardFacts): CardWords {
   const reason = take.error && isEnded(take) ? tServer(take.error.message) : null;
   const failure = reason === null ? null : t("{state}：{reason}", { state: TAKE_END_LABELS[take.state] ?? take.state, reason });
   const lines = [
-    t("take {take}・seed {seed}", { take: number, seed: take.seed }),
+    takeLabel(number, take.seed),
     formatTimestamp(take.created_at),
     variant.line,
     archived ? t("已封存") : null,
-    ...(take.state === "rendering" && state ? [state] : []),
-    ...(failure ? [failure, take.error?.code ?? ""] : []),
+    ...(take.state === "rendering" && (state != null && state !== "") ? [state] : []),
+    ...((failure != null && failure !== "") ? [failure, take.error?.code ?? ""] : []),
     ...differenceLines(facts),
     isPlayable(take) ? t("Alt＋點按：放到 B 比較") : null,
   ];

@@ -42,12 +42,12 @@ export function useDescribeStep(describeRun: WireRun | undefined, onCreated: (ru
   const blockReason = describeBlockReason({ source, hasDescriptor: descriptor !== null, issueCount: issues.length });
 
   const submit = () => {
-    if (blockReason || !descriptor || !source || !("file" in source) || create.isPending) return;
+    if ((blockReason ?? "") || !descriptor || !source || !("file" in source) || create.isPending) return;
     const pipeline = singleStepPipeline("semantics-describe", t("反推語意（video.describe）"), "describe", descriptor, "video", "media.video.v1", parameters);
     if (!pipeline) return;
     create.mutate(
       { pipeline, inputs: { video: { type_id: "media.video.v1", file: source.file } }, label: t("反推語意") },
-      { onSuccess: (run) => onCreated(run.run_id) },
+      { onSuccess: (run) => { onCreated(run.run_id); } },
     );
   };
 
@@ -60,7 +60,7 @@ export function useDescribeStep(describeRun: WireRun | undefined, onCreated: (ru
     setChoice,
     descriptor,
     parameters,
-    setParameters: (value: Record<string, unknown>) => setParams({ key, value }),
+    setParameters: (value: Record<string, unknown>) => { setParams({ key, value }); },
     schema,
     issues,
     blockReason,
@@ -86,7 +86,7 @@ export function useSceneStep(describeRun: WireRun | undefined, describeRunId: st
   const sceneJson = useFileJson(sceneFile);
   const originalScene = sceneValue ? asSceneDocument("file" in sceneValue ? sceneJson.data : sceneValue.value) : null;
   const originKey = sceneValue ? ("file" in sceneValue ? `file:${sceneValue.file.node_id}/${sceneValue.file.file_id}` : `inline:${describeRunId ?? ""}`) : null;
-  const edit = sceneEdit && sceneEdit.originKey === originKey ? sceneEdit : null;
+  const edit = sceneEdit?.originKey === originKey ? sceneEdit : null;
   const draft = edit?.draft ?? originalScene;
   const issues = draft ? sceneIssues(draft) : [];
   const changed = edit !== null && originalScene !== null && !valuesEqual(edit.draft, originalScene);
@@ -94,7 +94,7 @@ export function useSceneStep(describeRun: WireRun | undefined, describeRunId: st
   const captionInput = captionSceneInput({ sceneValue, hasOriginal: originalScene !== null, changed, saved: savedCurrent?.ref ?? null });
 
   const save = async () => {
-    if (!draft || !originKey || issues.length > 0 || saving) return;
+    if (!draft || !(originKey != null && originKey !== "") || issues.length > 0 || saving) return;
     setSaving(true);
     setSaveError(null);
     try {
@@ -125,10 +125,10 @@ export function useSceneStep(describeRun: WireRun | undefined, describeRunId: st
     saving,
     saveError,
     setDraft: (next: SceneDocument) => {
-      if (originKey) setSceneEdit({ originKey, draft: next, saved: edit?.saved ?? null });
+      if (originKey != null && originKey !== "") setSceneEdit({ originKey, draft: next, saved: edit?.saved ?? null });
     },
     /** 還原為原 Scene（也用於建立新的反推 run 之後）。 */
-    revert: () => setSceneEdit(null),
+    revert: () => { setSceneEdit(null); },
     save,
   };
 }
@@ -149,7 +149,7 @@ export function useCaptionStep(scene: WireTypedValue | null, sceneBlockReason: s
   const blockReason = captionBlockReason({ sceneBlock: sceneBlockReason, hasScene: scene !== null, hasDescriptor: descriptor !== null, hasScenePort: port !== null, issueCount: issues.length });
 
   const submit = async () => {
-    if (blockReason || !scene || !descriptor || !port || busy || create.isPending) return;
+    if ((blockReason ?? "") || !scene || !descriptor || !port || busy || create.isPending) return;
     setBusy(true);
     setUploadError(null);
     try {
@@ -161,7 +161,7 @@ export function useCaptionStep(scene: WireTypedValue | null, sceneBlockReason: s
         setUploadError(new Error(t("此元件只接受 inline Scene，但目前的 Scene 是檔案；請改用接受檔案的 caption.compile 元件。")));
         return;
       }
-      create.mutate({ pipeline, inputs: { scene: input }, label: t("組裝 caption") }, { onSuccess: (run) => onCreated(run.run_id) });
+      create.mutate({ pipeline, inputs: { scene: input }, label: t("組裝 caption") }, { onSuccess: (run) => { onCreated(run.run_id); } });
     } catch (cause) {
       setUploadError(cause);
     } finally {
@@ -174,7 +174,7 @@ export function useCaptionStep(scene: WireTypedValue | null, sceneBlockReason: s
     setChoice,
     descriptor,
     parameters,
-    setParameters: (value: Record<string, unknown>) => setParams({ key, value }),
+    setParameters: (value: Record<string, unknown>) => { setParams({ key, value }); },
     schema,
     issues,
     blockReason,
@@ -202,7 +202,7 @@ export function useDatasetStep(rows: readonly DatasetRow[], onCreated: (runId: s
   const blockReason = datasetBlockReason({ rowCount: rows.length, emptyCaptions, hasDescriptor: descriptor !== null, hasPort: port !== null, issueCount: issues.length });
 
   const submit = async () => {
-    if (blockReason || !descriptor || !port || busy || create.isPending) return;
+    if ((blockReason ?? "") || !descriptor || !port || busy || create.isPending) return;
     setBusy(true);
     setUploadError(null);
     try {
@@ -210,7 +210,7 @@ export function useDatasetStep(rows: readonly DatasetRow[], onCreated: (runId: s
       if (!pipeline) return;
       const document = datasetRowsDocument(rows);
       const value: WireTypedValue = port.transport === "file" ? { type_id: port.type_id, file: await uploadJson(document) } : { type_id: port.type_id, value: document };
-      create.mutate({ pipeline, inputs: { rows: value }, label: t("資料集匯出（{rowsCount} 列）", { rowsCount: rows.length }) }, { onSuccess: (run) => onCreated(run.run_id) });
+      create.mutate({ pipeline, inputs: { rows: value }, label: t("資料集匯出（{rowsCount} 列）", { rowsCount: rows.length }) }, { onSuccess: (run) => { onCreated(run.run_id); } });
     } catch (cause) {
       setUploadError(cause);
     } finally {
@@ -223,7 +223,7 @@ export function useDatasetStep(rows: readonly DatasetRow[], onCreated: (runId: s
     setChoice,
     descriptor,
     parameters,
-    setParameters: (value: Record<string, unknown>) => setParams({ key, value }),
+    setParameters: (value: Record<string, unknown>) => { setParams({ key, value }); },
     schema,
     issues,
     blockReason,

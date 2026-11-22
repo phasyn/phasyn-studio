@@ -1,5 +1,6 @@
+import { matchesSetting } from "@/lib/contractSchemas";
 import { BookmarkPlus, ClipboardPaste, Code2, Copy, Cpu, Gauge, HardDriveDownload, Layers, LoaderCircle, RotateCw, Save, ScrollText, SlidersHorizontal, Trash2, Undo2 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate } from "react-router";
 import type { ComponentEntry } from "@/api/catalog";
 import { useProviders } from "@/api/catalog";
@@ -9,6 +10,8 @@ import { ActionButton } from "@/components/common/ActionButton";
 import { Disclosure } from "@/components/common/Disclosure";
 import { ErrorCallout } from "@/components/common/ErrorCallout";
 import { SchemaDensityContext } from "@/components/common/schemaDensity";
+import { LoraCatalogContext } from "@/components/common/schema-form/loraCatalogContext";
+import { parseCatalog } from "@/components/common/schema-form/loraStackModel";
 import { StatusBadge } from "@/components/common/StatusBadge";
 import { SyntheticBadge } from "@/components/common/SyntheticNotice";
 import { IdText } from "@/components/common/values";
@@ -22,6 +25,7 @@ import { PanelTabs } from "@/components/workbench/PanelTabs";
 import { ToolButton, ToolStrip } from "@/components/workbench/ToolStrip";
 import { diffDocuments } from "@/lib/diff";
 import { hasErrorCode } from "@/lib/errors";
+import { isRecord } from "@/lib/json";
 import { applyMergePatch } from "@/lib/merge";
 import type { SchemaIssue } from "@/lib/schema";
 import { CompareTab } from "./CompareTab";
@@ -50,7 +54,7 @@ export interface DraftEntry {
 type TabId = "props" | "parts" | "inputs" | "outputs" | "compare" | "advanced";
 type SectionId = "basic" | "load" | "invoke" | "recording";
 
-const SECTIONS: ReadonlyArray<{ id: Exclude<SectionId, "basic">; title: string; icon: typeof Cpu }> = [
+const SECTIONS: readonly { id: Exclude<SectionId, "basic">; title: string; icon: typeof Cpu }[] = [
   { id: "load", title: t("載入（load）"), icon: Cpu },
   { id: "invoke", title: t("呼叫預設（invoke）"), icon: SlidersHorizontal },
   { id: "recording", title: t("錄製（recording）"), icon: Gauge },
@@ -76,7 +80,7 @@ function RestartNow({ entry }: { entry: ComponentEntry }) {
         : null;
   return (
     <div className="grid gap-2">
-      <ActionButton size="sm" icon={<RotateCw aria-hidden />} pending={control.isPending} disabledReason={reason} onClick={() => control.mutate({ action: "restart" })}>
+      <ActionButton size="sm" icon={<RotateCw aria-hidden />} pending={control.isPending} disabledReason={reason} onClick={() => { control.mutate({ action: "restart" }); }}>
         {t("立即重新載入（restart）")}
       </ActionButton>
       {control.isSuccess ? (
@@ -91,8 +95,8 @@ function IssueList({ issues, onJump }: { issues: readonly SchemaIssue[]; onJump:
   return (
     <ul className="grid max-h-40 gap-1 overflow-y-auto">
       {issues.map((issue, index) => (
-        <li key={`${issue.path}-${index}`} className="text-caption text-fg-secondary">
-          <T source={"{button}：{message}"} values={{ button: <button type="button" className="text-left text-action-fg underline underline-offset-2 hover:text-action-hover" onClick={() => onJump(issue)}>
+        <li key={`${issue.path}-${String(index)}`} className="text-caption text-fg-secondary">
+          <T source={"{button}：{message}"} values={{ button: <button type="button" className="text-left text-action-fg underline underline-offset-2 hover:text-action-hover" onClick={() => { onJump(issue); }}>
             <span className="machine">{issue.path || t("（根）")}</span>
           </button>, message: issue.message }} />
         </li>
@@ -152,6 +156,10 @@ export function ComponentInspector({
   const providerInfo = providers.data?.items.find((item) => item.provider_id === descriptor.provider_id && item.runtime_id === descriptor.runtime_id);
   const synthetic = providerInfo?.synthetic === true || descriptor.provider_id.startsWith("test.");
   const saving = patch.isPending;
+  const draftOptions = isRecord(draft.load.provider_options) ? draft.load.provider_options : {};
+  const draftVariant = typeof draftOptions["variant"] === "string" ? draftOptions["variant"] : null;
+  const facts = descriptor.facts;
+  const loraCatalog = useMemo(() => ({ entries: parseCatalog(facts), variant: draftVariant }), [facts, draftVariant]);
 
   const setDraft = (next: InstanceSettings) => {
     setSaved(null);
@@ -161,7 +169,8 @@ export function ComponentInspector({
   const jumpTo = (issue: SchemaIssue) => {
     const target = locate(issue.path);
     setTab(target.tab);
-    if (target.section) setOpenSections((current) => ({ ...current, [target.section as SectionId]: true }));
+    const section = target.section;
+    if (section) setOpenSections((current) => ({ ...current, [section]: true }));
     window.requestAnimationFrame(() => {
       const scope = document.querySelector(`[data-path="${CSS.escape(issue.path)}"]`);
       const target = scope?.querySelector<HTMLElement>("input, select, textarea, button") ?? null;
@@ -180,7 +189,7 @@ export function ComponentInspector({
           : null;
 
   const save = () => {
-    if (saveReason || !plan.patch || saving) return;
+    if ((saveReason ?? "") || !plan.patch || saving) return;
     const baseAtSave = base;
     const mine = draft;
     setSaved(null);
@@ -195,8 +204,8 @@ export function ComponentInspector({
         onError: (error) => {
           if (!hasErrorCode(error, "REVISION_CONFLICT")) return;
           fetchSettings(nodeId, componentId)
-            .then((latest) => setConflict({ base: baseAtSave, latest, mine }))
-            .catch((cause: unknown) => setConflictError(cause));
+            .then((latest) => { setConflict({ base: baseAtSave, latest, mine }); })
+            .catch((cause: unknown) => { setConflictError(cause); });
         },
       },
     );
@@ -204,8 +213,13 @@ export function ComponentInspector({
 
   const rebaseOnto = (latest: SettingsView, mine: InstanceSettings, from: SettingsView) => {
     const myPatch = settingsPatch(from.stored, mine).patch;
-    const merged = myPatch ? (applyMergePatch(latest.stored, myPatch) as InstanceSettings) : latest.stored;
+    const merged = myPatch ? applyMergePatch(latest.stored, myPatch) : latest.stored;
+    if (!matchesSetting("InstanceSettings", merged)) {
+      setConflictError(new Error(t("schema 不允許此值")));
+      return false;
+    }
     onDraftEntryChange({ base: latest, draft: merged });
+    return true;
   };
 
   const kind = providerKind(descriptor.provider_id);
@@ -217,13 +231,13 @@ export function ComponentInspector({
     { id: "outputs", label: t("輸出"), count: descriptor.outputs.length },
     { id: "compare", label: t("對照") },
     { id: "advanced", label: t("進階") },
-  ];
+  ] as const;
 
   return (
     <div className="flex min-h-0 min-w-0 flex-1 flex-col animate-rise-in">
       <EntityHeader
         icon={kind.icon}
-        art={kind.art}
+        {...(kind.art === undefined ? {} : { art: kind.art })}
         tone={kind.tone}
         title={descriptor.label || componentId}
         status={<StatusBadge kind="component" value={descriptor.state} />}
@@ -232,7 +246,7 @@ export function ComponentInspector({
             <span>
               {kind.label} · <code className="machine">{descriptor.provider_id}</code> · {node.label}
             </span>
-            {serverView.restart_required || node.stale || synthetic || descriptor.active_call_id ? (
+            {serverView.restart_required || node.stale || synthetic || (descriptor.active_call_id != null && descriptor.active_call_id !== "") ? (
               <span className="flex flex-wrap items-center gap-1">
                 {serverView.restart_required ? (
                   <Badge tone="warning" title={t("已保存的 load 設定與目前載入不同")}>
@@ -241,7 +255,7 @@ export function ComponentInspector({
                 ) : null}
                 {node.stale ? <Badge tone="warning">{t("Node 過時")}</Badge> : null}
                 {synthetic ? <SyntheticBadge kind="test" /> : null}
-                {descriptor.active_call_id ? (
+                {(descriptor.active_call_id != null && descriptor.active_call_id !== "") ? (
                   <span className="inline-flex items-center gap-1 text-fg-tertiary">
                     {t("呼叫中")} <IdText value={descriptor.active_call_id} length={12} />
                   </span>
@@ -255,8 +269,8 @@ export function ComponentInspector({
       />
       <ToolStrip label={t("元件動作")} className="min-h-9 gap-x-0.5 px-1.5">
         <ToolButton label={t("複製 instance")} text={t("複製", undefined, { context: "duplicate" })} icon={<Copy aria-hidden />} onClick={onClone} />
-        <ToolButton label={t("把已保存設定存為 preset")} text={t("存為 preset")} icon={<BookmarkPlus aria-hidden />} onClick={() => onSavePreset(serverView.stored)} />
-        <ToolButton label={t("套用 preset 到草稿")} text={t("套用 preset")} icon={<ClipboardPaste aria-hidden />} onClick={() => onApplyPreset(base, draft)} />
+        <ToolButton label={t("把已保存設定存為 preset")} text={t("存為 preset")} icon={<BookmarkPlus aria-hidden />} onClick={() => { onSavePreset(serverView.stored); }} />
+        <ToolButton label={t("套用 preset 到草稿")} text={t("套用 preset")} icon={<ClipboardPaste aria-hidden />} onClick={() => { onApplyPreset(base, draft); }} />
         <ToolButton
           label={t("查看這個元件的效能紀錄")}
           text={t("紀錄")}
@@ -267,14 +281,14 @@ export function ComponentInspector({
           label={t("模型權重：檢查這個元件需要的固定版本權重，同意授權後下載")}
           text={t("模型權重…")}
           icon={<HardDriveDownload aria-hidden />}
-          onClick={() => setWeightsOpen(true)}
+          onClick={() => { setWeightsOpen(true); }}
         />
         <ToolButton
           label={t("刪除 instance")}
           text={t("刪除 instance…")}
           icon={<Trash2 aria-hidden />}
           disabledReason={deleteReason}
-          onClick={() => setDeleteOpen(true)}
+          onClick={() => { setDeleteOpen(true); }}
           className="ml-auto text-danger hover:text-danger"
         />
       </ToolStrip>
@@ -292,27 +306,28 @@ export function ComponentInspector({
         </p>
       ) : null}
 
-      <DefinitionRepair entry={entry} draft={draft} draftChanged={dirty} onJump={(path) => jumpTo({ path, message: "" })} onReplaced={() => onDraftEntryChange(null)} />
+      <DefinitionRepair entry={entry} draft={draft} draftChanged={dirty} onJump={(path) => { jumpTo({ path, message: "" }); }} onReplaced={() => { onDraftEntryChange(null); }} />
       {descriptor.last_error?.code === "COMPONENT_NOT_CONFIGURED" ? (
         <Callout tone="warning" title={t("元件缺少設定或檔案")} className="m-2">
           <p className="text-caption">{t("如果缺的是模型權重，可以檢查這個元件需要哪些固定版本的檔案，同意授權後由 Node 下載到設定的模型目錄。")}</p>
-          <Button size="sm" icon={<HardDriveDownload aria-hidden />} onClick={() => setWeightsOpen(true)}>
+          <Button size="sm" icon={<HardDriveDownload aria-hidden />} onClick={() => { setWeightsOpen(true); }}>
             {t("檢查模型權重…")}
           </Button>
         </Callout>
       ) : null}
 
-      <PanelTabs tabs={tabs} value={tab} onChange={(id) => setTab(id as TabId)} idPrefix="component-inspector" label={t("元件屬性分頁")} variant="underline" />
+      <PanelTabs tabs={tabs} value={tab} onChange={setTab} idPrefix="component-inspector" label={t("元件屬性分頁")} variant="underline" />
       <DockBody role="tabpanel" id={`component-inspector-panel-${tab}`} aria-labelledby={`component-inspector-tab-${tab}`}>
         {tab === "props" ? (
-          <SchemaDensityContext.Provider value="compact">
+          <LoraCatalogContext value={loraCatalog}>
+          <SchemaDensityContext value="compact">
             <ComponentMetaSection
               entry={entry}
               draft={metaDraft}
               onDraftChange={onMetaDraftChange}
               suggestions={folderSuggestions}
               open={openSections.basic}
-              onOpenChange={(open) => setOpenSections((current) => ({ ...current, basic: open }))}
+              onOpenChange={(open) => { setOpenSections((current) => ({ ...current, basic: open })); }}
             />
             {SECTIONS.map((section) => (
               <PropertySection
@@ -320,12 +335,13 @@ export function ComponentInspector({
                 title={section.title}
                 icon={<section.icon aria-hidden />}
                 open={openSections[section.id]}
-                onOpenChange={(open) => setOpenSections((current) => ({ ...current, [section.id]: open }))}
+                onOpenChange={(open) => { setOpenSections((current) => ({ ...current, [section.id]: open })); }}
               >
                 <SettingsSection root={section.id} view={base} draft={draft} onChange={setDraft} issues={issues} disabled={saving} />
               </PropertySection>
             ))}
-          </SchemaDensityContext.Provider>
+          </SchemaDensityContext>
+          </LoraCatalogContext>
         ) : tab === "parts" ? (
           <div className="p-3">
             <PartsTab parts={descriptor.parts} draft={draft} onChange={setDraft} issues={issues} disabled={saving} />
@@ -361,7 +377,7 @@ export function ComponentInspector({
           {baseOutdated && dirty ? (
             <Callout tone="warning" title={t("伺服器已有 revision #{stored_revision}（草稿基於 #{stored_revision2}）", { stored_revision: serverView.stored_revision, stored_revision2: base.stored_revision })}>
               <p>{t("儲存時會以 expected_revision 檢查並回報衝突；也可以先把你的修改重新套用到最新版。")}</p>
-              <Button size="sm" onClick={() => rebaseOnto(serverView, draft, base)}>
+              <Button size="sm" onClick={() => { rebaseOnto(serverView, draft, base); }}>
                 {t("以最新版為基礎重新套用")}
               </Button>
             </Callout>
@@ -383,7 +399,7 @@ export function ComponentInspector({
             saved.restart_required ? (
               <Callout tone="warning" title={t("已儲存，尚未重新載入")} className="animate-rise-in">
                 <p>
-                  {t("已保存 revision #{stored_revision}；目前載入的仍是 {value}。load 設定要明確 restart 才會生效；invoke／recording 於下一次呼叫生效。", { stored_revision: saved.stored_revision, value: saved.loaded_revision === null ? t("（無）") : `#${saved.loaded_revision}` })}
+                  {t("已保存 revision #{stored_revision}；目前載入的仍是 {value}。load 設定要明確 restart 才會生效；invoke／recording 於下一次呼叫生效。", { stored_revision: saved.stored_revision, value: saved.loaded_revision === null ? t("（無）") : `#${String(saved.loaded_revision)}` })}
                 </p>
                 <RestartNow entry={entry} />
               </Callout>
@@ -400,12 +416,12 @@ export function ComponentInspector({
           {patch.isError && (!hasErrorCode(patch.error, "REVISION_CONFLICT") || conflict === null) ? (
             <ErrorCallout error={patch.error} write title={t("儲存失敗；草稿仍保留")} onRetry={() => void settingsQuery.refetch()} retryLabel={t("重新讀取設定")} retrying={settingsQuery.isFetching} />
           ) : null}
-          {conflictError ? <ErrorCallout error={conflictError} title={t("發生衝突，但無法讀取最新設定")} onRetry={() => void settingsQuery.refetch()} /> : null}
+          {(conflictError != null) ? <ErrorCallout error={conflictError} title={t("發生衝突，但無法讀取最新設定")} onRetry={() => void settingsQuery.refetch()} /> : null}
           <div className="flex flex-wrap items-center gap-2">
             <ActionButton variant="primary" size="sm" icon={<Save aria-hidden />} pending={saving} disabledReason={saving ? null : saveReason} onClick={save}>
               {t("儲存設定")}
             </ActionButton>
-            <Button size="sm" variant="secondary" icon={<Undo2 aria-hidden />} disabled={!draftEntry || saving} onClick={() => onDraftEntryChange(null)}>
+            <Button size="sm" variant="secondary" icon={<Undo2 aria-hidden />} disabled={!draftEntry || saving} onClick={() => { onDraftEntryChange(null); }}>
               {t("捨棄修改")}
             </Button>
           </div>
@@ -426,14 +442,14 @@ export function ComponentInspector({
       ) : null}
       <ConflictDialog
         state={conflict}
-        onClose={() => setConflict(null)}
+        onClose={() => { setConflict(null); }}
         onDiscard={() => {
           if (conflict) onDraftEntryChange(null);
           patch.reset();
           setConflict(null);
         }}
         onRebase={() => {
-          if (conflict) rebaseOnto(conflict.latest, conflict.mine, conflict.base);
+          if (conflict && !rebaseOnto(conflict.latest, conflict.mine, conflict.base)) return;
           patch.reset();
           setConflict(null);
         }}

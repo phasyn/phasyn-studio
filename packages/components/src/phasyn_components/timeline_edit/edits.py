@@ -69,6 +69,7 @@ from .model import (
 from .rejection import reject, rejection_of
 from .timing import change_clip_timing, materialize_clip_window
 
+
 Edit = Callable[[Doc, dict[str, str]], None]
 COUNT_LIMITS = (
     ("tracks", MAX_TRACKS),
@@ -82,12 +83,19 @@ SHAKE_FIELDS = ("shake_px", "shake_frames")
 
 
 def clip_ids_of(clips: Sequence[Mapping[str, Any]]) -> list[str]:
+    """Return the identifiers of the selected clips."""
     return [str(clip["clip_id"]) for clip in clips]
 
 
-def split(timeline: Doc, clip_ids: Sequence[str], frame: int, linked: bool, allocate: AllocateId) -> list[str]:
+def split(
+    timeline: Doc,
+    clip_ids: Sequence[str],
+    frame: int,
+    linked: bool,  # noqa: FBT001 - Keep the published positional and keyword API.
+    allocate: AllocateId,
+) -> list[str]:
     """Add an edit at ``frame`` in the named clips (and in the linked partners the frame crosses); the new tails."""
-    selected = selection(timeline, clip_ids, linked)
+    selected = selection(timeline, clip_ids, linked=linked)
     requested = set(clip_ids)
     links = RightLinks(allocate)
     right: set[str] = set()
@@ -97,7 +105,11 @@ def split(timeline: Doc, clip_ids: Sequence[str], frame: int, linked: bool, allo
         offset = frame - clip["start_frame"]
         if offset <= 0 or offset >= clip_duration(clip):
             if clip["clip_id"] in requested:
-                reject("out_of_range", "分割點必須位於所有選取片段的內部", clip_id=clip["clip_id"])
+                reject(
+                    "out_of_range",
+                    "分割點必須位於所有選取片段的內部",
+                    clip_id=clip["clip_id"],
+                )
             if offset <= 0:
                 right.add(clip["clip_id"])
             output.append(clip)
@@ -110,11 +122,17 @@ def split(timeline: Doc, clip_ids: Sequence[str], frame: int, linked: bool, allo
         created.append(tail["clip_id"])
     selected_ids = set(clip_ids_of(selected))
     kept = [clip for clip in timeline["clips"] if clip["clip_id"] not in selected_ids]
-    timeline["clips"] = [*kept, *(links.relinked(clip) if clip["clip_id"] in right else clip for clip in output)]
+    timeline["clips"] = [
+        *kept,
+        *(
+            links.relinked(clip) if clip["clip_id"] in right else clip
+            for clip in output
+        ),
+    ]
     return created
 
 
-def place(
+def place(  # noqa: PLR0913, PLR0917 - Keep the published positional and keyword API.
     timeline: Doc,
     clips: Sequence[Mapping[str, Any]],
     at: int,
@@ -138,7 +156,10 @@ def place(
         clear_range(timeline, targets, at, at + duration, allocate, origins)
     else:
         open_gap(timeline, ripple_tracks(timeline, targets), at, duration, allocate)
-    timeline["clips"].extend({**copy.deepcopy(dict(clip)), "start_frame": clip["start_frame"] + at} for clip in clips)
+    timeline["clips"].extend(
+        {**copy.deepcopy(dict(clip)), "start_frame": clip["start_frame"] + at}
+        for clip in clips
+    )
 
 
 def _merged_spans(clips: Sequence[Mapping[str, Any]]) -> list[tuple[int, int]]:
@@ -151,7 +172,9 @@ def _merged_spans(clips: Sequence[Mapping[str, Any]]) -> list[tuple[int, int]]:
     return spans
 
 
-def _without_interval(spans: Sequence[tuple[int, int]], start: int, end: int) -> list[tuple[int, int]]:
+def _without_interval(
+    spans: Sequence[tuple[int, int]], start: int, end: int
+) -> list[tuple[int, int]]:
     remaining: list[tuple[int, int]] = []
     for low, high in spans:
         if start >= high or end <= low:
@@ -193,9 +216,20 @@ def close_ranges(
     """
     for start, end in reversed(ranges):
         if allocate is not None:
-            clear_range(timeline, tracks, start, end, allocate, origins if origins is not None else {})
+            clear_range(
+                timeline,
+                tracks,
+                start,
+                end,
+                allocate,
+                origins if origins is not None else {},
+            )
         for clip in timeline["clips"]:
-            if clip["track_id"] in tracks and clip["start_frame"] < end and clip_end(clip) > start:
+            if (
+                clip["track_id"] in tracks
+                and clip["start_frame"] < end
+                and clip_end(clip) > start
+            ):
                 reject(
                     "sync_lock_conflict",
                     "同步鎖定軌道在刪除範圍內仍有片段；請一併選取或關閉同步鎖定",
@@ -207,14 +241,14 @@ def close_ranges(
             else clip
             for clip in timeline["clips"]
         ]
-        shifted_metadata(timeline, start, end, False)
+        shifted_metadata(timeline, start, end, insert=False)
 
 
-def remove(
+def remove(  # noqa: PLR0913, PLR0917 - Keep the published positional and keyword API.
     timeline: Doc,
     clip_ids: Sequence[str],
-    ripple: bool,
-    linked: bool,
+    ripple: bool,  # noqa: FBT001 - Keep the published positional and keyword API.
+    linked: bool,  # noqa: FBT001 - Keep the published positional and keyword API.
     allocate: AllocateId | None = None,
     origins: dict[str, str] | None = None,
 ) -> list[str]:
@@ -226,13 +260,22 @@ def remove(
     A clip that stays gives back what it lent a transition with a recorded cut into or out of a deleted clip: it ends
     (or starts) at the cut again, and a ripple closes only the time from the cut on.
     """
-    selected = selection(timeline, clip_ids, linked)
+    selected = selection(timeline, clip_ids, linked=linked)
     ids = set(clip_ids_of(selected))
     incoming, outgoing = transition_neighbours(timeline, ids)
     for pair in transition_pairs(timeline):
-        if pair.transition.get("cut") is not None and (pair.left_id in ids) != (pair.right_id in ids):
-            restore_pair(timeline, pair, left=pair.left_id not in ids, right=pair.right_id not in ids)
-    timeline["clips"] = [clip for clip in timeline["clips"] if clip["clip_id"] not in ids]
+        if pair.transition.get("cut") is not None and (pair.left_id in ids) != (
+            pair.right_id in ids
+        ):
+            restore_pair(
+                timeline,
+                pair,
+                left=pair.left_id not in ids,
+                right=pair.right_id not in ids,
+            )
+    timeline["clips"] = [
+        clip for clip in timeline["clips"] if clip["clip_id"] not in ids
+    ]
     if ripple:
         tracks = ripple_tracks(timeline, {clip["track_id"] for clip in selected})
         # A surviving transition neighbour still owns its complete source interval. Close only time
@@ -242,7 +285,7 @@ def remove(
     return clip_ids_of(selected)
 
 
-def ripple_trim(
+def ripple_trim(  # noqa: PLR0913 - Keep the published positional and keyword API.
     timeline: Doc,
     selected: Sequence[Mapping[str, Any]],
     resized: Sequence[Mapping[str, Any]],
@@ -259,7 +302,10 @@ def ripple_trim(
     """
     primary = selected[0]
     boundary = primary["start_frame"] if edge == "in" else clip_end(primary)
-    if any((clip["start_frame"] if edge == "in" else clip_end(clip)) != boundary for clip in selected):
+    if any(
+        (clip["start_frame"] if edge == "in" else clip_end(clip)) != boundary
+        for clip in selected
+    ):
         reject("linked_mismatch", "連結片段的編輯點不同；請取消連結選取後修剪")
     change = -delta if edge == "in" else delta
     ids = set(clip_ids_of(selected))
@@ -270,7 +316,11 @@ def ripple_trim(
     pivot = boundary if change >= 0 else removal_end
     low, high = (pivot, pivot) if change >= 0 else (removal_start, removal_end)
     for clip in timeline["clips"]:
-        if clip["clip_id"] in ids or clip["track_id"] not in tracks or clip["clip_id"] in incoming | outgoing:
+        if (
+            clip["clip_id"] in ids
+            or clip["track_id"] not in tracks
+            or clip["clip_id"] in incoming | outgoing
+        ):
             continue
         if keep_spanning and clip["start_frame"] < low:
             continue
@@ -281,26 +331,42 @@ def ripple_trim(
                 clip_id=clip["clip_id"],
             )
     replace(
-        timeline, [{**clip, "start_frame": clip["start_frame"] - delta} if edge == "in" else clip for clip in resized]
+        timeline,
+        [
+            {**clip, "start_frame": clip["start_frame"] - delta}
+            if edge == "in"
+            else clip
+            for clip in resized
+        ],
     )
 
     def follows(clip: Mapping[str, Any]) -> bool:
         if clip["clip_id"] in ids or clip["track_id"] not in tracks:
             return False
-        return clip["clip_id"] in outgoing or (clip["clip_id"] not in incoming and clip["start_frame"] >= pivot)
+        return clip["clip_id"] in outgoing or (
+            clip["clip_id"] not in incoming and clip["start_frame"] >= pivot
+        )
 
     timeline["clips"] = [
-        {**clip, "start_frame": clip["start_frame"] + change} if follows(clip) else clip for clip in timeline["clips"]
+        {**clip, "start_frame": clip["start_frame"] + change} if follows(clip) else clip
+        for clip in timeline["clips"]
     ]
     if change > 0:
-        shifted_metadata(timeline, boundary, boundary + change, True)
+        shifted_metadata(timeline, boundary, boundary + change, insert=True)
     else:
-        shifted_metadata(timeline, removal_start, removal_end, False)
+        shifted_metadata(timeline, removal_start, removal_end, insert=False)
 
 
-def trim(timeline: Doc, clip_id: str, edge: str, delta: int, ripple: bool, linked: bool) -> list[str]:
+def trim(  # noqa: PLR0913, PLR0917 - Keep the published positional and keyword API.
+    timeline: Doc,
+    clip_id: str,
+    edge: str,
+    delta: int,
+    ripple: bool,  # noqa: FBT001 - Keep the published positional and keyword API.
+    linked: bool,  # noqa: FBT001 - Keep the published positional and keyword API.
+) -> list[str]:
     """Move one edge of a clip (and of its linked partners) by ``delta`` frames; ``ripple`` moves what follows."""
-    selected = selection(timeline, [clip_id], linked)
+    selected = selection(timeline, [clip_id], linked=linked)
     primary = required_clip(timeline, clip_id)
     ordered = [primary, *(clip for clip in selected if clip["clip_id"] != clip_id)]
     resized = [resize_for_edit(clip, edge, delta) for clip in selected]
@@ -311,14 +377,20 @@ def trim(timeline: Doc, clip_id: str, edge: str, delta: int, ripple: bool, linke
     return clip_ids_of(selected)
 
 
-def roll(timeline: Doc, left_id: str, right_id: str, delta: int, linked: bool) -> list[str]:
+def roll(
+    timeline: Doc,
+    left_id: str,
+    right_id: str,
+    delta: int,
+    linked: bool,  # noqa: FBT001 - Keep the published positional and keyword API.
+) -> list[str]:
     """Move the cut between two adjacent clips: one grows by what the other gives up."""
     left = required_clip(timeline, left_id)
     right = required_clip(timeline, right_id)
     if not adjacent(left, right):
         reject("not_adjacent", "滾動編輯需要同軌且緊鄰的兩個片段")
-    heads = selection(timeline, [left_id], linked)
-    tails = selection(timeline, [right_id], linked)
+    heads = selection(timeline, [left_id], linked=linked)
+    tails = selection(timeline, [right_id], linked=linked)
     tail_ids = set(clip_ids_of(tails))
     if any(clip["clip_id"] in tail_ids for clip in heads):
         reject("linked_mismatch", "兩側片段不可屬於同一連結群組")
@@ -332,9 +404,9 @@ def roll(timeline: Doc, left_id: str, right_id: str, delta: int, linked: bool) -
     return clip_ids_of(resized)
 
 
-def slide(timeline: Doc, clip_id: str, delta: int, linked: bool) -> list[str]:
+def slide(timeline: Doc, clip_id: str, delta: int, linked: bool) -> list[str]:  # noqa: FBT001 - Keep the published positional and keyword API.
     """A slide keeps the selected source and duration; only its two neighbours' edges move."""
-    selected = selection(timeline, [clip_id], linked)
+    selected = selection(timeline, [clip_id], linked=linked)
     selected_ids = set(clip_ids_of(selected))
     roles: dict[str, tuple[Doc, str]] = {}
 
@@ -346,17 +418,24 @@ def slide(timeline: Doc, clip_id: str, delta: int, linked: bool) -> list[str]:
 
     for clip in selected:
         left, right = previous_clip(timeline, clip), next_clip(timeline, clip)
-        if left is None or right is None or not adjacent(left, clip) or not adjacent(clip, right):
+        if (
+            left is None
+            or right is None
+            or not adjacent(left, clip)
+            or not adjacent(clip, right)
+        ):
             reject("not_adjacent", "內滑工具需要片段兩側都有相鄰片段")
         if left["clip_id"] in selected_ids or right["clip_id"] in selected_ids:
             reject("linked_mismatch", "內滑時請只選取中央片段及其連結片段")
         add(clip, "move")
-        for neighbour in selection(timeline, [left["clip_id"]], linked):
+        for neighbour in selection(timeline, [left["clip_id"]], linked=linked):
             add(neighbour, "out")
-        for neighbour in selection(timeline, [right["clip_id"]], linked):
+        for neighbour in selection(timeline, [right["clip_id"]], linked=linked):
             add(neighbour, "in")
     updates = [
-        {**clip, "start_frame": clip["start_frame"] + delta} if role == "move" else resize_for_edit(clip, role, delta)
+        {**clip, "start_frame": clip["start_frame"] + delta}
+        if role == "move"
+        else resize_for_edit(clip, role, delta)
         for clip, role in roles.values()
     ]
     replace(timeline, updates)
@@ -370,22 +449,23 @@ def _cut_between(left: Mapping[str, Any], right: Mapping[str, Any]) -> int:
 
 
 def _window_as_before(before: Mapping[str, Any], after: Doc) -> Doc:
-    """A clip that had no output window and shows its whole clock again keeps none (a transition made before cuts
-    were recorded is restored by trimming)."""
+    """A clip that had no output window and shows its whole clock again keeps none (a transition made before cuts were recorded is restored by trimming)."""
     window = after.get("output_window")
     if before.get("output_window") is not None or window is None:
         return after
-    if window["start_frame"] != 0 or window["end_frame"] != processed_clip_duration(after):
+    if window["start_frame"] != 0 or window["end_frame"] != processed_clip_duration(
+        after
+    ):
         return after
     return {key: value for key, value in after.items() if key != "output_window"}
 
 
-def transition(
+def transition(  # noqa: PLR0913, PLR0917 - Keep the published positional and keyword API.
     timeline: Doc,
     clip_id: str,
     kind: str,
     frames: int,
-    linked: bool,
+    linked: bool,  # noqa: FBT001 - Keep the published positional and keyword API.
     options: Mapping[str, Any] | None = None,
     alignment: str | None = None,
 ) -> list[str]:
@@ -398,64 +478,123 @@ def transition(
     have (``transition_value``). ``alignment`` None keeps the current one (a new transition is centred).
     """
     left = required_clip(timeline, clip_id)
-    selected = selection(timeline, [clip_id], linked)
+    selected = selection(timeline, [clip_id], linked=linked)
     current = active_transition(left.get("effects"))
     new_frames = 0 if kind == "cut" else frames
     hints = {**(current or {}), **(options or {})}
-    if new_frames < 0 or new_frames > MAX_TRANSITION_FRAMES or (kind != "cut" and new_frames < 1):
-        reject("invalid_command", "轉場長度必須介於 1–240 影格")
-    placement = alignment or (cut_of(current)["alignment"] if current else DEFAULT_ALIGNMENT)
+    if (
+        new_frames < 0
+        or new_frames > MAX_TRANSITION_FRAMES
+        or (kind != "cut" and new_frames < 1)
+    ):
+        reject("invalid_command", "轉場長度必須介於 1\N{EN DASH}240 影格")
+    placement = alignment or (
+        cut_of(current)["alignment"] if current else DEFAULT_ALIGNMENT
+    )
     primary = next_clip(timeline, left)
-    at = _cut_between(left, primary) if primary is not None and adjacent(left, primary) else None
+    at = (
+        _cut_between(left, primary)
+        if primary is not None and adjacent(left, primary)
+        else None
+    )
     ids = set(clip_ids_of(selected))
     updates: list[Doc] = []
     for clip in selected:
         following = next_clip(timeline, clip)
-        if at is None or following is None or not adjacent(clip, following) or _cut_between(clip, following) != at:
-            reject("not_adjacent", "轉場需要各連結軌道都有對齊的相鄰片段", clip_id=clip["clip_id"])
+        if (
+            at is None
+            or following is None
+            or not adjacent(clip, following)
+            or _cut_between(clip, following) != at
+        ):
+            reject(
+                "not_adjacent",
+                "轉場需要各連結軌道都有對齊的相鄰片段",
+                clip_id=clip["clip_id"],
+            )
         if following["clip_id"] in ids:
-            reject("linked_mismatch", "兩側片段不可屬於同一連結群組", clip_id=clip["clip_id"])
+            reject(
+                "linked_mismatch",
+                "兩側片段不可屬於同一連結群組",
+                clip_id=clip["clip_id"],
+            )
         # An adjustment layer has no picture of its own to dissolve: its effect fades with its fades or its opacity
-        if kind != "cut" and (is_adjustment(timeline, clip) or is_adjustment(timeline, following)):
+        if kind != "cut" and (
+            is_adjustment(timeline, clip) or is_adjustment(timeline, following)
+        ):
             reject("adjustment_layer", ADJUSTMENT_TRANSITION, clip_id=clip["clip_id"])
         existing = active_transition(clip.get("effects"))
         following_source = find_source(timeline, following["source_id"])
         if existing:
-            restored_left, restored_right = restore_cut(clip, following, existing, following_source)
+            restored_left, restored_right = restore_cut(
+                clip, following, existing, following_source
+            )
         else:
-            restored_left, restored_right = without_transition_out(clip), dict(following)
+            restored_left, restored_right = (
+                without_transition_out(clip),
+                dict(following),
+            )
         if kind == "cut":
-            updates += [_window_as_before(clip, restored_left), _window_as_before(following, restored_right)]
+            updates += [
+                _window_as_before(clip, restored_left),
+                _window_as_before(following, restored_right),
+            ]
             continue
-        if new_frames > min(clip_duration(restored_left), clip_duration(restored_right)):
-            reject("transition_too_long", "轉場長度不得超過兩側片段長度", clip_id=clip["clip_id"])
+        if new_frames > min(
+            clip_duration(restored_left), clip_duration(restored_right)
+        ):
+            reject(
+                "transition_too_long",
+                "轉場長度不得超過兩側片段長度",
+                clip_id=clip["clip_id"],
+            )
         before, after = split_at_cut(new_frames, placement)
-        extended, outgoing = extend_tail(restored_left, after, find_source(timeline, clip["source_id"]))
+        extended, outgoing = extend_tail(
+            restored_left, after, find_source(timeline, clip["source_id"])
+        )
         started, incoming = extend_head(restored_right, before, following_source)
         value = transition_value(kind, new_frames, hints)
-        value["cut"] = {"alignment": placement, "outgoing": outgoing, "incoming": incoming}
-        extended["effects"] = {**(extended.get("effects") or {}), "transition_out": value}
-        updates += [_window_as_before(clip, extended), _window_as_before(following, started)]
+        value["cut"] = {
+            "alignment": placement,
+            "outgoing": outgoing,
+            "incoming": incoming,
+        }
+        extended["effects"] = {
+            **(extended.get("effects") or {}),
+            "transition_out": value,
+        }
+        updates += [
+            _window_as_before(clip, extended),
+            _window_as_before(following, started),
+        ]
     replace(timeline, updates)
     return clip_ids_of(selected)
 
 
-def slip(timeline: Doc, clip_id: str, delta: int, linked: bool) -> list[str]:
+def slip(timeline: Doc, clip_id: str, delta: int, linked: bool) -> list[str]:  # noqa: FBT001 - Keep the published positional and keyword API.
     """Shift the source range under a clip; the window survives when the complete range still fits the source."""
-    selected = selection(timeline, [clip_id], linked)
+    selected = selection(timeline, [clip_id], linked=linked)
     slipped: list[Doc] = []
     for clip in selected:
         source = find_source(timeline, clip["source_id"])
         length = int(source["duration_frames"]) if source else 0
         fits = clip["in_frame"] + delta >= 0 and clip["out_frame"] + delta <= length
         base = dict(clip) if fits else materialize_clip_window(clip)
-        slipped.append({**base, "in_frame": base["in_frame"] + delta, "out_frame": base["out_frame"] + delta})
+        slipped.append(
+            {
+                **base,
+                "in_frame": base["in_frame"] + delta,
+                "out_frame": base["out_frame"] + delta,
+            }
+        )
     replace(timeline, slipped)
     return clip_ids_of(selected)
 
 
 def _kind_tracks(timeline: Mapping[str, Any], kind: str) -> list[str]:
-    return [str(track["track_id"]) for track in timeline["tracks"] if track["kind"] == kind]
+    return [
+        str(track["track_id"]) for track in timeline["tracks"] if track["kind"] == kind
+    ]
 
 
 def _destinations(
@@ -482,17 +621,23 @@ def _destinations(
         unlocked(timeline, tracks[index])
         if clip["start_frame"] + delta < 0:
             reject("out_of_range", "片段不能移到序列起點之前")
-        moved.append({**clip, "start_frame": clip["start_frame"] + delta, "track_id": tracks[index]})
+        moved.append(
+            {
+                **clip,
+                "start_frame": clip["start_frame"] + delta,
+                "track_id": tracks[index],
+            }
+        )
     return moved
 
 
-def move(
+def move(  # noqa: PLR0913, PLR0917 - Keep the published positional and keyword API.
     timeline: Doc,
     clip_ids: Sequence[str],
     start_frame: int,
     track_id: str,
     mode: str,
-    linked: bool,
+    linked: bool,  # noqa: FBT001 - Keep the published positional and keyword API.
     allocate: AllocateId,
     origins: dict[str, str],
 ) -> list[str]:
@@ -502,14 +647,18 @@ def move(
     room for the whole block on every sync-locked track.
     """
     primary = required_clip(timeline, clip_ids[0])
-    selected = selection(timeline, clip_ids, linked)
-    moved = _destinations(timeline, selected, primary, track_id, start_frame - primary["start_frame"])
+    selected = selection(timeline, clip_ids, linked=linked)
+    moved = _destinations(
+        timeline, selected, primary, track_id, start_frame - primary["start_frame"]
+    )
     ids = set(clip_ids_of(selected))
     if mode == "insert":
         block_start = min(clip["start_frame"] for clip in moved)
         block_end = max(clip_end(clip) for clip in moved)
         tracks = ripple_tracks(timeline, {clip["track_id"] for clip in moved})
-        open_gap(timeline, tracks, block_start, block_end - block_start, allocate, skip=ids)
+        open_gap(
+            timeline, tracks, block_start, block_end - block_start, allocate, skip=ids
+        )
     else:
         partners = _kept_partners(timeline, moved)
         # One set of new link ids for the whole move: the picture and the sound of a pair cut on two tracks stay a pair
@@ -517,12 +666,22 @@ def move(
         for clip in moved:
             keep = ids | partners.get(clip["clip_id"], set())
             span = (clip["start_frame"], clip_end(clip))
-            clear_range(timeline, {clip["track_id"]}, *span, allocate, origins, skip=keep, links=links)
+            clear_range(
+                timeline,
+                {clip["track_id"]},
+                *span,
+                allocate,
+                origins,
+                skip=keep,
+                links=links,
+            )
     replace(timeline, moved)
     return clip_ids_of(moved)
 
 
-def _kept_partners(timeline: Mapping[str, Any], moved: Sequence[Mapping[str, Any]]) -> dict[str, set[str]]:
+def _kept_partners(
+    timeline: Mapping[str, Any], moved: Sequence[Mapping[str, Any]]
+) -> dict[str, set[str]]:
     """For each moved clip, the staying clips it keeps a transition with after the move.
 
     A transition is an overlap of its two clips. When one of them moves and they still overlap as a transition
@@ -532,7 +691,10 @@ def _kept_partners(timeline: Mapping[str, Any], moved: Sequence[Mapping[str, Any
     moved_by_id = {clip["clip_id"]: clip for clip in moved}
     kept: dict[str, set[str]] = {}
     for pair in transition_pairs(timeline):
-        left_moved, right_moved = pair.left_id in moved_by_id, pair.right_id in moved_by_id
+        left_moved, right_moved = (
+            pair.left_id in moved_by_id,
+            pair.right_id in moved_by_id,
+        )
         if left_moved == right_moved:
             continue
         left = moved_by_id.get(pair.left_id) or required_clip(timeline, pair.left_id)
@@ -543,26 +705,50 @@ def _kept_partners(timeline: Mapping[str, Any], moved: Sequence[Mapping[str, Any
             and left["start_frame"] < right["start_frame"]
             and 1 <= overlap <= min(clip_duration(left), clip_duration(right))
         ):
-            moved_id, partner_id = (pair.left_id, pair.right_id) if left_moved else (pair.right_id, pair.left_id)
+            moved_id, partner_id = (
+                (pair.left_id, pair.right_id)
+                if left_moved
+                else (pair.right_id, pair.left_id)
+            )
             kept.setdefault(moved_id, set()).add(partner_id)
     return kept
 
 
-def _timing_flags(updated: Mapping[str, Any], clip: Mapping[str, Any]) -> tuple[bool, bool, bool, bool]:
+def _timing_flags(
+    updated: Mapping[str, Any], clip: Mapping[str, Any]
+) -> tuple[bool, bool, bool, bool]:
     """(speed, hold start, hold end, any sampled phase) changed between a clip and its patched version."""
     new, old = updated.get("effects") or {}, clip.get("effects") or {}
     speed = new.get("speed_percent", 100) != old.get("speed_percent", 100)
-    hold_start = (new.get("hold") or {}).get("start", 0) != (old.get("hold") or {}).get("start", 0)
-    hold_end = (new.get("hold") or {}).get("end", 0) != (old.get("hold") or {}).get("end", 0)
+    hold_start = (new.get("hold") or {}).get("start", 0) != (old.get("hold") or {}).get(
+        "start", 0
+    )
+    hold_end = (new.get("hold") or {}).get("end", 0) != (old.get("hold") or {}).get(
+        "end", 0
+    )
     phase = speed or hold_start or hold_end
-    phase = phase or any(new.get(name) != old.get(name) or (name in new) != (name in old) for name in PHASE_EFFECTS)
+    phase = phase or any(
+        new.get(name) != old.get(name) or (name in new) != (name in old)
+        for name in PHASE_EFFECTS
+    )
     phase = phase or new.get("frame_step", 1) != old.get("frame_step", 1)
     new_camera, old_camera = new.get("camera") or {}, old.get("camera") or {}
-    return speed, hold_start, hold_end, phase or any(new_camera.get(n, 0) != old_camera.get(n, 0) for n in SHAKE_FIELDS)
+    return (
+        speed,
+        hold_start,
+        hold_end,
+        phase
+        or any(new_camera.get(n, 0) != old_camera.get(n, 0) for n in SHAKE_FIELDS),
+    )
 
 
 def _peer_effects(
-    item: Mapping[str, Any], wanted: Mapping[str, Any], speed: bool, hold_start: bool, hold_end: bool
+    item: Mapping[str, Any],
+    wanted: Mapping[str, Any],
+    *,
+    speed: bool,
+    hold_start: bool,
+    hold_end: bool,
 ) -> Doc:
     """A linked partner's effects with only the speed or hold edge that changed on the edited clip."""
     effects = dict(item.get("effects") or {})
@@ -571,18 +757,33 @@ def _peer_effects(
     elif speed:
         effects.pop("speed_percent", None)
     if hold_start:
-        effects["hold"] = {**(effects.get("hold") or {}), "start": (wanted.get("hold") or {}).get("start", 0)}
+        effects["hold"] = {
+            **(effects.get("hold") or {}),
+            "start": (wanted.get("hold") or {}).get("start", 0),
+        }
     if hold_end:
-        effects["hold"] = {**(effects.get("hold") or {}), "end": (wanted.get("hold") or {}).get("end", 0)}
+        effects["hold"] = {
+            **(effects.get("hold") or {}),
+            "end": (wanted.get("hold") or {}).get("end", 0),
+        }
     return effects
 
 
-def patch_clip(timeline: Doc, clip_id: str, patch: Mapping[str, Any], linked: bool) -> list[str]:
+def patch_clip(
+    timeline: Doc,
+    clip_id: str,
+    patch: Mapping[str, Any],
+    linked: bool,  # noqa: FBT001 - Keep the published positional and keyword API.
+) -> list[str]:
     """Replace clip properties (None removes one). A speed or hold change also retimes the linked partners."""
     clip = required_clip(timeline, clip_id)
-    peers = selection(timeline, [clip_id], linked)
+    peers = selection(timeline, [clip_id], linked=linked)
     # A patch value of None removes the field (a clip has no field that may be null).
-    updated: Doc = {key: value for key, value in {**clip, **copy.deepcopy(dict(patch))}.items() if value is not None}
+    updated: Doc = {
+        key: value
+        for key, value in {**clip, **copy.deepcopy(dict(patch))}.items()
+        if value is not None
+    }
     speed, hold_start, hold_end, phase = _timing_flags(updated, clip)
     timing = speed or hold_start or hold_end
     wanted = updated.get("effects") or {}
@@ -596,9 +797,25 @@ def patch_clip(timeline: Doc, clip_id: str, patch: Mapping[str, Any], linked: bo
             base = {key: value for key, value in updated.items() if key != "effects"}
             if "effects" in item:
                 base["effects"] = item["effects"]
-            result.append({**change_clip_timing(base, updated.get("effects")), "name": updated["name"]})
+            result.append(
+                {
+                    **change_clip_timing(base, updated.get("effects")),
+                    "name": updated["name"],
+                }
+            )
         elif timing:
-            result.append(change_clip_timing(item, _peer_effects(item, wanted, speed, hold_start, hold_end)))
+            result.append(
+                change_clip_timing(
+                    item,
+                    _peer_effects(
+                        item,
+                        wanted,
+                        speed=speed,
+                        hold_start=hold_start,
+                        hold_end=hold_end,
+                    ),
+                )
+            )
         else:
             result.append(item)
     replace(timeline, result)
@@ -606,24 +823,30 @@ def patch_clip(timeline: Doc, clip_id: str, patch: Mapping[str, Any], linked: bo
 
 
 def patch_track(timeline: Doc, track_id: str, patch: Mapping[str, Any]) -> None:
+    """Apply changes to a timeline track."""
     if find_track(timeline, track_id) is None:
         reject("track_not_found", "找不到選取的軌道", track_id=track_id)
     timeline["tracks"] = [
-        {**track, **patch} if track["track_id"] == track_id else track for track in timeline["tracks"]
+        {**track, **patch} if track["track_id"] == track_id else track
+        for track in timeline["tracks"]
     ]
 
 
 def add_track(timeline: Doc, kind: str, name: str, allocate: AllocateId) -> str:
+    """Add a track to the timeline."""
     track = new_track(allocate("track"), kind, name)
     timeline["tracks"].append(track)
     return str(track["track_id"])
 
 
 def remove_track(timeline: Doc, track_id: str) -> None:
+    """Remove a timeline track."""
     unlocked(timeline, track_id)
     if any(clip["track_id"] == track_id for clip in timeline["clips"]):
         reject("track_not_empty", "軌道仍有片段；請先移動或移除片段", track_id=track_id)
-    timeline["tracks"] = [track for track in timeline["tracks"] if track["track_id"] != track_id]
+    timeline["tracks"] = [
+        track for track in timeline["tracks"] if track["track_id"] != track_id
+    ]
 
 
 def _normalize_generated_layers(timeline: Doc) -> None:
@@ -636,14 +859,22 @@ def _normalize_generated_layers(timeline: Doc) -> None:
         if kind != "adjustment" and (kind != "text" or not title):
             clips.append(clip)
             continue
-        restarted = {**clip, "in_frame": 0, "out_frame": clip["out_frame"] - clip["in_frame"]}
+        restarted = {
+            **clip,
+            "in_frame": 0,
+            "out_frame": clip["out_frame"] - clip["in_frame"],
+        }
         if kind == "text" and title:
-            restarted["effects"] = {**clip["effects"], "title": {**title, "start_frame": 0, "end_frame": None}}
+            restarted["effects"] = {
+                **clip["effects"],
+                "title": {**title, "start_frame": 0, "end_frame": None},
+            }
         clips.append(restarted)
     timeline["clips"] = clips
 
 
 def check_limits(timeline: Mapping[str, Any]) -> None:
+    """Enforce the timeline size limits."""
     for name, limit in COUNT_LIMITS:
         if len(timeline[name]) > limit:
             reject("limit_exceeded", "時間軸項目數超過上限", field=name, limit=limit)
@@ -653,7 +884,9 @@ def check_frames(timeline: Mapping[str, Any]) -> None:
     """Frames an edit pushed out of range, refused with their reason before the schema refuses them without one."""
     for clip in timeline["clips"]:
         if clip["in_frame"] < 0 or clip["out_frame"] <= clip["in_frame"]:
-            reject("source_range", "片段入出點超出原始素材範圍", clip_id=clip["clip_id"])
+            reject(
+                "source_range", "片段入出點超出原始素材範圍", clip_id=clip["clip_id"]
+            )
         if clip["start_frame"] < 0:
             reject("out_of_range", "片段不能移到序列起點之前", clip_id=clip["clip_id"])
     ends = [clip["start_frame"] for clip in timeline["clips"]]
@@ -674,7 +907,9 @@ def validated(timeline: Doc) -> Doc:
     return timeline
 
 
-def run_edit(timeline: Mapping[str, Any], edit: Edit, *, reconcile: bool = False) -> Doc:
+def run_edit(
+    timeline: Mapping[str, Any], edit: Edit, *, reconcile: bool = False
+) -> Doc:
     """One transactional edit of a valid timeline: a fully valid new document, or a rejection and nothing changed.
 
     ``reconcile`` returns transitions to the original pairs that still overlap after the edit moved or cut clips.

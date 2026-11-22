@@ -50,14 +50,14 @@ export interface GestureOptions {
 
 export function useTimelineGesture(editor: Editor, scroller: RefObject<HTMLDivElement | null>, options: GestureOptions) {
   const [preview, setPreview] = useState<TimelinePreview | null>(null);
-  const gesture = useRef<Gesture | null>(null);
-  const live = useRef({ editor, options });
+  const gestureRef = useRef<Gesture | null>(null);
+  const liveRef = useRef({ editor, options });
   useLayoutEffect(() => {
-    live.current = { editor, options };
+    liveRef.current = { editor, options };
   });
   const cancel = (): boolean => {
-    const active = gesture.current !== null;
-    gesture.current = null;
+    const active = gestureRef.current !== null;
+    gestureRef.current = null;
     setPreview(null);
     return active;
   };
@@ -65,20 +65,20 @@ export function useTimelineGesture(editor: Editor, scroller: RefObject<HTMLDivEl
   const frameAt = (clientX: number): number => {
     const node = scroller.current;
     if (!node) return 0;
-    const { zoom, headerWidth } = live.current.options;
+    const { zoom, headerWidth } = liveRef.current.options;
     return Math.max(0, Math.round((clientX - node.getBoundingClientRect().left - headerWidth + node.scrollLeft) / zoom));
   };
   const trackAt = (clientY: number, fallback: string): string => {
     const rows = scroller.current?.querySelectorAll<HTMLElement>("[data-timeline-track]") ?? [];
     for (const row of rows) {
       const rect = row.getBoundingClientRect();
-      if (clientY >= rect.top && clientY < rect.bottom) return row.dataset.timelineTrack ?? fallback;
+      if (clientY >= rect.top && clientY < rect.bottom) return row.dataset["timelineTrack"] ?? fallback;
     }
     return fallback;
   };
 
   const calculate = (event: PointerEvent<HTMLElement>, session: Gesture): TimelinePreview => {
-    const state = live.current;
+    const state = liveRef.current;
     const { zoom } = state.options;
     const scroll = scroller.current?.scrollLeft ?? session.originScroll;
     const raw = Math.round((event.clientX - session.originX + scroll - session.originScroll) / zoom);
@@ -104,7 +104,7 @@ export function useTimelineGesture(editor: Editor, scroller: RefObject<HTMLDivEl
   };
 
   const modeFor = (clip: TimelineClip, clientX: number, edge?: "in" | "out"): GestureMode => {
-    const state = live.current;
+    const state = liveRef.current;
     if (state.options.behaviour === "rearrange") return "rearrange";
     const tool = state.editor.tool;
     const side = edge ?? (frameAt(clientX) - clip.start_frame < clipDuration(clip) / 2 ? "in" : "out");
@@ -122,8 +122,8 @@ export function useTimelineGesture(editor: Editor, scroller: RefObject<HTMLDivEl
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.focus({ preventScroll: true });
-    const state = live.current;
-    if (state.editor.trackOf(clip)?.locked) {
+    const state = liveRef.current;
+    if (state.editor.trackOf(clip)?.locked === true) {
       state.editor.select(clip.clip_id, event.shiftKey);
       return;
     }
@@ -137,7 +137,7 @@ export function useTimelineGesture(editor: Editor, scroller: RefObject<HTMLDivEl
     const sameTrack = picked.filter((id) => state.editor.timeline.clips.find((item) => item.clip_id === id)?.track_id === clip.track_id);
     const clipIds = mode === "rearrange" ? (sameTrack.includes(clip.clip_id) ? sameTrack : [clip.clip_id]) : picked;
     if (!keepSelection) state.editor.select(clip.clip_id, event.shiftKey);
-    gesture.current = {
+    gestureRef.current = {
       pointerId: event.pointerId,
       originX: event.clientX,
       originY: event.clientY,
@@ -154,22 +154,22 @@ export function useTimelineGesture(editor: Editor, scroller: RefObject<HTMLDivEl
   };
 
   const move = (event: PointerEvent<HTMLElement>) => {
-    const session = gesture.current;
-    if (!session || session.pointerId !== event.pointerId || session.mode === "razor") return;
+    const session = gestureRef.current;
+    if (session?.pointerId !== event.pointerId || session.mode === "razor") return;
     if (Math.hypot(event.clientX - session.originX, event.clientY - session.originY) < 3 && preview === null) return;
     const node = scroller.current;
     if (node) {
       const rect = node.getBoundingClientRect();
       if (event.clientX > rect.right - 24) node.scrollBy({ left: 18 });
-      else if (event.clientX < rect.left + live.current.options.headerWidth + 24) node.scrollBy({ left: -18 });
+      else if (event.clientX < rect.left + liveRef.current.options.headerWidth + 24) node.scrollBy({ left: -18 });
     }
     setPreview(calculate(event, session));
   };
 
   const finish = (event: PointerEvent<HTMLElement>) => {
-    const session = gesture.current;
-    if (!session || session.pointerId !== event.pointerId) return;
-    const state = live.current;
+    const session = gestureRef.current;
+    if (session?.pointerId !== event.pointerId) return;
+    const state = liveRef.current;
     const moved = Math.hypot(event.clientX - session.originX, event.clientY - session.originY) >= 3 || preview !== null;
     const next = calculate(event, session);
     cancel();
@@ -187,7 +187,7 @@ export function useTimelineGesture(editor: Editor, scroller: RefObject<HTMLDivEl
       if (session.mode === "rearrange") state.editor.setMonitorMode("source");
       return;
     }
-    if (next.error) state.editor.warn(next.error);
+    if (next.error != null && next.error !== "") state.editor.warn(next.error);
     else if (next.command && (next.mode === "rearrange" || next.delta !== 0 || next.trackId !== session.clip.track_id)) state.editor.command(next.command);
   };
 

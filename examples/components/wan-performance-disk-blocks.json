@@ -1,0 +1,27 @@
+{
+  "component_id": "wan-performance-disk-blocks",
+  "label": "Wan2.2 表演影片驅動角色（磁碟分塊）",
+  "provider_id": "wan.performance",
+  "runtime_id": "wan-native",
+  "autostart": true,
+  "folder": "生成/影片/Wan",
+  "settings": {
+    "load": {
+      "model_path": "/path/to/models/Wan2.2-Animate-14B",
+      "model_revision": "cb93a225fbaf1ca100f54e79da8f994995b689b3",
+      "device": {
+        "kind": "cuda",
+        "id": "GPU-REPLACE-0",
+        "resource_group": "gpu-0"
+      },
+      "provider_options": {
+        "engine_path": "/path/to/engines/Wan2.2-1ea34ff",
+        "dit_offload": "disk_blocks"
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "mode": "detailed"
+    }
+  }
+}

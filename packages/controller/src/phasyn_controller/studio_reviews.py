@@ -32,6 +32,7 @@ from starlette.responses import JSONResponse
 
 from .docstore import JsonDocStore
 
+
 if TYPE_CHECKING:
     from .state import Controller
 
@@ -44,7 +45,13 @@ Key = tuple[str, str, str, str]
 
 
 def review_key(review: dict[str, Any]) -> Key:
-    return (str(review["take_id"]), str(review["kind"]), str(review["source"]), str(review.get("role") or ""))
+    """Return the fields that identify a particular take review."""
+    return (
+        str(review["take_id"]),
+        str(review["kind"]),
+        str(review["source"]),
+        str(review.get("role") or ""),
+    )
 
 
 def _kind_problem(review: dict[str, Any]) -> str | None:
@@ -63,6 +70,7 @@ def _kind_problem(review: dict[str, Any]) -> str | None:
 
 
 def empty(project_id: str) -> dict[str, Any]:
+    """Return an empty reviews document at the initial revision."""
     return {"project_id": project_id, "revision": 0, "updated_at": None, "reviews": []}
 
 
@@ -70,11 +78,13 @@ class TakeReviewStore:
     """One writer (the Controller process); the check of the take ids and the write happen under one lock."""
 
     def __init__(self, root: Path, take_ids: Callable[[str], set[str]]) -> None:
+        """Bind reviews to their project documents and valid take IDs."""
         self._docs = JsonDocStore(root, id_field="project_id", what="Studio take 審查")
         self._take_ids = take_ids
         self._lock = threading.Lock()
 
     def path(self, project_id: str) -> Path:
+        """Return the local path for the validated document identity."""
         return self._docs.path(project_id)
 
     def _current(self, project_id: str) -> dict[str, Any]:
@@ -84,10 +94,16 @@ class TakeReviewStore:
             if exc.code == "NOT_FOUND":
                 return empty(project_id)
             raise
-        contracts.validate("StudioTakeReviews", doc, code="RUNTIME_ERROR", what=f"已保存的 take 審查 {project_id}")
+        contracts.validate(
+            "StudioTakeReviews",
+            doc,
+            code="RUNTIME_ERROR",
+            what=f"已保存的 take 審查 {project_id}",
+        )
         return doc
 
     def get(self, project_id: str) -> dict[str, Any]:
+        """Validate the target project and read its current reviews."""
         self._take_ids(project_id)  # 404 for a project that does not exist
         return self._current(project_id)
 
@@ -102,13 +118,20 @@ class TakeReviewStore:
                 raise ComponentError(
                     "INVALID_ARGUMENT",
                     f"reviews[{index}] 與前面的審查重複（take {key[0]}、{key[1]}、來源 {key[2]}）；同一個鍵只送一次",
-                    details={"index": index, "take_id": key[0], "kind": key[1], "source": key[2]},
+                    details={
+                        "index": index,
+                        "take_id": key[0],
+                        "kind": key[1],
+                        "source": key[2],
+                    },
                 )
             seen.add(key)
             problem = _kind_problem(review)
             if problem is not None:
                 raise ComponentError(
-                    "INVALID_ARGUMENT", f"reviews[{index}]：{problem}", details={"index": index, "kind": review["kind"]}
+                    "INVALID_ARGUMENT",
+                    f"reviews[{index}]：{problem}",
+                    details={"index": index, "kind": review["kind"]},
                 )
         with self._lock:
             takes = self._take_ids(project_id)
@@ -117,12 +140,17 @@ class TakeReviewStore:
                 raise ComponentError(
                     "INVALID_ARGUMENT",
                     f"{len(unknown)} 個 take_id 不是專案 {project_id} 的影片 take；沒有寫入任何審查",
-                    details={"unknown_take_ids": unknown[:UNKNOWN_SHOWN], "unknown_count": len(unknown)},
+                    details={
+                        "unknown_take_ids": unknown[:UNKNOWN_SHOWN],
+                        "unknown_count": len(unknown),
+                    },
                 )
             current = self._current(project_id)
             now = utc_now()
             merged: dict[Key, dict[str, Any]] = {
-                review_key(review): review for review in current["reviews"] if review["take_id"] in takes
+                review_key(review): review
+                for review in current["reviews"]
+                if review["take_id"] in takes
             }
             replaced = sum(1 for review in incoming if review_key(review) in merged)
             for review in incoming:
@@ -143,7 +171,12 @@ class TakeReviewStore:
                 "updated_at": now,
                 "reviews": list(merged.values()),
             }
-            contracts.validate("StudioTakeReviews", doc, code="RUNTIME_ERROR", what="寫入後的 take 審查")
+            contracts.validate(
+                "StudioTakeReviews",
+                doc,
+                code="RUNTIME_ERROR",
+                what="寫入後的 take 審查",
+            )
             self._docs.put(project_id, doc)
         return {"reviews": doc, "written": len(incoming), "replaced": replaced}
 
@@ -154,6 +187,7 @@ class TakeReviewStore:
 
 
 def routes(ctl: Controller) -> APIRouter:
+    """Build the Controller routes for studio reviews."""
     router = APIRouter()
 
     @router.get("/api/studio/projects/{project_id}/reviews")
@@ -165,9 +199,19 @@ def routes(ctl: Controller) -> APIRouter:
     async def write_reviews(project_id: str, request: Request) -> JSONResponse:
         pid = require_local_id(project_id, "project_id")
         body = await read_json(request, limit=MAX_BODY_BYTES, what="take 審查")
-        return json_response(await asyncio.to_thread(ctl.studio.reviews.write, pid, body))
+        return json_response(
+            await asyncio.to_thread(ctl.studio.reviews.write, pid, body)
+        )
 
     return router
 
 
-__all__ = ["MAX_BODY_BYTES", "MAX_REVIEWS", "REVIEWS_DIR", "TakeReviewStore", "empty", "review_key", "routes"]
+__all__ = [
+    "MAX_BODY_BYTES",
+    "MAX_REVIEWS",
+    "REVIEWS_DIR",
+    "TakeReviewStore",
+    "empty",
+    "review_key",
+    "routes",
+]

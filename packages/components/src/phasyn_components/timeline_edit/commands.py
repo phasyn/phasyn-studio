@@ -20,6 +20,7 @@ from ..timeline_limits import MAX_COMMANDS, MAX_SEQUENCE_FRAMES
 from . import arrange, edits
 from .adjustment import add_adjustment_layer
 from .binding import apply_pending, pending_sources
+from .caption_fit import fit_captions
 from .core import next_clip, previous_clip, required_clip, unlocked
 from .model import (
     TRANSITION_DIRECTIONS,
@@ -37,13 +38,49 @@ from .model import (
 )
 from .normalize import normalize_project, place_shots, representable, shown_shot_ids
 from .rejection import TimelineRejected, reject
+from .retake_visuals import retained_visuals
 from .shots import bound_take, library_source, rate, shot_source, unique_id
-from .text import CAPTION_SECONDS, STYLE_FIELDS, add_text_layer, default_title_style, parse_srt, seconds_to_frames
-from .text import round_half_up as _round
+from .text import (
+    CAPTION_SECONDS,
+    STYLE_FIELDS,
+    add_text_layer,
+    default_title_style,
+    parse_srt,
+    round_half_up as _round,
+    seconds_to_frames,
+)
+from .transcription import apply_transcript
+
+
+#: Third member of the ``candidate_assets`` key ``(run_id, output_key, RUN_LABEL)`` whose value ``{"label": …}`` is the
+#: label of the run a placed output came from; it names the new source instead of ``"<output> · <run id>"``.
+RUN_LABEL = "run_label"
+#: Separators between the project's title and the rest of a Studio run label (「專案・台詞配音・…」「Studio：專案・鏡頭 1」).
+_LABEL_SEPARATORS = ("・", " · ", "：", ": ")
+_MAX_SOURCE_NAME = 200
+
+
+def run_source_name(label: str | None, project_title: str, fallback: str) -> str:
+    """A placed run output's name: its run label without the 「Studio：」 prefix and the project's title, else ``fallback``."""
+    name = (label or "").strip()
+    for prefix in ("Studio：", "Studio: "):
+        name = name.removeprefix(prefix)
+    title = project_title.strip()
+    if title and name.startswith(title):
+        rest = name[len(title) :]
+        for separator in _LABEL_SEPARATORS:
+            if rest.startswith(separator) and rest[len(separator) :].strip():
+                name = rest[len(separator) :]
+                break
+    name = name.strip()
+    return name[:_MAX_SOURCE_NAME] if name else fallback
+
 
 COMMAND_DEFS: Mapping[str, str] = {
     "assemble": "TimelineCommandAssemble",
     "place": "TimelineCommandPlace",
+    "collect_output": "TimelineCommandCollectOutput",
+    "range_candidate": "TimelineCommandRangeCandidate",
     "move": "TimelineCommandMove",
     "trim": "TimelineCommandTrim",
     "slip": "TimelineCommandSlip",
@@ -99,7 +136,12 @@ class Applied:
     source_ids: list[str] = field(default_factory=list)
 
     def to_dict(self) -> Doc:
-        value: Doc = {"op": self.op, "clip_ids": list(dict.fromkeys(self.clip_ids)), "summary": self.summary}
+        """Serialize the object to its wire representation."""
+        value: Doc = {
+            "op": self.op,
+            "clip_ids": list(dict.fromkeys(self.clip_ids)),
+            "summary": self.summary,
+        }
         for name in ("track_ids", "marker_ids", "caption_ids", "source_ids"):
             if getattr(self, name):
                 value[name] = list(dict.fromkeys(getattr(self, name)))
@@ -110,6 +152,7 @@ class Applied:
 class _Context:
     project: Doc
     allocate: AllocateId
+    candidate_assets: Mapping[tuple[str, ...], Doc] = field(default_factory=dict)
 
     @property
     def timeline(self) -> Doc:
@@ -117,14 +160,16 @@ class _Context:
         if timeline is None:
             fps = self.project["format"]["fps"]
             if not representable(fps):
-                reject("fps", "剪輯影格率必須介於 1–240 fps")
+                reject("fps", "剪輯影格率必須介於 1\N{EN DASH}240 fps")
             timeline = empty_timeline(fps)
             self.project["timeline"] = timeline
         return dict(timeline)
 
     def edit(self, change: edits.Edit, *, reconcile: bool = False) -> Doc:
         """Run one edit of the timeline as a transaction and keep its result."""
-        self.project["timeline"] = edits.run_edit(self.timeline, change, reconcile=reconcile)
+        self.project["timeline"] = edits.run_edit(
+            self.timeline, change, reconcile=reconcile
+        )
         return dict(self.project["timeline"])
 
     def export_size(self) -> tuple[int, int]:
@@ -140,10 +185,18 @@ def check_command(command: Any) -> str:
     op = command.get("op") if isinstance(command, Mapping) else None
     name = COMMAND_DEFS.get(op) if isinstance(op, str) else None
     if name is None:
-        reject("invalid_command", "不支援的時間軸指令；op 必須是契約列出的指令名稱", supported=sorted(COMMAND_DEFS))
+        reject(
+            "invalid_command",
+            "不支援的時間軸指令；op 必須是契約列出的指令名稱",
+            supported=sorted(COMMAND_DEFS),
+        )
     problems = contracts.errors(name, command, limit=5)
     if problems:
-        reject("invalid_command", f"時間軸指令 {op} 不符合契約：{problems[0]}", errors=problems)
+        reject(
+            "invalid_command",
+            f"時間軸指令 {op} 不符合契約：{problems[0]}",
+            errors=problems,
+        )
     return str(op)
 
 
@@ -151,14 +204,22 @@ def _one_of(command: Mapping[str, Any], names: Sequence[str]) -> str:
     """The single one of ``names`` the command carries."""
     given = [name for name in names if name in command]
     if len(given) != 1:
-        reject("invalid_command", f"必須指定 {'、'.join(names)} 其中一個", fields=list(names))
+        reject(
+            "invalid_command",
+            f"必須指定 {'、'.join(names)} 其中一個",
+            fields=list(names),
+        )
     return given[0]
 
 
 def _flat(command: Mapping[str, Any], names: Sequence[str]) -> Doc:
     """The named fields of a command; the flat form wins over the nested ``fields`` object."""
     nested = command.get("fields") or {}
-    return {name: command.get(name, nested.get(name)) for name in names if name in command or name in nested}
+    return {
+        name: command.get(name, nested.get(name))
+        for name in names
+        if name in command or name in nested
+    }
 
 
 def _linked(command: Mapping[str, Any]) -> bool:
@@ -167,41 +228,61 @@ def _linked(command: Mapping[str, Any]) -> bool:
 
 def _list_shots(timeline: Doc, shot_ids: Sequence[str]) -> None:
     listed = list(timeline.get("placed_shot_ids") or [])
-    timeline["placed_shot_ids"] = [*listed, *(shot_id for shot_id in dict.fromkeys(shot_ids) if shot_id not in listed)]
+    timeline["placed_shot_ids"] = [
+        *listed,
+        *(shot_id for shot_id in dict.fromkeys(shot_ids) if shot_id not in listed),
+    ]
 
 
 def _assemble(ctx: _Context, command: Mapping[str, Any]) -> Applied:
     shots = ctx.project.get("shots") or []
     rebuild = command["mode"] == "rebuild"
     if rebuild and command.get("confirm") is not True:
-        reject("confirm_required", "重建會清除第一條影像軌與第一條音軌上的所有片段；確認後請加上 confirm: true")
+        reject(
+            "confirm_required",
+            "重建會清除第一條影像軌與第一條音軌上的所有片段；確認後請加上 confirm: true",
+        )
     placed: list[str] = []
     created: list[str] = []
 
     def change(draft: Doc, _origins: dict[str, str]) -> None:
         shown = shown_shot_ids(draft)
         if rebuild:
-            cleared = [track for track in (first_track(draft, "video"), first_track(draft, "audio")) if track]
+            cleared = [
+                track
+                for track in (first_track(draft, "video"), first_track(draft, "audio"))
+                if track
+            ]
             for track in cleared:
                 unlocked(draft, track["track_id"])
             ids = {track["track_id"] for track in cleared}
-            draft["clips"] = [clip for clip in draft["clips"] if clip["track_id"] not in ids]
+            draft["clips"] = [
+                clip for clip in draft["clips"] if clip["track_id"] not in ids
+            ]
         wanted = [shot for shot in shots if (shot["shot_id"] in shown) == rebuild]
         before = {clip["clip_id"] for clip in draft["clips"]}
         placed.extend(place_shots(ctx.project, draft, wanted, []))
         _list_shots(draft, placed)
-        created.extend(clip["clip_id"] for clip in draft["clips"] if clip["clip_id"] not in before)
+        created.extend(
+            clip["clip_id"] for clip in draft["clips"] if clip["clip_id"] not in before
+        )
 
     ctx.edit(change)
     if rebuild:
         summary = f"已重建第一條影像軌與音軌：依鏡頭順序排入 {len(placed)} 個鏡頭"
     else:
-        summary = f"已把 {len(placed)} 個尚未放入的鏡頭接到時間軸結尾" if placed else "沒有需要放入時間軸的鏡頭"
+        summary = (
+            f"已把 {len(placed)} 個尚未放入的鏡頭接到時間軸結尾"
+            if placed
+            else "沒有需要放入時間軸的鏡頭"
+        )
     return Applied("assemble", summary, clip_ids=created)
 
 
 def _media_source(ctx: _Context, draft: Doc, command: Mapping[str, Any]) -> Doc:
     """The source a ``place`` names, added to the draft when the timeline does not have it yet."""
+    if "run_id" in command:
+        return _candidate_source(ctx, draft, command)
     key = _one_of(command, ("shot_id", "library_id", "source_id"))
     wanted = command[key]
     if key == "source_id":
@@ -209,31 +290,63 @@ def _media_source(ctx: _Context, draft: Doc, command: Mapping[str, Any]) -> Doc:
         if found is None:
             reject("source_not_found", "找不到指定的素材", source_id=wanted)
         return found
-    known = [source for source in draft["sources"] if source.get(key) == wanted]
+    known: list[Doc] = [
+        source for source in draft["sources"] if source.get(key) == wanted
+    ]
     created: Doc | None
     if key == "shot_id":
-        shot = next((item for item in ctx.project.get("shots") or [] if item["shot_id"] == wanted), None)
+        shot = next(
+            (
+                item
+                for item in ctx.project.get("shots") or []
+                if item["shot_id"] == wanted
+            ),
+            None,
+        )
         if shot is None:
             reject("shot_not_found", "找不到指定的鏡頭", shot_id=wanted)
         take = bound_take(shot)
         # A shot can have a source per take it was ever bound to; the one showing its take in use comes first.
-        known.sort(key=lambda source: take is None or source.get("take_id") != take["take_id"])
+        known.sort(
+            key=lambda source: take is None or source.get("take_id") != take["take_id"]
+        )
         created = shot_source(ctx.project, shot, draft["fps"])
     else:
-        item = next((entry for entry in ctx.project.get("library") or [] if entry["item_id"] == wanted), None)
-        if item is None:
-            reject("library_item_not_found", "找不到指定的素材庫項目", library_id=wanted)
+        item = _item(
+            ctx.project.get("library") or [],
+            "item_id",
+            wanted,
+            "library_item_not_found",
+            "找不到指定的素材庫項目",
+        )
+        measurement = ctx.candidate_assets.get(
+            ("library-audio", wanted, item["file"]["sha256"])
+        )
+        if measurement is not None:
+            item["has_audio"] = measurement["has_audio"]
+        if (
+            known
+            and known[0].get("file") == item["file"]
+            and type(item.get("has_audio")) is bool
+        ):
+            known[0]["has_audio"] = item["has_audio"]
         created = library_source(item, draft["fps"])
     if known:
         return known[0]
     if created is None:
-        reject("source_unavailable", "這個素材的長度未知，無法放入時間軸；請先確認它可以播放", library_id=wanted)
+        reject(
+            "source_unavailable",
+            "這個素材的長度未知，無法放入時間軸；請先確認它可以播放",
+            library_id=wanted,
+        )
     created["source_id"] = unique_id(created["source_id"], used_ids(draft))
     draft["sources"].append(created)
     return created
 
 
-def _place_tracks(draft: Mapping[str, Any], source: Mapping[str, Any], command: Mapping[str, Any]) -> list[str]:
+def _place_tracks(
+    draft: Mapping[str, Any], source: Mapping[str, Any], command: Mapping[str, Any]
+) -> list[str]:
     """The tracks a ``place`` puts clips on: video first, then audio."""
     has_audio = source["kind"] == "audio" or bool(source["has_audio"])
     video = command.get("video", source["kind"] != "audio")
@@ -243,21 +356,38 @@ def _place_tracks(draft: Mapping[str, Any], source: Mapping[str, Any], command: 
     if audio and not has_audio:
         reject("track_kind", "素材沒有音訊，不能放入音軌")
     tracks: list[str] = []
-    for kind, wanted, key in (("video", video, "track_video"), ("audio", audio, "track_audio")):
+    for kind, wanted, key in (
+        ("video", video, "track_video"),
+        ("audio", audio, "track_audio"),
+    ):
         if not wanted:
             continue
-        track = find_track(draft, command[key]) if key in command else first_track(draft, kind)
+        track = (
+            find_track(draft, command[key])
+            if key in command
+            else first_track(draft, kind)
+        )
         if track is None:
-            reject("track_not_found", "找不到要放入的軌道；請先新增對應的影像軌或音軌", kind=kind)
+            reject(
+                "track_not_found",
+                "找不到要放入的軌道；請先新增對應的影像軌或音軌",
+                kind=kind,
+            )
         if track["kind"] != kind:
-            reject("track_kind", "指定的軌道種類與要放入的內容不同", track_id=track["track_id"])
+            reject(
+                "track_kind",
+                "指定的軌道種類與要放入的內容不同",
+                track_id=track["track_id"],
+            )
         tracks.append(str(track["track_id"]))
     if not tracks:
         reject("invalid_command", "請至少放入影像或聲音其中一種")
     return tracks
 
 
-def _place_range(draft: Mapping[str, Any], source: Mapping[str, Any], command: Mapping[str, Any]) -> tuple[int, int]:
+def _place_range(
+    draft: Mapping[str, Any], source: Mapping[str, Any], command: Mapping[str, Any]
+) -> tuple[int, int]:
     length = int(source["duration_frames"])
     first = int(command.get("in_frame", 0))
     if "out_frame" in command:
@@ -282,6 +412,13 @@ def _place(ctx: _Context, command: Mapping[str, Any]) -> Applied:
         first, out = _place_range(draft, source, command)
         at = command.get("at", "end")
         start = tracks_end(draft, tracks) if at == "end" else int(at)
+        if command.get("only_if_empty") and any(
+            clip["track_id"] in tracks
+            and clip["start_frame"] < start + out - first
+            and clip_end(clip) > start
+            for clip in draft["clips"]
+        ):
+            reject("overlap", "所選範圍已有片段")
         link = ctx.allocate("link")
         clips = [
             {
@@ -300,12 +437,231 @@ def _place(ctx: _Context, command: Mapping[str, Any]) -> Applied:
         edits.place(draft, clips, start, out - first, mode, ctx.allocate, origins)
         if source.get("shot_id"):
             _list_shots(draft, [source["shot_id"]])
-        result.update(ids=edits.clip_ids_of(clips), source=source, start=start, frames=out - first)
+        result.update(
+            ids=edits.clip_ids_of(clips), source=source, start=start, frames=out - first
+        )
 
     ctx.edit(change, reconcile=mode == "overwrite")
     name = result["source"]["name"] or result["source"]["source_id"]
     summary = f"已放入「{name}」：第 {result['start']} 影格起 {result['frames']} 影格（{mode}）"
-    return Applied("place", summary, clip_ids=result["ids"], source_ids=[result["source"]["source_id"]])
+    return Applied(
+        "place",
+        summary,
+        clip_ids=result["ids"],
+        source_ids=[result["source"]["source_id"]],
+    )
+
+
+_MAX_LIBRARY_ITEMS = 500
+
+
+def _collect_output(ctx: _Context, command: Mapping[str, Any]) -> Applied:
+    """Add a checked run output to the project library as an immutable source."""
+    run, port = command["run_id"], command["output_key"]
+    media = ctx.candidate_assets.get((run, port, "collect_output"))
+    if not media or media["file"]["sha256"] != command["expected_source_sha256"]:
+        reject("source_unavailable", "執行輸出的內容已變更，請重新選取")
+    origin = {"kind": "run_output", "run_id": run, "output_key": port}
+    library = list(ctx.project.get("library") or [])
+    for index, item in enumerate(library):
+        if item.get("source") == origin and item["file"] == media["file"]:
+            if item.get("has_audio") is None:
+                library[index] = {**item, "has_audio": media["has_audio"]}
+                ctx.project["library"] = library
+            return Applied("collect_output", "素材已在專案中")
+    name = command["name"].strip()
+    if not name or any(
+        item["name"].strip().casefold() == name.casefold() for item in library
+    ):
+        reject("invalid_command", "請使用專案內未使用的素材名稱")
+    if len(library) >= _MAX_LIBRARY_ITEMS:
+        reject("limit_exceeded", "專案素材庫已達上限")
+    item = {
+        k: media[k]
+        for k in (
+            "file",
+            "kind",
+            "width",
+            "height",
+            "duration_seconds",
+            "has_audio",
+            "created_at",
+        )
+    }
+    library.append(
+        {**item, "item_id": ctx.allocate("item"), "name": name, "source": origin}
+    )
+    ctx.project["library"] = library
+    return Applied("collect_output", f"已將「{name}」加入素材庫")
+
+
+def _check_candidate_range(
+    timeline: Doc, track_id: str, start: int, end: int, mode: str
+) -> None:
+    if end <= start:
+        reject("out_of_range", "結束影格必須晚於開始影格")
+    clips = sorted(
+        (clip for clip in timeline["clips"] if clip["track_id"] == track_id),
+        key=lambda clip: clip["start_frame"],
+    )
+    covered = [
+        clip for clip in clips if clip["start_frame"] < end and clip_end(clip) > start
+    ]
+    if mode == "fill_gap":
+        if covered:
+            reject("overlap", "所選空檔已經有片段")
+        if not any(clip_end(clip) == start for clip in clips) or not any(
+            clip["start_frame"] == end for clip in clips
+        ):
+            reject("not_adjacent", "請選取同軌兩個片段之間的完整空檔")
+        return
+    cursor = start
+    for clip in covered:
+        if clip["start_frame"] > cursor:
+            break
+        cursor = max(cursor, clip_end(clip))
+    if cursor < end:
+        reject("out_of_range", "替換範圍必須完全位於軌道上已有的片段內")
+
+
+def _recorded_source(ctx: _Context, draft: Doc, command: Mapping[str, Any]) -> Doc:
+    key = command["run_id"], command["output_key"]
+    asset = ctx.candidate_assets.get((*key, command["op"])) or ctx.candidate_assets.get(
+        key
+    )
+    if asset is None or "asset_id" not in asset:
+        reject("source_unavailable", "找不到已確認的影音輸出")
+    fps = draft["fps"]
+    audio = asset["kind"] == "audio"
+    if audio:
+        n, d = asset["sample_count"] * fps["num"], asset["sample_rate"] * fps["den"]
+    else:
+        n = int(asset["frame_count"]) * asset["fps"]["den"] * fps["num"]
+        d = asset["fps"]["num"] * fps["den"]
+    original = {"source_id": asset["asset_id"], "run_id": key[0], "output_key": key[1]}
+    return {
+        "kind": "audio" if audio else "video",
+        "file": asset["file"],
+        "width": asset.get("width", 0),
+        "height": asset.get("height", 0),
+        "name": run_source_name(
+            (ctx.candidate_assets.get((*key, RUN_LABEL)) or {}).get("label"),
+            str(ctx.project.get("title") or ""),
+            f"{key[1]} · {key[0]}",
+        ),
+        "has_audio": audio or asset.get("has_audio") is True,
+        "duration_frames": max(1, (2 * n + d) // (2 * d)),
+        "candidate_origin": original,
+    }
+
+
+def _candidate_source(ctx: _Context, draft: Doc, command: Mapping[str, Any]) -> Doc:
+    _one_of(command, ("source_id", "shot_id", "library_id", "run_id"))
+    if ("run_id" in command) != ("output_key" in command):
+        reject("invalid_command", "請同時指定執行紀錄與輸出名稱")
+    if ("shot_id" in command) != ("take_id" in command):
+        reject("invalid_command", "請同時指定鏡頭與 Take")
+    if "run_id" in command:
+        source = _recorded_source(ctx, draft, command)
+    elif "shot_id" in command:
+        shot = _item(
+            ctx.project["shots"],
+            "shot_id",
+            command["shot_id"],
+            "shot_not_found",
+            "找不到指定的鏡頭",
+        )
+        take = _item(
+            shot.get("takes") or [],
+            "take_id",
+            command["take_id"],
+            "source_unavailable",
+            "找不到指定的 Take",
+        )
+        source = shot_source(
+            ctx.project, {**shot, "active_take_id": take["take_id"]}, draft["fps"]
+        )
+        if "has_audio" in (take.get("asset") or {}):
+            source["has_audio"] = take["asset"]["has_audio"]
+    else:
+        source = _media_source(ctx, draft, command)
+    file = source.get("file") or {}
+    if (
+        source["kind"] not in {"audio", "video", "image"}
+        or not file.get("sha256")
+        or file["sha256"].lower()
+        != str(command.get("expected_source_sha256", "")).lower()
+    ):
+        reject("source_unavailable", "候選素材無法使用或內容已變更，請重新選取")
+    origin = source.get("candidate_origin") or {
+        key: source[key]
+        for key in ("source_id", "shot_id", "take_id", "library_id")
+        if key in source
+    }
+    sources: list[Doc] = draft["sources"]
+    for saved in sources:
+        if saved.get("candidate_origin") == origin and saved.get("file") == file:
+            if type(source.get("has_audio")) is bool:
+                saved["has_audio"] = source["has_audio"]
+            return saved
+    pinned = {
+        key: copy.deepcopy(source[key])
+        for key in (
+            "name",
+            "kind",
+            "file",
+            "duration_frames",
+            "width",
+            "height",
+            "has_audio",
+        )
+    }
+    pinned.update(source_id=ctx.allocate("source"), candidate_origin=origin)
+    draft["sources"].append(pinned)
+    return pinned
+
+
+def _range_candidate(ctx: _Context, command: Mapping[str, Any]) -> Applied:
+    track_id = command["track_id"]
+    timeline = ctx.timeline
+    track = unlocked(timeline, track_id)
+    start, end = command["start_frame"], command["end_frame"]
+    _check_candidate_range(timeline, track_id, start, end, command["mode"])
+    visuals = None
+    if command.get("inherit_static_visuals"):
+        if track["kind"] != "video" or command["mode"] != "replace_range":
+            reject("invalid_command", "只有替換既有影像才能保留片段縮放與調色")
+        visuals = retained_visuals(timeline, track_id, start, end)
+    target: list[str] = []
+
+    def pin(draft: Doc, _origins: dict[str, str]) -> None:
+        target.append(_candidate_source(ctx, draft, command)["source_id"])
+
+    ctx.edit(pin)
+    first = command.get("candidate_in_frame", 0)
+    kind = track["kind"]
+    placed = _place(
+        ctx,
+        {
+            "source_id": target[0],
+            "at": start,
+            "in_frame": first,
+            "out_frame": first + end - start,
+            "video": kind == "video",
+            "audio": kind == "audio",
+            f"track_{kind}": track_id,
+        },
+    )
+    if visuals is not None:
+        for candidate in ctx.timeline["clips"]:
+            if candidate["clip_id"] not in placed.clip_ids:
+                continue
+            candidate["motion"]["scale"] = visuals["scale"]
+            if visuals["color"] is not None:
+                candidate.setdefault("effects", {})["color"] = visuals["color"]
+    placed.op = "range_candidate"
+    placed.track_ids = [track_id]
+    return placed
 
 
 def _move(ctx: _Context, command: Mapping[str, Any]) -> Applied:
@@ -322,44 +678,77 @@ def _move(ctx: _Context, command: Mapping[str, Any]) -> Applied:
     moved: list[str] = []
     ctx.edit(
         lambda draft, origins: moved.extend(
-            edits.move(draft, ids, start, track_id, mode, _linked(command), ctx.allocate, origins)
+            edits.move(
+                draft,
+                ids,
+                start,
+                track_id,
+                mode,
+                _linked(command),
+                ctx.allocate,
+                origins,
+            )
         ),
         reconcile=True,
     )
-    return Applied("move", f"已移動 {len(moved)} 個片段到第 {start} 影格（{mode}）", clip_ids=moved)
+    return Applied(
+        "move", f"已移動 {len(moved)} 個片段到第 {start} 影格（{mode}）", clip_ids=moved
+    )
 
 
 def _trim(ctx: _Context, command: Mapping[str, Any]) -> Applied:
     clip = required_clip(ctx.timeline, command["clip_id"])
-    edge, mode, linked = command["edge"], command.get("mode", "normal"), _linked(command)
+    edge, mode, linked = (
+        command["edge"],
+        command.get("mode", "normal"),
+        _linked(command),
+    )
     if _one_of(command, ("to_frame", "delta")) == "to_frame":
-        delta = int(command["to_frame"]) - (int(clip["start_frame"]) if edge == "in" else clip_end(clip))
+        delta = int(command["to_frame"]) - (
+            int(clip["start_frame"]) if edge == "in" else clip_end(clip)
+        )
     else:
         delta = int(command["delta"])
     changed: list[str] = []
     if mode == "roll":
-        neighbour = next_clip(ctx.timeline, clip) if edge == "out" else previous_clip(ctx.timeline, clip)
+        neighbour = (
+            next_clip(ctx.timeline, clip)
+            if edge == "out"
+            else previous_clip(ctx.timeline, clip)
+        )
         if neighbour is None:
             reject("not_adjacent", "滾動編輯需要同軌且緊鄰的兩個片段")
         left, right = (clip, neighbour) if edge == "out" else (neighbour, clip)
         ctx.edit(
-            lambda draft, _origins: changed.extend(edits.roll(draft, left["clip_id"], right["clip_id"], delta, linked)),
+            lambda draft, _origins: changed.extend(
+                edits.roll(draft, left["clip_id"], right["clip_id"], delta, linked)
+            ),
             reconcile=True,
         )
     else:
         ctx.edit(
             lambda draft, _origins: changed.extend(
-                edits.trim(draft, clip["clip_id"], edge, delta, mode == "ripple", linked)
+                edits.trim(
+                    draft, clip["clip_id"], edge, delta, mode == "ripple", linked
+                )
             ),
             reconcile=True,
         )
-    return Applied("trim", f"已修剪「{clip['name']}」的 {edge} 點 {delta:+d} 影格（{mode}）", clip_ids=changed)
+    return Applied(
+        "trim",
+        f"已修剪「{clip['name']}」的 {edge} 點 {delta:+d} 影格（{mode}）",
+        clip_ids=changed,
+    )
 
 
 def _slip(ctx: _Context, command: Mapping[str, Any]) -> Applied:
     changed: list[str] = []
     delta = int(command["delta"])
-    ctx.edit(lambda draft, _origins: changed.extend(edits.slip(draft, command["clip_id"], delta, _linked(command))))
+    ctx.edit(
+        lambda draft, _origins: changed.extend(
+            edits.slip(draft, command["clip_id"], delta, _linked(command))
+        )
+    )
     return Applied("slip", f"已把片段內容外滑 {delta:+d} 影格", clip_ids=changed)
 
 
@@ -367,7 +756,9 @@ def _slide(ctx: _Context, command: Mapping[str, Any]) -> Applied:
     changed: list[str] = []
     delta = int(command["delta"])
     ctx.edit(
-        lambda draft, _origins: changed.extend(edits.slide(draft, command["clip_id"], delta, _linked(command))),
+        lambda draft, _origins: changed.extend(
+            edits.slide(draft, command["clip_id"], delta, _linked(command))
+        ),
         reconcile=True,
     )
     return Applied("slide", f"已把片段內滑 {delta:+d} 影格", clip_ids=changed)
@@ -379,17 +770,26 @@ def _split(ctx: _Context, command: Mapping[str, Any]) -> Applied:
     if "clip_ids" in command:
         ids = list(command["clip_ids"])
     else:
-        open_tracks = {track["track_id"] for track in timeline["tracks"] if not track["locked"]}
+        open_tracks = {
+            track["track_id"] for track in timeline["tracks"] if not track["locked"]
+        }
         ids = [
             clip["clip_id"]
             for clip in timeline["clips"]
-            if clip["track_id"] in open_tracks and clip["start_frame"] < frame < clip_end(clip)
+            if clip["track_id"] in open_tracks
+            and clip["start_frame"] < frame < clip_end(clip)
         ]
         if not ids:
             reject("out_of_range", "這個影格下沒有可以分割的片段", frame=frame)
     created: list[str] = []
-    ctx.edit(lambda draft, _origins: created.extend(edits.split(draft, ids, frame, _linked(command), ctx.allocate)))
-    return Applied("split", f"已在第 {frame} 影格分割 {len(created)} 個片段", clip_ids=created)
+    ctx.edit(
+        lambda draft, _origins: created.extend(
+            edits.split(draft, ids, frame, _linked(command), ctx.allocate)
+        )
+    )
+    return Applied(
+        "split", f"已在第 {frame} 影格分割 {len(created)} 個片段", clip_ids=created
+    )
 
 
 def _remove(ctx: _Context, command: Mapping[str, Any]) -> Applied:
@@ -397,7 +797,14 @@ def _remove(ctx: _Context, command: Mapping[str, Any]) -> Applied:
     removed: list[str] = []
     ctx.edit(
         lambda draft, origins: removed.extend(
-            edits.remove(draft, list(command["clip_ids"]), ripple, _linked(command), ctx.allocate, origins)
+            edits.remove(
+                draft,
+                list(command["clip_ids"]),
+                ripple,
+                _linked(command),
+                ctx.allocate,
+                origins,
+            )
         ),
         reconcile=True,
     )
@@ -405,7 +812,9 @@ def _remove(ctx: _Context, command: Mapping[str, Any]) -> Applied:
     return Applied("remove", summary, clip_ids=removed)
 
 
-def _merged_members(current: Any, patch: Mapping[str, Any], keep_null: Sequence[str] = ()) -> Doc:
+def _merged_members(
+    current: Any, patch: Mapping[str, Any], keep_null: Sequence[str] = ()
+) -> Doc:
     """``current`` (an object or nothing) with the members of ``patch``; a null removes its member."""
     merged: Doc = copy.deepcopy(dict(current)) if isinstance(current, Mapping) else {}
     for key, value in patch.items():
@@ -416,9 +825,15 @@ def _merged_members(current: Any, patch: Mapping[str, Any], keep_null: Sequence[
     return merged
 
 
-def _merged_effects(current: Mapping[str, Any] | None, patch: Mapping[str, Any] | None) -> Doc | None:
+def _merged_effects(
+    current: Mapping[str, Any] | None, patch: Mapping[str, Any] | None
+) -> Doc | None:
     """Clip effects after a partial update; member objects merge one level deep. None when nothing is left."""
-    kept = {"transition_out": current["transition_out"]} if current and "transition_out" in current else {}
+    kept = (
+        {"transition_out": current["transition_out"]}
+        if current and "transition_out" in current
+        else {}
+    )
     if patch is None:
         return copy.deepcopy(kept) or None
     if "transition_out" in patch:
@@ -474,7 +889,11 @@ def _set_clip(ctx: _Context, command: Mapping[str, Any]) -> Applied:
         if patch:
             changed.extend(edits.patch_clip(draft, clip["clip_id"], patch, linked))
         if "enabled" in command:
-            changed.extend(arrange.set_enabled(draft, [clip["clip_id"]], command["enabled"], linked))
+            changed.extend(
+                arrange.set_enabled(
+                    draft, [clip["clip_id"]], command["enabled"], linked
+                )
+            )
 
     ctx.edit(change)
     fields = "、".join([*patch, *(["enabled"] if "enabled" in command else [])])
@@ -486,9 +905,20 @@ def _transition_options(kind: str, command: Mapping[str, Any]) -> Doc:
     options = {name: command[name] for name in TRANSITION_OPTIONS if name in command}
     directions = TRANSITION_DIRECTIONS.get(kind)
     if options and directions is None:
-        reject("invalid_command", "只有 push、slide、whip、wipe、zoom 轉場有方向、緩動與柔邊", fields=sorted(options))
-    if "direction" in options and directions is not None and options["direction"] not in directions:
-        reject("invalid_command", "這個轉場不能朝這個方向；縮放是 in 或 out，其他是 left、right、up 或 down")
+        reject(
+            "invalid_command",
+            "只有 push、slide、whip、wipe、zoom 轉場有方向、緩動與柔邊",
+            fields=sorted(options),
+        )
+    if (
+        "direction" in options
+        and directions is not None
+        and options["direction"] not in directions
+    ):
+        reject(
+            "invalid_command",
+            "這個轉場不能朝這個方向；縮放是 in 或 out，其他是 left、right、up 或 down",
+        )
     if "softness" in options and kind != "wipe":
         reject("invalid_command", "只有擦除（wipe）轉場有柔邊", fields=["softness"])
     return options
@@ -504,14 +934,26 @@ def _transition(ctx: _Context, command: Mapping[str, Any]) -> Applied:
     changed: list[str] = []
     timeline = ctx.edit(
         lambda draft, _origins: changed.extend(
-            edits.transition(draft, command["clip_id"], kind, frames, _linked(command), options, alignment)
+            edits.transition(
+                draft,
+                command["clip_id"],
+                kind,
+                frames,
+                _linked(command),
+                options,
+                alignment,
+            )
         )
     )
     if kind == "cut":
         return Applied("transition", "已移除轉場（直接切換）", clip_ids=changed)
     # The edit records the cut on the clip it was given: where it sits, and the frames it repeats where media ran out
-    cut = required_clip(timeline, command["clip_id"])["effects"]["transition_out"]["cut"]
-    summary = f"已設定 {frames} 影格的 {kind} 轉場（{ALIGNMENT_NAMES[cut['alignment']]}）"
+    cut = required_clip(timeline, command["clip_id"])["effects"]["transition_out"][
+        "cut"
+    ]
+    summary = (
+        f"已設定 {frames} 影格的 {kind} 轉場（{ALIGNMENT_NAMES[cut['alignment']]}）"
+    )
     repeated = int(cut["outgoing"]["freeze"]) + int(cut["incoming"]["freeze"])
     if repeated:
         summary += f"；素材不足，重複 {repeated} 影格"
@@ -520,8 +962,16 @@ def _transition(ctx: _Context, command: Mapping[str, Any]) -> Applied:
 
 def _add_text(ctx: _Context, command: Mapping[str, Any]) -> Applied:
     position, size = command.get("position", "center"), command.get("size", "medium")
-    style = {**default_title_style(position, size), **{name: command[name] for name in STYLE_FIELDS if name in command}}
-    title = {"text": command["text"], "position": position, "size": size, "style": style}
+    style = {
+        **default_title_style(position, size),
+        **{name: command[name] for name in STYLE_FIELDS if name in command},
+    }
+    title = {
+        "text": command["text"],
+        "position": position,
+        "size": size,
+        "style": style,
+    }
     before = {track["track_id"] for track in ctx.timeline["tracks"]}
     created: list[str] = []
     at = int(command["at_frame"])
@@ -529,14 +979,32 @@ def _add_text(ctx: _Context, command: Mapping[str, Any]) -> Applied:
     def change(draft: Doc, _origins: dict[str, str]) -> None:
         duration = command.get("duration_frames")
         created.append(
-            add_text_layer(draft, title, at, duration, command.get("track_id"), ctx.export_size(), ctx.allocate)
+            add_text_layer(
+                draft,
+                title,
+                at,
+                duration,
+                command.get("track_id"),
+                ctx.export_size(),
+                ctx.allocate,
+            )
         )
 
     timeline = ctx.edit(change)
     clip = required_clip(timeline, created[0])
-    tracks = [track["track_id"] for track in timeline["tracks"] if track["track_id"] not in before]
+    tracks = [
+        track["track_id"]
+        for track in timeline["tracks"]
+        if track["track_id"] not in before
+    ]
     summary = f"已在第 {at} 影格加入文字圖層（{clip_duration(clip)} 影格）"
-    return Applied("add_text", summary, clip_ids=created, track_ids=tracks, source_ids=[clip["source_id"]])
+    return Applied(
+        "add_text",
+        summary,
+        clip_ids=created,
+        track_ids=tracks,
+        source_ids=[clip["source_id"]],
+    )
 
 
 def _add_adjustment(ctx: _Context, command: Mapping[str, Any]) -> Applied:
@@ -545,15 +1013,33 @@ def _add_adjustment(ctx: _Context, command: Mapping[str, Any]) -> Applied:
     at = int(command["at_frame"])
 
     def change(draft: Doc, _origins: dict[str, str]) -> None:
-        duration, track_id, name = command.get("duration_frames"), command.get("track_id"), command.get("name")
-        created.append(add_adjustment_layer(draft, at, duration, track_id, name, ctx.export_size(), ctx.allocate))
+        duration, track_id, name = (
+            command.get("duration_frames"),
+            command.get("track_id"),
+            command.get("name"),
+        )
+        created.append(
+            add_adjustment_layer(
+                draft, at, duration, track_id, name, ctx.export_size(), ctx.allocate
+            )
+        )
 
     timeline = ctx.edit(change)
     clip = required_clip(timeline, created[0])
-    tracks = [track["track_id"] for track in timeline["tracks"] if track["track_id"] not in before]
+    tracks = [
+        track["track_id"]
+        for track in timeline["tracks"]
+        if track["track_id"] not in before
+    ]
     track = find_track(timeline, clip["track_id"]) or {}
     summary = f"已在第 {at} 影格加入調整圖層（{clip_duration(clip)} 影格，{track.get('name') or clip['track_id']}）"
-    return Applied("add_adjustment", summary, clip_ids=created, track_ids=tracks, source_ids=[clip["source_id"]])
+    return Applied(
+        "add_adjustment",
+        summary,
+        clip_ids=created,
+        track_ids=tracks,
+        source_ids=[clip["source_id"]],
+    )
 
 
 def _track_name(timeline: Mapping[str, Any], kind: str) -> str:
@@ -575,7 +1061,11 @@ def _track(ctx: _Context, command: Mapping[str, Any]) -> Applied:
         def add(draft: Doc, _origins: dict[str, str]) -> None:
             name = fields.get("name") or _track_name(draft, command["kind"])
             track_id = edits.add_track(draft, command["kind"], name, ctx.allocate)
-            edits.patch_track(draft, track_id, {key: value for key, value in fields.items() if key != "name"})
+            edits.patch_track(
+                draft,
+                track_id,
+                {key: value for key, value in fields.items() if key != "name"},
+            )
             created.append(track_id)
 
         ctx.edit(add)
@@ -594,7 +1084,9 @@ def _track(ctx: _Context, command: Mapping[str, Any]) -> Applied:
     return Applied("track", f"已更新軌道的 {'、'.join(fields)}", track_ids=[track_id])
 
 
-def _item(items: Sequence[Doc], key: str, wanted: str, reason: str, message: str) -> Doc:
+def _item(
+    items: Sequence[Doc], key: str, wanted: str, reason: str, message: str
+) -> Doc:
     found = next((item for item in items if item[key] == wanted), None)
     if found is None:
         reject(reason, message, **{key: wanted})
@@ -614,13 +1106,23 @@ def _marker(ctx: _Context, command: Mapping[str, Any]) -> Applied:
             "color": fields.get("color", "blue"),
         }
         ctx.edit(lambda draft, _origins: draft["markers"].append(marker))
-        return Applied("marker", f"已在第 {marker['frame']} 影格新增標記", marker_ids=[marker["marker_id"]])
+        return Applied(
+            "marker",
+            f"已在第 {marker['frame']} 影格新增標記",
+            marker_ids=[marker["marker_id"]],
+        )
     if "marker_id" not in command:
         reject("invalid_command", "這個標記動作需要 marker_id")
     marker_id = command["marker_id"]
 
     def change(draft: Doc, _origins: dict[str, str]) -> None:
-        found = _item(draft["markers"], "marker_id", marker_id, "marker_not_found", "找不到指定的標記")
+        found = _item(
+            draft["markers"],
+            "marker_id",
+            marker_id,
+            "marker_not_found",
+            "找不到指定的標記",
+        )
         if action == "remove":
             draft["markers"] = [item for item in draft["markers"] if item is not found]
         else:
@@ -629,7 +1131,11 @@ def _marker(ctx: _Context, command: Mapping[str, Any]) -> Applied:
     if action == "update" and not fields:
         reject("invalid_command", "沒有要變更的標記欄位")
     ctx.edit(change)
-    return Applied("marker", "已移除標記" if action == "remove" else "已更新標記", marker_ids=[marker_id])
+    return Applied(
+        "marker",
+        "已移除標記" if action == "remove" else "已更新標記",
+        marker_ids=[marker_id],
+    )
 
 
 def _new_caption(ctx: _Context, fields: Mapping[str, Any]) -> Doc:
@@ -640,16 +1146,35 @@ def _new_caption(ctx: _Context, fields: Mapping[str, Any]) -> Doc:
     return {
         "caption_id": ctx.allocate("caption"),
         "start_frame": start,
-        "end_frame": int(fields.get("end_frame", min(MAX_SEQUENCE_FRAMES, start + length))),
+        "end_frame": int(
+            fields.get("end_frame", min(MAX_SEQUENCE_FRAMES, start + length))
+        ),
         "text": fields["text"],
         "position": fields.get("position", "bottom"),
         "size": fields.get("size", "medium"),
     }
 
 
+def _caption_transcript(ctx: _Context, command: Mapping[str, Any]) -> Applied:
+    report = ctx.candidate_assets.get(
+        (command.get("run_id", ""), command.get("output_key", ""), "caption")
+    )
+    if not report or "segments" not in report or not command.get("clip_id"):
+        reject("invalid_command", "請選擇已發布的轉錄結果及時間軸片段")
+    captions, ids, manual = apply_transcript(
+        ctx.timeline, command["clip_id"], report, ctx.allocate
+    )
+    ctx.edit(lambda draft, _origins: draft.update(captions=fit_captions(captions)))
+    return Applied(
+        "caption", f"套用 {len(ids)} 段轉錄，保留 {manual} 段人工編輯", caption_ids=ids
+    )
+
+
 def _caption(ctx: _Context, command: Mapping[str, Any]) -> Applied:
     action = command["action"]
     fields = _flat(command, CAPTION_FIELDS)
+    if action == "import_transcript":
+        return _caption_transcript(ctx, command)
     if action == "clear":
         count = len(ctx.timeline["captions"])
         ctx.edit(lambda draft, _origins: draft["captions"].clear())
@@ -661,8 +1186,14 @@ def _caption(ctx: _Context, command: Mapping[str, Any]) -> Applied:
             if "srt" not in command:
                 reject("invalid_command", "匯入字幕需要 srt 文字")
             parsed = parse_srt(command["srt"], ctx.timeline["fps"])
-            added = [{"caption_id": ctx.allocate("caption"), **caption} for caption in parsed]
-        ctx.edit(lambda draft, _origins: draft["captions"].extend(added))
+            added = [
+                {"caption_id": ctx.allocate("caption"), **caption} for caption in parsed
+            ]
+        ctx.edit(
+            lambda draft, _origins: draft.update(
+                captions=fit_captions([*draft["captions"], *added])
+            )
+        )
         ids = [caption["caption_id"] for caption in added]
         return Applied("caption", f"已加入 {len(added)} 段字幕", caption_ids=ids)
     if "caption_id" not in command:
@@ -672,14 +1203,27 @@ def _caption(ctx: _Context, command: Mapping[str, Any]) -> Applied:
         reject("invalid_command", "沒有要變更的字幕欄位")
 
     def change(draft: Doc, _origins: dict[str, str]) -> None:
-        found = _item(draft["captions"], "caption_id", caption_id, "caption_not_found", "找不到指定的字幕")
+        found = _item(
+            draft["captions"],
+            "caption_id",
+            caption_id,
+            "caption_not_found",
+            "找不到指定的字幕",
+        )
         if action == "remove":
-            draft["captions"] = [item for item in draft["captions"] if item is not found]
+            draft["captions"] = [
+                item for item in draft["captions"] if item is not found
+            ]
         else:
             found.update(fields)
+            draft["captions"] = fit_captions(draft["captions"])
 
     ctx.edit(change)
-    return Applied("caption", "已移除字幕" if action == "remove" else "已更新字幕", caption_ids=[caption_id])
+    return Applied(
+        "caption",
+        "已移除字幕" if action == "remove" else "已更新字幕",
+        caption_ids=[caption_id],
+    )
 
 
 def _work_area(ctx: _Context, command: Mapping[str, Any]) -> Applied:
@@ -689,10 +1233,18 @@ def _work_area(ctx: _Context, command: Mapping[str, Any]) -> Applied:
         ctx.edit(lambda draft, _origins: draft.pop("work_area", None))
         return Applied("work_area", "已清除序列入出點")
     if "start_frame" not in command or "end_frame" not in command:
-        reject("invalid_command", "請指定 start_frame 與 end_frame，或以 clear: true 清除")
-    area = {"start_frame": int(command["start_frame"]), "end_frame": int(command["end_frame"])}
+        reject(
+            "invalid_command", "請指定 start_frame 與 end_frame，或以 clear: true 清除"
+        )
+    area = {
+        "start_frame": int(command["start_frame"]),
+        "end_frame": int(command["end_frame"]),
+    }
     ctx.edit(lambda draft, _origins: draft.update(work_area=area))
-    return Applied("work_area", f"已設定序列入出點：第 {area['start_frame']}–{area['end_frame']} 影格")
+    return Applied(
+        "work_area",
+        f"已設定序列入出點：第 {area['start_frame']}\N{EN DASH}{area['end_frame']} 影格",
+    )
 
 
 def _master(ctx: _Context, command: Mapping[str, Any]) -> Applied:
@@ -703,12 +1255,20 @@ def _master(ctx: _Context, command: Mapping[str, Any]) -> Applied:
 
 def _join(ctx: _Context, command: Mapping[str, Any]) -> Applied:
     joined: list[str] = []
-    ctx.edit(lambda draft, _origins: joined.extend(arrange.join(draft, command["clip_id"], _linked(command))))
+    ctx.edit(
+        lambda draft, _origins: joined.extend(
+            arrange.join(draft, command["clip_id"], _linked(command))
+        )
+    )
     return Applied("join", f"已接合 {len(joined)} 個編輯點", clip_ids=joined)
 
 
 def _rearrange(ctx: _Context, command: Mapping[str, Any]) -> Applied:
-    ids, frame, linked = list(command["clip_ids"]), int(command["to_frame"]), _linked(command)
+    ids, frame, linked = (
+        list(command["clip_ids"]),
+        int(command["to_frame"]),
+        _linked(command),
+    )
     moved: list[str] = []
 
     def change(draft: Doc, _origins: dict[str, str]) -> None:
@@ -716,7 +1276,11 @@ def _rearrange(ctx: _Context, command: Mapping[str, Any]) -> Applied:
         moved.extend(arrange.rearrange(draft, ids, target, side, linked))
 
     ctx.edit(change)
-    return Applied("rearrange", f"已把 {len(moved)} 個片段調整到第 {frame} 影格的編輯點", clip_ids=moved)
+    return Applied(
+        "rearrange",
+        f"已把 {len(moved)} 個片段調整到第 {frame} 影格的編輯點",
+        clip_ids=moved,
+    )
 
 
 def _reconcile(ctx: _Context, command: Mapping[str, Any]) -> Applied:
@@ -724,15 +1288,29 @@ def _reconcile(ctx: _Context, command: Mapping[str, Any]) -> Applied:
     result: Doc = {}
 
     def change(draft: Doc, _origins: dict[str, str]) -> None:
-        sources = pending_sources(draft, command.get("source_id"), command.get("shot_id"))
+        sources = pending_sources(
+            draft, command.get("source_id"), command.get("shot_id")
+        )
         trimmed, removed = apply_pending(draft, ctx.project, sources)
-        result.update(trimmed=trimmed, removed=removed, sources=[source["source_id"] for source in sources])
+        result.update(
+            trimmed=trimmed,
+            removed=removed,
+            sources=[source["source_id"] for source in sources],
+        )
 
-    if key == "shot_id" and not any(shot["shot_id"] == command[key] for shot in ctx.project.get("shots") or []):
+    if key == "shot_id" and not any(
+        shot["shot_id"] == command[key] for shot in ctx.project.get("shots") or []
+    ):
         reject("shot_not_found", "找不到指定的鏡頭", shot_id=command[key])
     timeline = ctx.edit(change, reconcile=True)
-    kept = [clip_id for clip_id in result["trimmed"] if any(clip["clip_id"] == clip_id for clip in timeline["clips"])]
-    summary = f"已套用較短的 take：修剪 {len(kept)} 個片段、移除 {result['removed']} 個片段"
+    kept = [
+        clip_id
+        for clip_id in result["trimmed"]
+        if any(clip["clip_id"] == clip_id for clip in timeline["clips"])
+    ]
+    summary = (
+        f"已套用較短的 take：修剪 {len(kept)} 個片段、移除 {result['removed']} 個片段"
+    )
     return Applied("reconcile", summary, clip_ids=kept, source_ids=result["sources"])
 
 
@@ -741,15 +1319,23 @@ def _set_enabled(ctx: _Context, command: Mapping[str, Any]) -> Applied:
     changed: list[str] = []
     ctx.edit(
         lambda draft, _origins: changed.extend(
-            arrange.set_enabled(draft, list(command["clip_ids"]), enabled, _linked(command))
+            arrange.set_enabled(
+                draft, list(command["clip_ids"]), enabled, _linked(command)
+            )
         )
     )
-    return Applied("set_enabled", f"已{'啟用' if enabled else '停用'} {len(changed)} 個片段", clip_ids=changed)
+    return Applied(
+        "set_enabled",
+        f"已{'啟用' if enabled else '停用'} {len(changed)} 個片段",
+        clip_ids=changed,
+    )
 
 
 HANDLERS: Mapping[str, Handler] = {
     "assemble": _assemble,
     "place": _place,
+    "collect_output": _collect_output,
+    "range_candidate": _range_candidate,
     "move": _move,
     "trim": _trim,
     "slip": _slip,
@@ -772,21 +1358,31 @@ HANDLERS: Mapping[str, Handler] = {
 }
 
 
-def execute_command(project: Mapping[str, Any], command: Any, allocate: AllocateId) -> tuple[Doc, Applied]:
+def execute_command(
+    project: Mapping[str, Any],
+    command: Any,
+    allocate: AllocateId,
+    candidate_assets: Mapping[tuple[str, ...], Doc] | None = None,
+) -> tuple[Doc, Applied]:
     """Apply one command: (the new project, what the command did). The input project is not modified."""
     op = check_command(command)
-    ctx = _Context(dict(project), allocate)
+    ctx = _Context(dict(project), allocate, candidate_assets or {})
     applied = HANDLERS[op](ctx, command)
     return ctx.project, applied
 
 
-def apply_command(project: Mapping[str, Any], command: Any, allocate_id: AllocateId) -> Doc:
+def apply_command(
+    project: Mapping[str, Any], command: Any, allocate_id: AllocateId
+) -> Doc:
     """The project after one command; raises :class:`TimelineRejected` and changes nothing when it is refused."""
     return execute_command(project, command, allocate_id)[0]
 
 
 def apply_commands(
-    project: Mapping[str, Any], commands: Sequence[Any], allocate_id: AllocateId
+    project: Mapping[str, Any],
+    commands: Sequence[Any],
+    allocate_id: AllocateId,
+    candidate_assets: Mapping[tuple[str, ...], Doc] | None = None,
 ) -> tuple[Doc, list[Doc]]:
     """The transaction of the commands endpoint: (the normalized project after every command, one entry each).
 
@@ -797,7 +1393,9 @@ def apply_commands(
     applied: list[Doc] = []
     for index, command in enumerate(commands):
         try:
-            current, done = execute_command(current, command, allocate_id)
+            current, done = execute_command(
+                current, command, allocate_id, candidate_assets
+            )
         except TimelineRejected as rejection:
             raise rejection.to_error(command_index=index) from rejection
         applied.append(done.to_dict())
@@ -825,10 +1423,12 @@ def request_error(body: Any) -> ComponentError | None:
 
 __all__ = [
     "COMMAND_DEFS",
+    "RUN_LABEL",
     "Applied",
     "apply_command",
     "apply_commands",
     "check_command",
     "execute_command",
     "request_error",
+    "run_source_name",
 ]

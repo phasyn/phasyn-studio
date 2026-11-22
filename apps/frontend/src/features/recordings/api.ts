@@ -56,7 +56,7 @@ export async function fetchRunRecordingIds(runId: string, signal?: AbortSignal):
     seen.add(next);
     cursor = next;
   }
-  throw new Error(`recording index of run ${runId} did not end after ${RUN_INDEX_MAX_PAGES} pages`);
+  throw new Error(`recording index of run ${runId} did not end after ${String(RUN_INDEX_MAX_PAGES)} pages`);
 }
 
 /**
@@ -103,7 +103,7 @@ export function useRecording(id: string | undefined) {
     queryKey: recordingKeys.detail(id ?? ""),
     queryFn: ({ signal }) => fetchRecording(id ?? "", signal),
     enabled: Boolean(id),
-    placeholderData: (): Recording | undefined => (id ? findInLists(client, id) : undefined),
+    placeholderData: (): Recording | undefined => ((id != null && id !== "") ? findInLists(client, id) : undefined),
     refetchInterval: (query) => (query.state.data?.summary.state === "running" ? 3000 : false),
     retry: retryRead,
   });
@@ -191,7 +191,7 @@ export function useNodeLabels() {
 /** 找同一程序（process_instance_id）在此 invoke 之前的 load 紀錄；只查最近 50 筆，找不到就不顯示。 */
 export function useLoadRecordingFor(recording: Recording | undefined) {
   const context = recording?.context;
-  const enabled = Boolean(context && context.operation === "invoke" && context.node_id && context.component_id);
+  const enabled = Boolean(context?.operation === "invoke" && context.node_id && context.component_id);
   return useQuery({
     queryKey: recordingKeys.loadFor(context?.recording_id ?? ""),
     enabled,

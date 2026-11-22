@@ -29,7 +29,7 @@ export function KeyValueList({ items, className, dense = false }: { items: KvIte
       {items.map((item) => (
         <div key={item.key} className="contents">
           <dt className="text-fg-tertiary">{item.label}</dt>
-          <dd className={cn("m-0 min-w-0 [overflow-wrap:anywhere]", TONE_CLASS[item.tone ?? "default"], item.mono && "machine")}>
+          <dd className={cn("m-0 min-w-0 [overflow-wrap:anywhere]", item.tone === undefined ? TONE_CLASS.default : TONE_CLASS[item.tone], (item.mono === true) && "machine")}>
             {item.value}
           </dd>
         </div>

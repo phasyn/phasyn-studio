@@ -44,17 +44,20 @@ from __future__ import annotations
 import contextlib
 import json
 import time
-from collections.abc import Mapping
-from dataclasses import dataclass, field
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from phasyn_components.model_identity import display_path
 
 from phasyn_h3.recipe.abi.component import ComponentLoadSpec
+from phasyn_h3.recipe.abi.tensors import read_header_from_file
 
 from . import pins
+from .accel_load import dit_load_context, finalize_dit_facts
 from .backend import TorchCudaBackend
+from .bounded_fp8_load import bounded_fp8_load_context
 from .checkpoint_inspect import (
     REFERENCE_LAYOUT_ROOT,
     build_nf4_transformer_config,
@@ -76,10 +79,31 @@ from .host_store import (
     release_host_memory,
     reset_device_caches,
 )
-from .lifecycle import HostMemoryInsufficient, LoadResult, OffloadResult, RestoreResult, UnloadResult
+from .lifecycle import (
+    HostMemoryInsufficient,
+    LoadResult,
+    OffloadResult,
+    RestoreResult,
+    UnloadResult,
+)
+from .lora import apply_lora_policy
 from .model_root import model_root
-from .policy import ComponentPolicy, StagePolicy, host_residency_refusal, plan_pinned_budget
+from .policy import (
+    ComponentPolicy,
+    StagePolicy,
+    host_residency_refusal,
+    plan_pinned_budget,
+    resolve_component_policy,
+)
+from .quantized_cache import quantized_cache_context
 from .sglang_env import SglangSession
+from .stages import vae_weight_streaming as ws
+from .stages.prepare_adaln import sidecar_path
+from .stages.vae_weight_streaming import StreamingConfig, streaming_state
+
+
+_WEIGHT_ENTRY_FIELDS = 2
+
 
 VIDEO_VAE_SCOPES = ("full", "encode_only", "decode_only")
 # top-level modules of the MiniMax H3 video VAE (klvae.py AutoencoderKLLegacy) per half
@@ -120,6 +144,8 @@ _KIND_TO_SGLANG = {
 
 @dataclass(frozen=True)
 class ComponentLocation:
+    """Identify the on-disk files for a model component."""
+
     kind: str
     component_id: str
     path: Path
@@ -130,29 +156,37 @@ class ComponentLocation:
 
     @property
     def single_file(self) -> bool:
+        """Return the path of the single-file checkpoint."""
         return self.path.is_file() and self.path.suffix == ".safetensors"
 
 
-def locate_component(model: Mapping[str, Any], kind: str, *, root: Path | None = None) -> ComponentLocation:
+def locate_component(
+    model: Mapping[str, Any], kind: str, *, root: Path | None = None
+) -> ComponentLocation:
     """Resolve ``PHASYN_MODEL_ROOT`` + manifest ``relative_path`` (fail fast)."""
     root = root or model_root()
     entries = [c for c in model.get("components", []) if c.get("kind") == kind]
     if len(entries) != 1:
         raise ModelFilesMissing(
-            "MANIFEST_COMPONENT", f"model manifest 需恰有一個 {kind} component，找到 {len(entries)}"
+            "MANIFEST_COMPONENT",
+            f"model manifest 需恰有一個 {kind} component，找到 {len(entries)}",
         )
     entry = entries[0]
     rel = str(entry["relative_path"])
     candidate = (root / rel).resolve()
     if root not in candidate.parents and candidate != root:
-        raise ModelFilesMissing("PATH_ESCAPES_ROOT", f"{kind} 路徑 {rel} 逃出 model root")
+        raise ModelFilesMissing(
+            "PATH_ESCAPES_ROOT", f"{kind} 路徑 {rel} 逃出 model root"
+        )
     if not candidate.exists():
         raise ModelFilesMissing(
             "WEIGHTS_NOT_ON_DISK",
             f"{kind} 權重不存在：{display_path(candidate, root)}（offline enforcement：不自動下載；請先取得並驗證該 component）",
         )
     if entry.get("verification") == "rejected":
-        raise ModelFilesMissing("COMPONENT_REJECTED", f"{kind} 已被 registry 標為 rejected")
+        raise ModelFilesMissing(
+            "COMPONENT_REJECTED", f"{kind} 已被 registry 標為 rejected"
+        )
     return ComponentLocation(
         kind=kind,
         component_id=str(entry["component_id"]),
@@ -166,7 +200,11 @@ def locate_component(model: Mapping[str, Any], kind: str, *, root: Path | None =
 
 def reference_model_index(variant: str) -> dict[str, Any]:
     """The variant's upstream ``model_index.json`` from the user's MiniMax-H3 snapshot (SHA-256 verified)."""
-    name = "ref2va_model_index.json" if variant in ("ref2va", "hybrid") else "fl2va_model_index.json"
+    name = (
+        "ref2va_model_index.json"
+        if variant in ("ref2va", "hybrid")
+        else "fl2va_model_index.json"
+    )
     return reference_json(name, model_root=model_root())
 
 
@@ -181,13 +219,15 @@ def model_index_for(location: ComponentLocation) -> tuple[Path, dict[str, Any], 
     if index_path.is_file():
         source = display_path(index_path, model_root())
         return variant_dir, json.loads(index_path.read_text(encoding="utf-8")), source
-    return variant_dir, reference_model_index(location.variant), f"reference:{location.variant}_model_index.json"
+    return (
+        variant_dir,
+        reference_model_index(location.variant),
+        f"reference:{location.variant}_model_index.json",
+    )
 
 
 def sniff_single_file(location: ComponentLocation) -> None:
     """Reject single-file components the pinned loaders cannot honour (header only)."""
-    from phasyn_h3.recipe.abi.tensors import read_header_from_file
-
     header = read_header_from_file(location.path)
     bnb = any(".quant_state.bitsandbytes__" in name for name in header.tensors)
     if bnb and location.kind == "text_encoder":
@@ -209,6 +249,8 @@ def sniff_single_file(location: ComponentLocation) -> None:
 
 @dataclass
 class LoadedComponent:
+    """Keep the loaded model with its source and device information."""
+
     kind: str
     module: Any
     location: ComponentLocation
@@ -239,6 +281,7 @@ class SglangComponentBackend:
         video_vae_scope: str = "full",
         weight_streaming: Mapping[str, Any] | None = None,
     ) -> None:
+        """Bind SGLang component loading to the selected runtime."""
         self.session = session
         self.device = device_backend
         self.workdir = workdir
@@ -246,20 +289,34 @@ class SglangComponentBackend:
         # orchestration only (module docstring): "full" | "encode_only" | "decode_only"
         self.video_vae_scope = video_vae_scope
         # orchestration only (module docstring): None, or the resolved provider_options.weight_streaming
-        self.weight_streaming = dict(weight_streaming) if weight_streaming is not None else None
+        self.weight_streaming = (
+            dict(weight_streaming) if weight_streaming is not None else None
+        )
 
-    def register_request(self, spec: ComponentLoadSpec, *, policy: StagePolicy, location: ComponentLocation) -> None:
+    def register_request(
+        self,
+        spec: ComponentLoadSpec,
+        *,
+        policy: StagePolicy,
+        location: ComponentLocation,
+    ) -> None:
         """Attach the stage policy/location the next ``load(spec)`` must use."""
-        self._requests[spec.single_flight_key] = {"policy": policy, "location": location}
+        self._requests[spec.single_flight_key] = {
+            "policy": policy,
+            "location": location,
+        }
 
     def _allocated(self) -> int:
         return int(self.device.memory_snapshot().get("allocated_bytes") or 0)
 
     # -- ComponentBackend -------------------------------------------------
     def load(self, spec: ComponentLoadSpec) -> LoadResult:
+        """Load a model component from its checkpoint with the selected policy."""
         request = self._requests.get(spec.single_flight_key)
         if request is None:
-            raise UnsupportedCombination("LOAD_REQUEST_MISSING", f"{spec.component_id} 沒有對應的 stage policy")
+            raise UnsupportedCombination(
+                "LOAD_REQUEST_MISSING", f"{spec.component_id} 沒有對應的 stage policy"
+            )
         policy: StagePolicy = request["policy"]
         location: ComponentLocation = request["location"]
         torch_device = self.device.torch_device()
@@ -269,30 +326,32 @@ class SglangComponentBackend:
         started = time.perf_counter()
         accel: Any = contextlib.nullcontext({})
         if location.kind == "transformer":
-            from .accel_load import dit_load_context
-
             # online quant gates / JIT build / AdaLN x quant + per-layer FP8 patch arming
             accel = dit_load_context(policy, self.device.facts(), torch_device)
         with accel as accel_facts:
             if location.kind == "transformer" and location.single_file:
-                module, server_args, facts = self._load_nf4_transformer(policy, location)
+                module, server_args, facts = self._load_nf4_transformer(
+                    policy, location
+                )
             else:
                 module, server_args, facts = self._load_native(policy, location)
         facts["checkpoint_load_seconds"] = round(time.perf_counter() - started, 6)
         if location.kind == "transformer":
-            from .accel_load import finalize_dit_facts
-
             facts["acceleration"] = finalize_dit_facts(module, policy, accel_facts)
         comp_policy = policy.components.get(location.kind)
         layerwise = comp_policy is not None and comp_policy.layerwise
         if layerwise:
-            assert comp_policy is not None
-            facts["layerwise"] = self._configure_layerwise(module, location.kind, comp_policy, server_args)
+            if comp_policy is None:
+                raise RuntimeError("comp_policy is unavailable in this stage")
+            facts["layerwise"] = self._configure_layerwise(
+                module, location.kind, comp_policy, server_args
+            )
         if location.kind == "transformer":
             # after layerwise configuration, like upstream's "offload, then wrap" (pipeline.py:442-485)
-            from .lora import apply_lora_policy
 
-            facts["lora"] = apply_lora_policy(module, policy.lora, device=torch_device, workdir=self.workdir)
+            facts["lora"] = apply_lora_policy(
+                module, policy.lora, device=torch_device, workdir=self.workdir
+            )
         handle = LoadedComponent(
             kind=location.kind,
             module=module,
@@ -302,7 +361,11 @@ class SglangComponentBackend:
             facts=facts,
             layerwise=layerwise,
         )
-        if comp_policy is not None and comp_policy.component_cpu_offload and hasattr(module, "named_parameters"):
+        if (
+            comp_policy is not None
+            and comp_policy.component_cpu_offload
+            and hasattr(module, "named_parameters")
+        ):
             # component offload: the weights live in a host store (pinned up to
             # max_pinned_bytes) and the whole component is copied to the device
             # for each use; the loader's own copy (mmap view or anonymous memory)
@@ -331,7 +394,9 @@ class SglangComponentBackend:
             started = time.perf_counter()
             module.to(torch_device)
             self.device.synchronize()
-            facts["moved_to_device_after_load_seconds"] = round(time.perf_counter() - started, 6)
+            facts["moved_to_device_after_load_seconds"] = round(
+                time.perf_counter() - started, 6
+            )
         self.device.synchronize()
         snap = self.device.memory_snapshot()
         after = int(snap.get("allocated_bytes") or 0)
@@ -352,16 +417,23 @@ class SglangComponentBackend:
         and an evict outside a stage (``release_component``) has no later collection — the
         pinned and pageable host copies stayed in the actor until it exited.
         """
+        del spec
         before = self._allocated()
         details: dict[str, Any] = {}
         if isinstance(handle, LoadedComponent):
             details = _release_memory(handle)
         del handle
-        details["gc_collected"] = release_host_memory()  # nothing in this frame points into the module
+        details["gc_collected"] = (
+            release_host_memory()
+        )  # nothing in this frame points into the module
         synced = self.device.synchronize()
         self.device.empty_cache()
         after = self._allocated()
-        return UnloadResult(released_bytes=max(0, before - after), cuda_synchronized=synced, details=details)
+        return UnloadResult(
+            released_bytes=max(0, before - after),
+            cuda_synchronized=synced,
+            details=details,
+        )
 
     def offload(self, handle: Any, spec: ComponentLoadSpec) -> OffloadResult:
         """Release the device copy; keep the weights in host memory.
@@ -374,14 +446,24 @@ class SglangComponentBackend:
         cannot hold a new copy (MemAvailable minus a 2 GiB reserve).
         """
         if not isinstance(handle, LoadedComponent) or handle.module is None:
-            raise HostMemoryInsufficient("OFFLOAD_NOT_SUPPORTED", f"{spec.component_id} 沒有可 offload 的模組")
+            raise HostMemoryInsufficient(
+                "OFFLOAD_NOT_SUPPORTED", f"{spec.component_id} 沒有可 offload 的模組"
+            )
         refusal = (
             None
             if handle.policy is None
-            else host_residency_refusal(spec.component_id, handle.policy.quant_scheme, handle.policy.quant_provider)
+            else host_residency_refusal(
+                spec.component_id,
+                handle.policy.quant_scheme,
+                handle.policy.quant_provider,
+            )
         )
-        if refusal is not None:  # policy rejects these up front; a directive-driven load can still get here
-            raise HostMemoryInsufficient("HOST_RESIDENCY_QUANTIZED_UNVALIDATED", f"{refusal}（改為釋放）")
+        if (
+            refusal is not None
+        ):  # policy rejects these up front; a directive-driven load can still get here
+            raise HostMemoryInsufficient(
+                "HOST_RESIDENCY_QUANTIZED_UNVALIDATED", f"{refusal}（改為釋放）"
+            )
         module = handle.module
         torch_device = self.device.torch_device()
         started = time.perf_counter()
@@ -394,26 +476,38 @@ class SglangComponentBackend:
             exclude: set[str] = set()
             if handle.layerwise:
                 # the managers keep their own host copies: never copy their layers a second time
-                pins.check_attrs(module, pins.LAYERWISE_MODULE_ATTRS, what="layerwise 元件的 host 常駐")
+                pins.check_attrs(
+                    module,
+                    pins.LAYERWISE_MODULE_ATTRS,
+                    what="layerwise 元件的 host 常駐",
+                )
                 exclude = set(module._managed_layer_parameter_names())
             items = module_tensors(module, exclude=exclude)
             cap = handle.policy.max_pinned_bytes if handle.policy is not None else 0
             if handle.layerwise:
                 lw = handle.facts.get("layerwise") or {}
                 cap = max(
-                    0, cap - int(lw.get("pinned_committed_bytes") or 0) - int(lw.get("courier_reserve_bytes") or 0)
+                    0,
+                    cap
+                    - int(lw.get("pinned_committed_bytes") or 0)
+                    - int(lw.get("courier_reserve_bytes") or 0),
                 )
             # refused (HostMemoryInsufficient) before anything moves when the host
             # cannot hold the copy; the provider then evicts instead
             handle.host_store = build_host_store(
-                items, pinned_cap_bytes=cap, pin=_cuda(torch_device), host_available_bytes=host_room_bytes()
+                items,
+                pinned_cap_bytes=cap,
+                pin=_cuda(torch_device),
+                host_available_bytes=host_room_bytes(),
             )
             details["host_store_built"] = True
         store = handle.host_store
         if handle.layerwise:
             released_layers = 0
             for manager in module.layerwise_offload_managers or []:
-                pins.check_attrs(manager, ("release_all",), what="layerwise 元件的 host 常駐")
+                pins.check_attrs(
+                    manager, ("release_all",), what="layerwise 元件的 host 常駐"
+                )
                 manager.release_all()
                 released_layers += 1
             details["layerwise_managers_released"] = released_layers
@@ -431,10 +525,15 @@ class SglangComponentBackend:
             # weights + FP32 row scales parked as they are (no BF16 copy, no re-quantization)
             details["quantized_host_bytes"] = {
                 str(dtype): size
-                for dtype, size in sorted(_host_bytes_by_dtype(store).items(), key=lambda kv: str(kv[0]))
+                for dtype, size in sorted(
+                    _host_bytes_by_dtype(store).items(), key=lambda kv: str(kv[0])
+                )
             }
         # everything the component now holds in host memory (layerwise: + the managers' layer stores)
-        held = self.host_footprint(handle) or {"host_bytes": store.host_bytes, "pinned_bytes": store.pinned_bytes}
+        held = self.host_footprint(handle) or {
+            "host_bytes": store.host_bytes,
+            "pinned_bytes": store.pinned_bytes,
+        }
         return OffloadResult(
             released_bytes=max(0, before - after),
             cuda_synchronized=synced,
@@ -446,8 +545,14 @@ class SglangComponentBackend:
 
     def restore(self, handle: Any, spec: ComponentLoadSpec) -> RestoreResult:
         """Copy the host store back to the device (layers stream again on demand)."""
-        if not isinstance(handle, LoadedComponent) or handle.module is None or handle.host_store is None:
-            raise UnsupportedCombination("RESTORE_WITHOUT_HOST_COPY", f"{spec.component_id} 沒有 host 副本可還原")
+        if (
+            not isinstance(handle, LoadedComponent)
+            or handle.module is None
+            or handle.host_store is None
+        ):
+            raise UnsupportedCombination(
+                "RESTORE_WITHOUT_HOST_COPY", f"{spec.component_id} 沒有 host 副本可還原"
+            )
         torch_device = self.device.torch_device()
         before = self._allocated()
         try:
@@ -467,10 +572,10 @@ class SglangComponentBackend:
         )
 
     def host_footprint(self, handle: Any) -> dict[str, int] | None:
-        """Host memory the component holds right now (``lifecycle`` residency reports, also while
-        it is on the device): its host store (component offload, or the copy kept after a host
-        offload) plus, for layerwise offload, the SGLang managers' per-layer host copies and
-        courier staging slots (``layer_store_bytes``).  None when that cannot be told."""
+        """Host memory the component holds right now (``lifecycle`` residency reports, also while it is on the device): its host store (component offload, or the copy kept after a host offload) plus, for layerwise offload, the SGLang managers' per-layer host copies and courier staging slots (``layer_store_bytes``).
+
+        None when that cannot be told.
+        """
         if not isinstance(handle, LoadedComponent) or handle.module is None:
             return None
         host = pinned = 0
@@ -491,15 +596,25 @@ class SglangComponentBackend:
         return {"host_bytes": host, "pinned_bytes": pinned}
 
     def trim(self, handle: Any, spec: ComponentLoadSpec) -> dict[str, Any]:
-        """after_use=device for a layerwise component: drop the streamed window,
-        keep the resident layer set (SGLang ``release_after_use(keep_resident=True)``)."""
-        if not isinstance(handle, LoadedComponent) or not handle.layerwise or handle.module is None:
+        """after_use=device for a layerwise component: drop the streamed window, keep the resident layer set (SGLang ``release_after_use(keep_resident=True)``)."""
+        del spec
+        if (
+            not isinstance(handle, LoadedComponent)
+            or not handle.layerwise
+            or handle.module is None
+        ):
             return {}
         before = self._allocated()
         trimmed = 0
-        pins.check_attrs(handle.module, ("layerwise_offload_managers",), what="layerwise 元件的使用後裁減")
+        pins.check_attrs(
+            handle.module,
+            ("layerwise_offload_managers",),
+            what="layerwise 元件的使用後裁減",
+        )
         for manager in handle.module.layerwise_offload_managers or []:
-            pins.check_attrs(manager, ("release_after_use",), what="layerwise 元件的使用後裁減")
+            pins.check_attrs(
+                manager, ("release_after_use",), what="layerwise 元件的使用後裁減"
+            )
             manager.release_after_use(keep_resident=True)
             trimmed += 1
         synced = empty_device_cache(self.device.torch_device())
@@ -520,38 +635,52 @@ class SglangComponentBackend:
         variant_dir, index, _source = model_index_for(location)
         if (variant_dir / "model_index.json").is_file():
             return variant_dir
-        overlay = self.workdir / "overlays" / f"{location.model_id}-{location.model_revision[:12]}"
+        overlay = (
+            self.workdir
+            / "overlays"
+            / f"{location.model_id}-{location.model_revision[:12]}"
+        )
         overlay.mkdir(parents=True, exist_ok=True)
         target = overlay / "model_index.json"
         if not target.is_file():
-            target.write_text(json.dumps(index, indent=2, sort_keys=True), encoding="utf-8")
+            target.write_text(
+                json.dumps(index, indent=2, sort_keys=True), encoding="utf-8"
+            )
         return overlay
 
     def _server_args(
-        self, policy: StagePolicy, *, model_path: Path, variant: str, weights: str | None = None, kind: str = ""
+        self,
+        policy: StagePolicy,
+        *,
+        model_path: Path,
+        variant: str,
+        weights: str | None = None,
+        kind: str = "",
     ) -> Any:
-        from .policy import resolve_component_policy
 
         # Knobs come from every component the frozen profile can express, not only
         # this stage's, so one job keeps one ServerArgs across its stages.
         merged = dict(policy.components)
-        for name, comp_profile in (policy.effective_profile.get("components") or {}).items():
+        for name, comp_profile in (
+            policy.effective_profile.get("components") or {}
+        ).items():
             if name in merged:
                 continue
             try:
-                merged[name] = resolve_component_policy(name, comp_profile, mode=policy.mode)
+                merged[name] = resolve_component_policy(
+                    name, comp_profile, mode=policy.mode
+                )
             except UnsupportedCombination:
                 continue
-        from dataclasses import replace
 
         adaln_cache_path = None
         if policy.adaln_mode == "fixed":
-            cache_ref = str((policy.effective_profile.get("adaln") or {}).get("cache_ref"))
+            cache_ref = str(
+                (policy.effective_profile.get("adaln") or {}).get("cache_ref")
+            )
             # SGLang opens this path when it builds the DiT (minimax_h3_adaln_cache.py:455);
             # other components only carry the name (the sidecar lives on the DiT node)
             if kind == "transformer":
-                from .stages.prepare_adaln import sidecar_path
-
                 adaln_cache_path = str(sidecar_path(cache_ref))
             else:
                 adaln_cache_path = cache_ref
@@ -568,34 +697,44 @@ class SglangComponentBackend:
         scope = self.video_vae_scope
         if scope not in VIDEO_VAE_SCOPES:
             raise UnsupportedCombination(
-                "VIDEO_VAE_SCOPE_INVALID", f"video_vae_scope={scope!r} 不合法（{'／'.join(VIDEO_VAE_SCOPES)}）"
+                "VIDEO_VAE_SCOPE_INVALID",
+                f"video_vae_scope={scope!r} 不合法（{'／'.join(VIDEO_VAE_SCOPES)}）",
             )
         return str(scope)
 
-    def _load_native(self, policy: StagePolicy, location: ComponentLocation) -> tuple[Any, Any, dict[str, Any]]:
+    def _load_native(
+        self, policy: StagePolicy, location: ComponentLocation
+    ) -> tuple[Any, Any, dict[str, Any]]:
         if not location.path.is_dir():
             sniff_single_file(location)
         if location.kind == "video_vae" and self._video_vae_scope() != "full":
             return self._load_video_vae_half(policy, location, self._video_vae_scope())
         if location.kind == "video_vae":
-            self._weight_streaming(self._video_vae_scope())  # refuses weight_streaming for a full video VAE
+            self._weight_streaming(
+                self._video_vae_scope()
+            )  # refuses weight_streaming for a full video VAE
         _variant_dir, index, index_source = model_index_for(location)
         entry = index.get(location.kind)
-        if not isinstance(entry, list) or len(entry) != 2:
-            raise ModelFilesMissing("MODEL_INDEX_ENTRY", f"model_index.json 沒有 {location.kind} 的 [library, class]")
+        if not isinstance(entry, list) or len(entry) != _WEIGHT_ENTRY_FIELDS:
+            raise ModelFilesMissing(
+                "MODEL_INDEX_ENTRY",
+                f"model_index.json 沒有 {location.kind} 的 [library, class]",
+            )
         library, architecture = entry
         server_args = self._server_args(
-            policy, model_path=self._model_path(location), variant=location.variant, kind=location.kind
+            policy,
+            model_path=self._model_path(location),
+            variant=location.variant,
+            kind=location.kind,
         )
-        from sglang.multimodal_gen.runtime.loader.component_loaders.component_loader import PipelineComponentLoader
+        from sglang.multimodal_gen.runtime.loader.component_loaders.component_loader import (  # type: ignore[import-untyped]
+            PipelineComponentLoader,
+        )
 
         sglang_name, _ = _KIND_TO_SGLANG[location.kind]
         bounded: Any = contextlib.nullcontext({"enabled": False})
         cached: Any = contextlib.nullcontext({"enabled": False})
         if location.kind == "transformer":
-            from .bounded_fp8_load import bounded_fp8_load_context
-            from .quantized_cache import quantized_cache_context
-
             bounded = bounded_fp8_load_context(policy, location.path)
             # opt-in (provider_options.quantized_cache): off yields {"enabled": False} and patches nothing
             cached = quantized_cache_context(policy, location.path, self.device.facts())
@@ -623,71 +762,65 @@ class SglangComponentBackend:
     def _load_video_vae_half(
         self, policy: StagePolicy, location: ComponentLocation, scope: str
     ) -> tuple[Any, Any, dict[str, Any]]:
-        """The pinned VAE loader's native path (vae_loader.py VAELoader.load_customized +
-        ComponentLoader.load finalize) for one half of the MiniMax H3 video VAE; see the module
-        docstring.  Placement (device / host store) stays with :meth:`load` as for a full load."""
+        """The pinned VAE loader's native path (vae_loader.py VAELoader.load_customized + ComponentLoader.load finalize) for one half of the MiniMax H3 video VAE; see the module docstring.
+
+        Placement (device / host store) stays with :meth:`load` as for a full load.
+        """
         import torch
         from safetensors import safe_open
-        from sglang.multimodal_gen.runtime.loader.component_loaders import vae_loader as sg_vae
-        from sglang.multimodal_gen.runtime.loader.component_loaders.component_loader import ComponentLoader
-        from sglang.multimodal_gen.runtime.loader.utils import (
-            _list_safetensors_files,
+        from sglang.multimodal_gen.runtime.loader.component_loaders import (  # type: ignore[import-untyped]
+            vae_loader as sg_vae,
+        )
+        from sglang.multimodal_gen.runtime.loader.component_loaders.component_loader import (
+            ComponentLoader,
+        )
+        from sglang.multimodal_gen.runtime.loader.utils import (  # type: ignore[import-untyped]
             adopt_plain_weight_norm_state,
             finalize_loaded_model,
             initialize_model,
             load_model_state_dict,
         )
-        from sglang.multimodal_gen.runtime.models.registry import ModelRegistry
-        from sglang.multimodal_gen.runtime.platforms import current_platform
-        from sglang.multimodal_gen.runtime.utils.hf_diffusers_utils import get_diffusers_component_config
-        from sglang.multimodal_gen.runtime.utils.precision import resolve_component_precision
-        from sglang.multimodal_gen.runtime.utils.precision_types import PRECISION_TO_TYPE
-        from sglang.multimodal_gen.runtime.weights.source import filter_duplicate_precision_variant_safetensors
+        from sglang.multimodal_gen.runtime.models.registry import ModelRegistry  # type: ignore[import-untyped]
+        from sglang.multimodal_gen.runtime.utils.hf_diffusers_utils import (  # type: ignore[import-untyped]
+            get_diffusers_component_config,
+        )
+        from sglang.multimodal_gen.runtime.utils.precision import (  # type: ignore[import-untyped]
+            resolve_component_precision,
+        )
+        from sglang.multimodal_gen.runtime.utils.precision_types import (  # type: ignore[import-untyped]
+            PRECISION_TO_TYPE,
+        )
 
-        from phasyn_h3.recipe.abi.tensors import read_header_from_file
-
-        from .stages import vae_weight_streaming as ws
-
-        _variant_dir, index, index_source = model_index_for(location)
-        entry = index.get("video_vae")
-        if not isinstance(entry, list) or len(entry) != 2:
-            raise ModelFilesMissing("MODEL_INDEX_ENTRY", "model_index.json 沒有 video_vae 的 [library, class]")
-        library, architecture = entry
+        index_source, library, architecture = _video_vae_index(location)
         server_args = self._server_args(
-            policy, model_path=self._model_path(location), variant=location.variant, kind=location.kind
+            policy,
+            model_path=self._model_path(location),
+            variant=location.variant,
+            kind=location.kind,
         )
         component_path = str(location.path)
-        loader = ComponentLoader.for_component_type("video_vae", str(library), str(architecture))
-        if loader.resolve_component_direct_gpu_loading(server_args, "video_vae"):
-            raise UnsupportedCombination("VIDEO_VAE_HALF_DIRECT_GPU", f"{scope} 不接受 direct GPU weight loading")
-        weights_path = loader.resolve_component_weights_path(component_path, server_args, "video_vae")
-        if weights_path != component_path:
-            raise UnsupportedCombination("VIDEO_VAE_HALF_OVERRIDE", f"{scope} 不接受 video_vae 權重覆寫路徑")
-        config = get_diffusers_component_config(component_path=component_path)
-        server_args.model_paths["video_vae"] = component_path
-        if not loader.is_native_only_component(server_args, "video_vae"):
-            raise UnsupportedCombination(
-                "VIDEO_VAE_HALF_NOT_NATIVE", f"{scope} 只複製釘版的 native VAE 載入路徑；此 pipeline 的 video_vae 不是"
-            )
-        class_name = config.pop("_class_name", None)
+        loader = ComponentLoader.for_component_type(
+            "video_vae", str(library), str(architecture)
+        )
+        config, class_name, weights_path = _video_vae_config(
+            loader, server_args, scope, component_path, get_diffusers_component_config
+        )
         vae_config = server_args.pipeline_config.vae_config
         vae_precision = server_args.pipeline_config.vae_precision
         resolved_dtype = resolve_component_precision(server_args, "video_vae")
-        vae_dtype = resolved_dtype if resolved_dtype is not None else PRECISION_TO_TYPE[vae_precision]
+        vae_dtype = (
+            resolved_dtype
+            if resolved_dtype is not None
+            else PRECISION_TO_TYPE[vae_precision]
+        )
         vae_config.update_model_arch(config)
         if hasattr(vae_config, "post_init"):
             vae_config.post_init()
-        files = loader.select_weight_files(
-            _list_safetensors_files(weights_path, raw_candidates=True),
-            weights_path,
-            server_args,
-            "video_vae",
-            vae_precision,
+        checkpoint = _half_checkpoint(
+            _HalfCheckpointInputs(
+                loader, weights_path, server_args, vae_precision, scope
+            )
         )
-        files = filter_duplicate_precision_variant_safetensors(files)
-        if len(files) != 1:
-            raise UnsupportedCombination("VIDEO_VAE_HALF_FILES", f"{scope} 需要恰好一個 video VAE 權重檔，找到 {files}")
-        checkpoint = Path(files[0])
         header = read_header_from_file(checkpoint)
         half = video_vae_half_plan(header.tensors, scope)
         streaming = self._weight_streaming(scope)
@@ -697,55 +830,40 @@ class SglangComponentBackend:
         # the pinned loader (non-persistent RoPE buffers are made in the constructor); weight-streaming decode
         # half: meta as well, no decoder block is built or read here.  The other half's modules are deleted
         # before any tensor is read.
-        construct_on = torch.device("meta") if scope == "encode_only" or streaming is not None else None
+        construct_on = (
+            torch.device("meta")
+            if scope == "encode_only" or streaming is not None
+            else None
+        )
         vae = initialize_model(vae_cls, {"config": vae_config}, vae_dtype, construct_on)
         for name in half["drop_modules"]:
             delattr(vae, name)
-        keep = list(half["keep"])
-        slots: list[Any] = []
-        blocks = None
-        if streaming is not None:
-            blocks = ws.block_index(checkpoint, header, keep=keep, num_blocks=len(vae.decoder.transformer_blocks))
-            slots = ws.detach_blocks(vae, streaming)
-            keep = list(blocks.shell)
+        blocks, slots, keep = _streaming_slots(half, streaming, checkpoint, header, vae)
         loaded: dict[str, Any] = {}
         with safe_open(str(checkpoint), framework="pt", device="cpu") as handle:
             for name in keep:
                 loaded[name] = handle.get_tensor(name)
         num_deparameterized = adopt_plain_weight_norm_state(vae, loaded)
-        consumed = sg_vae._consume_vae_checkpoint_arch_metadata(loaded, vae_config, vae.state_dict())
+        consumed = sg_vae._consume_vae_checkpoint_arch_metadata(
+            loaded, vae_config, vae.state_dict()
+        )
         load_model_state_dict(vae, loaded, strict=True, assign=True)
         rope_rebuilt = ws.rebuild_rope_buffers(vae) if streaming is not None else 0
         channels_last = sg_vae._should_use_channels_last_3d(server_args, "video_vae")
         if channels_last:
             sg_vae._convert_conv3d_weights_to_channels_last_3d(vae)
-        if scope == "decode_only" and streaming is None:  # the loader's decoder post-processing, unchanged
-            sg_vae._hold_decoder_weights_in_decode_dtype(
-                vae, server_args, "video_vae", weights_path, component_type="video_vae"
-            )
-            vae = current_platform.optimize_vae(vae)
-        elif scope == "decode_only":
-            # the shell holds no block linear to round (fp16: each streamed block is rounded on the device);
-            # the slot templates get the quality-gated attention forwards the resident blocks get
-            with ws.blocks_attached(vae, slots):
-                optimized = current_platform.optimize_vae(vae)
-            if optimized is not vae:
-                raise UnsupportedCombination("WEIGHT_STREAMING_OPTIMIZE", "optimize_vae 換掉了 video VAE 模組；不串流")
-        guarded = [n for n in VIDEO_VAE_MISSING_ENTRY_POINTS[scope] if callable(getattr(vae, n, None))]
-        refusal = _missing_half_refusal(scope)
-        for name in guarded:
-            object.__setattr__(vae, name, refusal)
-        object.__setattr__(vae, "_phasyn_video_vae_scope", scope)
-        vae = finalize_loaded_model(vae)  # rejects any meta tensor left, freezes, eval
+        vae = _optimize_half(
+            vae,
+            _CheckHalfKeysInputs(scope, streaming, server_args, weights_path, slots),
+        )
+        guarded = _guard_half_vae(scope, vae)
+        vae = finalize_loaded_model(
+            vae
+        )  # rejects any meta tensor left, freezes, eval()
         del loaded
-        streaming_facts: dict[str, Any] = {}
-        if streaming is not None:
-            assert blocks is not None
-            state = ws.WeightStreamingState(
-                config=streaming, index=blocks, slots=slots, pin=_cuda(self.device.torch_device())
-            )
-            ws.attach_state(vae, state)
-            streaming_facts = {"weight_streaming": {**state.facts(), "rope_buffers_rebuilt": rope_rebuilt}}
+        streaming_facts = _streaming_facts(
+            _StreamingFactsInputs(streaming, blocks, slots, self, vae, rope_rebuilt)
+        )
         return (
             vae,
             server_args,
@@ -773,11 +891,11 @@ class SglangComponentBackend:
         """The resolved ``StreamingConfig`` for a video-VAE half, or None (option off)."""
         if self.weight_streaming is None:
             return None
-        from .stages.vae_weight_streaming import StreamingConfig
 
         if scope != "decode_only":
             raise UnsupportedCombination(
-                "WEIGHT_STREAMING_SCOPE", f"weight_streaming 只適用 video_vae_scope=decode_only（此元件是 {scope}）"
+                "WEIGHT_STREAMING_SCOPE",
+                f"weight_streaming 只適用 video_vae_scope=decode_only（此元件是 {scope}）",
             )
         return StreamingConfig.from_mapping(self.weight_streaming)
 
@@ -786,7 +904,11 @@ class SglangComponentBackend:
         self, policy: StagePolicy, location: ComponentLocation
     ) -> tuple[Any, Any, dict[str, Any]]:
         comp = policy.components.get("transformer")
-        if comp is None or comp.quant_scheme != "nf4" or comp.quant_provider != "bitsandbytes":
+        if (
+            comp is None
+            or comp.quant_scheme != "nf4"
+            or comp.quant_provider != "bitsandbytes"
+        ):
             raise UnsupportedCombination(
                 "SINGLE_FILE_REQUIRES_NF4_PROFILE",
                 "單檔 transformer 只支援 profile quantization nf4/bitsandbytes（其他單檔格式未接入）",
@@ -799,7 +921,11 @@ class SglangComponentBackend:
             declared_architecture=policy.declaration.transformer_architecture,
             model_root=model_root(),
         )
-        overlay = self.workdir / "overlays" / f"{location.component_id}-{location.model_revision[:12]}"
+        overlay = (
+            self.workdir
+            / "overlays"
+            / f"{location.component_id}-{location.model_revision[:12]}"
+        )
         transformer_dir = write_overlay(
             overlay,
             weights_file=location.path,
@@ -810,9 +936,15 @@ class SglangComponentBackend:
             / ("Ref2VA" if location.variant in ("ref2va", "hybrid") else "FL2VA"),
         )
         server_args = self._server_args(
-            policy, model_path=overlay, variant=location.variant, weights=str(location.path), kind="transformer"
+            policy,
+            model_path=overlay,
+            variant=location.variant,
+            weights=str(location.path),
+            kind="transformer",
         )
-        from sglang.multimodal_gen.runtime.loader.component_loaders.component_loader import PipelineComponentLoader
+        from sglang.multimodal_gen.runtime.loader.component_loaders.component_loader import (
+            PipelineComponentLoader,
+        )
 
         module, memory_usage = PipelineComponentLoader.load_component(
             component_name="transformer",
@@ -822,14 +954,25 @@ class SglangComponentBackend:
             component_architecture="MiniMaxH3DiTModel",
         )
         arch = getattr(module, "arch", None)
-        if facts.pruned_curve and getattr(arch, "adaln_curve_grid", None) != facts.adaln_curve_shape[0]:  # type: ignore[index]
-            raise UnsupportedCombination("PRUNED_CURVE_NOT_APPLIED", "SGLang 未依標頭套用 pruned AdaLN curve 維度")
+        if (
+            facts.pruned_curve
+            and facts.adaln_curve_shape is not None
+            and getattr(arch, "adaln_curve_grid", None) != facts.adaln_curve_shape[0]
+        ):
+            raise UnsupportedCombination(
+                "PRUNED_CURVE_NOT_APPLIED",
+                "SGLang 未依標頭套用 pruned AdaLN curve 維度",
+            )
         return (
             module,
             server_args,
             {
                 "loader": "TransformerLoader(transformer_weights_path) + synthesized config",
-                "quant": {"scheme": "nf4", "provider": "bitsandbytes", "double_quant": facts.double_quant},
+                "quant": {
+                    "scheme": "nf4",
+                    "provider": "bitsandbytes",
+                    "double_quant": facts.double_quant,
+                },
                 "skip_modules": len(facts.plain_quant_capable_prefixes),
                 "quantized_linears": len(facts.quantized_prefixes),
                 "pruned_curve": facts.adaln_curve_shape,
@@ -840,20 +983,30 @@ class SglangComponentBackend:
         )
 
     # -- layerwise offload ----------------------------------------------------
-    def _configure_layerwise(self, module: Any, kind: str, comp: ComponentPolicy, server_args: Any) -> dict[str, Any]:
-        from sglang.multimodal_gen.runtime.managers.memory_managers.host_memory_budget import HostPinBudget
-        from sglang.multimodal_gen.runtime.managers.memory_managers.layerwise_offload import (
+    def _configure_layerwise(
+        self, module: Any, kind: str, comp: ComponentPolicy, server_args: Any
+    ) -> dict[str, Any]:
+        from sglang.multimodal_gen.runtime.managers.memory_managers.host_memory_budget import (  # type: ignore[import-untyped]
+            HostPinBudget,
+        )
+        from sglang.multimodal_gen.runtime.managers.memory_managers.layerwise_offload import (  # type: ignore[import-untyped]
             LayerwiseOffloadableModuleMixin,
             configure_layerwise_offload_modules,
         )
 
         if not isinstance(module, LayerwiseOffloadableModuleMixin):
-            raise UnsupportedCombination("LAYERWISE_NOT_SUPPORTED", f"{kind} 不支援 layerwise offload")
+            raise UnsupportedCombination(
+                "LAYERWISE_NOT_SUPPORTED", f"{kind} 不支援 layerwise offload"
+            )
         layer_bytes = _layer_bytes(module)
-        pinned = plan_pinned_budget(comp.max_pinned_bytes, layer_bytes, cuda=self.device.facts().sm is not None)
+        pinned = plan_pinned_budget(
+            comp.max_pinned_bytes, layer_bytes, cuda=self.device.facts().sm is not None
+        )
         budget = HostPinBudget()
         # tighten the upstream budget to the profile cap minus the courier slots
-        budget.available_bytes = min(int(budget.spendable_bytes), int(pinned.layer_budget_bytes))
+        budget.available_bytes = min(
+            int(budget.spendable_bytes), int(pinned.layer_budget_bytes)
+        )
         budget.reserve_bytes = 0
         sglang_name, _ = _KIND_TO_SGLANG[kind]
         configured = configure_layerwise_offload_modules(
@@ -895,10 +1048,12 @@ def video_vae_half_plan(tensors: Mapping[str, Any], scope: str) -> dict[str, Any
 
     ``tensors`` is a safetensors header (name -> info with ``byte_length``).  Every tensor must
     belong to one of the two halves; anything else (e.g. statistics a future checkpoint might
-    carry) refuses the split instead of being silently dropped or loaded."""
+    carry) refuses the split instead of being silently dropped or loaded.
+    """
     if scope not in VIDEO_VAE_HALVES:
         raise UnsupportedCombination(
-            "VIDEO_VAE_SCOPE_INVALID", f"{scope} 不是 video VAE 的半邊（encode_only／decode_only）"
+            "VIDEO_VAE_SCOPE_INVALID",
+            f"{scope} 不是 video VAE 的半邊（encode_only／decode_only）",
         )
     keep_modules = VIDEO_VAE_HALVES[scope]
     known = {m for half in VIDEO_VAE_HALVES.values() for m in half}
@@ -925,7 +1080,12 @@ def video_vae_half_plan(tensors: Mapping[str, Any], scope: str) -> dict[str, Any
     return {
         "scope": scope,
         "keep_modules": list(keep_modules),
-        "drop_modules": [m for half in VIDEO_VAE_HALVES.values() for m in half if m not in keep_modules],
+        "drop_modules": [
+            m
+            for half in VIDEO_VAE_HALVES.values()
+            for m in half
+            if m not in keep_modules
+        ],
         "groups": dict(sorted(groups.items())),
         "keep": sorted(keep),
         "kept_tensors": sum(g["tensors"] for g in kept.values()),
@@ -947,20 +1107,23 @@ def _missing_half_refusal(scope: str) -> Any:
 
 def _streaming_state(module: Any) -> Any:
     """The weight-streaming state of a video-VAE shell (``stages/vae_weight_streaming.py``), else None."""
-    from .stages.vae_weight_streaming import streaming_state
-
     return streaming_state(module) if module is not None else None
 
 
 def _repoint_lora_snapshots(module: Any) -> int:
-    """LoRA wrappers hold ``cpu_weight``, a zero-copy view of the base weight (``snapshot_base=False``,
-    ``linear.py:97-102``); once the weight moved to its host copy, a view of the old device storage
-    would keep that storage allocated.  Re-point it at the (now host) base weight."""
+    """LoRA wrappers hold ``cpu_weight``, a zero-copy view of the base weight (``snapshot_base=False``, ``linear.py:97-102``); once the weight moved to its host copy, a view of the old device storage would keep that storage allocated.
+
+    Re-point it at the (now host) base weight.
+    """
     count = 0
     for sub in module.modules():
         snapshot = sub.__dict__.get("cpu_weight")
         base = sub.__dict__.get("_modules", {}).get("base_layer")
-        if snapshot is None or base is None or getattr(getattr(snapshot, "device", None), "type", "cpu") == "cpu":
+        if (
+            snapshot is None
+            or base is None
+            or getattr(getattr(snapshot, "device", None), "type", "cpu") == "cpu"
+        ):
             continue
         sub.cpu_weight = base.weight.detach()
         count += 1
@@ -979,15 +1142,17 @@ def _device_tensor_bytes(module: Any) -> int:
 def _host_bytes_by_dtype(store: HostStore) -> dict[Any, int]:
     out: dict[Any, int] = {}
     for tensor in store.tensors.values():
-        out[tensor.dtype] = out.get(tensor.dtype, 0) + int(tensor.numel()) * int(tensor.element_size())
+        out[tensor.dtype] = out.get(tensor.dtype, 0) + int(tensor.numel()) * int(
+            tensor.element_size()
+        )
     return out
 
 
 def close_layerwise(module: Any) -> int:
-    """Unload of a layerwise component: stop each SGLang manager (forward hooks, mapped-layer courier
-    and populator threads) and drop everything it holds — per-layer host stores, checkpoint-mapped
-    views, the ``model`` back-reference — then detach the managers from the module.  Returns the
-    number of managers closed."""
+    """Unload of a layerwise component: stop each SGLang manager (forward hooks, mapped-layer courier and populator threads) and drop everything it holds — per-layer host stores, checkpoint-mapped views, the ``model`` back-reference — then detach the managers from the module.
+
+    Returns the number of managers closed.
+    """
     managers = list(getattr(module, "layerwise_offload_managers", None) or [])
     for manager in managers:
         with contextlib.suppress(Exception):
@@ -995,7 +1160,9 @@ def close_layerwise(module: Any) -> int:
         for attr in ("_mapped_courier", "_mapped_populator"):
             helper = manager.__dict__.get(attr)
             if helper is not None:
-                with contextlib.suppress(Exception):  # joins its threads (layerwise_offload.py:657,825)
+                with contextlib.suppress(
+                    Exception
+                ):  # joins its threads (layerwise_offload.py:657,825)
                     helper.close()
         manager.__dict__.clear()
     if managers:
@@ -1015,24 +1182,33 @@ def _release_memory(handle: LoadedComponent) -> dict[str, Any]:
     if module is not None:
         layers = layer_store_bytes(module) if handle.layerwise else None
         if layers is not None:
-            details["layer_store_bytes_released"], details["layer_store_pinned_bytes_released"] = layers
+            (
+                details["layer_store_bytes_released"],
+                details["layer_store_pinned_bytes_released"],
+            ) = layers
         streamed = _streaming_state(module)
-        if streamed is not None:  # staging buffers / host copy of the blocks and the checkpoint descriptor
+        if (
+            streamed is not None
+        ):  # staging buffers / host copy of the blocks and the checkpoint descriptor
             held = streamed.host_footprint()
-            details["weight_streaming_host_bytes_released"], details["weight_streaming_pinned_bytes_released"] = held
+            (
+                details["weight_streaming_host_bytes_released"],
+                details["weight_streaming_pinned_bytes_released"],
+            ) = held
             streamed.close()
         details["layerwise_managers_closed"] = close_layerwise(module)
         details["tensors_dropped"] = drop_module_tensors(module)
-    free_host_store(store, collect=False)  # unload collects once, from a frame without the module
+    free_host_store(
+        store, collect=False
+    )  # unload collects once, from a frame without the module
     return details
 
 
 def layer_store_bytes(module: Any) -> tuple[int, int] | None:
-    """(host, pinned) bytes of the SGLang layerwise managers' host memory: the per-layer copies
-    (``_consolidated_cpu_weights``/``_strided_cpu_weights``, pinned or pageable) and the mapped-layer
-    courier's staging slots; layers left on the checkpoint mapping (page cache) and the permanently
-    resident layers hold none.  None when a manager does not expose its stores (pinned SGLang
-    de487f8, ``layerwise_offload.py:1116-1131,774-785``)."""
+    """(host, pinned) bytes of the SGLang layerwise managers' host memory: the per-layer copies (``_consolidated_cpu_weights``/``_strided_cpu_weights``, pinned or pageable) and the mapped-layer courier's staging slots; layers left on the checkpoint mapping (page cache) and the permanently resident layers hold none.
+
+    None when a manager does not expose its stores (pinned SGLang de487f8, ``layerwise_offload.py:1116-1131,774-785``).
+    """
     managers = getattr(module, "layerwise_offload_managers", None)
     if not managers:
         return None
@@ -1053,16 +1229,8 @@ def layer_store_bytes(module: Any) -> tuple[int, int] | None:
 
     try:
         for manager in managers:
-            for attr in ("_consolidated_cpu_weights", "_strided_cpu_weights"):
-                table = getattr(manager, attr, None)
-                if not isinstance(table, Mapping):
-                    return None
-                for per_layer in table.values():
-                    for tensor in per_layer.values():
-                        count(tensor)
-            courier = getattr(manager, "_mapped_courier", None)
-            for tensor in getattr(courier, "_slots", None) or []:
-                count(tensor)
+            if not _count_manager_buffers(manager, count):
+                return None
     except (AttributeError, RuntimeError, TypeError):
         return None
     return host, pinned
@@ -1079,7 +1247,9 @@ def _layer_bytes(module: Any) -> dict[str, list[tuple[int, int]]]:
         group = out.setdefault(str(name), [])
         for layer in container:
             params = list(layer.parameters())
-            group.append((sum(p.numel() * p.element_size() for p in params), len(params)))
+            group.append(
+                (sum(p.numel() * p.element_size() for p in params), len(params))
+            )
     return out
 
 
@@ -1098,3 +1268,186 @@ __all__ = [
     "sniff_single_file",
     "video_vae_half_plan",
 ]
+
+
+def _video_vae_index(location: ComponentLocation) -> tuple[Any, Any, Any]:
+    _variant_dir, index, index_source = model_index_for(location)
+    entry = index.get("video_vae")
+    if not isinstance(entry, list) or len(entry) != _WEIGHT_ENTRY_FIELDS:
+        raise ModelFilesMissing(
+            "MODEL_INDEX_ENTRY",
+            "model_index.json 沒有 video_vae 的 [library, class]",
+        )
+    library, architecture = entry
+    return index_source, library, architecture
+
+
+def _video_vae_config(
+    loader: Any,
+    server_args: Any,
+    scope: str,
+    component_path: Any,
+    get_diffusers_component_config: Any,
+) -> tuple[dict[str, Any], str | None, str]:
+    if loader.resolve_component_direct_gpu_loading(server_args, "video_vae"):
+        raise UnsupportedCombination(
+            "VIDEO_VAE_HALF_DIRECT_GPU", f"{scope} 不接受 direct GPU weight loading"
+        )
+    weights_path = loader.resolve_component_weights_path(
+        component_path, server_args, "video_vae"
+    )
+    if weights_path != component_path:
+        raise UnsupportedCombination(
+            "VIDEO_VAE_HALF_OVERRIDE", f"{scope} 不接受 video_vae 權重覆寫路徑"
+        )
+    config = get_diffusers_component_config(component_path=component_path)
+    server_args.model_paths["video_vae"] = component_path
+    if not loader.is_native_only_component(server_args, "video_vae"):
+        raise UnsupportedCombination(
+            "VIDEO_VAE_HALF_NOT_NATIVE",
+            f"{scope} 只複製釘版的 native VAE 載入路徑；此 pipeline 的 video_vae 不是",
+        )
+    class_name = config.pop("_class_name", None)
+    return config, class_name, weights_path
+
+
+class _HalfCheckpointInputs(NamedTuple):
+    loader: Any
+    weights_path: Any
+    server_args: Any
+    vae_precision: Any
+    scope: str
+
+
+def _half_checkpoint(inputs: _HalfCheckpointInputs) -> Any:
+    from sglang.multimodal_gen.runtime.loader.utils import _list_safetensors_files
+    from sglang.multimodal_gen.runtime.weights.source import (  # type: ignore[import-untyped]
+        filter_duplicate_precision_variant_safetensors,
+    )
+
+    loader, weights_path, server_args, vae_precision, scope = inputs
+    files = loader.select_weight_files(
+        _list_safetensors_files(weights_path, raw_candidates=True),
+        weights_path,
+        server_args,
+        "video_vae",
+        vae_precision,
+    )
+    files = filter_duplicate_precision_variant_safetensors(files)
+    if len(files) != 1:
+        raise UnsupportedCombination(
+            "VIDEO_VAE_HALF_FILES",
+            f"{scope} 需要恰好一個 video VAE 權重檔，找到 {files}",
+        )
+    return Path(files[0])
+
+
+class _CheckHalfKeysInputs(NamedTuple):
+    scope: str
+    streaming: Any
+    server_args: Any
+    weights_path: Any
+    slots: list[Any]
+
+
+def _optimize_half(vae: Any, inputs: _CheckHalfKeysInputs) -> Any:
+    from sglang.multimodal_gen.runtime.loader.component_loaders import (
+        vae_loader as sg_vae,
+    )
+    from sglang.multimodal_gen.runtime.platforms import current_platform  # type: ignore[import-untyped]
+
+    scope, streaming, server_args, weights_path, slots = inputs
+    if (
+        scope == "decode_only" and streaming is None
+    ):  # the loader's decoder post-processing, unchanged
+        sg_vae._hold_decoder_weights_in_decode_dtype(
+            vae, server_args, "video_vae", weights_path, component_type="video_vae"
+        )
+        vae = current_platform.optimize_vae(vae)
+    elif scope == "decode_only":
+        # the shell holds no block linear to round (fp16: each streamed block is rounded on the device);
+        # the slot templates get the quality-gated attention forwards the resident blocks get
+        with ws.blocks_attached(vae, slots):
+            optimized = current_platform.optimize_vae(vae)
+        if optimized is not vae:
+            raise UnsupportedCombination(
+                "WEIGHT_STREAMING_OPTIMIZE",
+                "optimize_vae 換掉了 video VAE 模組；不串流",
+            )
+    return vae
+
+
+def _count_manager_buffers(manager: Any, count: Callable[[Any], None]) -> bool:
+    for attr in ("_consolidated_cpu_weights", "_strided_cpu_weights"):
+        table = getattr(manager, attr, None)
+        if not isinstance(table, Mapping):
+            return False
+        for per_layer in table.values():
+            for tensor in per_layer.values():
+                count(tensor)
+    courier = getattr(manager, "_mapped_courier", None)
+    for tensor in getattr(courier, "_slots", None) or []:
+        count(tensor)
+    return True
+
+
+def _streaming_slots(
+    half: Any, streaming: Any, checkpoint: Any, header: Any, vae: Any
+) -> tuple[Any, list[Any], Any]:
+    keep = list(half["keep"])
+    slots: list[Any] = []
+    blocks = None
+    if streaming is not None:
+        blocks = ws.block_index(
+            checkpoint,
+            header,
+            keep=keep,
+            num_blocks=len(vae.decoder.transformer_blocks),
+        )
+        slots = ws.detach_blocks(vae, streaming)
+        keep = list(blocks.shell)
+    return blocks, slots, keep
+
+
+def _guard_half_vae(scope: str, vae: Any) -> Any:
+    guarded = [
+        n
+        for n in VIDEO_VAE_MISSING_ENTRY_POINTS[scope]
+        if callable(getattr(vae, n, None))
+    ]
+    refusal = _missing_half_refusal(scope)
+    for name in guarded:
+        object.__setattr__(vae, name, refusal)
+    object.__setattr__(vae, "_phasyn_video_vae_scope", scope)
+    return guarded
+
+
+class _StreamingFactsInputs(NamedTuple):
+    streaming: Any
+    blocks: Any
+    slots: Any
+    self: SglangComponentBackend
+    vae: Any
+    rope_rebuilt: Any
+
+
+def _streaming_facts(inputs: _StreamingFactsInputs) -> dict[str, Any]:
+    streaming, blocks, slots, self, vae, rope_rebuilt = inputs
+    streaming_facts: dict[str, Any] = {}
+    if streaming is not None:
+        if blocks is None:
+            raise RuntimeError("blocks is unavailable in this stage")
+        state = ws.WeightStreamingState(
+            config=streaming,
+            index=blocks,
+            slots=slots,
+            pin=_cuda(self.device.torch_device()),
+        )
+        ws.attach_state(vae, state)
+        streaming_facts = {
+            "weight_streaming": {
+                **state.facts(),
+                "rope_buffers_rebuilt": rope_rebuilt,
+            }
+        }
+    return streaming_facts

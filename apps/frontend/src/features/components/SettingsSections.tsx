@@ -4,7 +4,7 @@ import type { InstanceSettings, SettingsView } from "@/api/generated/contracts";
 import { Disclosure } from "@/components/common/Disclosure";
 import { JsonEditor } from "@/components/common/JsonEditor";
 import { SchemaForm, type FieldMeta } from "@/components/common/SchemaForm";
-import { CONTRACT_ROOT } from "@/lib/contractSchemas";
+import { matchesSetting, CONTRACT_ROOT } from "@/lib/contractSchemas";
 import { isRecord, type JsonObject } from "@/lib/json";
 import { describeField, objectProperties, propertySchema, type SchemaIssue } from "@/lib/schema";
 import { PRECISION_FIELDS, precisionUnavailableReason, sectionSchemas, type SettingsRoot } from "./settingsModel";
@@ -51,17 +51,18 @@ function PrecisionEditor({
   const section = sectionSchemas(view).load;
   const precisionSchema = section.fromProvider ? propertySchema(section.schema, "precision", section.root) : null;
   const record = isRecord(value) ? value : {};
-  const declared = new Map(precisionSchema ? objectProperties(precisionSchema, section.root) : []);
+  const hasPrecision = isRecord(precisionSchema) || precisionSchema === true;
+  const declared = new Map(hasPrecision ? objectProperties(precisionSchema, section.root) : []);
   const known = new Set(PRECISION_FIELDS.map((field) => field.key));
   const available = PRECISION_FIELDS.filter((field) => declared.has(field.key));
   const unavailable = PRECISION_FIELDS.filter((field) => !declared.has(field.key));
   const extra = [...declared.keys()].filter((key) => !known.has(key));
-  const info = precisionSchema ? describeField(precisionSchema, section.root) : null;
+  const info = hasPrecision ? describeField(precisionSchema, section.root) : null;
   const formSchema = {
     type: "object",
     properties: Object.fromEntries([...available.map((field) => field.key), ...extra].map((key) => [key, declared.get(key)])),
-    required: info && Array.isArray(info.schema.required) ? info.schema.required : [],
-    additionalProperties: info ? info.schema.additionalProperties !== false : true,
+    required: info && Array.isArray(info.schema["required"]) ? info.schema["required"] : [],
+    additionalProperties: info ? info.schema["additionalProperties"] !== false : true,
   };
   const meta: Record<string, FieldMeta> = { ...PRECISION_META, ...Object.fromEntries(extra.map((key) => [key, { help: t("provider 專屬的精度欄位") }])) };
   return (
@@ -71,10 +72,10 @@ function PrecisionEditor({
         <span className="font-normal text-fg-secondary">{t("精度（各欄位獨立）")}</span>
       </legend>
       <p className="-mt-1 text-caption text-fg-tertiary">{t("要求值（requested）；實際採用與 runtime 觀測見「對照」頁籤。")}</p>
-      {precisionSchema ? (
+      {hasPrecision ? (
         <SchemaForm
           schema={formSchema}
-          rootSchema={section.root}
+          {...(section.root === undefined ? {} : { rootSchema: section.root })}
           value={record}
           onChange={onChange}
           idPrefix={idPrefix}
@@ -135,7 +136,7 @@ export function SettingsSection({
 }) {
   const section = sectionSchemas(view)[root];
   const idPrefix = `settings-${root}`;
-  const setRoot = (next: JsonObject) => onChange({ ...draft, [root]: next });
+  const setRoot = (next: JsonObject) => { onChange({ ...draft, [root]: next }); };
   return (
     <section className="grid min-w-0 gap-4" aria-label={SECTION_TEXT[root].title}>
       <EffectNote root={root} />
@@ -158,7 +159,7 @@ export function SettingsSection({
         <PrecisionEditor
           view={view}
           value={draft.load.precision}
-          onChange={(next) => onChange({ ...draft, load: { ...draft.load, precision: next } })}
+          onChange={(next) => { onChange({ ...draft, load: { ...draft.load, precision: next } }); }}
           issues={issues}
           idPrefix={idPrefix}
           disabled={disabled}
@@ -166,7 +167,7 @@ export function SettingsSection({
       ) : null}
       <SchemaForm
         schema={section.schema}
-        rootSchema={section.root}
+        {...(section.root === undefined ? {} : { rootSchema: section.root })}
         value={draft[root]}
         onChange={setRoot}
         idPrefix={idPrefix}
@@ -174,7 +175,7 @@ export function SettingsSection({
         issues={issues}
         disabled={disabled}
         hiddenKeys={root === "load" ? ["precision", "part_overrides"] : []}
-        emptyText={root === "invoke" ? t("provider 沒有宣告呼叫預設欄位。") : undefined}
+        {...(root === "invoke" ? { emptyText: t("provider 沒有宣告呼叫預設欄位。") } : {})}
       />
       {root === "load" ? <p className="text-caption text-fg-tertiary">{t("part_overrides 在「子部件」頁籤編輯。")}</p> : null}
     </section>
@@ -201,9 +202,9 @@ export function SettingsJsonSection({
         label="settings JSON"
         value={draft}
         accept={(next) =>
-          isRecord(next) && isRecord(next.load) && isRecord(next.invoke) && isRecord(next.recording) ? null : t("頂層必須是含 load、invoke、recording 三個物件的 object")
+          matchesSetting("InstanceSettings", next) ? null : t("schema 不允許此值")
         }
-        onChange={(next) => onChange(next as InstanceSettings)}
+        onChange={(next) => { if (matchesSetting("InstanceSettings", next)) onChange(next); }}
         issues={issues}
         rows={22}
         description={

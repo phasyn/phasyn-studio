@@ -31,7 +31,7 @@ export interface FaderProps {
 }
 
 /** Where the cap's centre sits for a position, as a CSS length from the bottom of the lane. */
-const centreAt = (position: number) => `calc(${position.toFixed(4)} * (100% - ${CAP}px) + ${CAP / 2}px)`;
+const centreAt = (position: number) => `calc(${position.toFixed(4)} * (100% - ${String(CAP)}px) + ${String(CAP / 2)}px)`;
 
 function Tick({ db, labelled }: { db: number; labelled: boolean }) {
   const unity = db === 0;
@@ -50,11 +50,11 @@ function Tick({ db, labelled }: { db: number; labelled: boolean }) {
 }
 
 export function Fader({ label, value, onCommit, className }: FaderProps) {
-  const lane = useRef<HTMLDivElement>(null);
-  const { height } = useElementSize(lane);
+  const laneRef = useRef<HTMLDivElement>(null);
+  const { height } = useElementSize(laneRef);
   const [drag, setDrag] = useState<Drag | null>(null);
-  const shown = drag?.moved ? faderGain(drag.position) : value;
-  const position = drag?.moved ? drag.position : faderPosition(value);
+  const shown = (drag?.moved === true) ? faderGain(drag.position) : value;
+  const position = (drag?.moved === true) ? drag.position : faderPosition(value);
   const commit = (db: number) => {
     const next = clampGain(db);
     if (next !== value) onCommit(next);
@@ -97,7 +97,7 @@ export function Fader({ label, value, onCommit, className }: FaderProps) {
 
   return (
     <div
-      ref={lane}
+      ref={laneRef}
       role="slider"
       tabIndex={0}
       aria-orientation="vertical"
@@ -110,8 +110,8 @@ export function Fader({ label, value, onCommit, className }: FaderProps) {
       onPointerDown={begin}
       onPointerMove={move}
       onPointerUp={end}
-      onPointerCancel={() => setDrag(null)}
-      onDoubleClick={() => commit(0)}
+      onPointerCancel={() => { setDrag(null); }}
+      onDoubleClick={() => { commit(0); }}
       onKeyDown={keys}
       className={cn("group/fader relative min-h-20 min-w-0 cursor-ns-resize touch-none rounded-md select-none", className)}
     >
@@ -125,7 +125,7 @@ export function Fader({ label, value, onCommit, className }: FaderProps) {
           "absolute left-[calc(50%+6px)] w-8 -translate-x-1/2 rounded-[5px] border shadow-edge transition-colors duration-(--duration-fast)",
           drag ? "border-brand-cyan bg-overlay" : "border-line-control bg-raised group-hover/fader:border-fg-secondary",
         )}
-        style={{ height: CAP, bottom: `calc(${position.toFixed(4)} * (100% - ${CAP}px))` }}
+        style={{ height: CAP, bottom: `calc(${position.toFixed(4)} * (100% - ${String(CAP)}px))` }}
       >
         <span className="absolute inset-x-1 top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-brand-cyan" />
       </span>

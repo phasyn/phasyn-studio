@@ -58,12 +58,12 @@ export function ZoomScrollBar({ content, viewport, scrollLeft, zoom, onScroll, o
     <div data-zoom-bar="" data-keep-focus="" className="relative mx-2 my-1 h-3 shrink-0 rounded-full bg-sunken" role="group" aria-label={t("時間軸導覽列")}>
       <div
         className={cn("absolute inset-y-0 cursor-grab touch-none rounded-full bg-line-strong transition-colors duration-(--duration-fast) hover:bg-line-control active:cursor-grabbing")}
-        style={{ left: `${start * 100}%`, width: `${Math.min(size, 1 - start) * 100}%` }}
-        onPointerDown={(event) => drag(event, "thumb")}
+        style={{ left: `${String(start * 100)}%`, width: `${String(Math.min(size, 1 - start) * 100)}%` }}
+        onPointerDown={(event) => { drag(event, "thumb"); }}
         title={t("拖曳捲動；拖曳兩端縮放")}
       >
-        <span className={cn(handle, "left-0")} onPointerDown={(event) => drag(event, "start")} />
-        <span className={cn(handle, "right-0")} onPointerDown={(event) => drag(event, "end")} />
+        <span className={cn(handle, "left-0")} onPointerDown={(event) => { drag(event, "start"); }} />
+        <span className={cn(handle, "right-0")} onPointerDown={(event) => { drag(event, "end"); }} />
       </div>
     </div>
   );

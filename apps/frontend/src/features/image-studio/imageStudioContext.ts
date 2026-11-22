@@ -2,7 +2,7 @@
 // here, never keeping their own copy. The shell state (save state, conflict actions, notices, engine sheet) lives in the
 // studio-shell context, so saving or a notice does not re-render the panels; `notify`, `flush` and `setEngineOpen` are
 // repeated here as stable references.
-import { createContext, useContext } from "react";
+import { createContext, use } from "react";
 import type { Catalog } from "@/api/generated/contracts";
 import type { WireRun } from "@/api/types";
 import type { NoticeInput } from "@/features/studio-shell";
@@ -82,7 +82,7 @@ export interface ImageStudioContextValue {
 export const ImageStudioContext = createContext<ImageStudioContextValue | null>(null);
 
 export function useImageStudio(): ImageStudioContextValue {
-  const value = useContext(ImageStudioContext);
+  const value = use(ImageStudioContext);
   if (!value) throw new Error(t("useImageStudio 必須在 ImageStudioProvider 內使用"));
   return value;
 }

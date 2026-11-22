@@ -24,7 +24,7 @@ function PermissionRow({ index, name, added }: { index: number; name: string; ad
         <p className={cn("text-body [overflow-wrap:anywhere]", info.known ? "text-fg" : "text-warning")}>{info.label}</p>
         <p className="flex flex-wrap items-baseline gap-x-2 text-caption text-fg-tertiary">
           <code className="machine">{info.name}</code>
-          {info.note ? <span>{info.note}</span> : null}
+          {(info.note != null && info.note !== "") ? <span>{info.note}</span> : null}
         </p>
       </div>
       {added ? <span className="shrink-0 rounded-full border border-warning/35 bg-warning/10 px-2 py-px text-caption font-medium text-warning">{t("這次新增")}</span> : null}

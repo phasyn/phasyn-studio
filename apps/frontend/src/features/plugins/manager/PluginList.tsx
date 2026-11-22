@@ -1,3 +1,4 @@
+import { isListed } from "@/lib/json";
 // 「已安裝」的中欄：搜尋、排序、清單（名稱、類型、版本、狀態）。點一列就在右欄開啟詳情。狀態欄只在需要處理時出現一個詞；
 // 已停用的包整列變淡。進行中的安裝是清單頂端的一列（InstallRow）。讀取中是骨架列；讀不到時說明原因並可重新讀取。
 import { ArrowDownWideNarrow, ArrowUpNarrowWide, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Search, Upload, X } from "lucide-react";
@@ -10,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { t } from "@/i18n";
 import { cn } from "@/lib/cn";
 import { pluginName } from "../model/evaluate";
-import { defaultSortDescending, filterPlugins, kindSummary, PLUGIN_SORT_KEYS, sortLabel, sortPlugins, statusWord, type PluginSortKey } from "../model/listing";
+import { defaultSortDescending, filterPlugins, kindSummary, PLUGIN_SORT_KEYS, sortLabel, sortPlugins, statusWord } from "../model/listing";
 import { IssueList } from "../parts/IssueList";
 import { RegistryNotice } from "../parts/RegistryNotice";
 import { PluginTile } from "../parts/kinds";
@@ -33,7 +34,7 @@ function PluginRow({ plugin, pending }: { plugin: StudioPlugin; pending: string 
       </span>
       <span className="truncate text-data text-fg-secondary">{kindSummary(plugin)}</span>
       <span className="machine truncate text-data text-fg-secondary">{plugin.version ?? "—"}</span>
-      <span className={cn("truncate text-data font-medium", pending ? "text-info" : status ? STATUS_TONE[status.tone] : "")}>{pending ?? status?.word ?? ""}</span>
+      <span className={cn("truncate text-data font-medium", (pending != null && pending !== "") ? "text-info" : status ? STATUS_TONE[status.tone] : "")}>{pending ?? status?.word ?? ""}</span>
     </div>
   );
 }
@@ -70,7 +71,7 @@ export function PluginList({ railOpen, onToggleRail, detailOpen, onToggleDetail,
   // 預覽中的包若已安裝：它的那一列標示「可更新」（或正在取代）
   const candidateId = flow.phase === "preview" || flow.phase === "installing" ? flow.result.detail.plugin.plugin_id : null;
   const candidateWord = flow.phase === "installing" ? t("更新中") : t("可更新");
-  const clearFilters = () => setInstalled({ kind: "all", source: "all", query: "" });
+  const clearFilters = () => { setInstalled({ kind: "all", source: "all", query: "" }); };
   const select = (id: string) => {
     setInstalled({ selectedId: id, pane: "plugin" });
     onOpenDetail();
@@ -82,7 +83,7 @@ export function PluginList({ railOpen, onToggleRail, detailOpen, onToggleDetail,
         <ToolToggle pressed={railOpen} label={railOpen ? t("收起篩選") : t("展開篩選")} onClick={onToggleRail}>
           {railOpen ? <PanelLeftClose aria-hidden /> : <PanelLeftOpen aria-hidden />}
         </ToolToggle>
-        <label className="relative min-w-32 flex-1">
+        <div className="relative min-w-32 flex-1">
           <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-fg-tertiary" />
           <Input
             compact
@@ -90,16 +91,17 @@ export function PluginList({ railOpen, onToggleRail, detailOpen, onToggleDetail,
             value={installed.query}
             aria-label={t("搜尋插件")}
             placeholder={t("搜尋名稱、作者或內容")}
-            onChange={(event) => setInstalled({ query: event.target.value })}
+            onChange={(event) => { setInstalled({ query: event.target.value }); }}
             className="pl-8"
           />
-        </label>
+        </div>
         <Select
           compact
           aria-label={t("排序方式")}
           value={installed.sort}
           onChange={(event) => {
-            const sort = event.target.value as PluginSortKey;
+            const sort = event.target.value;
+            if (!isListed(sort, PLUGIN_SORT_KEYS)) return;
             setInstalled({ sort, descending: defaultSortDescending(sort) });
           }}
           className="w-28"
@@ -113,7 +115,7 @@ export function PluginList({ railOpen, onToggleRail, detailOpen, onToggleDetail,
         <ToolToggle
           pressed={false}
           label={installed.descending ? t("由大到小（按一下改成由小到大）") : t("由小到大（按一下改成由大到小）")}
-          onClick={() => setInstalled({ descending: !installed.descending })}
+          onClick={() => { setInstalled({ descending: !installed.descending }); }}
         >
           {installed.descending ? <ArrowDownWideNarrow aria-hidden /> : <ArrowUpNarrowWide aria-hidden />}
         </ToolToggle>
@@ -185,7 +187,7 @@ export function PluginList({ railOpen, onToggleRail, detailOpen, onToggleDetail,
           <span className="machine">{filtered ? t("{shown} / {total} 個插件", { shown: items.length, total: all.length }) : t("{total} 個插件", { total: all.length })}</span>
         ) : null}
         {filtered ? (
-          <button type="button" onClick={clearFilters} className="pressable rounded px-1 text-action-fg hover:underline">
+          <button type="button" onClick={clearFilters} className="pressable rounded-sm px-1 text-action-fg hover:underline">
             {t("清除篩選")}
           </button>
         ) : null}

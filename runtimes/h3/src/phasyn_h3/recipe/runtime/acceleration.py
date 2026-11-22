@@ -33,6 +33,7 @@ from typing import Any
 
 from .errors import UnsupportedCombination
 
+
 # (profile scheme, profile provider) -> SGLang ``--quantization`` method name.
 ONLINE_QUANT_METHODS: Mapping[tuple[str, str], str] = {
     ("int8_convrot", "sglang_native"): "convrot_int8",
@@ -47,11 +48,18 @@ CONVROT_GROUP_SIZE = 256
 CONVROT_BACKEND = "jit"
 # Exact capabilities the convrot_int8 JIT ops carry code for
 # (sglang/kernels/ops/gemm/convrot_int8.py SUPPORTED_CAPABILITIES).
-CONVROT_JIT_CAPABILITIES: tuple[tuple[int, int], ...] = ((9, 0), (10, 0), (12, 0), (12, 1))
+CONVROT_JIT_CAPABILITIES: tuple[tuple[int, int], ...] = (
+    (9, 0),
+    (10, 0),
+    (12, 0),
+    (12, 1),
+)
 # E4M3 tensor cores start at CC 8.9; below it the pinned Fp8LinearMethod switches to Marlin weight-only
 # FP8 (W8A16, fp8_utils.py can_auto_enable_marlin_fp8), which is not the W8A8 the profile asks for.
 FP8_W8A8_MIN_CAPABILITY = (8, 9)
-FP8_PATCH_ID = "fp8_layerwise_quant.v1"  # upstream_patches (torch-free copy for provenance)
+FP8_PATCH_ID = (
+    "fp8_layerwise_quant.v1"  # upstream_patches (torch-free copy for provenance)
+)
 # Modules that are never quantized by the shim (module-path patterns as matched by
 # srt ``is_layer_skipped``): the AdaLN projections must stay BF16 so a cache /
 # online rebuild from the BF16 checkpoint reproduces them exactly.
@@ -62,6 +70,8 @@ _PATTERN_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.]*$")
 
 @dataclass(frozen=True)
 class AttentionSpec:
+    """Describe the requested attention backend and its parameters."""
+
     provider: str
     sglang_backend: str  # AttentionBackendEnum name, lower case
     capabilities: tuple[tuple[int, int], ...]
@@ -90,12 +100,22 @@ APPROXIMATE_ATTENTION: Mapping[str, AttentionSpec] = {
 SDPA_BACKED_PROVIDERS = ("pytorch_sdpa", "fp8_fa_sm120", "subblock_sparse_attn")
 
 # SubBlock schedule keys (SubBlockSparseSchedule, subblock_sparse_attn.py:405-454).
-SUBBLOCK_KEYS = ("sparsity", "skip_first_steps", "skip_first_layers", "n_k", "n_q", "min_seq_len", "compute_mode")
+SUBBLOCK_KEYS = (
+    "sparsity",
+    "skip_first_steps",
+    "skip_first_layers",
+    "n_k",
+    "n_q",
+    "min_seq_len",
+    "compute_mode",
+)
 SUBBLOCK_COMPUTE_MODES = ("bf16", "sage_fp8")
 SUBBLOCK_POWERS = (1, 2, 4, 8)
 
 
-def _reject(reason: str, message: str, field_path: str | None = None, **kwargs: Any) -> UnsupportedCombination:
+def _reject(
+    reason: str, message: str, field_path: str | None = None, **kwargs: Any
+) -> UnsupportedCombination:
     return UnsupportedCombination(reason, message, field_path=field_path, **kwargs)
 
 
@@ -104,6 +124,7 @@ def _reject(reason: str, message: str, field_path: str | None = None, **kwargs: 
 
 
 def online_quant_method(scheme: str, provider: str) -> str | None:
+    """Return the online weight quantization method."""
     return ONLINE_QUANT_METHODS.get((str(scheme), str(provider)))
 
 
@@ -122,7 +143,9 @@ def quantization_ignored_layers(excluded: Sequence[str] | None) -> tuple[str, ..
     return tuple(sorted(patterns))
 
 
-def validate_online_quant(component: str, profile_component: Mapping[str, Any], *, mode: str) -> str:
+def validate_online_quant(
+    component: str, profile_component: Mapping[str, Any], *, mode: str
+) -> str:
     """Validate an online-quantization request; returns the SGLang method name."""
     path = f"components.{component}"
     quant = profile_component.get("quantization") or {}
@@ -131,7 +154,9 @@ def validate_online_quant(component: str, profile_component: Mapping[str, Any], 
     method = online_quant_method(scheme, provider)
     if method is None:
         raise _reject(
-            "QUANT_SCHEME_NOT_WIRED", f"{component}: {scheme}/{provider} 不是線上量化路徑", f"{path}.quantization"
+            "QUANT_SCHEME_NOT_WIRED",
+            f"{component}: {scheme}/{provider} 不是線上量化路徑",
+            f"{path}.quantization",
         )
     if component != "transformer":
         raise _reject(
@@ -142,7 +167,7 @@ def validate_online_quant(component: str, profile_component: Mapping[str, Any], 
     if mode == "exact":
         raise _reject(
             "ONLINE_QUANT_NOT_EXACT",
-            f"{scheme} 是近似量化（W8A8／FP8），只能用於 mode=approximate|experimental（REQ-021）",
+            f"{scheme} 是近似量化（W8A8／FP8），只能用於 mode=approximate|experimental",
             "mode",
         )
     if str(profile_component.get("weight_format", "native")) != "native":
@@ -202,6 +227,7 @@ class QuantPlan:
     runtime_patch: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
+        """Serialize the resolved values used by the runtime."""
         return {
             "scheme": self.scheme,
             "provider": self.provider,
@@ -216,6 +242,7 @@ class QuantPlan:
 
 
 def quant_plan(profile_component: Mapping[str, Any] | None) -> QuantPlan | None:
+    """Resolve the quantization policy to apply during model loading."""
     quant = (profile_component or {}).get("quantization") or {}
     scheme = str(quant.get("scheme", "none"))
     provider = str(quant.get("provider", "native"))
@@ -253,6 +280,7 @@ def quant_variant(profile_component: Mapping[str, Any] | None) -> str:
 
 
 def attention_spec(provider: str) -> AttentionSpec | None:
+    """Read the requested attention backend from the profile."""
     return APPROXIMATE_ATTENTION.get(str(provider))
 
 
@@ -282,33 +310,46 @@ def validate_subblock_params(raw: Any) -> dict[str, Any]:
         )
     sparsity = _number(raw["sparsity"])
     if sparsity is None or not math.isfinite(sparsity) or not 0.0 <= sparsity < 1.0:
-        raise _reject("SUBBLOCK_PARAMS_INVALID", "sparsity 必須在 [0, 1)", f"{base}.sparsity")
+        raise _reject(
+            "SUBBLOCK_PARAMS_INVALID", "sparsity 必須在 [0, 1)", f"{base}.sparsity"
+        )
     out: dict[str, Any] = {"sparsity": sparsity}
     for key in ("skip_first_steps", "skip_first_layers", "min_seq_len"):
         value = raw[key]
         if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-            raise _reject("SUBBLOCK_PARAMS_INVALID", f"{key} 必須是非負整數", f"{base}.{key}")
+            raise _reject(
+                "SUBBLOCK_PARAMS_INVALID", f"{key} 必須是非負整數", f"{base}.{key}"
+            )
         out[key] = int(value)
     for key in ("n_k", "n_q"):
         value = raw[key]
         if isinstance(value, bool) or value not in SUBBLOCK_POWERS:
-            raise _reject("SUBBLOCK_PARAMS_INVALID", f"{key} 必須是 1、2、4 或 8", f"{base}.{key}")
+            raise _reject(
+                "SUBBLOCK_PARAMS_INVALID", f"{key} 必須是 1、2、4 或 8", f"{base}.{key}"
+            )
         out[key] = int(value)
     mode = raw["compute_mode"]
     if mode not in SUBBLOCK_COMPUTE_MODES:
-        raise _reject("SUBBLOCK_PARAMS_INVALID", "compute_mode 必須是 bf16 或 sage_fp8", f"{base}.compute_mode")
+        raise _reject(
+            "SUBBLOCK_PARAMS_INVALID",
+            "compute_mode 必須是 bf16 或 sage_fp8",
+            f"{base}.compute_mode",
+        )
     out["compute_mode"] = str(mode)
     return out
 
 
 @dataclass(frozen=True)
 class AttentionPlan:
+    """Record which attention backend will serve the configured model."""
+
     provider: str
     sglang_backend: str
     approximate: bool
     backend_config: Mapping[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
+        """Serialize the resolved values used by the runtime."""
         return {
             "provider": self.provider,
             "sglang_backend": self.sglang_backend,
@@ -336,7 +377,7 @@ def validate_approximate_attention(
     if str(profile.get("mode", "exact")) == "exact":
         raise _reject(
             "APPROXIMATE_ATTENTION_NOT_EXACT",
-            f"{provider} 是近似 attention（FP8 量化或區塊稀疏），只能用於 mode=approximate|experimental（REQ-021/026）",
+            f"{provider} 是近似 attention（FP8 量化或區塊稀疏），只能用於 mode=approximate|experimental（/026）",
             "mode",
         )
     if attention.get("kernel_variant") is not None:
@@ -376,11 +417,20 @@ def validate_approximate_attention(
             f"attention.subblock_sparse 只屬於 subblock_sparse_attn；{provider} 不接受（不默默忽略）",
             "attention.subblock_sparse",
         )
-    return AttentionPlan(provider=provider, sglang_backend=spec.sglang_backend, approximate=True, backend_config=config)
+    return AttentionPlan(
+        provider=provider,
+        sglang_backend=spec.sglang_backend,
+        approximate=True,
+        backend_config=config,
+    )
 
 
 def reject_stray_attention_params(profile: Mapping[str, Any], provider: str) -> None:
-    if provider not in APPROXIMATE_ATTENTION and (profile.get("attention") or {}).get("subblock_sparse") is not None:
+    """Reject parameters outside the selected attention configuration."""
+    if (
+        provider not in APPROXIMATE_ATTENTION
+        and (profile.get("attention") or {}).get("subblock_sparse") is not None
+    ):
         raise _reject(
             "ATTENTION_PARAMS_UNEXPECTED",
             f"attention.subblock_sparse 只屬於 subblock_sparse_attn；provider={provider} 時必須為 null",
@@ -388,16 +438,29 @@ def reject_stray_attention_params(profile: Mapping[str, Any], provider: str) -> 
         )
 
 
-def attention_plan(provider_effective: str, sglang_backend: str, profile: Mapping[str, Any]) -> AttentionPlan:
+def attention_plan(
+    provider_effective: str, sglang_backend: str, profile: Mapping[str, Any]
+) -> AttentionPlan:
     """Plan for an already-validated stage policy (re-reads the frozen profile)."""
     spec = attention_spec(provider_effective)
     if spec is None:
-        return AttentionPlan(provider=provider_effective, sglang_backend=sglang_backend, approximate=False)
+        return AttentionPlan(
+            provider=provider_effective,
+            sglang_backend=sglang_backend,
+            approximate=False,
+        )
     config = (
-        validate_subblock_params((profile.get("attention") or {}).get("subblock_sparse")) if spec.takes_params else {}
+        validate_subblock_params(
+            (profile.get("attention") or {}).get("subblock_sparse")
+        )
+        if spec.takes_params
+        else {}
     )
     return AttentionPlan(
-        provider=spec.provider, sglang_backend=spec.sglang_backend, approximate=True, backend_config=config
+        provider=spec.provider,
+        sglang_backend=spec.sglang_backend,
+        approximate=True,
+        backend_config=config,
     )
 
 
@@ -460,7 +523,7 @@ def effective_summary(
         "adaln": {
             "mode": adaln_mode,
             "with_online_quant": adaln_mode != "off" and plan is not None,
-            "deviation": "adaln_with_quantization" if adaln_mode != "off" and plan is not None else None,
+            "deviation": "" if adaln_mode != "off" and plan is not None else None,
         },
     }
 

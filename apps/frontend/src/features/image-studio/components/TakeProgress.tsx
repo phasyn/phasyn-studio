@@ -20,6 +20,7 @@ import { PREVIEW_LABELS } from "../model/constants";
 import { stageSteps } from "../model/flow";
 import { takePreview } from "../model/outcome";
 import { takeSnapshot } from "../model/params";
+import { storedImageDeclaration } from "../model/declaredImage";
 import { takeActivity } from "../model/progress";
 import type { RunStepPreview, StudioImageTake } from "../types";
 import { t } from "@/i18n";
@@ -40,7 +41,7 @@ function PreviewFrame({ current, waiting }: { current: RunStepPreview | null; wa
   const pending = current && current.url !== shown?.url ? current : null;
   // 步驟還在執行（run 狀態仍帶 preview）就是「預覽」；步驟結束後顯示的是最後一張
   const live = current !== null;
-  const label = shown ? t("{value}（非最終結果）・第 {step}／{total} 步{value2}", { value: live ? t("預覽") : t("最後一張預覽"), step: shown.step, total: shown.total, value2: shown.note ? t("・{note}", { note: shown.note }) : "" }) : t("預覽（非最終結果）");
+  const label = shown ? t("{value}（非最終結果）・第 {step}／{total} 步{value2}", { value: live ? t("預覽") : t("最後一張預覽"), step: shown.step, total: shown.total, value2: (shown.note != null && shown.note !== "") ? t("・{note}", { note: shown.note }) : "" }) : t("預覽（非最終結果）");
   return (
     <>
       {shown ? <img key={shown.url} src={shown.url} alt={label} draggable={false} className="absolute inset-0 size-full object-contain animate-fade-in" /> : null}
@@ -51,7 +52,7 @@ function PreviewFrame({ current, waiting }: { current: RunStepPreview | null; wa
           alt=""
           aria-hidden
           hidden
-          onLoad={() => setShown({ url: pending.url, step: pending.step, total: pending.total, note: pending.note })}
+          onLoad={() => { setShown({ url: pending.url, step: pending.step, total: pending.total, note: pending.note }); }}
           onError={() => undefined}
         />
       ) : null}
@@ -61,7 +62,7 @@ function PreviewFrame({ current, waiting }: { current: RunStepPreview | null; wa
       {!shown ? (
         <span className="max-w-[44ch] px-4 text-center text-caption text-fg-tertiary">{current ? t("讀取預覽…") : waiting}</span>
       ) : !live ? (
-        <span className={cn(HUD_CHIP, "absolute bottom-2.5 left-2.5 max-w-[calc(100%-1.25rem)] truncate text-fg-secondary")}>{t("預覽步驟已結束：等待解碼與合成，完成後換成最終圖片")}</span>
+        <span className={cn(HUD_CHIP, "absolute bottom-2.5 left-2.5 max-w-[calc(100%-1.25rem)] truncate text-fg-secondary")}>{t("等待最終圖片…")}</span>
       ) : null}
     </>
   );
@@ -77,14 +78,14 @@ export interface TakeProgressProps {
 
 export function TakeProgress({ take, onCancel, onFocusLeave }: TakeProgressProps) {
   const { runs, lookup } = useImageStudio();
-  const root = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const focusLeaves = useEffectEvent(onFocusLeave);
   // React runs this cleanup before it removes the view from the page, so focus inside it (the cancel button when the
   // run ends) can still be seen and handed to the viewer instead of falling to the page.
   useLayoutEffect(() => {
-    const node = root.current;
+    const node = rootRef.current;
     return () => {
-      if (node?.contains(document.activeElement)) focusLeaves();
+      if (node?.contains(document.activeElement) === true) focusLeaves();
     };
   }, []);
   const run = runs.get(take.run_id);
@@ -94,11 +95,12 @@ export function TakeProgress({ take, onCancel, onFocusLeave }: TakeProgressProps
   const running = run?.state === "running";
   const now = useNow(running);
   const snapshot = takeSnapshot(take);
-  const previewMode = snapshot?.preview.mode ?? "off";
+  const declaration = storedImageDeclaration(take.params_snapshot);
+  const previewMode = declaration && !declaration.controls.includes("preview") ? "off" : snapshot?.preview.mode ?? "off";
   const steps = stageSteps(stages);
-  const stepCount = preview && preview.total > 0 ? { step: preview.step, total: preview.total } : dit && dit.total !== null && dit.current !== null ? { step: dit.current, total: dit.total } : null;
+  const stepCount = preview && preview.total > 0 ? { step: preview.step, total: preview.total } : dit?.total != null && dit.current !== null ? { step: dit.current, total: dit.total } : null;
   return (
-    <div ref={root} className="grid size-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-2.5 p-3 animate-fade-in">
+    <div ref={rootRef} className="grid size-full min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] gap-2.5 p-3 animate-fade-in">
       <div className="grid gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <span role="status" className="inline-flex min-w-0 items-center gap-1.5 text-data font-medium text-fg">
@@ -108,7 +110,7 @@ export function TakeProgress({ take, onCancel, onFocusLeave }: TakeProgressProps
           <span className="machine text-caption text-fg-tertiary">{t("已執行 {formatElapsed}", { formatElapsed: formatElapsed(run ? elapsedMs(run.created_at, null, now) : null) })}</span>
           {run ? (
             <span className="ml-auto">
-              <Button size="sm" variant="danger" icon={<Ban aria-hidden />} onClick={(event) => onCancel(run, event.currentTarget)}>
+              <Button size="sm" variant="danger" icon={<Ban aria-hidden />} onClick={(event) => { onCancel(run, event.currentTarget); }}>
                 {t("取消生成")}
               </Button>
             </span>
@@ -117,8 +119,8 @@ export function TakeProgress({ take, onCancel, onFocusLeave }: TakeProgressProps
         <ProgressTrack
           value={activity.fraction}
           tone="running"
-          label={t("DiT 去噪進度")}
-          valueText={activity.fraction !== null ? `${Math.round(activity.fraction * 100)}%` : activity.text || t("準備中")}
+          label={declaration ? t("生成進度") : t("DiT 去噪進度")}
+          valueText={activity.fraction !== null ? `${String(Math.round(activity.fraction * 100))}%` : activity.text || t("準備中")}
         />
         {steps.length > 0 ? (
           <Stepper steps={steps} label={t("這張圖片的階段")} size="sm" />
@@ -128,14 +130,14 @@ export function TakeProgress({ take, onCancel, onFocusLeave }: TakeProgressProps
       </div>
       <GeneratingFrame active={running} progress={activity.fraction} className="min-h-0">
         <div className="relative grid size-full min-h-0 place-items-center overflow-hidden rounded-[inherit] bg-stage">
-          {previewMode === "off" ? (
+          {previewMode === "off" && !preview ? (
             <p className="max-w-[44ch] px-4 text-center text-caption text-fg-tertiary">{t("這次沒有開啟中間預覽；完成後顯示最終圖片。")}</p>
           ) : (
-            <PreviewFrame key={take.take_id} current={preview} waiting={t("{previewMode}・每 {value} 步；DiT 開始去噪後出現（元件不支援預覽時不會出現）", { previewMode: PREVIEW_LABELS[previewMode], value: snapshot?.preview.every ?? "?" })} />
+            <PreviewFrame key={take.take_id} current={preview} waiting={declaration ? t("等待元件送出預覽…") : t("{previewMode}・每 {value} 步；DiT 開始去噪後出現（元件不支援預覽時不會出現）", { previewMode: PREVIEW_LABELS[previewMode], value: snapshot?.preview.every ?? "?" })} />
           )}
           {stepCount ? (
             <span className="material-hud absolute top-2 right-2 flex items-center gap-1.5 rounded-full border border-white/10 py-1 pr-2.5 pl-1">
-              <CircularProgress value={stepCount.step / stepCount.total} label={t("DiT 步數")} size={22} />
+              <CircularProgress value={stepCount.step / stepCount.total} label={declaration ? t("生成步數") : t("DiT 步數")} size={22} />
               <span className="machine text-caption text-fg">{t("{step}／{total}", { step: stepCount.step, total: stepCount.total })}</span>
             </span>
           ) : null}

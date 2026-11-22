@@ -1,0 +1,46 @@
+{
+  "pipeline_id": "depth-control-local",
+  "label": "影片相對深度",
+  "inputs": [
+    {
+      "name": "video_file",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": "來源影片"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "capture",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "depth-control",
+      "inputs": {
+        "video_file": {
+          "from_input": "video_file"
+        }
+      },
+      "parameters": {
+        "frame_index": 0
+      }
+    }
+  ],
+  "outputs": {
+    "asset": {
+      "from_step": "capture",
+      "output": "asset"
+    },
+    "video_file": {
+      "from_step": "capture",
+      "output": "video_file"
+    },
+    "field": {
+      "from_step": "capture",
+      "output": "field"
+    },
+    "control_image": {
+      "from_step": "capture",
+      "output": "control_image"
+    }
+  }
+}

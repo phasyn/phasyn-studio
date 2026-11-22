@@ -17,12 +17,26 @@ import threading
 from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict, Unpack
 
 from phasyn_h3.recipe.abi.tensors import TensorInfo, read_header_from_file
 
 from . import pins
+from ._arguments import validate_keywords
 from .errors import UnsupportedCombination
+
+
+class _CheckpointLoad(TypedDict):
+    mapper: Callable[..., Any]
+    original_load: Callable[..., Any]
+    original_process: Callable[..., Any]
+    checkpoint_device: Any
+    param_dtype: Any
+    strict: bool
+    cpu_offload: bool
+    facts: dict[str, Any]
+    processed: set[int]
+
 
 ENV = "PHASYN_H3_BOUNDED_FP8_LOAD"
 ALGORITHM = "h3_native_fp8_leaf_load.v1"
@@ -46,12 +60,16 @@ def _unique_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
 
 @dataclass(frozen=True)
 class SourceTensor:
+    """Locate a tensor in the original checkpoint."""
+
     path: Path
     info: TensorInfo
 
 
 @dataclass(frozen=True)
 class NativeCheckpoint:
+    """Describe a native checkpoint and its tensor shards."""
+
     index_path: Path
     tensors: Mapping[str, SourceTensor]
     identities: Mapping[Path, tuple[int, int, int, int]]
@@ -62,38 +80,42 @@ class NativeCheckpoint:
         """Bounded header-only preflight; indexed shards only, exact key coverage."""
         directory = directory.resolve()
         index = directory / "model.safetensors.index.json"
-        index_stat = index.stat()
-        if index_stat.st_size > 16 * 1024 * 1024:
-            raise _refuse("checkpoint index exceeds 16 MiB")
-        with index.open("rb") as handle:
-            index_bytes = handle.read(16 * 1024 * 1024 + 1)
-        if len(index_bytes) != index_stat.st_size:
-            raise _refuse("checkpoint index changed during read")
-        document = json.loads(index_bytes, object_pairs_hook=_unique_pairs)
-        if not isinstance(document, dict):
-            raise _refuse("checkpoint index must be an object")
-        weight_map = document.get("weight_map")
-        if not isinstance(weight_map, dict) or not 0 < len(weight_map) <= MAX_TENSORS:
-            raise _refuse("checkpoint needs a bounded native weight_map")
-        if any(not isinstance(k, str) or not isinstance(v, str) for k, v in weight_map.items()):
-            raise _refuse("checkpoint weight_map must contain string names and filenames")
+        index_stat, index_bytes, weight_map = _read_checkpoint_index(index)
         tensors: dict[str, SourceTensor] = {}
-        identities = {index: (index_stat.st_dev, index_stat.st_ino, index_stat.st_size, index_stat.st_mtime_ns)}
+        identities = {
+            index: (
+                index_stat.st_dev,
+                index_stat.st_ino,
+                index_stat.st_size,
+                index_stat.st_mtime_ns,
+            )
+        }
         hashes = {index.name: hashlib.sha256(index_bytes).hexdigest()}
         for filename in sorted(set(weight_map.values())):
             path = (directory / filename).resolve()
             if path.parent != directory or path.suffix != ".safetensors":
-                raise _refuse("checkpoint shard must be a local safetensors file in its component directory")
+                raise _refuse(
+                    "checkpoint shard must be a local safetensors file in its component directory"
+                )
             stat = path.stat()
             header = read_header_from_file(path)
-            identities[path] = (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns)
+            identities[path] = (
+                stat.st_dev,
+                stat.st_ino,
+                stat.st_size,
+                stat.st_mtime_ns,
+            )
             with path.open("rb") as handle:
-                hashes[path.name] = hashlib.sha256(handle.read(header.data_offset)).hexdigest()
+                hashes[path.name] = hashlib.sha256(
+                    handle.read(header.data_offset)
+                ).hexdigest()
             for name, info in header.tensors.items():
                 if name in tensors or weight_map.get(name) != filename:
                     raise _refuse(f"duplicate or misindexed checkpoint tensor: {name}")
                 if info.dtype not in {"BF16", "F32"}:
-                    raise _refuse(f"native BF16/F32 checkpoint required: {name} has {info.dtype}")
+                    raise _refuse(
+                        f"native BF16/F32 checkpoint required: {name} has {info.dtype}"
+                    )
                 tensors[name] = SourceTensor(path, info)
         if set(tensors) != set(weight_map):
             raise _refuse("checkpoint index and actual header keys differ")
@@ -103,10 +125,20 @@ class NativeCheckpoint:
         return result
 
     def verify_file(self, path: Path) -> None:
+        """Check the file against its declared identity."""
         stat = path.stat()
-        if (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns) != self.identities[path]:
+        if (
+            stat.st_dev,
+            stat.st_ino,
+            stat.st_size,
+            stat.st_mtime_ns,
+        ) != self.identities[path]:
             raise _refuse(f"checkpoint changed after header preflight: {path.name}")
-        length = stat.st_size if path == self.index_path else read_header_from_file(path).data_offset
+        length = (
+            stat.st_size
+            if path == self.index_path
+            else read_header_from_file(path).data_offset
+        )
         with path.open("rb") as handle:
             digest = hashlib.sha256(handle.read(length)).hexdigest()
         if digest != self.header_sha256[path.name]:
@@ -124,7 +156,9 @@ class _ModulesView:
 class _LeafView:
     """Expose original fully-qualified names while assign=True writes to the owner."""
 
-    def __init__(self, owner: Any, prefix: str, state: dict[str, Any], parameters: dict[str, Any]) -> None:
+    def __init__(
+        self, owner: Any, prefix: str, state: dict[str, Any], parameters: dict[str, Any]
+    ) -> None:
         self.owner = owner
         self.prefix = prefix + "." if prefix else ""
         self.state = state
@@ -137,7 +171,10 @@ class _LeafView:
     def named_parameters(self) -> Iterator[tuple[str, Any]]:
         yield from self.parameters.items()
 
-    def load_state_dict(self, state: dict[str, Any], *, strict: bool, assign: bool) -> Any:
+    def load_state_dict(
+        self, state: dict[str, Any], *, strict: bool, assign: bool
+    ) -> Any:
+        del strict
         if any(not name.startswith(self.prefix) for name in state):
             raise _refuse("parameter escaped its direct-state group")
         local = {name[len(self.prefix) :]: value for name, value in state.items()}
@@ -148,34 +185,20 @@ class _LeafView:
         return result
 
 
-def _groups(model: Any, checkpoint: NativeCheckpoint, mapper: Callable[..., Any]) -> tuple[list[Any], dict[str, Any]]:
+def _groups(
+    model: Any, checkpoint: NativeCheckpoint, mapper: Callable[..., Any]
+) -> tuple[list[Any], dict[str, Any]]:
     state = model.state_dict()
     params = dict(model.named_parameters())
     if len(state) > MAX_TENSORS or not state:
         raise _refuse("model state is empty or exceeds tensor bound")
-    all_values = list(model.named_parameters(remove_duplicate=False)) + list(
-        model.named_buffers(remove_duplicate=False)
-    )
-    if len({id(value) for _, value in all_values}) != len(all_values):
-        raise _refuse("tied or aliased parameters/buffers are not supported")
-    for name, tensor in state.items():
-        if tensor.device.type != "meta" or hasattr(tensor, "device_mesh"):
-            raise _refuse(f"unsharded meta initialization required: {name}")
-        if str(tensor.dtype) not in {"torch.bfloat16", "torch.float32"}:
-            raise _refuse(f"unsupported target dtype: {name}")
-    for name in checkpoint.tensors:
-        if name not in state:
-            if ".adaln_proj.linear." not in name:
-                raise _refuse(f"unexpected checkpoint key: {name}")
-            continue  # fixed AdaLN only; gated before installing the hook
-        if mapper(name) != (name, None, None):
-            raise _refuse(f"native identity mapping required: {name}")
-        info = checkpoint.tensors[name].info
-        if tuple(state[name].shape) != info.shape:
-            raise _refuse(f"checkpoint shape mismatch: {name}")
+    _check_meta_parameters(model, state)
+    _check_source_mapping(checkpoint, state, mapper)
     by_owner: dict[str, dict[str, Any]] = {}
     for name, tensor in state.items():
-        if name not in checkpoint.tensors and getattr(params.get(name), "missing_param_init", None) not in {
+        if name not in checkpoint.tensors and getattr(
+            params.get(name), "missing_param_init", None
+        ) not in {
             "ones",
             "zeros",
         }:
@@ -185,35 +208,49 @@ def _groups(model: Any, checkpoint: NativeCheckpoint, mapper: Callable[..., Any]
     groups = []
     for prefix, subset in by_owner.items():
         owner = model.get_submodule(prefix) if prefix else model
-        source_bytes = sum(checkpoint.tensors[n].info.byte_length for n in subset if n in checkpoint.tensors)
+        source_bytes = sum(
+            checkpoint.tensors[n].info.byte_length
+            for n in subset
+            if n in checkpoint.tensors
+        )
         target_bytes = sum(t.numel() * t.element_size() for t in subset.values())
         if max(source_bytes, target_bytes) > MAX_LEAF_BYTES:
-            raise _refuse(f"direct-state group exceeds {MAX_LEAF_BYTES} bytes: {prefix}")
+            raise _refuse(
+                f"direct-state group exceeds {MAX_LEAF_BYTES} bytes: {prefix}"
+            )
         groups.append(
-            (owner, prefix, subset, {n: params[n] for n in subset if n in params}, source_bytes, target_bytes)
+            (
+                owner,
+                prefix,
+                subset,
+                {n: params[n] for n in subset if n in params},
+                source_bytes,
+                target_bytes,
+            )
         )
     return groups, state
 
 
 def stream_load(
-    model: Any,
-    checkpoint: NativeCheckpoint,
-    *,
-    mapper: Callable[..., Any],
-    original_load: Callable[..., Any],
-    original_process: Callable[..., Any],
-    checkpoint_device: Any,
-    param_dtype: Any,
-    strict: bool,
-    cpu_offload: bool,
-    facts: dict[str, Any],
-    processed: set[int],
+    model: Any, checkpoint: NativeCheckpoint, **arguments: Unpack[_CheckpointLoad]
 ) -> Any:
     """Load whole direct-state groups, using the original CPU loader and quantizer."""
+    validate_keywords(arguments, _CheckpointLoad)
+    mapper = arguments["mapper"]
+    original_load = arguments["original_load"]
+    original_process = arguments["original_process"]
+    checkpoint_device = arguments["checkpoint_device"]
+    param_dtype = arguments["param_dtype"]
+    strict = arguments["strict"]
+    cpu_offload = arguments["cpu_offload"]
+    facts = arguments["facts"]
+    processed = arguments["processed"]
     from safetensors import safe_open
 
     groups, _state = _groups(model, checkpoint, mapper)
-    snapshots = [(owner, dict(owner._parameters), dict(owner._buffers)) for owner, *_ in groups]
+    snapshots = [
+        (owner, dict(owner._parameters), dict(owner._buffers)) for owner, *_ in groups
+    ]
     reverse: dict[str, Any] = {}
     facts.update(
         algorithm=ALGORITHM,
@@ -263,7 +300,6 @@ def stream_load(
         model.reverse_param_names_mapping = reverse
         checkpoint.verify_file(checkpoint.index_path)
         facts["complete"] = True
-        return result
     except BaseException:
         # All originals were meta. Do not retain a partially loaded component on failure.
         for owner, parameters, buffers in snapshots:
@@ -274,6 +310,8 @@ def stream_load(
         processed.clear()
         facts["complete"] = False
         raise
+    else:
+        return result
 
 
 @contextlib.contextmanager
@@ -285,25 +323,20 @@ def bounded_fp8_load_context(policy: Any, directory: Path) -> Iterator[dict[str,
         return
     if raw != "1":
         raise _refuse(f"{ENV} must be 0 or 1")
-    comp = policy.components.get("transformer")
-    parallel = policy.effective_profile.get("parallelism", {})
-    if (
-        comp is None
-        or comp.quant_scheme != "fp8_e4m3"
-        or comp.quant_provider != "sglang_native"
-        or comp.offload != "block"
-        or policy.adaln_mode != "fixed"
-        or parallel.get("tensor_degree") != 1
-        or parallel.get("fsdp_inference") is not False
-    ):
-        raise _refuse("bounded loader requires native online FP8, block offload, fixed AdaLN, TP1, no FSDP")
+    _check_bounded_policy(policy)
     checkpoint = NativeCheckpoint.inspect(directory)
     with _LOCK:
         source_sha256 = pins.check("bounded_fp8_load", what="bounded FP8 載入")
-        fsdp: Any = importlib.import_module("sglang.multimodal_gen.runtime.loader.fsdp_load")
+        fsdp: Any = importlib.import_module(
+            "sglang.multimodal_gen.runtime.loader.fsdp_load"
+        )
         original_load = fsdp.load_model_from_full_model_state_dict
         original_process = fsdp.process_model_weights_after_loading
-        facts: dict[str, Any] = {"enabled": True, "algorithm": ALGORITHM, "source_sha256": source_sha256}
+        facts: dict[str, Any] = {
+            "enabled": True,
+            "algorithm": ALGORITHM,
+            "source_sha256": source_sha256,
+        }
         processed: set[int] = set()
         called = False
         owner_thread = threading.get_ident()
@@ -320,14 +353,7 @@ def bounded_fp8_load_context(policy: Any, directory: Path) -> Iterator[dict[str,
             if called or type(model).__name__ != "MiniMaxH3DiTModel":
                 raise _refuse("unexpected or repeated model load in bounded scope")
             called = True
-            if (
-                values["checkpoint_load_device"].type != "cpu"
-                or values["preconverted_state_dict"] is not None
-                or values["allow_device_tensor_assignment"]
-                or values["host_spill"] is not None
-                or not callable(values["param_names_mapping"])
-            ):
-                raise _refuse("bounded loader cannot replace this checkpoint placement or mapping")
+            _check_bounded_placement(values)
             try:
                 return stream_load(
                     model,
@@ -347,20 +373,13 @@ def bounded_fp8_load_context(policy: Any, directory: Path) -> Iterator[dict[str,
                 if callable(close):
                     close()
 
-        def process(model: Any, *args: Any, **kwargs: Any) -> int:
-            if threading.get_ident() != owner_thread:
-                return int(original_process(model, *args, **kwargs))
-            return int(
-                original_process(_ModulesView([m for m in model.modules() if id(m) not in processed]), *args, **kwargs)
-            )
+        process = _make_bounded_processor(owner_thread, original_process, processed)
 
         fsdp.load_model_from_full_model_state_dict = load
         fsdp.process_model_weights_after_loading = process
         try:
             yield facts
-            if not called or not facts.get("complete"):
-                raise _refuse("bounded path was requested but did not complete")
-            facts["component_load_complete"] = True
+            _complete_bounded_load(facts, called=called)
         except BaseException:
             facts["complete"] = False
             facts["component_load_complete"] = False
@@ -368,3 +387,105 @@ def bounded_fp8_load_context(policy: Any, directory: Path) -> Iterator[dict[str,
         finally:
             fsdp.load_model_from_full_model_state_dict = original_load
             fsdp.process_model_weights_after_loading = original_process
+
+
+def _read_checkpoint_index(index: Path) -> tuple[os.stat_result, bytes, dict[str, str]]:
+    index_stat = index.stat()
+    if index_stat.st_size > 16 * 1024 * 1024:
+        raise _refuse("checkpoint index exceeds 16 MiB")
+    with index.open("rb") as handle:
+        index_bytes = handle.read(16 * 1024 * 1024 + 1)
+    if len(index_bytes) != index_stat.st_size:
+        raise _refuse("checkpoint index changed during read")
+    document = json.loads(index_bytes, object_pairs_hook=_unique_pairs)
+    if not isinstance(document, dict):
+        raise _refuse("checkpoint index must be an object")
+    weight_map = document.get("weight_map")
+    if not isinstance(weight_map, dict) or not 0 < len(weight_map) <= MAX_TENSORS:
+        raise _refuse("checkpoint needs a bounded native weight_map")
+    if any(
+        not isinstance(k, str) or not isinstance(v, str) for k, v in weight_map.items()
+    ):
+        raise _refuse("checkpoint weight_map must contain string names and filenames")
+    return index_stat, index_bytes, weight_map
+
+
+def _check_meta_parameters(model: Any, state: Any) -> None:
+    all_values = list(model.named_parameters(remove_duplicate=False)) + list(
+        model.named_buffers(remove_duplicate=False)
+    )
+    if len({id(value) for _, value in all_values}) != len(all_values):
+        raise _refuse("tied or aliased parameters/buffers are not supported")
+    for name, tensor in state.items():
+        if tensor.device.type != "meta" or hasattr(tensor, "device_mesh"):
+            raise _refuse(f"unsharded meta initialization required: {name}")
+        if str(tensor.dtype) not in {"torch.bfloat16", "torch.float32"}:
+            raise _refuse(f"unsupported target dtype: {name}")
+
+
+def _check_source_mapping(
+    checkpoint: NativeCheckpoint, state: Any, mapper: Callable[..., Any]
+) -> None:
+    for name in checkpoint.tensors:
+        if name not in state:
+            if ".adaln_proj.linear." not in name:
+                raise _refuse(f"unexpected checkpoint key: {name}")
+            continue  # fixed AdaLN only; gated before installing the hook
+        if mapper(name) != (name, None, None):
+            raise _refuse(f"native identity mapping required: {name}")
+        info = checkpoint.tensors[name].info
+        if tuple(state[name].shape) != info.shape:
+            raise _refuse(f"checkpoint shape mismatch: {name}")
+
+
+def _check_bounded_policy(policy: Any) -> None:
+    comp = policy.components.get("transformer")
+    parallel = policy.effective_profile.get("parallelism", {})
+    if (
+        comp is None
+        or comp.quant_scheme != "fp8_e4m3"
+        or comp.quant_provider != "sglang_native"
+        or comp.offload != "block"
+        or policy.adaln_mode != "fixed"
+        or parallel.get("tensor_degree") != 1
+        or parallel.get("fsdp_inference") is not False
+    ):
+        raise _refuse(
+            "bounded loader requires native online FP8, block offload, fixed AdaLN, TP1, no FSDP"
+        )
+
+
+def _check_bounded_placement(values: Any) -> None:
+    if (
+        values["checkpoint_load_device"].type != "cpu"
+        or values["preconverted_state_dict"] is not None
+        or values["allow_device_tensor_assignment"]
+        or values["host_spill"] is not None
+        or not callable(values["param_names_mapping"])
+    ):
+        raise _refuse(
+            "bounded loader cannot replace this checkpoint placement or mapping"
+        )
+
+
+def _make_bounded_processor(
+    owner_thread: int, original_process: Any, processed: set[int]
+) -> Any:
+    def process(model: Any, *args: Any, **kwargs: Any) -> int:
+        if threading.get_ident() != owner_thread:
+            return int(original_process(model, *args, **kwargs))
+        return int(
+            original_process(
+                _ModulesView([m for m in model.modules() if id(m) not in processed]),
+                *args,
+                **kwargs,
+            )
+        )
+
+    return process
+
+
+def _complete_bounded_load(facts: dict[str, Any], *, called: bool) -> None:
+    if not called or not facts.get("complete"):
+        raise _refuse("bounded path was requested but did not complete")
+    facts["component_load_complete"] = True

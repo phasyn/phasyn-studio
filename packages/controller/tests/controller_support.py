@@ -12,20 +12,23 @@ import time
 import uuid
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Self, override
 
 import httpx
 from fastapi import FastAPI, Request
-from phasyn_components import PROTOCOL_VERSION, contracts
+from phasyn_components import PROTOCOL_VERSION, contracts, storage
+from phasyn_components.canonical import digest
 from phasyn_components.errors import ComponentError
 from phasyn_components.files import FileStore
 from phasyn_components.records import RecordingStore
 from phasyn_components.settings import effective_context, normalize_recording
 from phasyn_components.testing import ids
 from phasyn_components.timeutil import utc_now
-from phasyn_controller import ControllerConfig, create_app
 from phasyn_server.files import file_response
 from starlette.responses import JSONResponse, Response
+
+from phasyn_controller import ControllerConfig, create_app
+
 
 CONTROLLER_ID = ids.CONTROLLER_ID
 NODE_A = ids.NODE_A_ID
@@ -66,7 +69,9 @@ class Router(httpx.AsyncBaseTransport):
     def unmount(self, origin: str) -> None:
         self.apps.pop(origin, None)
 
-    def seen(self, method: str | None = None, path_suffix: str = "", host: str | None = None) -> list[httpx.Request]:
+    def seen(
+        self, method: str | None = None, path_suffix: str = "", host: str | None = None
+    ) -> list[httpx.Request]:
         return [
             r
             for r in self.requests
@@ -75,6 +80,7 @@ class Router(httpx.AsyncBaseTransport):
             and (host is None or r.url.host == host)
         ]
 
+    @override
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
         if self.intercept is not None:
@@ -89,10 +95,17 @@ class Router(httpx.AsyncBaseTransport):
 
 
 def port(name: str, type_id: str = TYPE, *, required: bool = True) -> dict[str, Any]:
-    return {"name": name, "type_id": type_id, "required": required, "transport": "either", "description": name}
+    return {
+        "name": name,
+        "type_id": type_id,
+        "required": required,
+        "transport": "either",
+        "description": name,
+    }
 
 
-def descriptor(
+# Independent fixture overrides cover the public component contract.
+def descriptor(  # noqa: PLR0913
     node_id: str,
     component_id: str,
     *,
@@ -158,11 +171,18 @@ def summary(recording_id: str, state: str) -> dict[str, Any]:
 
 class FakeNode:
     """A fake NodeGateway. ``invoke`` follows its parameters: ``gate`` (wait until the test opens that gate),
-    ``sleep_s``, ``fail``, ``hang`` (until a cancel), ``produce`` (publish fake outputs in ``files``).
+    ``sleep_s``, ``fail``, ``hang`` (until a cancel), ``produce`` (publish fake outputs in ``files``),
+    ``lose_reply`` (the call finishes and its receipt says so, but the invoke reply never comes back).
+    ``GET .../calls/{call_id}`` answers the call's receipt (404 for a call it never saw).
     ``DELETE /api/files/{id}`` uses a real FileStore.delete; ``file_delete_errors`` forces errors ("*" = all)."""
 
     def __init__(
-        self, node_id: str, endpoint: str, components: list[dict[str, Any]], *, label: str = "假 Node"
+        self,
+        node_id: str,
+        endpoint: str,
+        components: list[dict[str, Any]],
+        *,
+        label: str = "假 Node",
     ) -> None:
         self.node_id = node_id
         self.endpoint = endpoint
@@ -170,6 +190,7 @@ class FakeNode:
         self.process_instance_id = str(uuid.uuid4())
         self.components = {c["component_id"]: c for c in components}
         self.calls: list[dict[str, Any]] = []
+        self.receipts: dict[str, dict[str, Any]] = {}
         self.cancels: list[dict[str, Any]] = []
         self.events: dict[str, asyncio.Event] = {}
         self.files: FileStore | None = None
@@ -178,6 +199,14 @@ class FakeNode:
         self.file_deletes: list[str] = []
         self.file_delete_errors: dict[str, ComponentError] = {}
         self.gates: dict[str, asyncio.Event] = {}
+        # Files the fake node's running calls use: its storage cleanup keeps them (as a real node does)
+        self.storage_busy: set[tuple[str, str]] = set()
+        # Busy only from the clean request on: a call that started after the controller read the inventory
+        self.clean_busy: set[tuple[str, str]] = set()
+        self.storage_supported = True
+        self.storage_cleans: list[dict[str, Any]] = []
+        # The Node's work-directory state (StorageWork) its inventory reports; None = an older Node without it
+        self.storage_work: dict[str, Any] | None = None
         self.app = self._build()
 
     def gate(self, name: str) -> asyncio.Event:
@@ -187,7 +216,9 @@ class FakeNode:
     def started(self, step_id: str) -> bool:
         return any(c["step_id"] == step_id for c in self.calls)
 
-    def publish_file(self, data: bytes, media_type: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+    def publish_file(
+        self, data: bytes, media_type: str, metadata: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         assert self.files is not None, "FakeNode.files 未設定"
         writer = self.files.new_writer(media_type, metadata or {})
         writer.write(data)
@@ -195,10 +226,20 @@ class FakeNode:
 
     def produce(self, component_id: str) -> dict[str, TypedValue]:
         """假產物：兩個 latent manifest 共用同一個 links.blob 附件，加上 media.asset.v1（inline 值內的 file）。"""
-        blob = self.publish_file(b"latent blob " + component_id.encode(), "application/x-safetensors", {"role": "blob"})
-        video_manifest = self.publish_file(b'{"latent": "video"}', "application/json", {"links": {"blob": blob}})
-        audio_manifest = self.publish_file(b'{"latent": "audio"}', "application/json", {"links": {"blob": blob}})
-        video = self.publish_file(b"fake mp4 " + component_id.encode(), "video/mp4", {"kind": "final"})
+        blob = self.publish_file(
+            b"latent blob " + component_id.encode(),
+            "application/x-safetensors",
+            {"role": "blob"},
+        )
+        video_manifest = self.publish_file(
+            b'{"latent": "video"}', "application/json", {"links": {"blob": blob}}
+        )
+        audio_manifest = self.publish_file(
+            b'{"latent": "audio"}', "application/json", {"links": {"blob": blob}}
+        )
+        video = self.publish_file(
+            b"fake mp4 " + component_id.encode(), "video/mp4", {"kind": "final"}
+        )
         asset = {
             "asset_id": str(uuid.uuid4()),
             "kind": "final",
@@ -212,12 +253,20 @@ class FakeNode:
             "actual_settings": {},
         }
         return {
-            "video_latent": {"type_id": "video.final-latent.v1", "file": video_manifest},
-            "audio_latent": {"type_id": "audio.final-latent.v1", "file": audio_manifest},
+            "video_latent": {
+                "type_id": "video.final-latent.v1",
+                "file": video_manifest,
+            },
+            "audio_latent": {
+                "type_id": "audio.final-latent.v1",
+                "file": audio_manifest,
+            },
             "asset": {"type_id": "media.asset.v1", "value": asset},
         }
 
-    def snapshot(self, *, process_instance_id: str | None = None, endpoint: str | None = None) -> dict[str, Any]:
+    def snapshot(
+        self, *, process_instance_id: str | None = None, endpoint: str | None = None
+    ) -> dict[str, Any]:
         return {
             "node_id": self.node_id,
             "process_instance_id": process_instance_id or self.process_instance_id,
@@ -237,6 +286,52 @@ class FakeNode:
     def _build(self) -> FastAPI:
         app = FastAPI()
 
+        self._mount_invoke(app)
+        self._mount_receipts(app)
+        self._mount_control(app)
+        self._mount_files(app)
+        self._mount_recordings(app)
+        self._mount_storage(app)
+        return app
+
+    def recording_store(self) -> RecordingStore:
+        """The node's recordings (next to its files when the test gave it none)."""
+        if self.store is None:
+            assert self.files is not None, "FakeNode.files 未設定"
+            self.store = RecordingStore(self.files.root.parent / "recordings")
+        return self.store
+
+    def _mount_storage(self, app: FastAPI) -> None:
+        """The real phasyn_components.storage functions over this node's FileStore and recordings."""
+
+        @app.get("/api/node/storage")
+        async def inventory() -> Response:
+            if not self.storage_supported or self.files is None:
+                err = ComponentError("NOT_FOUND", "假 Node：沒有這個路由")
+                return JSONResponse(err.to_dict(), status_code=404)
+            doc = storage.inventory(
+                self.files, self.recording_store(), busy=self.storage_busy
+            )
+            if self.storage_work is not None:
+                doc["work"] = self.storage_work
+            return JSONResponse(doc)
+
+        @app.post("/api/node/storage/clean")
+        async def clean(request: Request) -> Response:
+            assert self.files is not None
+            body = await request.json()
+            contracts.validate("NodeStorageCleanRequest", body)
+            self.storage_cleans.append(body)
+            return JSONResponse(
+                storage.clean(
+                    self.files,
+                    self.recording_store(),
+                    body,
+                    busy=self.storage_busy | self.clean_busy,
+                )
+            )
+
+    def _mount_invoke(self, app: FastAPI) -> None:
         @app.post("/api/components/{component_id}/invoke")
         async def invoke(component_id: str, request: Request) -> Response:
             body = await request.json()
@@ -250,6 +345,18 @@ class FakeNode:
             }
             self.calls.append(record)
             params = body["parameters"]
+            receipt = {
+                "node_id": self.node_id,
+                "component_id": component_id,
+                "call_id": body["call_id"],
+                "run_id": body.get("run_id"),
+                "step_id": body.get("step_id"),
+                "request_digest": digest(body),
+                "phase": "running",
+                "result": None,
+                "error": None,
+            }
+            self.receipts[body["call_id"]] = receipt
             event = self.events.setdefault(body["call_id"], asyncio.Event())
             state = "succeeded"
             if params.get("reject"):
@@ -275,7 +382,10 @@ class FakeNode:
             if state == "succeeded" and params.get("produce"):
                 outputs = self.produce(component_id)
             elif state == "succeeded":
-                outputs = {"value": body["inputs"].get("value") or {"type_id": TYPE, "value": component_id}}
+                outputs = {
+                    "value": body["inputs"].get("value")
+                    or {"type_id": TYPE, "value": component_id}
+                }
             rid = str(uuid.uuid4())
             record["recording_id"] = rid
             result = {
@@ -297,8 +407,30 @@ class FakeNode:
                 "summary": summary(rid, state),
             }
             contracts.validate("InvokeResult", result)
+            await self._finish(
+                receipt, result, lose_reply=bool(params.get("lose_reply"))
+            )
             return JSONResponse(result)
 
+    @staticmethod
+    async def _finish(
+        receipt: dict[str, Any], result: dict[str, Any], *, lose_reply: bool
+    ) -> None:
+        """Record the finished call; ``lose_reply`` then never answers (only the receipt knows the result)."""
+        receipt.update(phase="finished", result=result)
+        if lose_reply:
+            await asyncio.Event().wait()
+
+    def _mount_receipts(self, app: FastAPI) -> None:
+        @app.get("/api/components/{component_id}/calls/{call_id}")
+        async def call_receipt(component_id: str, call_id: str) -> Response:
+            receipt = self.receipts.get(call_id)
+            if receipt is None or receipt["component_id"] != component_id:
+                err = ComponentError("NOT_FOUND", "假 Node：沒有這筆呼叫", status=404)
+                return JSONResponse(err.to_dict(), status_code=404)
+            return JSONResponse(receipt)
+
+    def _mount_control(self, app: FastAPI) -> None:
         @app.post("/api/components/{component_id}/cancel")
         async def cancel(component_id: str, request: Request) -> Response:
             body = await request.json()
@@ -308,13 +440,20 @@ class FakeNode:
             if event is not None:
                 event.set()
             return JSONResponse(
-                {"call_id": body["call_id"], "accepted": accepted, "process_exited": None, "message": "假 Node"}
+                {
+                    "call_id": body["call_id"],
+                    "accepted": accepted,
+                    "process_exited": None,
+                    "message": "假 Node",
+                }
             )
 
         @app.post("/api/components/{component_id}/control")
-        async def control(component_id: str, request: Request) -> Response:
+        async def control(component_id: str) -> Response:
             err = ComponentError(
-                "COMPONENT_BUSY", "假 Node：元件忙碌，請先取消", details={"component_id": component_id}
+                "COMPONENT_BUSY",
+                "假 Node：元件忙碌，請先取消",
+                details={"component_id": component_id},
             )
             return JSONResponse(err.to_dict(), status_code=err.status)
 
@@ -326,28 +465,36 @@ class FakeNode:
         async def providers() -> Response:
             return JSONResponse({"node_id": self.node_id, "items": []})
 
+    def _mount_files(self, app: FastAPI) -> None:
         @app.get("/api/files/{file_id}")
         async def file(file_id: str, request: Request) -> Response:
             assert self.files is not None
             try:
-                return await file_response(self.files, file_id, request.headers.get("range"))
+                return await file_response(
+                    self.files, file_id, request.headers.get("range")
+                )
             except ComponentError as err:
                 return JSONResponse(err.to_dict(), status_code=err.status)
 
         @app.delete("/api/files/{file_id}")
         async def delete_file(file_id: str) -> Response:
             self.file_deletes.append(file_id)
-            err = self.file_delete_errors.get(file_id) or self.file_delete_errors.get("*")
+            err = self.file_delete_errors.get(file_id) or self.file_delete_errors.get(
+                "*"
+            )
             if err is None:
                 assert self.files is not None
                 try:
                     if self.files.delete(file_id):
                         return JSONResponse({"file_id": file_id, "deleted": True})
-                    err = ComponentError("FILE_NOT_FOUND", f"假 Node：找不到已發布檔案 {file_id}")
+                    err = ComponentError(
+                        "FILE_NOT_FOUND", f"假 Node：找不到已發布檔案 {file_id}"
+                    )
                 except ComponentError as exc:
                     err = exc
             return JSONResponse(err.to_dict(), status_code=err.status)
 
+    def _mount_recordings(self, app: FastAPI) -> None:
         @app.get("/api/recordings")
         def list_recordings(request: Request) -> Response:
             assert self.store is not None
@@ -356,7 +503,9 @@ class FakeNode:
             cursor = params.pop("cursor", None)
             self.recording_queries.append(dict(request.query_params))
             try:
-                page = self.store.list(params, cursor=cursor, limit=int(limit) if limit else None)
+                page = self.store.list(
+                    params, cursor=cursor, limit=int(limit) if limit else None
+                )
             except ComponentError as err:
                 return JSONResponse(err.to_dict(), status_code=err.status)
             return JSONResponse(page)
@@ -384,8 +533,6 @@ class FakeNode:
                 return JSONResponse(err.to_dict(), status_code=err.status)
             return JSONResponse(page)
 
-        return app
-
 
 def make_config(data_dir: Path, **overrides: Any) -> ControllerConfig:
     doc: dict[str, Any] = {
@@ -406,19 +553,26 @@ def make_config(data_dir: Path, **overrides: Any) -> ControllerConfig:
 
 
 class Harness:
-    """一個主控實例（lifespan 手動啟停）＋對它的 async client。"""
+    """一個主控實例（lifespan 手動啟停）+對它的 async client。"""
 
     def __init__(
-        self, data_dir: Path, *, router: Router | None = None, clock: FakeClock | None = None, **config: Any
+        self,
+        data_dir: Path,
+        *,
+        router: Router | None = None,
+        clock: FakeClock | None = None,
+        **config: Any,
     ) -> None:
         self.router = router or Router()
         self.clock = clock or FakeClock()
         self.config = make_config(data_dir, **config)
         self.app = create_app(self.config, transport=self.router, clock=self.clock)
         self.ctl = self.app.state.controller
-        self.client = httpx.AsyncClient(transport=httpx.ASGITransport(app=self.app), base_url=CONTROLLER_HOST)
+        self.client = httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=self.app), base_url=CONTROLLER_HOST
+        )
 
-    async def __aenter__(self) -> Harness:
+    async def __aenter__(self) -> Self:
         await self.ctl.startup()
         return self
 
@@ -428,17 +582,24 @@ class Harness:
 
     async def add_node(self, node: FakeNode) -> dict[str, Any]:
         self.router.mount(node.endpoint, node.app)
-        resp = await self.client.put(f"/api/catalog/{node.node_id}", json=node.snapshot())
+        resp = await self.client.put(
+            f"/api/catalog/{node.node_id}", json=node.snapshot()
+        )
         assert resp.status_code == 200, resp.text
         contracts.validate("RegistrationAck", resp.json())
         return dict(resp.json())
 
     async def start_run(
-        self, pipeline: dict[str, Any], inputs: dict[str, Any] | None = None, **extra: Any
+        self,
+        pipeline: dict[str, Any],
+        inputs: dict[str, Any] | None = None,
+        **extra: Any,
     ) -> dict[str, Any]:
         body = {
             "pipeline": pipeline,
-            "inputs": inputs if inputs is not None else {"text": {"type_id": TYPE, "value": "hi"}},
+            "inputs": inputs
+            if inputs is not None
+            else {"text": {"type_id": TYPE, "value": "hi"}},
             **extra,
         }
         resp = await self.client.post("/api/runs", json=body)
@@ -447,8 +608,10 @@ class Harness:
         contracts.validate("Run", run)
         return run
 
-    async def wait_run(self, run_id: str, timeout: float = 10.0) -> dict[str, Any]:
-        deadline = time.monotonic() + timeout
+    async def wait_run(
+        self, run_id: str, timeout_seconds: float = 10.0
+    ) -> dict[str, Any]:
+        deadline = time.monotonic() + timeout_seconds
         while True:
             resp = await self.client.get(f"/api/runs/{run_id}")
             assert resp.status_code == 200, resp.text
@@ -457,32 +620,50 @@ class Harness:
                 contracts.validate("Run", run)
                 return run
             assert time.monotonic() < deadline, (
-                f"run 未在 {timeout}s 內結束：{json.dumps(run, ensure_ascii=False)[:2000]}"
+                f"run 未在 {timeout_seconds}s 內結束：{json.dumps(run, ensure_ascii=False)[:2000]}"
             )
             await asyncio.sleep(0.02)
 
 
-async def wait_until(predicate: Callable[[], bool], timeout: float = 5.0) -> None:
-    deadline = time.monotonic() + timeout
+async def wait_until(
+    predicate: Callable[[], bool], timeout_seconds: float = 5.0
+) -> None:
+    deadline = time.monotonic() + timeout_seconds
     while not predicate():
         assert time.monotonic() < deadline, "條件未在期限內成立"
         await asyncio.sleep(0.01)
 
 
 def pipeline(
-    steps: list[dict[str, Any]], *, outputs: dict[str, Any] | None = None, pipeline_id: str = "p1"
+    steps: list[dict[str, Any]],
+    *,
+    outputs: dict[str, Any] | None = None,
+    pipeline_id: str = "p1",
 ) -> dict[str, Any]:
     return {
         "pipeline_id": pipeline_id,
         "label": "測試接線",
-        "inputs": [{"name": "text", "type_id": TYPE, "required": True, "transport": "inline", "description": "text"}],
+        "inputs": [
+            {
+                "name": "text",
+                "type_id": TYPE,
+                "required": True,
+                "transport": "inline",
+                "description": "text",
+            }
+        ],
         "steps": steps,
         "outputs": outputs or {},
     }
 
 
 def step(
-    step_id: str, node_id: str, component_id: str, *, params: dict[str, Any] | None = None, **inputs: Any
+    step_id: str,
+    node_id: str,
+    component_id: str,
+    *,
+    params: dict[str, Any] | None = None,
+    **inputs: Any,
 ) -> dict[str, Any]:
     bindings = inputs or {"value": {"from_input": "text"}}
     return {

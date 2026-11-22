@@ -38,7 +38,7 @@ function PartTreeNode({ node, depth, onAddRule, disabled }: { node: PartNode; de
             type="button"
             aria-expanded={open}
             aria-label={`${open ? t("收合") : t("展開")} ${node.path}`}
-            onClick={() => setOpen((value) => !value)}
+            onClick={() => { setOpen((value) => !value); }}
             className="pressable inline-flex size-8 items-center justify-center rounded-md text-fg-tertiary transition-colors duration-(--duration-fast) hover:bg-raised hover:text-fg active:bg-sunken"
           >
             <ChevronRight aria-hidden className={cn("size-4 transition-[rotate] duration-(--duration-spring-snappy) ease-spring-snappy", open && "rotate-90")} />
@@ -60,7 +60,7 @@ function PartTreeNode({ node, depth, onAddRule, disabled }: { node: PartNode; de
             variant="quiet"
             icon={<Plus aria-hidden />}
             className="ml-auto"
-            onClick={() => onAddRule(ruleSelector)}
+            onClick={() => { onAddRule(ruleSelector); }}
             aria-label={t("以 {ruleSelector} 新增覆寫規則", { ruleSelector })}
           >
             {t("規則")}
@@ -70,7 +70,7 @@ function PartTreeNode({ node, depth, onAddRule, disabled }: { node: PartNode; de
       {node.part ? (
         <div className="grid gap-0.5 pb-1 pl-10 text-caption text-fg-tertiary">
           <span className="machine">{node.path}</span>
-          {node.part.reason ? <span className="text-warning">{tServer(node.part.reason)}</span> : null}
+          {(node.part.reason != null && node.part.reason !== "") ? <span className="text-warning">{tServer(node.part.reason)}</span> : null}
           {node.part.observable.length > 0 ? <span>{t("可觀測：{observable}", { observable: formatList(node.part.observable) })}</span> : null}
         </div>
       ) : null}
@@ -86,7 +86,7 @@ function PartTreeNode({ node, depth, onAddRule, disabled }: { node: PartNode; de
 }
 
 function RuleMatchSummary({ analysis }: { analysis: RuleAnalysis }) {
-  if (analysis.selectorError) {
+  if (analysis.selectorError != null && analysis.selectorError !== "") {
     return (
       <p className="flex items-center gap-1.5 text-caption text-danger">
         <CircleAlert aria-hidden className="size-3.5" />
@@ -136,9 +136,9 @@ function RuleCard({
   onMove: (to: number) => void;
   onRemove: () => void;
 }) {
-  const selectorId = `part-rule-${index}-selector`;
+  const selectorId = `part-rule-${String(index)}-selector`;
   const settings = isRecord(rule.settings) ? rule.settings : {};
-  const basePath = `load.part_overrides[${index}].settings`;
+  const basePath = `load.part_overrides[${String(index)}].settings`;
   const fieldSchema = { type: "object", properties: analysis.fieldSchemas, additionalProperties: false };
   const blocking = analysis.selectorError !== null || analysis.matched.length === 0 || analysis.rejected.length > 0;
   return (
@@ -161,11 +161,11 @@ function RuleCard({
             disabled={disabled}
             placeholder="transformer.blocks.*.attention"
             aria-invalid={analysis.selectorError !== null || analysis.matched.length === 0 || undefined}
-            onChange={(event) => onChange({ ...rule, selector: event.target.value })}
+            onChange={(event) => { onChange({ ...rule, selector: event.target.value }); }}
           />
         </div>
         <span className="flex items-center gap-1">
-          <Button size="icon-sm" variant="quiet" aria-label={t("規則 #{index} 上移", { index })} disabled={disabled || index === 0} onClick={() => onMove(index - 1)}>
+          <Button size="icon-sm" variant="quiet" aria-label={t("規則 #{index} 上移", { index })} disabled={disabled || index === 0} onClick={() => { onMove(index - 1); }}>
             <ArrowUp aria-hidden />
           </Button>
           <Button
@@ -173,7 +173,7 @@ function RuleCard({
             variant="quiet"
             aria-label={t("規則 #{index} 下移", { index })}
             disabled={disabled || index === count - 1}
-            onClick={() => onMove(index + 1)}
+            onClick={() => { onMove(index + 1); }}
           >
             <ArrowDown aria-hidden />
           </Button>
@@ -195,8 +195,8 @@ function RuleCard({
         <SchemaForm
           schema={fieldSchema}
           value={settings}
-          onChange={(next) => onChange({ ...rule, settings: next })}
-          idPrefix={`part-rule-${index}`}
+          onChange={(next) => { onChange({ ...rule, settings: next }); }}
+          idPrefix={`part-rule-${String(index)}`}
           basePath={basePath}
           issues={issues}
           disabled={disabled}
@@ -206,10 +206,10 @@ function RuleCard({
         <p className="text-caption text-fg-tertiary">{t("命中的 part 沒有共同可覆寫的欄位（各 part 的 settings_schema 交集為空）。")}</p>
       ) : (
         <JsonEditor
-          id={`part-rule-${index}-settings`}
+          id={`part-rule-${String(index)}-settings`}
           label={t("settings（命中 part 之前無法得知可用欄位）")}
           value={settings}
-          onChange={(next) => onChange({ ...rule, settings: next as Record<string, unknown> })}
+          onChange={(next) => { if (isRecord(next)) onChange({ ...rule, settings: next }); }}
           accept={(next) => (isRecord(next) ? null : t("settings 必須是 object"))}
           rows={3}
           disabled={disabled}
@@ -219,7 +219,7 @@ function RuleCard({
         <ul className="grid gap-1 text-caption text-danger" role="alert">
           {analysis.rejected.map((item) => (
             <li key={item.field}>
-              <T source={"欄位 <0>{field}</0> 不被 {partsCount} 個命中的 part 接受（例如 {parts}）：Node 會以 422 拒絕。"} values={{ field: item.field, partsCount: item.parts.length, parts: item.parts[0] }} slots={[<code className="machine" />]} />
+              <T source={"欄位 <0>{field}</0> 不被 {partsCount} 個命中的 part 接受（例如 {parts}）：Node 會以 422 拒絕。"} values={{ field: item.field, partsCount: item.parts.length, parts: item.parts[0] }} slots={[<code key="slot-0" className="machine" />]} />
             </li>
           ))}
         </ul>
@@ -246,7 +246,7 @@ export function PartsTab({
   const analyses = analyzeRules(parts, rules);
   const stable = useStableKeys(rules.length);
   const tree = buildPartTree(parts);
-  const setRules = (next: PartOverride[]) => onChange({ ...draft, load: { ...draft.load, part_overrides: next } });
+  const setRules = (next: PartOverride[]) => { onChange({ ...draft, load: { ...draft.load, part_overrides: next } }); };
   const addRule = (selector: string) => {
     stable.append();
     setRules([...rules, { selector, settings: {} }]);
@@ -261,9 +261,7 @@ export function PartsTab({
         title={t("provider 沒有宣告子部件")}
         size="compact"
         description={
-          <>
-            <T source={"此元件的 describe 沒有提供 parts；無法設定 part_overrides。{value}"} values={{ value: rules.length > 0 ? t("草稿中仍有 {rulesCount} 條規則，Node 會以 422 拒絕。", { rulesCount: rules.length }) : null }} />
-          </>
+          <T source={"此元件的 describe 沒有提供 parts；無法設定 part_overrides。{value}"} values={{ value: rules.length > 0 ? t("草稿中仍有 {rulesCount} 條規則，Node 會以 422 拒絕。", { rulesCount: rules.length }) : null }} />
         }
       />
     );
@@ -276,7 +274,7 @@ export function PartsTab({
           <h3 id="part-rules-title" className="text-data font-semibold text-fg">
             {t("覆寫規則 load.part_overrides（{rulesCount}）", { rulesCount: rules.length })}
           </h3>
-          <Button size="sm" icon={<Plus aria-hidden />} disabled={disabled} onClick={() => addRule("")}>
+          <Button size="sm" icon={<Plus aria-hidden />} disabled={disabled} onClick={() => { addRule(""); }}>
             {t("新增規則")}
           </Button>
         </div>
@@ -297,7 +295,7 @@ export function PartsTab({
                 analysis={analysis}
                 issues={issues}
                 disabled={disabled}
-                onChange={(next) => setRules(rules.map((item, position) => (position === index ? next : item)))}
+                onChange={(next) => { setRules(rules.map((item, position) => (position === index ? next : item))); }}
                 onMove={(to) => {
                   stable.move(index, to);
                   setRules(moveItem(rules, index, to));
@@ -338,7 +336,7 @@ export function PartsTab({
                       <Td className="machine text-fg-secondary">{previewValue(item.settings, 100)}</Td>
                       <Td className="text-caption text-fg-tertiary">
                         {formatList(Object.entries(item.sources)
-                          .map(([field, source]) => `${field}←${source === null ? t("共用") : `#${source}`}`))}
+                          .map(([field, source]) => `${field}←${source === null ? t("共用") : `#${String(source)}`}`))}
                       </Td>
                     </tr>
                   ))}

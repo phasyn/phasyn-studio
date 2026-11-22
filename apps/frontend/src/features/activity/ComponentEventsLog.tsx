@@ -44,7 +44,7 @@ function RecordingContextRow({ recording, coverage }: { recording: ShownRecordin
     // the recording itself is one click away
     <div className="flex min-h-7 shrink-0 items-center gap-x-2 overflow-hidden border-b border-line-subtle px-3 py-0.5 text-caption text-fg-secondary">
       <span className="min-w-0 truncate">
-        <T source={"顯示最近一次 <0>{operation}</0>（recording{text}<1>{recordingId}</1>・<2/>）"} values={{ operation: recording.operation, text: " ", recordingId: shortId(recording.recordingId) }} slots={[<code className="machine text-fg" />, <code className="machine text-fg" title={recording.recordingId} />, <TimeText iso={recording.createdAt} className="text-caption" />]} />
+        <T source={"顯示最近一次 <0>{operation}</0>（recording{text}<1>{recordingId}</1>・<2/>）"} values={{ operation: recording.operation, text: " ", recordingId: shortId(recording.recordingId) }} slots={[<code key="slot-0" className="machine text-fg" />, <code key="slot-1" className="machine text-fg" title={recording.recordingId} />, <TimeText key="slot-2" iso={recording.createdAt} className="text-caption" />]} />
       </span>
       <StatusBadge kind="run" value={recording.state} className="shrink-0" />
       {recording.synthetic ? <StatusChip tone="neutral" label={t("合成示例")} className="shrink-0" /> : null}
@@ -77,11 +77,11 @@ function ComponentEventsView({ nodeId, componentId, paused = false, className }:
       empty = <LogMessage icon={<ScrollText />}>{t("尚未選取元件：選取一個元件後，這裡會顯示它最近一次 recording 的事件。")}</LogMessage>;
     } else if (latest.loading || (shown && tail.loading)) {
       empty = <LogLoading />;
-    } else if (latest.error && !latest.hasData) {
+    } else if ((latest.error != null) && !latest.hasData) {
       empty = <LogError error={latest.error} title={t("無法讀取此元件的 recording")} onRetry={events.refetch} retrying={events.fetching} />;
     } else if (!shown) {
       empty = <LogMessage icon={<ScrollText />}>{t("此元件還沒有效能紀錄；啟動或呼叫後，事件會出現在這裡。")}</LogMessage>;
-    } else if (tail.error && !tail.hasData) {
+    } else if ((tail.error != null) && !tail.hasData) {
       empty = <LogError error={tail.error} title={t("無法讀取 recording 事件")} onRetry={events.refetch} retrying={events.fetching} />;
     } else if (events.lines.length === 0) {
       empty = (
@@ -153,5 +153,5 @@ function ComponentEventsView({ nodeId, componentId, paused = false, className }:
 
 /** 選取元件（node_id＋component_id）最新一筆 recording 的事件；換元件時畫面狀態重新開始。 */
 export function ComponentEventsLog({ nodeId, componentId, paused, className }: ComponentEventsLogProps) {
-  return <ComponentEventsView key={instanceKey(nodeId, componentId)} nodeId={nodeId} componentId={componentId} paused={paused} className={className} />;
+  return <ComponentEventsView key={instanceKey(nodeId, componentId)} nodeId={nodeId} componentId={componentId} {...(paused === undefined ? {} : { paused })} {...(className === undefined ? {} : { className })} />;
 }

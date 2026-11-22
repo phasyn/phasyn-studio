@@ -67,7 +67,16 @@ function cachedRecordingLines(items: readonly Recording[], nodeLabels: ReadonlyM
 
 /** 由 [key, value] 清單的 JSON 字串建立 Map：內容不變時（目錄每 3 秒輪詢）保持同一個 Map。 */
 function useStableMap(entriesJson: string): ReadonlyMap<string, string> {
-  return useMemo(() => new Map(JSON.parse(entriesJson) as [string, string][]), [entriesJson]);
+  return useMemo(() => {
+    const entries: unknown = JSON.parse(entriesJson);
+    const isEntry = (row: unknown): row is [string, string] => Array.isArray(row) && row.length === 2 && typeof row[0] === "string" && typeof row[1] === "string";
+    return new Map(Array.isArray(entries) ? entries.filter(isEntry) : []);
+  }, [entriesJson]);
+}
+
+function decodedIds(encoded: string): ReadonlySet<string> {
+  const values: unknown = JSON.parse(encoded);
+  return new Set(Array.isArray(values) ? values.filter((value: unknown): value is string => typeof value === "string") : []);
 }
 
 export function useActivityFeed({ live, runId = null }: { live: boolean; runId?: string | null }): ActivityFeed {
@@ -99,10 +108,10 @@ export function useActivityFeed({ live, runId = null }: { live: boolean; runId?:
   const nodeLabels = useStableMap(nodeLabelsJson);
   // 進行中的呼叫：內容不變時保持同一個 Set（目錄每 3 秒輪詢），recording 列不必重算
   const activeJson = useMemo(() => JSON.stringify(activeCallIds(catalog.data, runItems)), [catalog.data, runItems]);
-  const activeCalls = useMemo(() => new Set(JSON.parse(activeJson) as string[]) as ReadonlySet<string>, [activeJson]);
+  const activeCalls = useMemo(() => decodedIds(activeJson), [activeJson]);
   // Running runs (the Controller's own recording of one has no call): the same Set while they stay the same
   const runningJson = useMemo(() => JSON.stringify(activeRunIds(runItems)), [runItems]);
-  const activeRuns = useMemo(() => new Set(JSON.parse(runningJson) as string[]) as ReadonlySet<string>, [runningJson]);
+  const activeRuns = useMemo(() => decodedIds(runningJson), [runningJson]);
 
   const lines = useMemo(
     () => mergeLines(cachedRunLines(runItems, providers), cachedRecordingLines(recordingItems, nodeLabels, activeCalls, activeRuns)),

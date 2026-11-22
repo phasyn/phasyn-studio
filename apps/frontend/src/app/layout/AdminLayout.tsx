@@ -8,13 +8,14 @@ import { usePersistentFlag, usePersistentSize } from "@/lib/usePersistentSize";
 import { AdminExplorer, ExplorerRail } from "./admin/AdminExplorer";
 import { BrandLoading } from "./shell/BrandLoading";
 import { t } from "@/i18n";
+import { isRecord } from "@/lib/json";
 
 /** 路由 handle：`{ frame: "self" }` 的頁面自己渲染工作台骨架（WorkbenchPage）；其他頁面放進單一中欄面板。 */
 function useSelfFramed(): boolean {
   const matches = useMatches();
   const last = matches[matches.length - 1];
-  const handle = last?.handle as { frame?: string } | undefined;
-  return handle?.frame === "self";
+  const handle = last?.handle;
+  return isRecord(handle) && handle["frame"] === "self";
 }
 
 function PageLoading() {
@@ -55,7 +56,7 @@ export function AdminLayout() {
   };
 
   return (
-    <OutlinerSlotContext.Provider value={collapsed ? null : outlinerSlot}>
+    <OutlinerSlotContext value={collapsed ? null : outlinerSlot}>
       <div className="flex h-full min-h-0 bg-canvas md:overflow-clip max-md:h-auto max-md:flex-col">
         <div
           key={collapsed ? "rail" : "explorer"}
@@ -64,10 +65,10 @@ export function AdminLayout() {
           style={collapsed ? undefined : { width }}
         >
           {collapsed ? (
-            <ExplorerRail onExpand={() => toggle(false)} />
+            <ExplorerRail onExpand={() => { toggle(false); }} />
           ) : (
             <>
-              <AdminExplorer onCollapse={() => toggle(true)} />
+              <AdminExplorer onCollapse={() => { toggle(true); }} />
               <div ref={setOutlinerSlot} className="flex h-[38%] max-h-[26rem] min-h-40 shrink-0 flex-col empty:hidden" />
             </>
           )}
@@ -81,6 +82,6 @@ export function AdminLayout() {
           {selfFramed ? page : <CenterFrame>{page}</CenterFrame>}
         </div>
       </div>
-    </OutlinerSlotContext.Provider>
+    </OutlinerSlotContext>
   );
 }

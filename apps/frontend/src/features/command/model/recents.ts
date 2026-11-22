@@ -1,6 +1,6 @@
 // "Recently opened" entries: validation, ordering and merging with live items. Pure; the browser store that keeps
 // them is in useCommandSources (lib/persistentStore).
-import { isRecord } from "@/lib/json";
+import { isListed, isRecord } from "@/lib/json";
 import type { CommandItem, CommandKind } from "./items";
 
 export interface RecentEntry {
@@ -14,7 +14,7 @@ export interface RecentEntry {
 export const RECENTS_KEY = "phasyn.command.recents.v1";
 export const RECENTS_MAX = 8;
 
-const KINDS = new Set<string>(["page", "component", "pipeline", "run", "project"]);
+const KINDS: readonly CommandKind[] = ["page", "component", "pipeline", "run", "project"];
 const APP_PATH = /^\/(image|studio|admin|records|inference)(\/|\?|#|$)/;
 
 /** 只接受本產品的站內路徑（/image、/studio、/admin、/records、/inference），避免儲存內容被竄改成外部或奇怪的位址。 */
@@ -29,13 +29,13 @@ export function parseRecents(parsed: unknown): RecentEntry[] {
   for (const value of parsed as unknown[]) {
     if (!isRecord(value)) continue;
     const { title, kind, at } = value;
-    const to = typeof value.to === "string" && isAppPath(value.to) ? value.to : null;
+    const to = typeof value["to"] === "string" && isAppPath(value["to"]) ? value["to"] : null;
     if (to === null || out.some((entry) => entry.to === to)) continue;
     if (typeof title !== "string" || title.trim().length === 0) continue;
     out.push({
       to,
       title: title.trim().slice(0, 200),
-      kind: typeof kind === "string" && KINDS.has(kind) ? (kind as CommandKind) : "page",
+      kind: isListed(kind, KINDS) ? kind : "page",
       at: typeof at === "number" && Number.isFinite(at) ? at : 0,
     });
     if (out.length >= RECENTS_MAX) break;

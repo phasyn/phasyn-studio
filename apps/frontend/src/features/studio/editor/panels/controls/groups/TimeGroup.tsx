@@ -8,7 +8,8 @@ import type { TimelineClip } from "@/api/generated/contracts";
 import { t } from "@/i18n";
 import { FADE_MAX_FRAMES, FRAME_STEP_LABELS, FRAME_STEPS, HOLD_MAX_FRAMES, SPEED_MAX, SPEED_MIN, type Effects, type Fade } from "../../../../model/clipEffects";
 import { processedDuration } from "../../../model";
-import { NumberField, SelectField, type ChoiceOption } from "../fields";
+import { usePersistentFlag } from "@/lib/usePersistentSize";
+import { NumberField, SelectField, SwitchField, type ChoiceOption } from "../fields";
 import { Group } from "../Group";
 import { useFocusRequest } from "../intents";
 import { withFade } from "../fades";
@@ -22,6 +23,7 @@ const HINTS = {
   speed: t("100 % 是原速；聲音變速不變調"),
   holdStart: t("第一個影格停住的影格數；停格期間沒有聲音"),
   holdEnd: t("最後一個影格停住的影格數；停格期間沒有聲音"),
+  keepLength: t("開啟時，停格吃掉片段自己的影格，片段長度不變、後面的片段不動（打擊時的停頓）；關閉時片段會變長"),
   step: t("有限動畫：每張畫停留的影格數；聲音不受影響"),
   fadeIn: t("畫面從黑場淡入的影格數"),
   fadeOut: t("畫面淡出到黑場的影格數"),
@@ -39,14 +41,22 @@ export interface TimeGroupProps {
 
 export function TimeGroup({ clip, sound, focusSpeed }: TimeGroupProps) {
   const panel = useClipPanel();
-  const speed = useRef<HTMLInputElement>(null);
-  useFocusRequest(speed, focusSpeed);
+  const speedRef = useRef<HTMLInputElement>(null);
+  useFocusRequest(speedRef, focusSpeed);
   const effects = clip.effects ?? {};
   const hold = effects.hold ?? {};
   const step = effects.frame_step ?? 1;
   const changed = (effects.speed_percent ?? 100) !== 100 || (hold.start ?? 0) > 0 || (hold.end ?? 0) > 0 || step !== 1;
   const change = (patch: Partial<Effects>): TimelineClip => ({ ...clip, effects: { ...effects, ...patch } });
+  const [keepLength, setKeepLength] = usePersistentFlag("hold-keeps-length", true);
+  const holdAt = (edge: "start" | "end", frames: number) =>
+    keepLength ? panel.fixedLengthTiming({ edge, frames }) : panel.apply(change({ hold: { ...hold, [edge]: frames } }));
   const reset = () => {
+    if (keepLength) {
+      const result = panel.fixedLengthTiming({ reset: true });
+      if (typeof result === "string") panel.warn(result);
+      return;
+    }
     const { speed_percent: _speed, hold: _hold, frame_step: _step, ...rest } = effects;
     panel.perform({ ...clip, effects: rest });
   };
@@ -60,7 +70,7 @@ export function TimeGroup({ clip, sound, focusSpeed }: TimeGroupProps) {
           max={SPEED_MAX}
           suffix="%"
           hint={HINTS.speed}
-          inputRef={speed}
+          inputRef={speedRef}
           onCommit={(speed_percent) => panel.apply(change({ speed_percent }))}
         />
       </Row>
@@ -72,7 +82,7 @@ export function TimeGroup({ clip, sound, focusSpeed }: TimeGroupProps) {
           max={HOLD_MAX_FRAMES}
           suffix={FRAMES_SUFFIX}
           hint={HINTS.holdStart}
-          onCommit={(start) => panel.apply(change({ hold: { ...hold, start } }))}
+          onCommit={(start) => holdAt("start", start)}
         />
       </Row>
       <Row label={t("結尾停格")} hint={HINTS.holdEnd}>
@@ -83,8 +93,11 @@ export function TimeGroup({ clip, sound, focusSpeed }: TimeGroupProps) {
           max={HOLD_MAX_FRAMES}
           suffix={FRAMES_SUFFIX}
           hint={HINTS.holdEnd}
-          onCommit={(end) => panel.apply(change({ hold: { ...hold, end } }))}
+          onCommit={(end) => holdAt("end", end)}
         />
+      </Row>
+      <Row label={t("停格不改長度")} hint={HINTS.keepLength}>
+        <SwitchField label={t("停格時保持片段長度")} checked={keepLength} hint={HINTS.keepLength} onChange={setKeepLength} />
       </Row>
       {sound ? null : (
         <Row label={t("拍數")} hint={HINTS.step}>
@@ -93,7 +106,7 @@ export function TimeGroup({ clip, sound, focusSpeed }: TimeGroupProps) {
             value={String(step)}
             options={STEP_OPTIONS}
             hint={HINTS.step}
-            onChange={(value) => panel.perform(change({ frame_step: Number(value) }))}
+            onChange={(value) => void panel.perform(change({ frame_step: Number(value) }))}
             className="max-w-56 flex-1"
           />
         </Row>
@@ -118,7 +131,7 @@ export function FadeGroup({ clip, adjustment = false }: FadeGroupProps) {
   const fadeIn = fade.video_in ?? 0;
   const fadeOut = fade.video_out ?? 0;
   const change = (patch: Fade): TimelineClip => ({ ...clip, effects: withFade(effects, patch) });
-  const reset = () => panel.perform({ ...clip, effects: withFade(effects, { video_in: 0, video_out: 0 }) });
+  const reset = () => { panel.perform({ ...clip, effects: withFade(effects, { video_in: 0, video_out: 0 }) }); };
   return (
     <Group id="fade" title={t("淡化")} changed={fadeIn > 0 || fadeOut > 0} onReset={reset}>
       <Row label={t("淡入")} hint={hintIn}>

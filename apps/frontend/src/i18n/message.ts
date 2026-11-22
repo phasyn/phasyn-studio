@@ -28,7 +28,7 @@ export interface TranslateOptions {
 
 /** 目錄 key：有 context 時是 `<context>\u0004<原文>`。 */
 export function catalogKey(source: string, context?: string): string {
-  return context ? `${context}${CONTEXT_SEPARATOR}${source}` : source;
+  return (context != null && context !== "") ? `${context}${CONTEXT_SEPARATOR}${source}` : source;
 }
 
 const PLACEHOLDER = /\{([A-Za-z_][A-Za-z0-9_]*)\}/g;
@@ -50,10 +50,13 @@ export function placeholdersOf(text: string): string[] {
   return out;
 }
 
-export function isPluralEntry(value: unknown): value is PluralEntry {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-  const record = value as Record<string, unknown>;
-  if (typeof record.other !== "string") return false;
+export function isCatalogObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function isPluralEntry(record: unknown): record is PluralEntry {
+  if (!isCatalogObject(record)) return false;
+  if (typeof record["other"] !== "string") return false;
   for (const [key, form] of Object.entries(record)) {
     if (key === "$count") {
       if (typeof form !== "string") return false;
@@ -83,7 +86,7 @@ function toCount(value: unknown): number | null {
 export function pluralCount(entry: PluralEntry, params?: Params): number | null {
   if (!params) return null;
   for (const name of [entry.$count, "count"]) {
-    if (name && Object.hasOwn(params, name)) {
+    if ((name != null && name !== "") && Object.hasOwn(params, name)) {
       const count = toCount(params[name]);
       if (count !== null) return count;
     }

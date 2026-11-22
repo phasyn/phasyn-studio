@@ -22,6 +22,17 @@ from typing import Any
 
 from phasyn_components.timeline_limits import MAX_SOURCE_FRAMES, MAX_SOURCE_SECONDS
 
+from phasyn_media._validate import numeric_value
+
+
+def _valid_demuxer(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and bool(value)
+        and all(c.isalnum() or c == "_" for c in value)
+    )
+
+
 # Demuxers allowed for uploaded materials and internal tracks.  Playlist /
 # meta demuxers (hls, dash, concat, image2 sequences, tee, lavfi, ...) are
 # never allowed: they can open other files or URLs.
@@ -44,6 +55,8 @@ DEFAULT_ALLOWED_DEMUXERS: tuple[str, ...] = (
 
 @dataclass(frozen=True)
 class MediaLimits:
+    """Resource and input-format bounds for media tool invocations."""
+
     max_file_bytes: int = 10 * 1024**3
     max_duration_seconds: float = 3600.0
     max_width: int = 8192
@@ -62,6 +75,7 @@ class MediaLimits:
     allowed_demuxers: tuple[str, ...] = DEFAULT_ALLOWED_DEMUXERS
 
     def __post_init__(self) -> None:
+        """Validate the configured media limits."""
         positive = {
             "max_file_bytes": self.max_file_bytes,
             "max_duration_seconds": self.max_duration_seconds,
@@ -79,15 +93,18 @@ class MediaLimits:
             "max_scan_packets": self.max_scan_packets,
         }
         for name, value in positive.items():
-            if isinstance(value, bool) or not isinstance(value, (int, float)) or not value > 0:
+            if not numeric_value(value) or not value > 0:
                 raise ValueError(f"MediaLimits.{name} 必須是正數")
         if not self.allowed_demuxers or not all(
-            isinstance(d, str) and d and all(c.isalnum() or c == "_" for c in d) for d in self.allowed_demuxers
+            _valid_demuxer(d) for d in self.allowed_demuxers
         ):
-            raise ValueError("MediaLimits.allowed_demuxers 必須是非空的 demuxer 名稱清單")
+            raise ValueError(
+                "MediaLimits.allowed_demuxers 必須是非空的 demuxer 名稱清單"
+            )
 
     @property
     def format_whitelist(self) -> str:
+        """Return the FFmpeg demuxer allowlist for this policy."""
         return ",".join(self.allowed_demuxers)
 
     @property
@@ -100,6 +117,7 @@ class MediaLimits:
         return ["-max_pixels", str(self.max_pixels)]
 
     def as_dict(self) -> dict[str, Any]:
+        """Return the serializable field values."""
         doc = asdict(self)
         doc["allowed_demuxers"] = list(self.allowed_demuxers)
         return doc
@@ -109,5 +127,7 @@ DEFAULT_LIMITS = MediaLimits()
 
 # A long source is only probed by its header and by bounded packet windows, so the packet bound stays.
 TIMELINE_SOURCE_LIMITS = replace(
-    DEFAULT_LIMITS, max_duration_seconds=float(MAX_SOURCE_SECONDS), max_frames=MAX_SOURCE_FRAMES
+    DEFAULT_LIMITS,
+    max_duration_seconds=float(MAX_SOURCE_SECONDS),
+    max_frames=MAX_SOURCE_FRAMES,
 )

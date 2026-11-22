@@ -2,7 +2,7 @@
 // 右側檢視器＝recording 的事實、ID、匯出、比較與選取項目細節；底部 dock＝原始事件（開啟 recording 時）。
 // 路由：/records/recordings 與 /records/recordings/:recordingId；篩選、頁籤（tab）與 stream 都在 search params，可重新整理、上一頁與分享。
 import { Funnel, Logs, ScrollText } from "lucide-react";
-import { useCallback, useContext, useId, useMemo, useRef, useState } from "react";
+import { useCallback, use, useId, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { AreaIcon } from "@/components/common/AreaIcon";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -32,13 +32,13 @@ const RAW_DOCK = "raw";
 
 export function RecordingsPage() {
   const filtersRegionId = useId();
-  const workbench = useRef<WorkbenchPageHandle>(null);
+  const workbenchRef = useRef<WorkbenchPageHandle>(null);
   const { recordingId } = useParams<{ recordingId?: string }>();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   /** 左欄收合（或不在有資源樹的工作區）時沒有大綱：改在列表工具列提供篩選切換。 */
-  const outlinerAvailable = useContext(OutlinerSlotContext) !== null;
+  const outlinerAvailable = use(OutlinerSlotContext) !== null;
   const filters = useMemo(() => filtersFromSearch(searchParams), [searchParams]);
   const filterSignature = JSON.stringify(filtersKey(filters));
   const tab = parseCenterTab(searchParams.get("tab"));
@@ -48,8 +48,8 @@ export function RecordingsPage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const nodeLabels = useNodeLabels();
   const selected = useRecording(recordingId);
-  const selection = recordingId && selectionState?.recordingId === recordingId ? selectionState.selection : null;
-  const rawPreset = recordingId && rawPresetState?.recordingId === recordingId ? rawPresetState : null;
+  const selection = (recordingId != null && recordingId !== "") && selectionState?.recordingId === recordingId ? selectionState.selection : null;
+  const rawPreset = (recordingId != null && recordingId !== "") && rawPresetState?.recordingId === recordingId ? rawPresetState : null;
   const listHref = `${PATHS.recordings}${listSearch(searchParams)}`;
   const filterCount = activeFilterCount(filters);
 
@@ -57,19 +57,18 @@ export function RecordingsPage() {
   const nodeLabel = (nodeId: string) => labels?.get(nodeId) ?? null;
   const nodeOptions = useMemo(() => [...(labels?.entries() ?? [])].map(([id, label]) => ({ id, label })), [labels]);
 
-  const updateParams = (mutate: (params: URLSearchParams) => void) =>
-    setSearchParams(
+  const updateParams = (mutate: (params: URLSearchParams) => void) => { setSearchParams(
       (previous) => {
         const next = new URLSearchParams(previous);
         mutate(next);
         return next;
       },
       { replace: true, preventScrollReset: true },
-    );
+    ); };
 
   /** 篩選只作用在列表：開啟 recording 時套用＝帶著新篩選回到列表。 */
   const applyFilters = (next: RecordingFilters) => {
-    if (recordingId) {
+    if (recordingId != null && recordingId !== "") {
       const query = withFilters(new URLSearchParams(), next).toString();
       void navigate(query ? `${PATHS.recordings}?${query}` : PATHS.recordings);
     } else {
@@ -77,32 +76,31 @@ export function RecordingsPage() {
     }
   };
 
-  const changeTab = (next: CenterTab) =>
-    updateParams((params) => {
+  const changeTab = (next: CenterTab) => { updateParams((params) => {
       if (next === "summary") params.delete("tab");
       else params.set("tab", next);
-    });
+    }); };
 
-  const changeStream = (streamId: string) => updateParams((params) => params.set("stream", streamId));
+  const changeStream = (streamId: string) => { updateParams((params) => { params.set("stream", streamId); }); };
 
   const select = useCallback(
     (next: Selection) => {
-      if (recordingId) setSelectionState({ recordingId, selection: next });
+      if (recordingId != null && recordingId !== "") setSelectionState({ recordingId, selection: next });
     },
     [recordingId],
   );
 
   /** 選取並展開底部「原始事件」。 */
-  const openRaw = () => workbench.current?.openDockTab(RAW_DOCK);
+  const openRaw = () => workbenchRef.current?.openDockTab(RAW_DOCK);
 
   /** 摘要的「查看 warning／error 事件」：以 warning 以上的篩選重新開啟原始事件面板。 */
   const showErrors = () => {
-    if (!recordingId) return;
+    if (!(recordingId != null && recordingId !== "")) return;
     setRawPresetState({ recordingId, filter: { ...DEFAULT_EVENT_FILTER, level: "warning+" }, version: (rawPreset?.version ?? 0) + 1 });
-    workbench.current?.openDockTab(RAW_DOCK);
+    workbenchRef.current?.openDockTab(RAW_DOCK);
   };
 
-  const recording = recordingId ? selected.data : undefined;
+  const recording = (recordingId != null && recordingId !== "") ? selected.data : undefined;
   const kind = providerKind(recording?.context.provider_id);
   const docTabs: DocTab[] = [
     {
@@ -110,11 +108,11 @@ export function RecordingsPage() {
       label: t("效能紀錄"),
       icon: ScrollText,
       to: listHref,
-      active: !recordingId,
+      active: !(recordingId != null && recordingId !== ""),
       title: filterCount > 0 ? t("紀錄列表（篩選 {filterCount} 項）", { filterCount }) : t("紀錄列表"),
     },
   ];
-  if (recordingId) {
+  if (recordingId != null && recordingId !== "") {
     docTabs.push({
       id: "recording",
       label: recording ? `${recording.context.component_id || t("（未知元件）")} · ${recording.context.operation}` : `recording ${recordingId.slice(0, 8)}`,
@@ -149,7 +147,7 @@ export function RecordingsPage() {
               icon={<Funnel aria-hidden />}
               aria-expanded={filtersOpen}
               aria-controls={filtersRegionId}
-              onClick={() => setFiltersOpen(!filtersOpen)}
+              onClick={() => { setFiltersOpen(!filtersOpen); }}
             />
           )
         }
@@ -161,7 +159,7 @@ export function RecordingsPage() {
           )
         }
       />
-      {recordingId ? (
+      {(recordingId != null && recordingId !== "") ? (
         <RecordingDetail
           key={recordingId}
           recordingId={recordingId}
@@ -177,20 +175,20 @@ export function RecordingsPage() {
     </>
   );
 
-  const inspector = recordingId ? (
+  const inspector = (recordingId != null && recordingId !== "") ? (
     <RecordingInspector
       key={recordingId}
       recordingId={recordingId}
       selection={selection}
       onSelect={select}
-      onClearSelection={() => setSelectionState(null)}
+      onClearSelection={() => { setSelectionState(null); }}
       nodeLabel={nodeLabel}
     />
   ) : (
     <EmptyState mark title={t("選一筆 recording 檢視明細")} description={t("結論、摘要、時間軸、部件、設定與原始事件；可匯出或加入比較。")} />
   );
 
-  const dockTabs: DockTabSpec[] | undefined = recordingId
+  const dockTabs: DockTabSpec[] | undefined = (recordingId != null && recordingId !== "")
     ? [
         {
           id: RAW_DOCK,
@@ -199,7 +197,7 @@ export function RecordingsPage() {
           render: () =>
             selected.data ? (
               <RawEventsTab
-                key={`${recordingId}:${rawPreset?.version ?? 0}`}
+                key={`${recordingId}:${String(rawPreset?.version ?? 0)}`}
                 recording={selected.data}
                 streamParam={streamParam}
                 onStreamChange={changeStream}
@@ -217,13 +215,13 @@ export function RecordingsPage() {
   return (
     <>
       <WorkbenchPage
-        ref={workbench}
+        ref={workbenchRef}
         storageKey={STORAGE_KEY}
-        centerLabel={recordingId ? t("recording 明細") : t("紀錄列表")}
+        centerLabel={(recordingId != null && recordingId !== "") ? t("recording 明細") : t("紀錄列表")}
         center={center}
         inspector={inspector}
         inspectorLabel={t("紀錄檢視器")}
-        dockTabs={dockTabs}
+        {...(dockTabs === undefined ? {} : { dockTabs })}
       />
       <Outliner title={t("篩選")} icon={<Funnel aria-hidden />} count={filterCount > 0 ? filterCount : null}>
         <FiltersForm
@@ -232,8 +230,8 @@ export function RecordingsPage() {
           onApply={applyFilters}
           nodeOptions={nodeOptions}
           layout="column"
-          submitLabel={recordingId ? t("套用並回到列表") : t("套用")}
-          note={recordingId ? t("篩選只作用在紀錄列表：套用或清除後回到列表。") : undefined}
+          submitLabel={(recordingId != null && recordingId !== "") ? t("套用並回到列表") : t("套用")}
+          note={(recordingId != null && recordingId !== "") ? t("篩選只作用在紀錄列表：套用或清除後回到列表。") : undefined}
         />
       </Outliner>
     </>

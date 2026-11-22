@@ -8,6 +8,7 @@
 // The predicted stages carry the system-wide stage names and units (stages.ts), the same H3 records for each call.
 // Nothing here is a measured time or throughput.
 import { isRecord } from "@/lib/json";
+import { H3_RULES } from "../providerTraits";
 import { REFERENCE_MAX_RATIO, REFERENCE_MULTIPLE, REFERENCE_SHORT_EDGE, roundHalfEven } from "../../swap/referenceImage";
 import { ROW_RISK_UNIT, STAGE_UNITS, type H3Stage, type WorkUnit } from "./stages";
 
@@ -96,9 +97,9 @@ export const H3_DEFAULTS: Omit<H3Constants, "source"> = {
   dit: { ...ditFlopCoefficients(H3_DIT_SHAPE), rowAlign: 64 },
   te: { ...teFlopCoefficients(H3_TE_SHAPE), hidden: H3_TE_SHAPE.hidden },
   geometry: {
-    fps: 24,
-    frameGroup: 17,
-    frameOffset: 5,
+    fps: H3_RULES.fps,
+    frameGroup: H3_RULES.frameGroup,
+    frameOffset: H3_RULES.frameOffset,
     latentPerGroup: 5,
     latentHead: 2,
     tokenStride: 32,
@@ -158,7 +159,8 @@ function positive(value: unknown): number | undefined {
 function group<T extends Record<keyof T, number>>(defaults: T, keys: { [K in keyof T]: string }, facts: readonly Record<string, unknown>[]): { value: T; source: ConstantsSource } {
   const overrides: Partial<Record<keyof T, number>> = {};
   let all = true;
-  for (const name of Object.keys(keys) as (keyof T & string)[]) {
+  for (const name in keys) {
+    if (!Object.hasOwn(keys, name)) continue;
     const found = facts.map((item) => positive(item[keys[name]])).find((item) => item !== undefined);
     if (found === undefined) all = false;
     else overrides[name] = found;
@@ -171,7 +173,7 @@ function group<T extends Record<keyof T, number>>(defaults: T, keys: { [K in key
  * `cost_model` key inside is unwrapped) over the architecture defaults.
  */
 export function resolveH3Constants(facts: { dit?: unknown; te?: unknown } = {}): H3Constants {
-  const unwrap = (value: unknown): Record<string, unknown> => (isRecord(value) ? (isRecord(value.cost_model) ? value.cost_model : value) : {});
+  const unwrap = (value: unknown): Record<string, unknown> => (isRecord(value) ? (isRecord(value["cost_model"]) ? value["cost_model"] : value) : {});
   const dit = unwrap(facts.dit);
   const te = unwrap(facts.te);
   const ditGroup = group(H3_DEFAULTS.dit, FACT_KEYS.dit, [dit]);
@@ -368,7 +370,7 @@ export function h3Work(request: H3SegmentRequest, constants: H3Constants = resol
   };
 
   // A route may prepare reference pictures at another short edge (TE reference_image_short_edge)
-  const imageGeometry = request.referenceImageShortEdge ? { ...g, referenceImageShortEdge: request.referenceImageShortEdge } : g;
+  const imageGeometry = (request.referenceImageShortEdge != null && Boolean(request.referenceImageShortEdge)) ? { ...g, referenceImageShortEdge: request.referenceImageShortEdge } : g;
   let rejected = 0;
   let imageRows = 0;
   let imageTokens = 0;

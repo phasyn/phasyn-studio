@@ -14,14 +14,14 @@ const TONE = {
 
 /** 一個問題底下的原因（例如開發目錄讀不到時，主控列出的每一項：details.errors）。 */
 function NestedIssues({ issue }: { issue: StudioPluginIssue }) {
-  const reasons = readIssues(issue.details.errors);
+  const reasons = readIssues(issue.details["errors"]);
   if (reasons.length === 0) return null;
   return (
     <ul className="mt-1 grid gap-0.5 border-l border-line-subtle pl-2">
       {reasons.map((reason, index) => (
-        <li key={`${index}:${reason.code}:${reason.path ?? ""}`} title={reason.code} className="text-caption text-fg-secondary [overflow-wrap:anywhere]">
+        <li key={`${String(index)}:${reason.code}:${reason.path ?? ""}`} title={reason.code} className="text-caption text-fg-secondary [overflow-wrap:anywhere]">
           {issueText(reason)}
-          {reason.path ? <span className="machine text-fg-tertiary"> · {reason.path}</span> : null}
+          {(reason.path != null && reason.path !== "") ? <span className="machine text-fg-tertiary"> · {reason.path}</span> : null}
         </li>
       ))}
     </ul>
@@ -47,11 +47,11 @@ export function IssueList({
   return (
     <ul aria-label={label} className={cn("grid divide-y divide-line-subtle rounded-lg border", frame, className)}>
       {issues.map((issue, index) => (
-        <li key={`${index}:${issue.code}:${issue.path ?? ""}`} ref={reveal(index)} className="flex min-w-0 items-start gap-2 px-3 py-2" title={issue.code}>
+        <li key={`${String(index)}:${issue.code}:${issue.path ?? ""}`} ref={reveal(index)} className="flex min-w-0 items-start gap-2 px-3 py-2" title={issue.code}>
           <Icon aria-hidden className={cn("mt-0.5 size-3.5 shrink-0", text)} />
           <div className="grid min-w-0 flex-1 gap-0.5">
             <p className="text-data text-fg [overflow-wrap:anywhere]">{issueText(issue)}</p>
-            {issue.path ? <p className="machine truncate text-caption text-fg-tertiary">{issue.path}</p> : null}
+            {(issue.path != null && issue.path !== "") ? <p className="machine truncate text-caption text-fg-tertiary">{issue.path}</p> : null}
             <NestedIssues issue={issue} />
           </div>
         </li>

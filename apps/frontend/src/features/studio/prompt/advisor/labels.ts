@@ -46,7 +46,7 @@ export function labelPlan(references: readonly StudioReference[], library: reado
       else if (hasAudio === false) soundtrack = { state: "none", label: null };
       else if (hasAudio === true) {
         counters.audio += 1;
-        soundtrack = { state: "used", label: audioUncertain ? null : `<Audio ${counters.audio}>` };
+        soundtrack = { state: "used", label: audioUncertain ? null : `<Audio ${String(counters.audio)}>` };
       } else {
         audioUncertain = true;
         unknownSoundtracks += 1;
@@ -54,7 +54,7 @@ export function labelPlan(references: readonly StudioReference[], library: reado
       }
     }
     counters[ref.kind] += 1;
-    entries.push({ ref, item, label: `<${H3_TAG[ref.kind]} ${counters[ref.kind]}>`, soundtrack });
+    entries.push({ ref, item, label: `<${H3_TAG[ref.kind]} ${String(counters[ref.kind])}>`, soundtrack });
   }
   const counts: Record<RefKind, number> = {
     image: references.filter((ref) => ref.kind === "image").length,
@@ -75,5 +75,5 @@ export function clipText(ref: StudioReference): string | null {
   const start = ref.start_seconds;
   const end = ref.end_seconds;
   if (start === null && end === null) return null;
-  return t("{value}–{value2} 秒", { value: start ?? 0, value2: end === null ? t("結尾") : end });
+  return t("{value}–{value2} 秒", { value: start ?? 0, value2: end ?? t("結尾") });
 }

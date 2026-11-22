@@ -44,26 +44,25 @@ export function SemanticsPage() {
   const [step, setStep] = useState<StepId>(() => initialStep({ describeRun: describeRunId, captionRun: captionRunId, exportRun: exportRunId }));
   const [rows, setRows] = useState<DatasetRow[]>([]);
 
-  const setRunParams = (changes: Record<string, string | null>) =>
-    setParams(
+  const setRunParams = (changes: Record<string, string | null>) => { setParams(
       (previous) => {
         const next = new URLSearchParams(previous);
         for (const [key, value] of Object.entries(changes)) {
-          if (value) next.set(key, value);
+          if (value != null && value !== "") next.set(key, value);
           else next.delete(key);
         }
         return next;
       },
       { replace: true },
-    );
+    ); };
 
   const scene = useSceneStep(describeRun.data, describeRunId);
   const describe = useDescribeStep(describeRun.data, (runId) => {
     scene.revert();
     setRunParams({ describe_run: runId, caption_run: null });
   });
-  const caption = useCaptionStep(scene.captionScene, scene.captionSceneBlock, (runId) => setRunParams({ caption_run: runId }));
-  const dataset = useDatasetStep(rows, (runId) => setRunParams({ export_run: runId }));
+  const caption = useCaptionStep(scene.captionScene, scene.captionSceneBlock, (runId) => { setRunParams({ caption_run: runId }); });
+  const dataset = useDatasetStep(rows, (runId) => { setRunParams({ export_run: runId }); });
 
   const pairValue = findRunValue(captionRun.data, "caption.pair.v1");
   const currentPair = pairValue && "value" in pairValue ? asCaptionPair(pairValue.value) : null;
@@ -88,9 +87,9 @@ export function SemanticsPage() {
   };
 
   const flow = semanticsFlow({
-    describeRun: describeRunId ? (describeRun.data?.state ?? null) : null,
-    captionRun: captionRunId ? (captionRun.data?.state ?? null) : null,
-    exportRun: exportRunId ? (exportRun.data?.state ?? null) : null,
+    describeRun: (describeRunId != null && describeRunId !== "") ? (describeRun.data?.state ?? null) : null,
+    captionRun: (captionRunId != null && captionRunId !== "") ? (captionRun.data?.state ?? null) : null,
+    exportRun: (exportRunId != null && exportRunId !== "") ? (exportRun.data?.state ?? null) : null,
     hasScene: scene.draft !== null,
     sceneIssues: scene.draft ? scene.issues.length : 0,
     sceneUnsaved: scene.unsavedEdits,
@@ -98,7 +97,7 @@ export function SemanticsPage() {
     hasPair: currentPair !== null,
     rows: rows.length,
   });
-  const stepTabs: FlowTabItem[] = STEPS.map((item) => ({
+  const stepTabs: FlowTabItem<StepId>[] = STEPS.map((item) => ({
     id: item.id,
     label: item.label,
     en: STEP_EN[item.id],
@@ -128,15 +127,15 @@ export function SemanticsPage() {
         description={t("原片 → video.describe（依真實 PTS 抽樣）→ 編修 Scene → caption.compile → dataset.export；不需要審核旗標。")}
         className="shrink-0 border-b border-line-subtle px-4 py-3"
       />
-      <FlowTabs tabs={stepTabs} value={step} onChange={(id) => selectStep(id as StepId)} idPrefix={TAB_PREFIX} label={t("工作流程步驟")} />
+      <FlowTabs tabs={stepTabs} value={step} onChange={selectStep} idPrefix={TAB_PREFIX} label={t("工作流程步驟")} />
       {STEPS.map((item) => (
         <DockBody key={item.id} role="tabpanel" id={`${TAB_PREFIX}-panel-${item.id}`} aria-labelledby={`${TAB_PREFIX}-tab-${item.id}`} hidden={item.id !== step}>
           {item.id === "describe" ? (
-            <DescribeWorkspace step={describe} describeRunId={describeRunId} describeRun={describeRun} hasScene={scene.sceneValue !== null} onNext={() => goTo("scene")} />
+            <DescribeWorkspace step={describe} describeRunId={describeRunId} describeRun={describeRun} hasScene={scene.sceneValue !== null} onNext={() => { goTo("scene"); }} />
           ) : item.id === "scene" ? (
             <SceneWorkspace scene={scene} describeRunId={describeRunId} describeRun={describeRun} />
           ) : item.id === "caption" ? (
-            <CaptionWorkspace captionRunId={captionRunId} captionRun={captionRun} pair={currentPair} sceneBlock={scene.captionSceneBlock} onNext={() => goTo("dataset")} />
+            <CaptionWorkspace captionRunId={captionRunId} captionRun={captionRun} pair={currentPair} sceneBlock={scene.captionSceneBlock} onNext={() => { goTo("dataset"); }} />
           ) : (
             <DatasetWorkspace rows={rows} onRowsChange={setRows} currentPair={currentPair} />
           )}

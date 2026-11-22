@@ -46,7 +46,7 @@ function pointAt(radius: number, degrees: number): string {
 
 export function PanKnob({ label, value, onCommit, className }: PanKnobProps) {
   const [drag, setDrag] = useState<Drag | null>(null);
-  const shown = drag?.moved ? drag.value : value;
+  const shown = (drag?.moved === true) ? drag.value : value;
   const degrees = shown * SWEEP;
   const commit = (pan: number) => {
     const next = clampPan(pan);
@@ -101,15 +101,15 @@ export function PanKnob({ label, value, onCommit, className }: PanKnobProps) {
         onPointerDown={begin}
         onPointerMove={move}
         onPointerUp={end}
-        onPointerCancel={() => setDrag(null)}
-        onDoubleClick={() => commit(0)}
+        onPointerCancel={() => { setDrag(null); }}
+        onDoubleClick={() => { commit(0); }}
         onKeyDown={keys}
         className="group/knob size-9 cursor-ns-resize touch-none rounded-full select-none"
       >
         <svg viewBox="0 0 36 36" aria-hidden className="size-full">
-          <path d={`M ${pointAt(RING, -SWEEP)} A ${RING} ${RING} 0 1 1 ${pointAt(RING, SWEEP)}`} fill="none" strokeWidth="2" strokeLinecap="round" className="stroke-line-strong" />
+          <path d={`M ${pointAt(RING, -SWEEP)} A ${String(RING)} ${String(RING)} 0 1 1 ${pointAt(RING, SWEEP)}`} fill="none" strokeWidth="2" strokeLinecap="round" className="stroke-line-strong" />
           {degrees !== 0 ? (
-            <path d={`M ${pointAt(RING, 0)} A ${RING} ${RING} 0 0 ${degrees > 0 ? 1 : 0} ${pointAt(RING, degrees)}`} fill="none" strokeWidth="2" strokeLinecap="round" className="stroke-brand-cyan" />
+            <path d={`M ${pointAt(RING, 0)} A ${String(RING)} ${String(RING)} 0 0 ${String(degrees > 0 ? 1 : 0)} ${pointAt(RING, degrees)}`} fill="none" strokeWidth="2" strokeLinecap="round" className="stroke-brand-cyan" />
           ) : null}
           <circle
             cx={CENTRE}

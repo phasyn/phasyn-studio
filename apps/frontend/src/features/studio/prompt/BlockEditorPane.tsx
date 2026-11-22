@@ -1,3 +1,4 @@
+import { isListed } from "@/lib/json";
 // 專業編輯器中間：選取區塊的標題欄位（依類型）與內容編輯。內容編輯是「改原文中這一段」：開始輸入時記下
 // 前後文，之後每次輸入都是 前文＋內容＋後文，即使輸入的文字讓區塊重新切分也不會跳字或重複。
 import { ArrowDown, ArrowUp, Copy, Trash2 } from "lucide-react";
@@ -53,7 +54,7 @@ function BlockBodyEditor({
         setSession({ prefix: base.prefix, suffix: base.suffix, draft });
         onChange(base.prefix + draft + base.suffix);
       }}
-      onBlur={() => setSession(null)}
+      onBlur={() => { setSession(null); }}
       containerClassName="flex min-h-0 flex-1 flex-col"
       className="min-h-64 flex-1 resize-none text-data leading-7"
     />
@@ -64,7 +65,7 @@ function HeadingFields({ block, onEdit, disabled }: { block: PromptBlock; onEdit
   const id = useId();
   const seconds = (field: "start" | "end") => (text: string) => {
     const parsed = parseSecondsInput(text);
-    if (parsed.error) return parsed.error;
+    if (parsed.error != null && parsed.error !== "") return parsed.error;
     if (parsed.value === null) return t("請輸入秒數");
     const range = block.range ?? { start: 0, end: 2 };
     return onEdit({ type: "range", range: { ...range, [field]: parsed.value } });
@@ -88,7 +89,7 @@ function HeadingFields({ block, onEdit, disabled }: { block: PromptBlock; onEdit
         <label htmlFor={`${id}-section`} className="text-caption text-fg-tertiary">
           {t("區段")}
         </label>
-        <Select id={`${id}-section`} compact className="machine min-h-7" value={block.section ?? ""} disabled={disabled} onChange={(event) => onEdit({ type: "section", section: event.target.value as (typeof H3_SECTIONS)[number] })}>
+        <Select id={`${id}-section`} compact className="machine min-h-7" value={block.section ?? ""} disabled={disabled} onChange={(event) => { const value = event.target.value; if (isListed(value, H3_SECTIONS)) void onEdit({ type: "section", section: value }); }}>
           {H3_SECTIONS.map((section) => (
             <option key={section} value={section}>
               {section}
@@ -102,7 +103,7 @@ function HeadingFields({ block, onEdit, disabled }: { block: PromptBlock; onEdit
     const cut = block.style?.type === "shot" && block.style.form === "cut";
     const commitCue = (text: string) => {
       const parsed = parseSecondsInput(text);
-      if (parsed.error) return parsed.error;
+      if (parsed.error != null && parsed.error !== "") return parsed.error;
       return onEdit({ type: "cue", cue: parsed.value });
     };
     return (
@@ -185,7 +186,7 @@ export function BlockEditorPane({
 }) {
   const id = useId();
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const deleteButton = useRef<HTMLButtonElement>(null);
+  const deleteButtonRef = useRef<HTMLButtonElement>(null);
   const block = doc.blocks[index];
   if (!block) return null;
   const info = describeBlock(block);
@@ -211,12 +212,12 @@ export function BlockEditorPane({
           {block.section ? <p className="max-w-[72ch] text-caption leading-5 text-fg-tertiary">{SECTION_HINTS[block.section]}</p> : null}
         </div>
         <div className="flex flex-wrap gap-1" role="group" aria-label={t("區塊操作")}>
-          <Button size="icon-sm" variant="quiet" aria-label={t("上移區塊")} title={t("上移")} disabled={disabled || index === 0} onClick={() => onMove(-1)} icon={<ArrowUp aria-hidden />} />
-          <Button size="icon-sm" variant="quiet" aria-label={t("下移區塊")} title={t("下移")} disabled={disabled || index === doc.blocks.length - 1} onClick={() => onMove(1)} icon={<ArrowDown aria-hidden />} />
+          <Button size="icon-sm" variant="quiet" aria-label={t("上移區塊")} title={t("上移")} disabled={disabled || index === 0} onClick={() => { onMove(-1); }} icon={<ArrowUp aria-hidden />} />
+          <Button size="icon-sm" variant="quiet" aria-label={t("下移區塊")} title={t("下移")} disabled={disabled || index === doc.blocks.length - 1} onClick={() => { onMove(1); }} icon={<ArrowDown aria-hidden />} />
           <Button size="sm" variant="quiet" className="min-h-8 px-2" icon={<Copy aria-hidden />} disabled={disabled} onClick={onDuplicate}>
             {t("複製", undefined, { context: "duplicate" })}
           </Button>
-          <Button ref={deleteButton} size="sm" variant="danger" className="min-h-8 px-2" icon={<Trash2 aria-hidden />} disabled={disabled} onClick={() => setConfirmDelete(true)}>
+          <Button ref={deleteButtonRef} size="sm" variant="danger" className="min-h-8 px-2" icon={<Trash2 aria-hidden />} disabled={disabled} onClick={() => { setConfirmDelete(true); }}>
             {t("刪除")}
           </Button>
         </div>
@@ -224,7 +225,7 @@ export function BlockEditorPane({
       {confirmDelete ? (
         <Callout tone="danger" title={t("刪除區塊「{value}」？", { value: info.title || info.kind })}>
           <p>
-            <T source={"會從 prompt 移除這個區塊的標題與內容（<0>{markerCount}</0> 字元）；刪除後可以按「復原」。"} values={{ markerCount: (block.marker + block.joiner + block.body).length }} slots={[<span className="machine" />]} />
+            <T source={"會從 prompt 移除這個區塊的標題與內容（<0>{markerCount}</0> 字元）；刪除後可以按「復原」。"} values={{ markerCount: (block.marker + block.joiner + block.body).length }} slots={[<span key="slot-0" className="machine" />]} />
           </p>
           <div className="flex gap-1.5 pt-1">
             <Button
@@ -243,7 +244,7 @@ export function BlockEditorPane({
               variant="secondary"
               onClick={() => {
                 setConfirmDelete(false);
-                deleteButton.current?.focus();
+                deleteButtonRef.current?.focus();
               }}
             >
               {t("取消")}
@@ -251,7 +252,7 @@ export function BlockEditorPane({
           </div>
         </Callout>
       ) : null}
-      <HeadingFields key={`${index}:${block.marker}`} block={block} onEdit={edit} disabled={disabled} />
+      <HeadingFields key={`${String(index)}:${block.marker}`} block={block} onEdit={edit} disabled={disabled} />
       <BlockBodyEditor key={index} doc={doc} index={index} value={value} onChange={onChange} options={options} editorRef={editorRef} disabled={disabled} labelId={`${id}-label`} />
     </div>
   );

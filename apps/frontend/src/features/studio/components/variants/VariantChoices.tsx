@@ -46,7 +46,7 @@ export function ChoiceRow({ checked, onChange, title, index, children }: { check
         checked ? OPTION_SELECTED : OPTION_IDLE,
       )}
     >
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} className="sr-only" />
+      <input type="checkbox" checked={checked} onChange={(event) => { onChange(event.target.checked); }} className="sr-only" />
       <span aria-hidden className={cn("grid size-3.5 place-items-center rounded-sm border transition-colors duration-(--duration-fast)", checked ? "border-brand-cyan bg-brand-cyan/15" : "border-line-control")}>
         {checked ? <Check className="size-3 text-brand-cyan animate-pop-in" /> : null}
       </span>
@@ -70,7 +70,7 @@ export function ShotSeedChoices({ shot, choices, onChange }: AxisProps) {
   const own: OwnSeed | null =
     shot.seed === RANDOM_SEED
       ? null
-      : { label: <T source={"鏡頭的 seed <0>{seed}</0>"} values={{ seed: shot.seed }} slots={[<span className="machine" />]} />, seed: shot.seed };
+      : { label: <T source={"鏡頭的 seed <0>{seed}</0>"} values={{ seed: shot.seed }} slots={[<span key="slot-0" className="machine" />]} />, seed: shot.seed };
   return <SeedChoices own={own} ownMissing={t("鏡頭的 seed 是每次隨機：用新的隨機 seed，或在下面輸入固定的 seed。")} choices={choices} onChange={onChange} />;
 }
 
@@ -111,7 +111,7 @@ export function SeedChoices<C extends SeedAxis>({ own, ownMissing, choices, onCh
         Seed
       </h3>
       {own ? (
-        <ChoiceRow index={0} checked={choices.ownSeed} onChange={(checked) => onChange({ ...choices, ownSeed: checked })}>
+        <ChoiceRow index={0} checked={choices.ownSeed} onChange={(checked) => { onChange({ ...choices, ownSeed: checked }); }}>
           <span className="truncate text-data text-fg">{own.label}</span>
         </ChoiceRow>
       ) : (
@@ -127,7 +127,7 @@ export function SeedChoices<C extends SeedAxis>({ own, ownMissing, choices, onCh
           label={t("新的隨機 seed 幾個")}
           value={choices.randomSeeds}
           options={RANDOM_SEED_COUNTS.map((value) => ({ value, label: <span className="machine">{value}</span> }))}
-          onChange={(randomSeeds) => onChange({ ...choices, randomSeeds })}
+          onChange={(randomSeeds) => { onChange({ ...choices, randomSeeds }); }}
         />
       </div>
       <div className="grid gap-1.5">
@@ -143,7 +143,7 @@ export function SeedChoices<C extends SeedAxis>({ own, ownMissing, choices, onCh
             value={draft}
             placeholder={t("例如 42 20261116（可一次輸入多個）")}
             aria-invalid={problem !== null || undefined}
-            aria-describedby={problem ? `${id}-problem` : undefined}
+            aria-describedby={(problem != null && problem !== "") ? `${id}-problem` : undefined}
             onChange={(event) => {
               setDraft(event.target.value);
               setProblem(null);
@@ -155,7 +155,7 @@ export function SeedChoices<C extends SeedAxis>({ own, ownMissing, choices, onCh
             {t("加入")}
           </Button>
         </div>
-        {problem ? (
+        {(problem != null && problem !== "") ? (
           <p id={`${id}-problem`} role="alert" className="text-caption text-warning animate-fade-in">
             {problem}
           </p>
@@ -169,7 +169,7 @@ export function SeedChoices<C extends SeedAxis>({ own, ownMissing, choices, onCh
                   type="button"
                   aria-label={t("移除 seed {seed}", { seed })}
                   title={t("移除 seed {seed}", { seed })}
-                  onClick={() => onChange({ ...choices, fixedSeeds: choices.fixedSeeds.filter((item) => item !== seed) })}
+                  onClick={() => { onChange({ ...choices, fixedSeeds: choices.fixedSeeds.filter((item) => item !== seed) }); }}
                   className="pressable grid size-5 place-items-center rounded-full text-fg-tertiary hover:bg-raised hover:text-fg focus-visible:outline-2 focus-visible:outline-focus"
                 >
                   <X aria-hidden className="size-3" />
@@ -222,7 +222,7 @@ export function FileChoices({ shot, choices, onChange, library }: AxisProps & { 
             // The clip window goes back to the whole file when this one cannot hold it (replacedReference)
             const unclipped = !own && ref.kind !== "image" && !clipFits(ref, item.duration_seconds);
             return (
-              <ChoiceRow key={item.item_id} index={index} checked={chosen.includes(item.item_id)} onChange={(checked) => toggle(item.item_id, checked)} title={item.name}>
+              <ChoiceRow key={item.item_id} index={index} checked={chosen.includes(item.item_id)} onChange={(checked) => { toggle(item.item_id, checked); }} title={item.name}>
                 <span className="flex min-w-0 items-center gap-1.5">
                   <span className="min-w-0 truncate text-data text-fg">{item.name}</span>
                   {own ? <span className={OWN_CHIP}>{t("目前")}</span> : null}
@@ -255,7 +255,7 @@ export function RouteChoices({ shot, choices, onChange, routes }: AxisProps & { 
         {routes.map((route, index) => {
           const face = routeFace(route, catalog);
           return (
-            <ChoiceRow key={route.id} index={index} checked={chosen.includes(route.id)} onChange={(checked) => toggle(route.id, checked)} title={route.ready ? face.title : `${face.title}\n${route.summary}`}>
+            <ChoiceRow key={route.id} index={index} checked={chosen.includes(route.id)} onChange={(checked) => { toggle(route.id, checked); }} title={route.ready ? face.title : `${face.title}\n${route.summary}`}>
               <span className="flex min-w-0 items-center gap-1.5">
                 <span className="min-w-0 truncate text-data text-fg">{face.name}</span>
                 {route.id === shot.route ? <span className={OWN_CHIP}>{t("目前")}</span> : null}

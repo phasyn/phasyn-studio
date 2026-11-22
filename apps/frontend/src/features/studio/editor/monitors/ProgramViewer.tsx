@@ -3,6 +3,7 @@
 // monitor and the Edit workspace's Program monitor always show the same frame. An adjustment layer's picture is the
 // composite of the tracks under it (layerStack): its own pipeline runs its effects on that, and it is blended back over
 // them like any layer, with its opacity, mask, fades and blend mode.
+import { AssetVideo } from "@/components/common/AssetMedia";
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import type { StudioTimeline, TimelineCaption, TimelineClip, TimelineSource, TimelineTrack } from "@/api/generated/contracts";
 import { mediaUrl } from "@/api/http";
@@ -69,7 +70,7 @@ function maskStyle(mask: LookMask): CSSProperties {
 function lookStyle(look: MovingLook): CSSProperties {
   const moved = look.x !== 0 || look.y !== 0 || look.scale !== 1;
   return {
-    ...(moved ? { transform: `translate(${percent(look.x)}, ${percent(look.y)}) scale(${look.scale})` } : {}),
+    ...(moved ? { transform: `translate(${percent(look.x)}, ${percent(look.y)}) scale(${String(look.scale)})` } : {}),
     ...(look.mask ? maskStyle(look.mask) : {}),
   };
 }
@@ -98,9 +99,9 @@ function Layer({ clip, source, track, frame, playing, stack, order, readable, be
   const editor = useEditor();
   const { timeline, proxy, project, playhead, warn } = editor;
   const { audio, rate } = editor.transport;
-  const video = useRef<HTMLVideoElement>(null);
-  const canvas = useRef<HTMLCanvasElement>(null);
-  const image = useRef<HTMLImageElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
   const [failed, setFailed] = useState(false);
   const adjustment = source.kind === "adjustment";
   // An adjustment layer's picture: the composite of the tracks under it, drawn here before each of its draws
@@ -114,22 +115,22 @@ function Layer({ clip, source, track, frame, playing, stack, order, readable, be
   const motion = motionAt(clip, frame);
   const transition = transitionAt(clip, timeline.clips, frame, geometry.width, geometry.height);
   const fx = clip.effects;
-  const proxyValid = source.proxy?.complete && source.proxy_source_sha256 === source.file?.sha256 && source.proxy.frame_count === source.duration_frames;
+  const proxyValid = source.proxy?.complete === true && source.proxy_source_sha256 === source.file?.sha256 && source.proxy.frame_count === source.duration_frames;
   const file = proxy && proxyValid ? source.proxy?.file : source.file;
   const url = file ? mediaUrl(file.node_id, file.file_id) : undefined;
   const isAudio = track.kind === "audio";
   const textSource = source.kind === "text";
-  const compose = composite ? { canvas: composite, compose: () => composeBelow(composite, stack, { timeline: shown, tracks: below, frame, width: geometry.width, height: geometry.height }) } : null;
+  const compose = composite ? { canvas: composite, compose: () => { composeBelow(composite, stack, { timeline: shown, tracks: below, frame, width: geometry.width, height: geometry.height }); } } : null;
   const { failure: renderFailure, requestDraw } = useClipRenderer(
-    canvas,
-    video,
-    image,
+    canvasRef,
+    videoRef,
+    imageRef,
     url,
     geometry.width,
     geometry.height,
     !isAudio,
     { clip, localFrame: processing, fit: geometry.fit ?? "contain", transitionBlur: transition.look?.blur ?? null },
-    { picture: textSource ? "text" : adjustment ? "composite" : "media", composite: compose, readable, onDraw: () => stack.drawn(order) },
+    { picture: textSource ? "text" : adjustment ? "composite" : "media", composite: compose, readable, onDraw: () => { stack.drawn(order); } },
   );
   // An adjustment layer draws again when a layer under it drew a new picture (a video that seeked, a font that loaded)
   useEffect(() => {
@@ -141,12 +142,12 @@ function Layer({ clip, source, track, frame, playing, stack, order, readable, be
   // The picture this layer shows, for the adjustment layers above it (while it is mounted)
   const attach = useCallback(
     (element: HTMLCanvasElement | null) => {
-      canvas.current = element;
+      canvasRef.current = element;
       if (!element) return undefined;
       const remove = stack.register(clip.clip_id, element);
       return () => {
         remove();
-        if (canvas.current === element) canvas.current = null;
+        if (canvasRef.current === element) canvasRef.current = null;
       };
     },
     [stack, clip.clip_id],
@@ -158,14 +159,14 @@ function Layer({ clip, source, track, frame, playing, stack, order, readable, be
   const speed = fx?.speed_percent ?? 100;
   const silent = !active || held || fx?.mute;
   const level = dbToGain(motion.gain_db + track.gain_db + timeline.master_gain_db + (fx?.volume_db ?? 0));
-  const gain = silent ? 0 : level * audioFadeFactor(fx, complete, processing) * transition.gain;
+  const gain = (silent === true) ? 0 : level * audioFadeFactor(fx, complete, processing) * transition.gain;
   const left = (1 - Math.max(0, motion.pan)) * (1 - Math.max(0, track.pan));
   const right = (1 + Math.min(0, motion.pan)) * (1 + Math.min(0, track.pan));
   const steps = fx?.frame_step ?? 1;
 
   useEffect(() => {
-    const media = video.current;
-    if (!media || !url) return;
+    const media = videoRef.current;
+    if (!media || !(url != null && url !== "")) return;
     if (isAudio) audio.update(media, { gain, left, right });
     const audioFrame = clip.in_frame + Math.max(0, Math.min(clip.out_frame - clip.in_frame, ((processing - holdStart) * speed) / 100));
     const target = (isAudio ? audioFrame : sourceFrame + 0.5) / fps;
@@ -187,7 +188,7 @@ function Layer({ clip, source, track, frame, playing, stack, order, readable, be
   }, [active, audio, clip.in_frame, clip.out_frame, fps, gain, held, holdStart, isAudio, left, playhead, playing, processing, rate, right, sourceFrame, speed, steps, url, warn]);
 
   useEffect(() => {
-    const media = video.current;
+    const media = videoRef.current;
     return () => {
       if (!media) return;
       media.pause();
@@ -196,9 +197,9 @@ function Layer({ clip, source, track, frame, playing, stack, order, readable, be
   }, [audio]);
 
   if (!active) return null;
-  if ((!url && !textSource && !adjustment) || failed || renderFailure) {
+  if ((!(url != null && url !== "") && !textSource && !adjustment) || failed || (renderFailure != null && renderFailure !== "")) {
     if (quiet) return null;
-    const message = renderFailure ?? (!url ? t("「{name}」尚未完成渲染", { name: source.name }) : t("無法讀取「{name}」", { name: source.name }));
+    const message = renderFailure ?? (!(url != null && url !== "") ? t("「{name}」尚未完成渲染", { name: source.name }) : t("無法讀取「{name}」", { name: source.name }));
     return (
       <div role="status" className={cn("absolute inset-0 grid place-items-center bg-sunken p-4 text-center text-caption text-warning", isAudio && "inset-auto bottom-2 left-2 z-30 rounded-md")}>
         {message}
@@ -219,15 +220,15 @@ function Layer({ clip, source, track, frame, playing, stack, order, readable, be
     ? undefined
     : {
         opacity: motion.opacity,
-        transform: `translate(${motion.x * 100}%, ${motion.y * 100}%) rotate(${motion.rotation}deg) scale(${motion.scale})`,
+        transform: `translate(${String(motion.x * 100)}%, ${String(motion.y * 100)}%) rotate(${String(motion.rotation)}deg) scale(${String(motion.scale)})`,
       };
   return (
     <div className={cn("absolute inset-0 origin-center", isAudio && "pointer-events-none opacity-0")} style={outer}>
       <div className="absolute inset-0 origin-center" style={inner}>
         {textSource || adjustment ? null : source.kind === "image" ? (
-          <img ref={image} src={url} alt="" aria-hidden className="pointer-events-none absolute size-full opacity-0" onError={() => setFailed(true)} />
+          <img ref={imageRef} src={url} alt="" aria-hidden className="pointer-events-none absolute size-full opacity-0" onError={() => { setFailed(true); }} />
         ) : (
-          <video ref={video} src={url} muted={!isAudio} playsInline preload="auto" aria-hidden className="pointer-events-none absolute size-full opacity-0" onError={() => setFailed(true)} />
+          <AssetVideo ref={videoRef} src={url} muted={!isAudio} playsInline preload="auto" aria-hidden className="pointer-events-none absolute size-full opacity-0" onError={() => { setFailed(true); }} />
         )}
         {/* A canvas keeps its context's settings: a new one when the pictures must be readable or need not be */}
         {!isAudio ? <canvas key={readable ? "readable" : "shown"} ref={attach} className="absolute inset-0 size-full" aria-label={clip.name} /> : null}
@@ -281,7 +282,7 @@ export function ProgramViewer({ zoom = "fit", transform = false, className }: { 
       height={geometry.height}
       zoom={zoom}
       title={PREVIEW_DISCLAIMER}
-      className={className}
+      {...(className === undefined ? {} : { className })}
       overlay={
         overlay ? (
           <TransformOverlay
@@ -295,8 +296,8 @@ export function ProgramViewer({ zoom = "fit", transform = false, className }: { 
               setDraft(null);
               patchClip(clip);
             }}
-            onCancel={() => setDraft(null)}
-            onStart={() => playhead.setPlaying(false)}
+            onCancel={() => { setDraft(null); }}
+            onStart={() => { playhead.setPlaying(false); }}
           />
         ) : null
       }

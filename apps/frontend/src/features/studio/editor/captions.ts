@@ -26,8 +26,8 @@ export function parseSrt(text: string, fps: number): TimelineCaption[] {
     // The counter line is optional
     if (/^\d+$/.test(lines[0] ?? "")) lines.shift();
     const times = (lines.shift() ?? "").split(/\s+-->\s+/);
-    const start = times[0] ? milliseconds(times[0]) : null;
-    const end = times[1] ? milliseconds(times[1]) : null;
+    const start = (times[0] != null && times[0] !== "") ? milliseconds(times[0]) : null;
+    const end = (times[1] != null && times[1] !== "") ? milliseconds(times[1]) : null;
     const content = lines.join("\n").trim();
     const first = start === null ? -1 : Math.round((start * fps) / 1000);
     const last = end === null ? -1 : Math.round((end * fps) / 1000);
@@ -48,7 +48,7 @@ function srtTime(frame: number, fps: number): string {
 export function toSrt(captions: TimelineCaption[], fps: number): string {
   const blocks = [...captions]
     .sort((a, b) => a.start_frame - b.start_frame)
-    .map((caption, index) => `${index + 1}\n${srtTime(caption.start_frame, fps)} --> ${srtTime(caption.end_frame, fps)}\n${caption.text}`);
+    .map((caption, index) => `${String(index + 1)}\n${srtTime(caption.start_frame, fps)} --> ${srtTime(caption.end_frame, fps)}\n${caption.text}`);
   return `${blocks.join("\n\n")}\n`;
 }
 
@@ -59,5 +59,5 @@ export function downloadSrt(captions: TimelineCaption[], fps: number): void {
   link.href = url;
   link.download = "sequence.srt";
   link.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  window.setTimeout(() => { URL.revokeObjectURL(url); }, 1000);
 }

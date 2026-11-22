@@ -11,7 +11,7 @@ import { TextRows } from "../TextRows";
 export function ColorGroup({ clip }: { clip: TimelineClip }) {
   const panel = useClipPanel();
   return (
-    <Group id="color" title={t("調色")} changed={colorChanged(clip)} onReset={() => panel.perform(withoutColor(clip))}>
+    <Group id="color" title={t("調色")} changed={colorChanged(clip)} onReset={() => void panel.perform(withoutColor(clip))}>
       <ColorRows clip={clip} edits={panel} />
     </Group>
   );

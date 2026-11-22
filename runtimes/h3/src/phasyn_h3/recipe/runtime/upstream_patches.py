@@ -57,20 +57,28 @@ from __future__ import annotations
 import contextlib
 import contextvars
 import importlib
+import inspect
 import os
 import threading
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, NamedTuple
 
 from . import pins
+from ._observations import RuntimeObservation
 from .acceleration import FP8_PATCH_ID
+from .fp8_linear import fp8_linear, supports
+
 
 UUID_PATCH_ID = "uuid_device_ids.v1"
 ADALN_PATCH_ID = "adaln_online_quant.v1"
-UPSTREAM_ADALN_MESSAGE = "MiniMax H3 AdaLN cache is only compatible with unquantized weights"
-UPSTREAM_PRUNED_MESSAGE = "MiniMax H3 pruned curve checkpoints cannot use a separate AdaLN cache"
+UPSTREAM_ADALN_MESSAGE = (
+    "MiniMax H3 AdaLN cache is only compatible with unquantized weights"
+)
+UPSTREAM_PRUNED_MESSAGE = (
+    "MiniMax H3 pruned curve checkpoints cannot use a separate AdaLN cache"
+)
 ADALN_PREFIXES = ("blocks.0.adaln_proj.linear", "final_layer.adaln_proj.linear")
 
 _LOCK = threading.Lock()
@@ -95,7 +103,9 @@ def ensure_uuid_device_ids() -> dict[str, Any]:
         if current is not None:
             return dict(current)
         (digest,) = pins.check("uuid_device_ids", what=_WHAT).values()
-        cuda_mod = importlib.import_module("sglang.multimodal_gen.runtime.platforms.cuda")
+        cuda_mod = importlib.import_module(
+            "sglang.multimodal_gen.runtime.platforms.cuda"
+        )
         original = cuda_mod.device_id_to_physical_device_id
 
         def device_id_to_physical_device_id(device_id: int) -> int:
@@ -107,12 +117,16 @@ def ensure_uuid_device_ids() -> dict[str, Any]:
                     if entry.startswith("GPU-"):
                         # same vendored pynvml as the caller's with_nvml_context
                         nvml = cuda_mod.pynvml
-                        return int(nvml.nvmlDeviceGetIndex(nvml.nvmlDeviceGetHandleByUUID(entry)))
+                        return int(
+                            nvml.nvmlDeviceGetIndex(
+                                nvml.nvmlDeviceGetHandleByUUID(entry)
+                            )
+                        )
             return int(original(device_id))
 
         device_id_to_physical_device_id.__wrapped__ = original  # type: ignore[attr-defined]
         device_id_to_physical_device_id._phasyn_patch = UUID_PATCH_ID  # type: ignore[attr-defined]
-        setattr(cuda_mod, "device_id_to_physical_device_id", device_id_to_physical_device_id)  # noqa: B010
+        cuda_mod.device_id_to_physical_device_id = device_id_to_physical_device_id  # type: ignore[attr-defined]
         state = {"patch": UUID_PATCH_ID, "source_sha256": digest}
         _STATE["uuid"] = state
         return dict(state)
@@ -142,16 +156,25 @@ def _admit(quant_config: Any) -> bool:
     elif _is_serialized(quant_config):
         reason = "預量化（serialized）checkpoint 的 adaln_proj 不保證是 BF16"
     else:
-        from sglang.srt.layers.quantization.utils import is_layer_skipped
+        from sglang.srt.layers.quantization.utils import is_layer_skipped  # type: ignore[import-untyped]
 
         ignored = list(getattr(quant_config, "ignored_layers", None) or [])
         mapping = getattr(quant_config, "packed_modules_mapping", None) or {}
-        uncovered = [p for p in ADALN_PREFIXES if not is_layer_skipped(p, ignored, fused_mapping=mapping)]
+        uncovered = [
+            p
+            for p in ADALN_PREFIXES
+            if not is_layer_skipped(p, ignored, fused_mapping=mapping)
+        ]
         if uncovered:
             reason = f"ignored layers {ignored} 沒有涵蓋 {uncovered}（adaln_proj 必須保持 BF16）"
     if reason is not None:
         raise ValueError(f"{UPSTREAM_ADALN_MESSAGE} ({ADALN_PATCH_ID}: {reason})")
-    _ADMITTED.append({"quantization": name, "ignored_layers": list(getattr(quant_config, "ignored_layers", []) or [])})
+    _ADMITTED.append(
+        {
+            "quantization": name,
+            "ignored_layers": list(getattr(quant_config, "ignored_layers", []) or []),
+        }
+    )
     return True
 
 
@@ -162,24 +185,27 @@ def install_adaln_online_quant_patch() -> dict[str, Any]:
         if current is not None:
             return dict(current)
         (digest,) = pins.check("adaln_online_quant", what=_WHAT).values()
-        module = importlib.import_module("sglang.multimodal_gen.runtime.models.dits.minimax_h3")
+        module = importlib.import_module(
+            "sglang.multimodal_gen.runtime.models.dits.minimax_h3"
+        )
         cls = module.MiniMaxH3DiTModel
         original = cls.__init__
-        default_plan_width = module.MINIMAX_H3_ADALN_MAX_PLAN_WIDTH
+        arguments = inspect.signature(original)
 
-        def __init__(
-            self: Any,
-            config: Any,
-            hf_config: dict[str, Any],
-            quant_config: Any = None,
-            adaln_cache_path: str | None = None,
-            adaln_cache_model_variant: str | None = None,
-            adaln_weight_files: list[str] | None = None,
-            adaln_plan_width: int = default_plan_width,
-            adaln_max_plans: int = 64,
-            adaln_host_cache_bytes: int = 0,
-            adaln_precision: str = "match",
+        def patched_init(
+            self: Any, config: Any, hf_config: dict[str, Any], *args: Any, **kwargs: Any
         ) -> None:
+            bound = arguments.bind(self, config, hf_config, *args, **kwargs)
+            bound.apply_defaults()
+            options = bound.arguments
+            quant_config = options["quant_config"]
+            adaln_cache_path = options["adaln_cache_path"]
+            adaln_cache_model_variant = options["adaln_cache_model_variant"]
+            adaln_weight_files = options["adaln_weight_files"]
+            adaln_plan_width = options["adaln_plan_width"]
+            adaln_max_plans = options["adaln_max_plans"]
+            adaln_host_cache_bytes = options["adaln_host_cache_bytes"]
+            adaln_precision = options["adaln_precision"]
             precomputed = adaln_cache_path is not None or adaln_weight_files is not None
             if not (precomputed and quant_config is not None and _admit(quant_config)):
                 original(
@@ -216,19 +242,22 @@ def install_adaln_online_quant_patch() -> dict[str, Any]:
                 precision=adaln_precision,
             )
 
-        __init__.__qualname__ = original.__qualname__
-        __init__.__module__ = original.__module__
-        __init__.__doc__ = original.__doc__
-        __init__.__wrapped__ = original  # type: ignore[attr-defined]
-        __init__._phasyn_patch = ADALN_PATCH_ID  # type: ignore[attr-defined]
-        cls.__init__ = __init__
+        patched_init.__name__ = original.__name__
+        patched_init.__qualname__ = original.__qualname__
+        patched_init.__module__ = original.__module__
+        patched_init.__doc__ = original.__doc__
+        patched_init.__wrapped__ = original  # type: ignore[attr-defined]
+        patched_init._phasyn_patch = ADALN_PATCH_ID  # type: ignore[attr-defined]
+        cls.__init__ = patched_init
         state = {"patch": ADALN_PATCH_ID, "source_sha256": digest}
         _STATE["adaln"] = state
         return dict(state)
 
 
 @contextlib.contextmanager
-def armed_adaln_online_quant(methods: frozenset[str] | set[str]) -> Iterator[list[dict[str, Any]]]:
+def armed_adaln_online_quant(
+    methods: frozenset[str] | set[str],
+) -> Iterator[list[dict[str, Any]]]:
     """Admit ``methods`` (SGLang quantization names) for the AdaLN cache in this context."""
     install_adaln_online_quant_patch()
     token = _ARMED.set(frozenset(methods))
@@ -250,15 +279,20 @@ class Fp8Arming:
     """The FP8 load the shim armed (``armed_fp8_layerwise_quant``) and what it did."""
 
     device: Any  # torch.device each layer is staged to for quantization
-    gemm: str | None  # fp8_linear.KERNEL_ID for the quantized layers, or None: upstream apply_fp8_linear
+    gemm: (
+        str | None
+    )  # fp8_linear.KERNEL_ID for the quantized layers, or None: upstream apply_fp8_linear
     layers: int = 0
-    staged_layers: int = 0  # round-tripped CPU -> device -> CPU (the rest were on the device already)
+    staged_layers: int = (
+        0  # round-tripped CPU -> device -> CPU (the rest were on the device already)
+    )
     seconds: float = 0.0
     bf16_bytes: int = 0
     fp8_bytes: int = 0
     gemm_layers: dict[str, int] = field(default_factory=dict)
 
     def facts(self) -> dict[str, Any]:
+        """Return the observed runtime facts for reporting."""
         return {
             "patch": FP8_PATCH_ID,
             "weight_postprocess": "per_layer",
@@ -271,7 +305,9 @@ class Fp8Arming:
         }
 
 
-_FP8_ARMED: contextvars.ContextVar[Fp8Arming | None] = contextvars.ContextVar("phasyn_fp8_layerwise", default=None)
+_FP8_ARMED: contextvars.ContextVar[Fp8Arming | None] = contextvars.ContextVar(
+    "phasyn_fp8_layerwise", default=None
+)
 UPSTREAM_FP8_GEMM = "upstream_apply_fp8_linear"
 
 
@@ -279,9 +315,9 @@ def is_online_fp8(quant_config: Any) -> bool:
     """A no-arg ``Fp8Config()`` (``--quantization fp8``): per-channel online, not serialized/block/MX."""
     if quant_config is None:
         return False
-    try:
+    with RuntimeObservation() as method_query:
         name = str(quant_config.get_name())
-    except Exception:
+    if method_query.error is not None:
         return False
     return (
         name == "fp8"
@@ -295,7 +331,9 @@ def _host_copy(tensor: Any, device: Any) -> Any:
     """A fresh copy of ``tensor`` on ``device`` with the same shape and strides (dense views only)."""
     import torch
 
-    copy = torch.empty_strided(tuple(tensor.shape), tuple(tensor.stride()), dtype=tensor.dtype, device=device)
+    copy = torch.empty_strided(
+        tuple(tensor.shape), tuple(tensor.stride()), dtype=tensor.dtype, device=device
+    )
     copy.copy_(tensor)
     return copy
 
@@ -313,7 +351,9 @@ def staged_on(layer: Any, device: Any) -> Iterator[None]:
     """
     homes = {param.device for param in layer.parameters(recurse=False)}
     if len(homes) != 1 or any(True for _ in layer.buffers(recurse=False)):
-        raise ValueError(f"{FP8_PATCH_ID}: cannot stage a layer with parameters on {homes} or buffers")
+        raise ValueError(
+            f"{FP8_PATCH_ID}: cannot stage a layer with parameters on {homes} or buffers"
+        )
     (home,) = homes
     original_parameters = dict(layer._parameters)
     original_data = [(param, param.data) for param in layer.parameters(recurse=False)]
@@ -341,92 +381,64 @@ def install_fp8_layerwise_patch() -> dict[str, Any]:
         if current is not None:
             return dict(current)
         digests = pins.check("fp8_layerwise_quant", what=_WHAT)
-        fp8_mod = importlib.import_module("sglang.multimodal_gen.runtime.layers.quantization.fp8")
-        tlu = importlib.import_module("sglang.multimodal_gen.runtime.loader.transformer_load_utils")
-        loader = importlib.import_module("sglang.multimodal_gen.runtime.loader.component_loaders.transformer_loader")
+        fp8_mod = importlib.import_module(
+            "sglang.multimodal_gen.runtime.layers.quantization.fp8"
+        )
+        tlu = importlib.import_module(
+            "sglang.multimodal_gen.runtime.loader.transformer_load_utils"
+        )
+        loader = importlib.import_module(
+            "sglang.multimodal_gen.runtime.loader.component_loaders.transformer_loader"
+        )
         cls = fp8_mod.Fp8LinearMethod
         original_pwal = cls.process_weights_after_loading
         original_apply = cls.apply
         original_needs = tlu._needs_device_weight_postprocess
         original_resolve = loader._resolve_checkpoint_load_device
 
-        def _needs_device_weight_postprocess(quant_config: Any) -> bool:
-            if _FP8_ARMED.get() is not None and is_online_fp8(quant_config):
-                return False  # each layer is quantized on its own device round trip below
-            return bool(original_needs(quant_config))
-
-        def _resolve_checkpoint_load_device(
-            runtime_device: Any,
-            *,
-            component_starts_on_cpu: bool,
-            runtime_quant_config: Any,
-            quantized_cpu_load_supported: bool = False,
-        ) -> Any:
-            if _FP8_ARMED.get() is not None and is_online_fp8(runtime_quant_config):
-                quantized_cpu_load_supported = True  # as for convrot_int8 (transformer_loader.py:492-497)
-            return original_resolve(
-                runtime_device,
-                component_starts_on_cpu=component_starts_on_cpu,
-                runtime_quant_config=runtime_quant_config,
-                quantized_cpu_load_supported=quantized_cpu_load_supported,
-            )
+        _needs_device_weight_postprocess, _resolve_checkpoint_load_device = (
+            _fp8_placement_hooks(original_needs, original_resolve)
+        )
 
         def process_weights_after_loading(self: Any, layer: Any) -> None:
             arming = _FP8_ARMED.get()
-            if arming is None or self.block_quant or not is_online_fp8(self.quant_config):
+            if (
+                arming is None
+                or self.block_quant
+                or not is_online_fp8(self.quant_config)
+            ):
                 original_pwal(self, layer)
                 return
             if self.use_marlin:
                 # weight-only FP8 (W8A16) on CC < 8.9 or SGLANG_FORCE_FP8_MARLIN: not the W8A8 path
-                raise ValueError(f"{FP8_PATCH_ID}: Fp8LinearMethod chose Marlin (weight-only FP8); refused")
-            weight = layer.weight
-            bf16_bytes = int(weight.numel()) * int(weight.element_size())
-            started = time.perf_counter()
-            if weight.device.type == arming.device.type:  # already on the device (resident load)
-                original_pwal(self, layer)
-            else:
-                with staged_on(layer, arming.device):
-                    original_pwal(self, layer)
-                arming.staged_layers += 1
-            arming.seconds += time.perf_counter() - started
-            quantized = layer.weight
-            if str(quantized.dtype) != "torch.float8_e4m3fn" or getattr(layer, "weight_scale", None) is None:
-                raise ValueError(f"{FP8_PATCH_ID}: online FP8 left {quantized.dtype} weights (expected float8_e4m3fn)")
-            arming.layers += 1
-            arming.bf16_bytes += bf16_bytes
-            arming.fp8_bytes += int(quantized.numel()) + int(layer.weight_scale.numel()) * 4
-            gemm = UPSTREAM_FP8_GEMM
-            if arming.gemm is not None:
-                from .fp8_linear import supports
-
-                if supports(layer):
-                    layer._phasyn_fp8_gemm = arming.gemm
-                    gemm = arming.gemm
-            arming.gemm_layers[gemm] = arming.gemm_layers.get(gemm, 0) + 1
+                raise ValueError(
+                    f"{FP8_PATCH_ID}: Fp8LinearMethod chose Marlin (weight-only FP8); refused"
+                )
+            bf16_bytes = _stage_fp8_weights(layer, arming, self, original_pwal)
+            _record_fp8_weights(layer, arming, bf16_bytes)
 
         def apply(self: Any, layer: Any, x: Any, bias: Any = None) -> Any:
             if getattr(layer, "_phasyn_fp8_gemm", None) is None:
                 return original_apply(self, layer, x, bias)
-            from .fp8_linear import fp8_linear
 
             return fp8_linear(layer, x, bias)
 
-        wrapped: tuple[tuple[Any, Any], ...] = (
-            (process_weights_after_loading, original_pwal),
-            (apply, original_apply),
-            (_needs_device_weight_postprocess, original_needs),
-            (_resolve_checkpoint_load_device, original_resolve),
+        _mark_fp8_methods(
+            _MarkFp8MethodsInputs(
+                process_weights_after_loading,
+                original_pwal,
+                apply,
+                original_apply,
+                _needs_device_weight_postprocess,
+                original_needs,
+                _resolve_checkpoint_load_device,
+                original_resolve,
+            )
         )
-        for wrapper, original in wrapped:
-            wrapper.__qualname__ = original.__qualname__
-            wrapper.__module__ = original.__module__
-            wrapper.__doc__ = original.__doc__
-            wrapper.__wrapped__ = original
-            wrapper._phasyn_patch = FP8_PATCH_ID
         cls.process_weights_after_loading = process_weights_after_loading
         cls.apply = apply
-        setattr(tlu, "_needs_device_weight_postprocess", _needs_device_weight_postprocess)  # noqa: B010
-        setattr(loader, "_resolve_checkpoint_load_device", _resolve_checkpoint_load_device)  # noqa: B010
+        tlu._needs_device_weight_postprocess = _needs_device_weight_postprocess  # type: ignore[attr-defined]
+        loader._resolve_checkpoint_load_device = _resolve_checkpoint_load_device  # type: ignore[attr-defined]
         state = {"patch": FP8_PATCH_ID, "source_sha256": digests}
         _STATE["fp8"] = state
         return dict(state)
@@ -445,8 +457,12 @@ def armed_fp8_layerwise_quant(device: Any, *, gemm: str | None) -> Iterator[Fp8A
 
 
 def patch_state() -> dict[str, Any]:
+    """Report the installed upstream patches."""
     with _LOCK:
-        return {key: (None if value is None else dict(value)) for key, value in _STATE.items()}
+        return {
+            key: (None if value is None else dict(value))
+            for key, value in _STATE.items()
+        }
 
 
 __all__ = [
@@ -464,3 +480,101 @@ __all__ = [
     "patch_state",
     "staged_on",
 ]
+
+
+def _stage_fp8_weights(layer: Any, arming: Any, self: Any, original_pwal: Any) -> Any:
+    weight = layer.weight
+    bf16_bytes = int(weight.numel()) * int(weight.element_size())
+    started = time.perf_counter()
+    if (
+        weight.device.type == arming.device.type
+    ):  # already on the device (resident load)
+        original_pwal(self, layer)
+    else:
+        with staged_on(layer, arming.device):
+            original_pwal(self, layer)
+        arming.staged_layers += 1
+    arming.seconds += time.perf_counter() - started
+    return bf16_bytes
+
+
+def _record_fp8_weights(layer: Any, arming: Any, bf16_bytes: Any) -> None:
+    quantized = layer.weight
+    if (
+        str(quantized.dtype) != "torch.float8_e4m3fn"
+        or getattr(layer, "weight_scale", None) is None
+    ):
+        raise ValueError(
+            f"{FP8_PATCH_ID}: online FP8 left {quantized.dtype} weights (expected float8_e4m3fn)"
+        )
+    arming.layers += 1
+    arming.bf16_bytes += bf16_bytes
+    arming.fp8_bytes += int(quantized.numel()) + int(layer.weight_scale.numel()) * 4
+    gemm = UPSTREAM_FP8_GEMM
+    if arming.gemm is not None and supports(layer):
+        layer._phasyn_fp8_gemm = arming.gemm
+        gemm = arming.gemm
+    arming.gemm_layers[gemm] = arming.gemm_layers.get(gemm, 0) + 1
+
+
+class _MarkFp8MethodsInputs(NamedTuple):
+    process_weights_after_loading: Any
+    original_pwal: Any
+    apply: Any
+    original_apply: Any
+    needs_device_weight_postprocess: Any
+    original_needs: Any
+    resolve_checkpoint_load_device: Any
+    original_resolve: Any
+
+
+def _mark_fp8_methods(inputs: _MarkFp8MethodsInputs) -> None:
+    (
+        process_weights_after_loading,
+        original_pwal,
+        apply,
+        original_apply,
+        _needs_device_weight_postprocess,
+        original_needs,
+        _resolve_checkpoint_load_device,
+        original_resolve,
+    ) = inputs
+    wrapped: tuple[tuple[Any, Any], ...] = (
+        (process_weights_after_loading, original_pwal),
+        (apply, original_apply),
+        (_needs_device_weight_postprocess, original_needs),
+        (_resolve_checkpoint_load_device, original_resolve),
+    )
+    for wrapper, original in wrapped:
+        wrapper.__qualname__ = original.__qualname__
+        wrapper.__module__ = original.__module__
+        wrapper.__doc__ = original.__doc__
+        wrapper.__wrapped__ = original
+        wrapper._phasyn_patch = FP8_PATCH_ID
+
+
+def _fp8_placement_hooks(original_needs: Any, original_resolve: Any) -> tuple[Any, Any]:
+    def _needs_device_weight_postprocess(quant_config: Any) -> bool:
+        if _FP8_ARMED.get() is not None and is_online_fp8(quant_config):
+            return False  # each layer is quantized on its own device round trip below
+        return bool(original_needs(quant_config))
+
+    def _resolve_checkpoint_load_device(
+        runtime_device: Any,
+        *,
+        component_starts_on_cpu: bool,
+        runtime_quant_config: Any,
+        quantized_cpu_load_supported: bool = False,
+    ) -> Any:
+        if _FP8_ARMED.get() is not None and is_online_fp8(runtime_quant_config):
+            quantized_cpu_load_supported = (
+                True  # as for convrot_int8 (transformer_loader.py:492-497)
+            )
+        return original_resolve(
+            runtime_device,
+            component_starts_on_cpu=component_starts_on_cpu,
+            runtime_quant_config=runtime_quant_config,
+            quantized_cpu_load_supported=quantized_cpu_load_supported,
+        )
+
+    return _needs_device_weight_postprocess, _resolve_checkpoint_load_device

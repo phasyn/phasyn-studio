@@ -12,15 +12,15 @@ export interface EditTarget {
   timeline: StudioTimeline;
   /** Linked selection: an edit of a clip also reaches the clips linked to it. */
   linked: boolean;
-  commit: (timeline: StudioTimeline) => boolean;
+  commit: (timeline: StudioTimeline, label?: string) => boolean;
 }
 
 /** True when the document took the edit, false when the editor refused it (and said why itself), else the reason. */
 export type EditResult = boolean | string;
 
-export function runEdit(target: EditTarget, command: EditCommand): EditResult {
+export function runEdit(target: EditTarget, command: EditCommand, label?: string): EditResult {
   const result = executeEdit(target.timeline, command);
-  return result.ok ? target.commit(result.value) : result.error;
+  return result.ok ? target.commit(result.value, label) : result.error;
 }
 
 /** A changed clip as one edit: its name, effects, motion, effect stack, mask and blend mode (never its place or its range). */
@@ -76,7 +76,7 @@ export function clipKind(timeline: StudioTimeline, clip: TimelineClip, source: T
 
 /** The clip on an audio track that is linked to a clip on a video track: its sound. */
 export function linkedAudio(timeline: StudioTimeline, clip: TimelineClip): TimelineClip | null {
-  if (!clip.linked_id) return null;
+  if (!(clip.linked_id != null && clip.linked_id !== "")) return null;
   const audio = new Set(timeline.tracks.filter((track) => track.kind === "audio").map((track) => track.track_id));
   return timeline.clips.find((item) => item.clip_id !== clip.clip_id && item.linked_id === clip.linked_id && audio.has(item.track_id)) ?? null;
 }

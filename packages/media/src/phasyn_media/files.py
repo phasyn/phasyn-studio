@@ -17,9 +17,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ._paths import absolute
 from .errors import MediaError, raise_if_canceled
 from .limits import DEFAULT_LIMITS, MediaLimits
 from .tools import is_within
+
 
 _SCHEME = re.compile(r"^[A-Za-z][A-Za-z0-9+.\-]*:")
 HASH_CHUNK = 4 * 1024 * 1024
@@ -27,6 +29,8 @@ HASH_CHUNK = 4 * 1024 * 1024
 
 @dataclass(frozen=True)
 class LocalFile:
+    """Identity and size of a validated local media file."""
+
     path: Path  # absolute (symlinks resolved)
     size_bytes: int
     inode: tuple[int, int, int]  # (st_dev, st_ino, st_mtime_ns)
@@ -42,22 +46,34 @@ def check_local_file(
     """Return the resolved regular file or raise ``INVALID_ARGUMENT``."""
     fields = [field_path] if field_path else []
     if not isinstance(path, (str, os.PathLike)):
-        raise MediaError("INVALID_ARGUMENT", "媒體輸入必須是本機檔案路徑", field_paths=fields)
+        raise MediaError(
+            "INVALID_ARGUMENT", "媒體輸入必須是本機檔案路徑", field_paths=fields
+        )
     text = os.fspath(path)
     if isinstance(text, bytes) or not text or "\x00" in text:
         raise MediaError("INVALID_ARGUMENT", "媒體輸入路徑不合法", field_paths=fields)
-    if "://" in text or (not os.path.isabs(text) and _SCHEME.match(text)):
-        raise MediaError("INVALID_ARGUMENT", "只接受已上傳的本機 artifact，不讀取 URL 或協定字串", field_paths=fields)
-    resolved = Path(os.path.realpath(os.path.abspath(text)))
+    if "://" in text or (not Path(text).is_absolute() and _SCHEME.match(text)):
+        raise MediaError(
+            "INVALID_ARGUMENT",
+            "只接受已上傳的本機 artifact，不讀取 URL 或協定字串",
+            field_paths=fields,
+        )
+    resolved = Path(os.path.realpath(absolute(text)))
     try:
-        st = os.stat(resolved)
+        st = resolved.stat()
     except FileNotFoundError:
-        raise MediaError("INVALID_ARGUMENT", "媒體檔案不存在", field_paths=fields) from None
+        raise MediaError(
+            "INVALID_ARGUMENT", "媒體檔案不存在", field_paths=fields
+        ) from None
     except OSError as exc:
-        raise MediaError("INVALID_ARGUMENT", f"無法讀取媒體檔案：{exc.strerror}", field_paths=fields) from None
+        raise MediaError(
+            "INVALID_ARGUMENT", f"無法讀取媒體檔案：{exc.strerror}", field_paths=fields
+        ) from None
     if not stat.S_ISREG(st.st_mode):
         raise MediaError(
-            "INVALID_ARGUMENT", "媒體輸入必須是單一一般檔案（不接受目錄、裝置、FIFO 或 socket）", field_paths=fields
+            "INVALID_ARGUMENT",
+            "媒體輸入必須是單一一般檔案（不接受目錄、裝置、FIFO 或 socket）",
+            field_paths=fields,
         )
     if st.st_size <= 0:
         raise MediaError("INVALID_ARGUMENT", "媒體檔案是空的", field_paths=fields)
@@ -69,24 +85,35 @@ def check_local_file(
             expected=f"<= {limits.max_file_bytes} bytes",
             actual=f"{st.st_size} bytes",
         )
-    if allowed_roots is not None and not is_within(resolved, [Path(r) for r in allowed_roots]):
-        raise MediaError("INVALID_ARGUMENT", "媒體檔案不在授權的目錄內", field_paths=fields)
+    if allowed_roots is not None and not is_within(
+        resolved, [Path(r) for r in allowed_roots]
+    ):
+        raise MediaError(
+            "INVALID_ARGUMENT", "媒體檔案不在授權的目錄內", field_paths=fields
+        )
     return LocalFile(resolved, int(st.st_size), (st.st_dev, st.st_ino, st.st_mtime_ns))
 
 
 def unchanged_since(local: LocalFile) -> bool:
+    """Check whether the file still has its validated identity."""
     try:
-        st = os.stat(local.path)
+        st = Path(local.path).stat()
     except OSError:
         return False
-    return (st.st_dev, st.st_ino, st.st_mtime_ns) == local.inode and st.st_size == local.size_bytes
+    return (
+        st.st_dev,
+        st.st_ino,
+        st.st_mtime_ns,
+    ) == local.inode and st.st_size == local.size_bytes
 
 
-def file_sha256(path: str | os.PathLike[str], *, cancel: Any = None, chunk: int = HASH_CHUNK) -> tuple[str, int]:
+def file_sha256(
+    path: str | os.PathLike[str], *, cancel: Any = None, chunk: int = HASH_CHUNK
+) -> tuple[str, int]:
     """Streaming SHA-256 (lower-case hex, size) with cancel checks per chunk."""
     digest = hashlib.sha256()
     size = 0
-    with open(path, "rb") as fh:
+    with Path(path).open("rb") as fh:
         while True:
             raise_if_canceled(cancel, "雜湊計算")
             block = fh.read(chunk)
@@ -100,10 +127,13 @@ def file_sha256(path: str | os.PathLike[str], *, cancel: Any = None, chunk: int 
 def partial_path(final: Path, suffix: str | None = None) -> Path:
     """Hidden, unique temp path next to ``final`` (same filesystem for atomic rename)."""
     ext = final.suffix if suffix is None else suffix
-    return final.with_name(f".{final.stem}.partial-{os.getpid()}-{uuid.uuid4().hex[:12]}{ext}")
+    return final.with_name(
+        f".{final.stem}.partial-{os.getpid()}-{uuid.uuid4().hex[:12]}{ext}"
+    )
 
 
 def fsync_file(path: Path) -> None:
+    """Flush file contents to stable storage."""
     fd = os.open(path, os.O_RDONLY)
     try:
         os.fsync(fd)
@@ -112,6 +142,7 @@ def fsync_file(path: Path) -> None:
 
 
 def fsync_dir(directory: Path) -> None:
+    """Flush directory changes to stable storage."""
     try:
         fd = os.open(directory, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
     except OSError:
@@ -125,17 +156,18 @@ def fsync_dir(directory: Path) -> None:
 
 
 def publish(partial: Path, final: Path) -> None:
-    """fsync and atomically rename a finished temp file onto its final name."""
+    """Fsync and atomically rename a finished temp file onto its final name."""
     fsync_file(partial)
-    os.replace(partial, final)
+    Path(partial).replace(final)
     fsync_dir(final.parent)
 
 
 def remove_quietly(path: Path | None) -> None:
+    """Remove the temporary file if it exists."""
     if path is None:
         return
     try:
-        os.unlink(path)
+        Path(path).unlink()
     except FileNotFoundError:
         pass
     except OSError:
@@ -143,12 +175,13 @@ def remove_quietly(path: Path | None) -> None:
 
 
 def check_output_path(output: Any, *, inputs: Sequence[Path] = ()) -> Path:
+    """Validate a proposed destination before writing media."""
     if not isinstance(output, (str, os.PathLike)):
         raise MediaError("INVALID_ARGUMENT", "輸出必須是本機檔案路徑")
     text = os.fspath(output)
     if isinstance(text, bytes) or not text or "://" in text or "\x00" in text:
         raise MediaError("INVALID_ARGUMENT", "輸出路徑不合法")
-    final = Path(os.path.abspath(text))
+    final = absolute(text)
     if not final.parent.is_dir():
         raise MediaError("INVALID_ARGUMENT", "輸出目錄不存在")
     if final.exists() and not final.is_file():

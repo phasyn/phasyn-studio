@@ -14,7 +14,7 @@ export function formatBytes(value: number | null | undefined): string {
     unit += 1;
   }
   const sign = value < 0 ? "-" : "";
-  return `${sign}${unit === 0 ? n.toFixed(0) : n.toFixed(n >= 100 ? 1 : 2)} ${BINARY_UNITS[unit]}`;
+  return `${sign}${unit === 0 ? n.toFixed(0) : n.toFixed(n >= 100 ? 1 : 2)} ${String(BINARY_UNITS[unit])}`;
 }
 
 export function formatBytesExact(value: number | null | undefined): string {
@@ -44,7 +44,7 @@ export function formatGbps(value: number | null | undefined): string {
 /** 依 metric 的 unit 決定格式；value=null 時回傳「未量測」或「不適用」。 */
 export function formatMetric(metric: Metric | null | undefined): string {
   if (!metric) return t("未量測");
-  if (metric.value === null || metric.value === undefined) {
+  if (metric.value == null) {
     return metric.quality === "not_applicable" ? t("不適用") : t("未量測");
   }
   const v = metric.value;
@@ -60,7 +60,7 @@ export function formatMetric(metric: Metric | null | undefined): string {
     case "percent":
       return `${v.toFixed(1)} %`;
     default:
-      return metric.unit ? `${v} ${metric.unit}` : String(v);
+      return metric.unit ? `${String(v)} ${metric.unit}` : String(v);
   }
 }
 
@@ -81,11 +81,11 @@ export function nsDiffMs(startNs: string, endNs: string): number {
 
 /** UTC RFC3339 → 本地時區、目前介面語言的日期時間（24 小時制；只作查詢與粗排）。 */
 export function formatTimestamp(value: string | null | undefined): string {
-  if (!value) return "—";
+  if (!(value != null && value !== "")) return "—";
   return formatDateTime(value);
 }
 
 export function shortId(id: string | null | undefined, length = 8): string {
-  if (!id) return "—";
+  if (!(id != null && id !== "")) return "—";
   return id.length > length ? id.slice(0, length) : id;
 }

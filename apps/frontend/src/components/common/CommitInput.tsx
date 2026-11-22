@@ -30,38 +30,38 @@ export function CommitInput({
   /** Optional scoped form coordinator; ordinary inputs keep their blur/Enter behavior. */
   commitRef?: Ref<CommitInputHandle>;
 }) {
-  const input = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState<{ base: string; text: string; error: string | null } | null>(null);
-  const active = draft && draft.base === value ? draft : null;
+  const active = draft?.base === value ? draft : null;
   const text = active ? active.text : value;
   const error = active?.error ?? null;
   const errorId = `${id}-error`;
   const commit = (): boolean => {
-    if (disabled) return true;
+    if (disabled === true) return true;
     if (!active || active.text === value) {
       setDraft(null);
       return true;
     }
     const rejection = onCommit(active.text);
-    if (rejection) { setDraft({ ...active, error: rejection }); return false; }
+    if (rejection != null && rejection !== "") { setDraft({ ...active, error: rejection }); return false; }
     setDraft(null);
     return true;
   };
-  useImperativeHandle(commitRef, () => ({ commit, focus: () => input.current?.focus() }));
+  useImperativeHandle(commitRef, () => ({ commit, focus: () => inputRef.current?.focus() }));
   return (
     <div className={cn("grid min-w-0 gap-1", className)}>
       <Input
-        ref={input}
+        ref={inputRef}
         id={id}
         aria-label={label}
         className="machine"
         value={text}
         disabled={disabled}
         placeholder={placeholder}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={error ? errorId : undefined}
-        onChange={(event) => setDraft({ base: value, text: event.target.value, error: null })}
-        onBlur={commit}
+        aria-invalid={(error != null && error !== "") ? true : undefined}
+        aria-describedby={(error != null && error !== "") ? errorId : undefined}
+        onChange={(event) => { setDraft({ base: value, text: event.target.value, error: null }); }}
+        onBlur={() => { commit(); }}
         onKeyDown={(event) => {
           if (event.key === "Enter") {
             event.preventDefault();
@@ -72,7 +72,7 @@ export function CommitInput({
           }
         }}
       />
-      {error ? (
+      {(error != null && error !== "") ? (
         <p id={errorId} className="text-caption text-danger">
           {t("{error}（按 Esc 還原）", { error })}
         </p>

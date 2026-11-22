@@ -7,12 +7,13 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
+
 UINT64_MAX = 18_446_744_073_709_551_615
 _SEED = re.compile(r"^(0|[1-9][0-9]{0,19})$")
 
 
 def parse_seed(text: object) -> int:
-    """canonical decimal uint64 string -> int (no precision loss)."""
+    """Canonical decimal uint64 string -> int (no precision loss)."""
     if not isinstance(text, str) or not _SEED.match(text):
         raise ValueError("seed 必須是十進位 uint64 字串（無前導零、無符號）")
     value = int(text)
@@ -22,6 +23,7 @@ def parse_seed(text: object) -> int:
 
 
 def get_path(doc: Mapping[str, Any], path: str, default: Any = None) -> Any:
+    """Read a nested value by its path."""
     node: Any = doc
     for part in path.split("."):
         if not isinstance(node, Mapping) or part not in node:
@@ -31,6 +33,7 @@ def get_path(doc: Mapping[str, Any], path: str, default: Any = None) -> Any:
 
 
 def set_path(doc: dict[str, Any], path: str, value: Any) -> None:
+    """Write a nested value by its path."""
     parts = path.split(".")
     node = doc
     for part in parts[:-1]:
@@ -43,8 +46,7 @@ def set_path(doc: dict[str, Any], path: str, value: Any) -> None:
 
 
 def deep_merge(base: Mapping[str, Any], overlay: Mapping[str, Any]) -> dict[str, Any]:
-    """Objects merge recursively, arrays replace wholesale, an explicit null replaces
-    (only legal on nullable fields — checked by the schema)."""
+    """Objects merge recursively, arrays replace wholesale, an explicit null replaces (only legal on nullable fields — checked by the schema)."""
     out = copy.deepcopy(dict(base))
     for key, value in overlay.items():
         if isinstance(value, Mapping) and isinstance(out.get(key), Mapping):

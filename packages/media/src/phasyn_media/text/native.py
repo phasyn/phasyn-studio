@@ -15,17 +15,30 @@ from typing import Any
 
 from .model import TextFailure
 
+
+_LP64_BYTES = 8
+
+
 _MACHINES = frozenset({"x86_64", "aarch64"})
 
 
 def unavailable(detail: str) -> TextFailure:
+    """Build an error describing the unavailable text backend."""
     return TextFailure("text_renderer_unavailable", detail)
 
 
 def require_supported_platform() -> None:
     """Refuse every platform the structure layouts were not written for."""
-    lp64 = ctypes.sizeof(ctypes.c_long) == 8 and ctypes.sizeof(ctypes.c_void_p) == 8
-    if sys.platform != "linux" or platform.machine() not in _MACHINES or not lp64 or sys.byteorder != "little":
+    lp64 = (
+        ctypes.sizeof(ctypes.c_long) == _LP64_BYTES
+        and ctypes.sizeof(ctypes.c_void_p) == _LP64_BYTES
+    )
+    if (
+        sys.platform != "linux"
+        or platform.machine() not in _MACHINES
+        or not lp64
+        or sys.byteorder != "little"
+    ):
         raise unavailable("unsupported platform")
 
 

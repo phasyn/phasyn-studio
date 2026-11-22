@@ -24,11 +24,14 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from .nodeclient import CONNECT_TIMEOUT_S, transport_error
 
+
 if TYPE_CHECKING:
     from .state import Controller
 
 UPLOAD_BUFFER_BYTES = 8 * 1024 * 1024
-MEDIA_TIMEOUT = httpx.Timeout(connect=CONNECT_TIMEOUT_S, read=60.0, write=30.0, pool=CONNECT_TIMEOUT_S)
+MEDIA_TIMEOUT = httpx.Timeout(
+    connect=CONNECT_TIMEOUT_S, read=60.0, write=30.0, pool=CONNECT_TIMEOUT_S
+)
 RELAY_HEADERS = (
     "content-type",
     "content-length",
@@ -41,10 +44,15 @@ RELAY_HEADERS = (
 )
 
 
-async def proxy_node_file(ctl: Controller, node_id: str, file_id: str, range_header: str | None) -> Response:
+async def proxy_node_file(
+    ctl: Controller, node_id: str, file_id: str, range_header: str | None
+) -> Response:
+    """Stream the requested Node file and forward supported range headers."""
     endpoint = ctl.catalog.endpoint_for_read(node_id)
     headers = {"Range": range_header} if range_header else {}
-    request = ctl.http.build_request("GET", f"{endpoint}/api/files/{file_id}", headers=headers, timeout=MEDIA_TIMEOUT)
+    request = ctl.http.build_request(
+        "GET", f"{endpoint}/api/files/{file_id}", headers=headers, timeout=MEDIA_TIMEOUT
+    )
     try:
         upstream = await ctl.http.send(request, stream=True)
     except httpx.HTTPError as exc:
@@ -56,8 +64,14 @@ async def proxy_node_file(ctl: Controller, node_id: str, file_id: str, range_hea
             side_effect=False,
             read_timeout=MEDIA_TIMEOUT.read,
         ) from exc
-    relayed = {name: upstream.headers[name] for name in RELAY_HEADERS if name in upstream.headers}
-    relayed.update(FILE_SECURITY_HEADERS)  # a Node's file is served from the controller's origin here
+    relayed = {
+        name: upstream.headers[name]
+        for name in RELAY_HEADERS
+        if name in upstream.headers
+    }
+    relayed.update(
+        FILE_SECURITY_HEADERS
+    )  # a Node's file is served from the controller's origin here
 
     async def body() -> AsyncIterator[bytes]:
         try:
@@ -69,11 +83,15 @@ async def proxy_node_file(ctl: Controller, node_id: str, file_id: str, range_hea
     # Both closers are needed: Starlette skips the background task when the client disconnects mid-stream,
     # and the generator's finally never runs when the body is not iterated at all. aclose() is idempotent.
     return StreamingResponse(
-        body(), status_code=upstream.status_code, headers=relayed, background=BackgroundTask(upstream.aclose)
+        body(),
+        status_code=upstream.status_code,
+        headers=relayed,
+        background=BackgroundTask(upstream.aclose),
     )
 
 
 def routes(ctl: Controller) -> APIRouter:
+    """Build the Controller routes for files."""
     router = APIRouter()
 
     @router.post("/api/files")

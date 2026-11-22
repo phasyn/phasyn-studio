@@ -15,7 +15,7 @@ export function csvCell(value: unknown): string {
   return /[",\r\n]/.test(text) || text !== text.trim() ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
-export function toCsv(header: readonly string[], rows: ReadonlyArray<readonly unknown[]>): string {
+export function toCsv(header: readonly string[], rows: readonly (readonly unknown[])[]): string {
   return [header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
 }
 

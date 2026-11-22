@@ -52,7 +52,10 @@ def _blocks_extension(effects: Mapping[str, Any]) -> bool:
     anchored = [
         hold.get("start"),
         hold.get("end"),
-        *(fade.get(name) for name in ("video_in", "video_out", "audio_in", "audio_out")),
+        *(
+            fade.get(name)
+            for name in ("video_in", "video_out", "audio_in", "audio_out")
+        ),
     ]
     return (
         any(anchored)
@@ -62,7 +65,9 @@ def _blocks_extension(effects: Mapping[str, Any]) -> bool:
     )
 
 
-def _extend(clip: Mapping[str, Any], edge: str, delta: int, start: int, end: int) -> Doc:
+def _extend(
+    clip: Mapping[str, Any], edge: str, delta: int, start: int, end: int
+) -> Doc:
     """Grow the processed clock into the source handles before and after it; ``start``/``end`` are the wanted window."""
     effects = clip.get("effects") or {}
     complete = processed_clip_duration(clip)
@@ -70,8 +75,14 @@ def _extend(clip: Mapping[str, Any], edge: str, delta: int, start: int, end: int
         reject("effect_phase", "延長前請先調整停格、淡入淡出、震動或轉場效果")
     before, after = max(0, -start), max(0, end - complete)
     speed = int(effects.get("speed_percent", 100))
-    if before * speed % 100 or after * speed % 100 or before % int(effects.get("frame_step", 1)):
-        reject("effect_phase", "這個切點無法保留變速或動畫拍數的取樣相位；請選擇對齊的影格")
+    if (
+        before * speed % 100
+        or after * speed % 100
+        or before % int(effects.get("frame_step", 1))
+    ):
+        reject(
+            "effect_phase", "這個切點無法保留變速或動畫拍數的取樣相位；請選擇對齊的影格"
+        )
     value: Doc = copy.deepcopy(dict(clip))
     value["start_frame"] = clip["start_frame"] + (delta if edge == "in" else 0)
     value["in_frame"] = clip["in_frame"] - before * speed // 100
@@ -79,11 +90,16 @@ def _extend(clip: Mapping[str, Any], edge: str, delta: int, start: int, end: int
     value["output_window"] = {"start_frame": start + before, "end_frame": end + before}
     if before:
         value = map_clip_keyframes(
-            value, lambda keys, _fallback: [{**key, "frame": key["frame"] + before} for key in keys]
+            value,
+            lambda keys, _fallback: [
+                {**key, "frame": key["frame"] + before} for key in keys
+            ],
         )
         title = (value.get("effects") or {}).get("title")
         if title:
-            shifted_end = (title["end_frame"] if title["end_frame"] is not None else complete) + before
+            shifted_end = (
+                title["end_frame"] if title["end_frame"] is not None else complete
+            ) + before
             value["effects"]["title"] = {
                 **title,
                 "start_frame": title["start_frame"] + before,
@@ -101,7 +117,10 @@ def resize_clip(clip: Mapping[str, Any], edge: str, delta: int) -> Doc:
         return dict(clip)
     if (edge == "in" and delta > 0) or (edge == "out" and delta < 0):
         return slice_clip(
-            clip, delta if edge == "in" else 0, duration + delta if edge == "out" else duration, clip["clip_id"]
+            clip,
+            delta if edge == "in" else 0,
+            duration + delta if edge == "out" else duration,
+            clip["clip_id"],
         )
     window_start, window_end = clip_output_window(clip)
     start = window_start + (delta if edge == "in" else 0)

@@ -50,6 +50,8 @@ import { t } from "@/i18n";
 import { T } from "@/i18n/T";
 import { formatList } from "@/i18n/format";
 
+const EMPTY_ITEMS = [] as const;
+
 export type WorkbenchTab = "snippets" | "references" | "advisor";
 
 const WORKBENCH_TABS: readonly string[] = ["snippets", "references", "advisor"] satisfies readonly WorkbenchTab[];
@@ -80,6 +82,8 @@ export interface PromptWorkbenchProps {
   frames: number;
   /** 鏡頭的 H3 任務（給「修正與建議」）。 */
   mode?: PromptTask;
+  /** 路線由驅動素材生成：不提醒參考「沒有在 prompt 中使用」（PromptEditor 的同名屬性）。 */
+  drivenByReferences?: boolean;
   contextLabel?: string;
   disabled?: boolean;
   initialSelection: number | "full";
@@ -104,11 +108,12 @@ export function PromptWorkbench({
   durationSeconds = null,
   frames,
   mode,
+  drivenByReferences = false,
   contextLabel,
   disabled = false,
   initialSelection,
   initialTab,
-  blockers = [],
+  blockers = EMPTY_ITEMS,
   onClose,
 }: PromptWorkbenchProps) {
   const id = useId();
@@ -120,14 +125,14 @@ export function PromptWorkbench({
   const editorRef = useRef<MentionTextareaHandle>(null);
   // 「跳到這段」：位置是全文的 offset，區塊模式時先切回全文，等全文編輯區掛上再選取。
   // 插入範本後選到新區塊時，等它的內容編輯區掛上再把焦點移過去。
-  const pendingReveal = useRef<{ start: number; end: number } | null>(null);
-  const pendingFocus = useRef(false);
+  const pendingRevealRef = useRef<{ start: number; end: number } | null>(null);
+  const pendingFocusRef = useRef(false);
   const selected = selection !== "full" && doc.blocks[selection] ? selection : "full";
   const block = selected === "full" ? null : (doc.blocks[selected] ?? null);
   const options = useMemo(() => mentionOptions(references, library), [references, library]);
   const compiled = useMemo(() => compilePrompt(value, references, library), [value, references, library]);
   const labels = useMemo(() => aliasLabels(references), [references]);
-  const notes = useMemo(() => analyzePrompt(doc, value, { references, usedAliases: compiled.usedAliases, durationSeconds }), [doc, value, references, compiled.usedAliases, durationSeconds]);
+  const notes = useMemo(() => analyzePrompt(doc, value, { references, usedAliases: compiled.usedAliases, durationSeconds, drivenByReferences }), [doc, value, references, compiled.usedAliases, durationSeconds, drivenByReferences]);
   const timeline = proposeTimelineBlock(doc, durationSeconds);
   const missing = missingSections(doc);
   const problems = compiled.problems;
@@ -136,7 +141,7 @@ export function PromptWorkbench({
   const applyText = (text: string, message: string, offset: number | null) => {
     if (!notice.apply(text, message) || offset === null) return;
     const index = blockIndexAt(parsePrompt(text), offset);
-    pendingFocus.current = true;
+    pendingFocusRef.current = true;
     setSelection(index >= 0 ? index : "full");
   };
   const applyDoc = (next: PromptDocument, message: string, select: number | "full") => {
@@ -146,7 +151,7 @@ export function PromptWorkbench({
     const result = insertFragment(doc, index, fragment);
     applyText(result.text, message, result.offset);
   };
-  const tooLong = () => notice.report(t("插入後會超過 {promptMaxLength} 字元上限，沒有插入", { promptMaxLength: PROMPT_MAX_LENGTH.toLocaleString("en-US") }));
+  const tooLong = () => { notice.report(t("插入後會超過 {promptMaxLength} 字元上限，沒有插入", { promptMaxLength: PROMPT_MAX_LENGTH.toLocaleString("en-US") })); };
   const blockName = block ? describeBlock(block).title || describeBlock(block).kind : "";
   // The inline editor mounts this dialog itself (no Dialog.Trigger): it opens on the text editor, and on close focus
   // returns to the control that had it when the dialog opened.
@@ -160,12 +165,12 @@ export function PromptWorkbench({
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
-    const range = pendingReveal.current;
+    const range = pendingRevealRef.current;
     if (range && selected === "full") {
-      pendingReveal.current = null;
+      pendingRevealRef.current = null;
       editor.selectRange(range.start, range.end);
-    } else if (pendingFocus.current) {
-      pendingFocus.current = false;
+    } else if (pendingFocusRef.current) {
+      pendingFocusRef.current = false;
       editor.focus();
     }
     // value：插入後選取的區塊位置可能沒變（例如新區段插在最前面），仍要在這次更新後處理
@@ -176,7 +181,7 @@ export function PromptWorkbench({
       editorRef.current.selectRange(start, end);
       return;
     }
-    pendingReveal.current = { start, end };
+    pendingRevealRef.current = { start, end };
     setSelection("full");
   };
   /** 修正與建議的範本：有標題的區塊附加在選取的區塊後面，其他文字插入到游標位置。 */
@@ -206,12 +211,12 @@ export function PromptWorkbench({
               <PenLine aria-hidden className="size-4 text-brand-cyan" />
               {t("專業 Prompt 編輯器")}
             </DialogPrimitive.Title>
-            {contextLabel ? <span className="min-w-0 truncate text-data text-fg-secondary">{contextLabel}</span> : null}
+            {(contextLabel != null && contextLabel !== "") ? <span className="min-w-0 truncate text-data text-fg-secondary">{contextLabel}</span> : null}
             <DialogPrimitive.Description id={`${id}-description`} className="sr-only">
               {t("左側是區塊大綱與範本，中間編輯全文或選取的區塊，右側是固定 Prompt 片段庫與參考素材。修改會立即套用到鏡頭的 prompt。")}
             </DialogPrimitive.Description>
             <span className="ml-auto flex shrink-0 items-center gap-2">
-              <Button size="sm" variant="secondary" icon={<RemoveFormatting aria-hidden />} disabled={disabled || value.trim().length === 0} onClick={() => setFormatOpen(true)}>
+              <Button size="sm" variant="secondary" icon={<RemoveFormatting aria-hidden />} disabled={disabled || value.trim().length === 0} onClick={() => { setFormatOpen(true); }}>
                 {t("格式化…")}
               </Button>
               <DialogPrimitive.Close asChild>
@@ -232,7 +237,7 @@ export function PromptWorkbench({
               <div className="min-h-0 flex-1 overflow-y-auto p-2">
                 <button
                   type="button"
-                  onClick={() => setSelection("full")}
+                  onClick={() => { setSelection("full"); }}
                   aria-current={selected === "full" ? "true" : undefined}
                   className={cn(
                     LIST_ROW,
@@ -241,7 +246,7 @@ export function PromptWorkbench({
                   )}
                 >
                   <FileText aria-hidden className={cn("size-4", selected === "full" ? "text-brand-cyan" : "text-fg-tertiary")} />
-                  <T source={"全文<0>{valueCount}</0>"} values={{ valueCount: value.length.toLocaleString("en-US") }} slots={[<span className="machine ml-auto text-caption text-fg-tertiary" />]} />
+                  <T source={"全文<0>{valueCount}</0>"} values={{ valueCount: value.length.toLocaleString("en-US") }} slots={[<span key="slot-0" className="machine ml-auto text-caption text-fg-tertiary" />]} />
                 </button>
                 <p className="px-2 pt-3 pb-1 text-caption text-fg-tertiary">{t("區塊（{blocksCount}）", { blocksCount: doc.blocks.length })}</p>
                 {doc.blocks.length === 0 ? (
@@ -259,9 +264,9 @@ export function PromptWorkbench({
                   icon={<Timer aria-hidden />}
                   disabled={disabled}
                   title={t("插入 {fragment}", { fragment: timeline.fragment })}
-                  onClick={() => insertBlock(timeline.index, timeline.fragment, t("已新增時間軸區塊 {label}", { label: timeline.label }))}
+                  onClick={() => { insertBlock(timeline.index, timeline.fragment, t("已新增時間軸區塊 {label}", { label: timeline.label })); }}
                 >
-                  <T source={"時間軸區塊<0>{label}</0>"} values={{ label: timeline.label }} slots={[<span className="machine ml-auto truncate text-caption text-fg-tertiary" />]} />
+                  <T source={"時間軸區塊<0>{label}</0>"} values={{ label: timeline.label }} slots={[<span key="slot-0" className="machine ml-auto truncate text-caption text-fg-tertiary" />]} />
                 </Button>
                 {timeline.exceeds ? (
                   <p className="px-1 text-caption text-warning">
@@ -282,7 +287,7 @@ export function PromptWorkbench({
                   {t("補上完整格式的段落")}
                 </Button>
                 <p className="px-1 text-caption leading-5 text-fg-tertiary">{missing.length === 0 ? t("完整格式的 6 段都在了。") : t("加上缺少的 {missingCount} 段，內容留空。", { missingCount: missing.length })}</p>
-                <Button size="sm" variant="quiet" className="justify-start px-2" icon={<Heading aria-hidden />} disabled={disabled} onClick={() => insertBlock(insertIndex, t("**新區塊：**"), t("已新增標題區塊「新區塊」"))}>
+                <Button size="sm" variant="quiet" className="justify-start px-2" icon={<Heading aria-hidden />} disabled={disabled} onClick={() => { insertBlock(insertIndex, t("**新區塊：**"), t("已新增標題區塊「新區塊」")); }}>
                   {t("標題區塊")}
                 </Button>
               </div>
@@ -298,9 +303,9 @@ export function PromptWorkbench({
                   options={options}
                   editorRef={editorRef}
                   disabled={disabled}
-                  onMove={(delta) => applyDoc(moveBlock(doc, selected, delta), t("已{value}「{blockName}」", { value: delta < 0 ? t("上移") : t("下移"), blockName }), selected + delta)}
-                  onDuplicate={() => applyDoc(duplicateBlock(doc, selected), t("已複製「{blockName}」", { blockName }), selected + 1)}
-                  onDelete={() => applyDoc(deleteBlock(doc, selected), t("已刪除「{blockName}」", { blockName }), doc.blocks.length > 1 ? Math.min(selected, doc.blocks.length - 2) : "full")}
+                  onMove={(delta) => { applyDoc(moveBlock(doc, selected, delta), t("已{value}「{blockName}」", { value: delta < 0 ? t("上移") : t("下移"), blockName }), selected + delta); }}
+                  onDuplicate={() => { applyDoc(duplicateBlock(doc, selected), t("已複製「{blockName}」", { blockName }), selected + 1); }}
+                  onDelete={() => { applyDoc(deleteBlock(doc, selected), t("已刪除「{blockName}」", { blockName }), doc.blocks.length > 1 ? Math.min(selected, doc.blocks.length - 2) : "full"); }}
                 />
               ) : (
                 <div className="flex min-h-0 flex-1 flex-col gap-2 p-4">
@@ -358,18 +363,18 @@ export function PromptWorkbench({
                 }}
                 tabs={[
                   { id: "snippets", label: t("固定 Prompt"), icon: BookMarked },
-                  { id: "references", label: t("參考"), icon: AtSign, count: references.length || undefined },
+                  { id: "references", label: t("參考"), icon: AtSign, ...(references.length ? { count: references.length } : {}) },
                   { id: "advisor", label: t("修正與建議"), icon: Lightbulb },
                 ]}
               />
-              <div role="tabpanel" id={`${id}-side-panel-${tab}`} aria-labelledby={`${id}-side-tab-${tab}`} tabIndex={0} className="flex min-h-0 flex-1 flex-col outline-none">
+              <div role="tabpanel" id={`${id}-side-panel-${tab}`} aria-labelledby={`${id}-side-tab-${tab}`}  /* eslint-disable-line jsx-a11y-x/no-noninteractive-tabindex -- The tab panel is a keyboard destination even when its content has no interactive controls. */ tabIndex={0} className="flex min-h-0 flex-1 flex-col outline-none">
                 {tab === "snippets" ? (
                   <SnippetLibraryPanel
                     disabled={disabled}
                     onInsertAtCursor={(text) => {
                       if (editorRef.current?.insertText(text) === false) tooLong();
                     }}
-                    onAppendBlock={(text, title) => insertBlock(insertIndex, text, t("已附加固定 Prompt「{title}」", { title }))}
+                    onAppendBlock={(text, title) => { insertBlock(insertIndex, text, t("已附加固定 Prompt「{title}」", { title })); }}
                     readSelection={() => editorRef.current?.selection().text ?? ""}
                     currentBlock={block ? { title: blockName, text: blockText(block) } : null}
                   />
@@ -407,9 +412,9 @@ export function PromptWorkbench({
                       frames={frames}
                       references={references}
                       library={library}
-                      mode={mode}
+                      {...(mode === undefined ? {} : { mode })}
                       disabled={disabled}
-                      onApplyFix={(next, label) => notice.apply(next, t("已套用：{label}", { label }))}
+                      onApplyFix={(next, label) => void notice.apply(next, t("已套用：{label}", { label }))}
                       onRevealRange={revealRange}
                       onInsertTemplate={insertTemplate}
                     />
@@ -427,7 +432,7 @@ export function PromptWorkbench({
             blocks={doc.blocks.length}
             durationSeconds={durationSeconds}
           />
-          {formatOpen ? <FormatDialog open onOpenChange={setFormatOpen} value={value} onApply={(next, message) => notice.apply(next, message)} /> : null}
+          {formatOpen ? <FormatDialog open onOpenChange={setFormatOpen} value={value} onApply={(next, message) => void notice.apply(next, message)} /> : null}
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
     </DialogPrimitive.Root>

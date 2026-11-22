@@ -1,3 +1,5 @@
+import { isNonzeroNumber } from "@/lib/json";
+import { hasSlotContent } from "@/lib/dom";
 // 屬性面板的欄位：標籤列（固定的說明放在標籤旁的 ⓘ，不常駐在欄位下方）、數字欄位（輸入期間保留草稿，Enter 或離開時
 // 才驗證並送出；不合法時保留輸入並說明）、分段選擇（原生 radio：方向鍵切換、Tab 一個停駐點；選取的底塊用 snappy 彈簧滑到
 // 新選項，按下有 pressable 回饋）。
@@ -33,15 +35,15 @@ export function Row({
         <label id={id} htmlFor={htmlFor} className="text-caption font-medium text-fg-secondary">
           {label}
         </label>
-        {info && typeof label === "string" ? (
+        {hasSlotContent(info) && typeof label === "string" ? (
           <InfoTip label={label} className="-my-0.5">
             {info}
           </InfoTip>
         ) : null}
-        {actions ? <div className="ml-auto flex items-center gap-1">{actions}</div> : null}
+        {hasSlotContent(actions) ? <div className="ml-auto flex items-center gap-1">{actions}</div> : null}
       </div>
       {children}
-      {hint ? <div className="text-caption text-fg-tertiary [overflow-wrap:anywhere]">{hint}</div> : null}
+      {hasSlotContent(hint) ? <div className="text-caption text-fg-tertiary [overflow-wrap:anywhere]">{hint}</div> : null}
     </div>
   );
 }
@@ -94,7 +96,7 @@ export function NumberField({
       onCommit(null);
     } else {
       const parsed = Number(text);
-      const kind = multiple ? t("{multiple} 的倍數", { multiple }) : integer ? t("整數") : t("數字");
+      const kind = isNonzeroNumber(multiple) ? t("{multiple} 的倍數", { multiple }) : integer ? t("整數") : t("數字");
       if (text === "" || !Number.isFinite(parsed) || parsed < min || parsed > max || (integer && !Number.isInteger(parsed)) || (multiple !== undefined && parsed % multiple !== 0)) {
         setError(t("請輸入 {min}–{max} 之間的{kind}", { min, max, kind }));
         return;
@@ -104,22 +106,22 @@ export function NumberField({
     setDraft(null);
     setError(null);
   };
-  const described = [describedBy, error ? `${id}-error` : null].filter(Boolean).join(" ") || undefined;
+  const described = [describedBy, (error != null && error !== "") ? `${id}-error` : null].filter(Boolean).join(" ") || undefined;
   return (
     <span className={cn("grid gap-1", className)}>
       <Input
         id={id}
         compact
-        inputMode={integer || multiple ? "numeric" : "decimal"}
+        inputMode={integer || Boolean(multiple) ? "numeric" : "decimal"}
         value={shown}
         placeholder={placeholder}
         disabled={disabled}
         aria-label={label}
-        aria-invalid={error ? true : undefined}
+        aria-invalid={(error != null && error !== "") ? true : undefined}
         aria-describedby={described}
         onChange={(event) => {
           // A valid value takes effect as it is typed: "Generate" (or Ctrl+Enter) right after typing must use it, not the
-          // value from before (UI #33). An incomplete value stays a draft until it is valid or the field loses focus.
+          // value from before. An incomplete value stays a draft until it is valid or the field loses focus.
           const text = event.target.value;
           setDraft(text);
           const next = parse(text.trim());
@@ -139,7 +141,7 @@ export function NumberField({
         }}
         className="machine"
       />
-      {error ? (
+      {(error != null && error !== "") ? (
         <span id={`${id}-error`} role="alert" className="text-caption text-danger">
           {error}
         </span>
@@ -197,7 +199,7 @@ export function Segmented<T extends string>({
               selected ? "font-medium text-fg [&_svg]:text-brand-cyan" : "text-fg-tertiary hover:text-fg-secondary",
             )}
           >
-            <input type="radio" name={name} value={option.value} checked={selected} disabled={disabled} onChange={() => onChange(option.value)} className="sr-only" />
+            <input type="radio" name={name} value={option.value} checked={selected} disabled={disabled} onChange={() => { onChange(option.value); }} className="sr-only" />
             {option.icon}
             {option.label}
           </label>

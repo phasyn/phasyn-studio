@@ -34,45 +34,45 @@ export function useStudyDocument(initial: PromptStudy): StudyDocument {
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [saveError, setSaveError] = useState<unknown>(null);
   const latestRef = useRef(initial);
-  const queue = useRef<Promise<unknown>>(Promise.resolve());
-  const conflicted = useRef(false);
-  const mounted = useRef(true);
+  const queueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const conflictedRef = useRef(false);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
-    mounted.current = true;
+    mountedRef.current = true;
     return () => {
-      mounted.current = false;
+      mountedRef.current = false;
     };
   }, []);
 
   const update = useCallback(
     (change: (current: PromptStudy) => PromptStudy): Promise<PromptStudy> => {
-      const job = queue.current.then(async () => {
-        if (conflicted.current) throw new StudyConflictError();
+      const job = queueRef.current.then(async () => {
+        if (conflictedRef.current) throw new StudyConflictError();
         const base = latestRef.current;
         const next = change(base);
         if (next === base) return base;
-        if (mounted.current) setSaveState("saving");
+        if (mountedRef.current) setSaveState("saving");
         try {
           const saved = await saveStudy({ ...next, revision: base.revision });
           latestRef.current = saved;
           publishStudy(client, saved);
-          if (mounted.current) {
+          if (mountedRef.current) {
             setStudy(saved);
             setSaveState("saved");
             setSaveError(null);
           }
           return saved;
         } catch (error) {
-          if (isApiError(error) && error.code === "REVISION_CONFLICT") conflicted.current = true;
-          if (mounted.current) {
-            setSaveState(conflicted.current ? "conflict" : "error");
+          if (isApiError(error) && error.code === "REVISION_CONFLICT") conflictedRef.current = true;
+          if (mountedRef.current) {
+            setSaveState(conflictedRef.current ? "conflict" : "error");
             setSaveError(error);
           }
           throw error;
         }
       });
-      queue.current = job.catch(() => undefined);
+      queueRef.current = job.catch(() => undefined);
       return job;
     },
     [client],
@@ -80,10 +80,10 @@ export function useStudyDocument(initial: PromptStudy): StudyDocument {
 
   const reload = useCallback(async () => {
     const fresh = await fetchStudy(latestRef.current.study_id);
-    conflicted.current = false;
+    conflictedRef.current = false;
     latestRef.current = fresh;
     publishStudy(client, fresh);
-    if (mounted.current) {
+    if (mountedRef.current) {
       setStudy(fresh);
       setSaveState("saved");
       setSaveError(null);

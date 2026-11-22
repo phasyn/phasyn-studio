@@ -1,6 +1,7 @@
 // 專業編輯器右側的固定 Prompt 片段庫：搜尋、分類、插入到游標／附加為新區塊、把選取文字或目前區塊存成片段、
 // 編輯與刪除。整份片段庫以 revision 保存；409 → 已重新載入並告知，草稿保留，絕不自動重送。
 // 外觀：表單與展開的片段以 reveal 出現；清單逐項 rise-in（stagger）；分類是膠囊小籤；空片段庫用 EmptyState。
+import { focusOpenedControl } from "@/lib/dom";
 import { BookMarked, ClipboardPlus, CornerDownLeft, ListPlus, LoaderCircle, Pencil, Plus, Save, Trash2, TriangleAlert } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import type { StudioPromptLibrary } from "@/api/generated/contracts";
@@ -64,7 +65,7 @@ export function SnippetLibraryPanel({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
-  const deleteButton = useRef<HTMLButtonElement>(null);
+  const deleteButtonRef = useRef<HTMLButtonElement>(null);
   const [feedback, setFeedback] = useState<{ tone: "success" | "warning"; text: string } | null>(null);
   const library = query.data ?? null;
   const snippets = library?.snippets ?? [];
@@ -96,7 +97,7 @@ export function SnippetLibraryPanel({
   const submit = () => {
     if (!form || !library) return;
     const problem = snippetDraftError(form.draft);
-    if (problem) {
+    if (problem != null && problem !== "") {
       setForm({ ...form, error: problem, missing: false });
       return;
     }
@@ -141,8 +142,8 @@ export function SnippetLibraryPanel({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="grid gap-2 border-b border-line-subtle p-3">
         <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,0.75fr)] gap-1.5">
-          <Input compact value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("搜尋名稱或內容")} aria-label={t("搜尋固定 Prompt")} />
-          <Select compact value={category} onChange={(event) => setCategory(event.target.value)} aria-label={t("分類")}>
+          <Input compact value={search} onChange={(event) => { setSearch(event.target.value); }} placeholder={t("搜尋名稱或內容")} aria-label={t("搜尋固定 Prompt")} />
+          <Select compact value={category} onChange={(event) => { setCategory(event.target.value); }} aria-label={t("分類")}>
             <option value={ALL_CATEGORIES}>{t("全部分類")}</option>
             {categories.map((name) => (
               <option key={name} value={categoryFilterValue(name)}>
@@ -153,7 +154,7 @@ export function SnippetLibraryPanel({
           </Select>
         </div>
         <div className="flex flex-wrap gap-1">
-          <Button size="sm" variant="secondary" className="min-h-7 px-2" icon={<Plus aria-hidden />} disabled={busy || !library} onClick={() => openForm({ id: null, draft: emptyDraft(), error: null })}>
+          <Button size="sm" variant="secondary" className="min-h-7 px-2" icon={<Plus aria-hidden />} disabled={busy || !library} onClick={() => { openForm({ id: null, draft: emptyDraft(), error: null }); }}>
             {t("新增")}
           </Button>
           <Button size="sm" variant="quiet" className="min-h-7 px-2" icon={<ClipboardPlus aria-hidden />} disabled={busy || !library} onClick={fromSelection}>
@@ -166,7 +167,7 @@ export function SnippetLibraryPanel({
             icon={<ListPlus aria-hidden />}
             disabled={busy || !library || !currentBlock}
             title={currentBlock ? undefined : t("先在左側選一個區塊")}
-            onClick={() => currentBlock && openForm({ id: null, draft: emptyDraft(currentBlock.text, currentBlock.title), error: null })}
+            onClick={() => { if (currentBlock) openForm({ id: null, draft: emptyDraft(currentBlock.text, currentBlock.title), error: null }); }}
           >
             {t("目前區塊存成片段")}
           </Button>
@@ -181,7 +182,7 @@ export function SnippetLibraryPanel({
       </div>
 
       {form ? (
-        <form
+        <form /* eslint-disable-line jsx-a11y-x/no-noninteractive-element-interactions -- The form handles Escape from its focused edit fields and retains native submit semantics. */
           className="grid gap-2 border-b border-line-subtle bg-canvas p-3 animate-reveal"
           data-escape-local="true"
           onSubmit={(event) => {
@@ -195,18 +196,18 @@ export function SnippetLibraryPanel({
               setForm(null);
             }
           }}
-          aria-label={form.id ? t("編輯固定 Prompt") : t("新增固定 Prompt")}
+          aria-label={(form.id != null && form.id !== "") ? t("編輯固定 Prompt") : t("新增固定 Prompt")}
         >
-          <p className="text-data font-semibold text-fg">{form.id ? t("編輯固定 Prompt") : t("新增固定 Prompt")}</p>
+          <p className="text-data font-semibold text-fg">{(form.id != null && form.id !== "") ? t("編輯固定 Prompt") : t("新增固定 Prompt")}</p>
           <label className="grid gap-1 text-caption text-fg-secondary" htmlFor={`${id}-title`}>
             {t("名稱")}
             <Input
               id={`${id}-title`}
               compact
-              autoFocus
+              ref={focusOpenedControl}
               value={form.draft.title}
               maxLength={SNIPPET_LIMITS.title}
-              onChange={(event) => setForm({ ...form, draft: { ...form.draft, title: event.target.value }, error: null, missing: false })}
+              onChange={(event) => { setForm({ ...form, draft: { ...form.draft, title: event.target.value }, error: null, missing: false }); }}
             />
           </label>
           <label className="grid gap-1 text-caption text-fg-secondary" htmlFor={`${id}-category`}>
@@ -214,13 +215,13 @@ export function SnippetLibraryPanel({
               {categories.map((name) => (
                 <option key={name} value={name} />
               ))}
-            </datalist> }} slots={[<Input
+            </datalist> }} slots={[<Input key="slot-0"
               id={`${id}-category`}
               compact
               list={`${id}-categories`}
               value={form.draft.category}
               maxLength={SNIPPET_LIMITS.category}
-              onChange={(event) => setForm({ ...form, draft: { ...form.draft, category: event.target.value }, error: null, missing: false })}
+              onChange={(event) => { setForm({ ...form, draft: { ...form.draft, category: event.target.value }, error: null, missing: false }); }}
             />]} />
           </label>
           <label className="grid gap-1 text-caption text-fg-secondary" htmlFor={`${id}-text`}>
@@ -231,22 +232,22 @@ export function SnippetLibraryPanel({
               value={form.draft.text}
               maxLength={SNIPPET_LIMITS.text}
               rows={6}
-              onChange={(event) => setForm({ ...form, draft: { ...form.draft, text: event.target.value }, error: null, missing: false })}
+              onChange={(event) => { setForm({ ...form, draft: { ...form.draft, text: event.target.value }, error: null, missing: false }); }}
               className="leading-6"
             />
           </label>
-          {form.error ? (
+          {(form.error != null && form.error !== "") ? (
             <p role="alert" className="text-caption text-danger">
               {form.error}
             </p>
           ) : null}
           <div className="flex flex-wrap justify-end gap-1.5">
-            {form.id !== null && form.missing && form.error !== null ? (
-              <Button size="sm" variant="secondary" onClick={() => setForm({ ...form, id: null, error: null, missing: false })}>
+            {form.id !== null && (form.missing === true) && form.error !== null ? (
+              <Button size="sm" variant="secondary" onClick={() => { setForm({ ...form, id: null, error: null, missing: false }); }}>
                 {t("改成另存新片段")}
               </Button>
             ) : null}
-            <Button size="sm" variant="secondary" onClick={() => setForm(null)} disabled={save.isPending}>
+            <Button size="sm" variant="secondary" onClick={() => { setForm(null); }} disabled={save.isPending}>
               {t("取消")}
             </Button>
             <Button size="sm" variant="primary" type="submit" icon={<Save aria-hidden />} pending={save.isPending}>
@@ -291,7 +292,7 @@ export function SnippetLibraryPanel({
                     <span className="grid min-w-0">
                       <span className="flex min-w-0 items-baseline gap-2">
                         <span className="truncate text-data text-fg">{snippet.title}</span>
-                        {snippet.category ? (
+                        {(snippet.category != null && snippet.category !== "") ? (
                           <span className="max-w-[45%] shrink-0 truncate rounded-full border border-line-subtle px-1.5 text-[11px] leading-4 text-fg-tertiary" title={snippet.category}>
                             {snippet.category}
                           </span>
@@ -304,16 +305,16 @@ export function SnippetLibraryPanel({
                     <div className="grid gap-2 px-2 pb-2 animate-reveal">
                       <p className="max-h-40 overflow-y-auto rounded-md bg-sunken px-2 py-1.5 text-caption leading-5 whitespace-pre-wrap text-fg-secondary [overflow-wrap:anywhere]">{selected.text}</p>
                       <div className="flex flex-wrap gap-1">
-                        <Button size="sm" variant="secondary" className="min-h-7 px-2" icon={<CornerDownLeft aria-hidden />} disabled={disabled} onClick={() => onInsertAtCursor(selected.text)}>
+                        <Button size="sm" variant="secondary" className="min-h-7 px-2" icon={<CornerDownLeft aria-hidden />} disabled={disabled} onClick={() => { onInsertAtCursor(selected.text); }}>
                           {t("插入到游標")}
                         </Button>
-                        <Button size="sm" variant="quiet" className="min-h-7 px-2" icon={<ListPlus aria-hidden />} disabled={disabled} onClick={() => onAppendBlock(selected.text, selected.title)}>
+                        <Button size="sm" variant="quiet" className="min-h-7 px-2" icon={<ListPlus aria-hidden />} disabled={disabled} onClick={() => { onAppendBlock(selected.text, selected.title); }}>
                           {t("附加為新區塊")}
                         </Button>
-                        <Button size="sm" variant="quiet" className="min-h-7 px-2" icon={<Pencil aria-hidden />} disabled={busy} onClick={() => openForm({ id: selected.snippet_id, draft: draftOf(selected), error: null })}>
+                        <Button size="sm" variant="quiet" className="min-h-7 px-2" icon={<Pencil aria-hidden />} disabled={busy} onClick={() => { openForm({ id: selected.snippet_id, draft: draftOf(selected), error: null }); }}>
                           {t("編輯")}
                         </Button>
-                        <Button ref={deleteButton} size="sm" variant="danger" className="min-h-7 px-2" icon={<Trash2 aria-hidden />} disabled={busy} onClick={() => setConfirmDelete(selected.snippet_id)}>
+                        <Button ref={deleteButtonRef} size="sm" variant="danger" className="min-h-7 px-2" icon={<Trash2 aria-hidden />} disabled={busy} onClick={() => { setConfirmDelete(selected.snippet_id); }}>
                           {t("刪除")}
                         </Button>
                       </div>
@@ -321,7 +322,7 @@ export function SnippetLibraryPanel({
                         <Callout tone="danger" title={t("刪除「{title}」？", { title: selected.title })}>
                           <p>{t("會從所有專案共用的固定 Prompt 片段庫移除；已經插入到鏡頭 prompt 的文字不受影響。")}</p>
                           <div className="flex gap-1.5 pt-1">
-                            <Button size="sm" variant="danger-confirm" pending={save.isPending} onClick={() => remove(selected.snippet_id)}>
+                            <Button size="sm" variant="danger-confirm" pending={save.isPending} onClick={() => { remove(selected.snippet_id); }}>
                               {t("確定刪除")}
                             </Button>
                             {/* 確認框連同按鈕一起消失：焦點回到「刪除」，不掉到頁面 */}
@@ -330,7 +331,7 @@ export function SnippetLibraryPanel({
                               variant="secondary"
                               onClick={() => {
                                 setConfirmDelete(null);
-                                deleteButton.current?.focus();
+                                deleteButtonRef.current?.focus();
                               }}
                               disabled={save.isPending}
                             >
@@ -349,7 +350,7 @@ export function SnippetLibraryPanel({
       </div>
       {library ? (
         <p className="border-t border-line-subtle px-3 py-1 text-caption text-fg-tertiary">
-          <T source={"<0>{snippetsCount}</0> 筆 · 片段庫 revision <1>{revision}</1>"} values={{ snippetsCount: snippets.length, revision: library.revision }} slots={[<span className="machine" />, <span className="machine" />]} />
+          <T source={"<0>{snippetsCount}</0> 筆 · 片段庫 revision <1>{revision}</1>"} values={{ snippetsCount: snippets.length, revision: library.revision }} slots={[<span key="slot-0" className="machine" />, <span key="slot-1" className="machine" />]} />
         </p>
       ) : null}
     </div>

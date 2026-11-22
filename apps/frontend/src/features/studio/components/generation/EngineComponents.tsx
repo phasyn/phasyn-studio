@@ -17,7 +17,7 @@ import { placeLabel } from "@/lib/deviceTag";
 import { unusableSlots } from "../../model/generationMode";
 import { findRoute, routeContinuity, type ComponentSlot, type StudioRoute } from "../../model/routes";
 import { useStudio } from "../../studioContext";
-import { CapabilityBadge, ReadyDot, RouteCaveatLine, RouteReadiness, RoutesUnavailable } from "../routeParts";
+import { PurposeBadge, ReadyDot, RouteCaveatLine, RouteReadiness, RoutesUnavailable } from "../routeParts";
 import { EngineComponentRow } from "./EngineComponentRow";
 import { routeFace } from "./modeText";
 import { t } from "@/i18n";
@@ -35,12 +35,12 @@ function SlotRow({ slot, title, stepId, control }: { slot: ComponentSlot; title?
     <EngineComponentRow
       component={component}
       title={title ?? (kind !== FALLBACK_KIND ? kind.label : (stepId ?? slot.componentId))}
-      tag={stepId}
-      detail={component ? <T source={"<0>{component_id}</0>・{nodeLabel}"} values={{ component_id: component.component_id, nodeLabel: slot.nodeLabel }} slots={[<code className="machine" />]} /> : slot.reason}
-      detailTitle={slot.reason ?? undefined}
+      {...(stepId === undefined ? {} : { tag: stepId })}
+      detail={component ? <T source={"<0>{component_id}</0>・{nodeLabel}"} values={{ component_id: component.component_id, nodeLabel: slot.nodeLabel }} slots={[<code key="slot-0" className="machine" />]} /> : slot.reason}
+      {...(slot.reason == null ? {} : { detailTitle: slot.reason })}
       phase={component ? control.phaseOf(component) : undefined}
       blockStart={component ? exclusiveBlockReason(exclusiveConflict(component, catalog)) : null}
-      onStart={(target) => control.start([target])}
+      onStart={(target) => { control.start([target]); }}
       onStop={control.stop}
     />
   );
@@ -68,7 +68,7 @@ function ExclusiveHolders({ route, control }: { route: StudioRoute; control: Eng
             title={t("{label}・{value}", { label: providerKind(component.provider_id).label, value: component.label || component.component_id })}
             detail={t("{component_id}・{placeLabel}", { component_id: component.component_id, placeLabel: placeLabel(component.device, index.nodeLabel(component.node_id) ?? component.node_id.slice(0, 8)) })}
             phase={control.phaseOf(component)}
-            onStart={(target) => control.start([target])}
+            onStart={(target) => { control.start([target]); }}
             onStop={control.stop}
           />
         ))}
@@ -106,7 +106,7 @@ function Summary({ route, frame, control }: { route: StudioRoute; frame: Compone
           variant="secondary"
           icon={<Power aria-hidden />}
           pending={starting}
-          onClick={() => control.start(stopped)}
+          onClick={() => { control.start(stopped); }}
           title={starting ? t("正在依序啟動這個元件組合需要的元件（各列顯示目前進度）") : t("只啟動這個元件組合中已停止或錯誤的 {stoppedCount} 個元件；同一張卡依序載入", { stoppedCount: stopped.length })}
         >
           {starting ? t("正在啟動需要的元件…") : t("啟動 {count} 個", { count: stopped.length })}
@@ -122,7 +122,7 @@ function RouteComponents({ route, control }: { route: StudioRoute; control: Engi
   const { catalog } = useStudio();
   const face = routeFace(route, catalog);
   const frame = route.capability === "fl2va" ? routeContinuity(route, catalog).frame : null;
-  const stepReasons = new Set(route.steps.flatMap((item) => (item.slot.reason ? [item.slot.reason] : [])));
+  const stepReasons = new Set(route.steps.flatMap((item) => ((item.slot.reason != null && item.slot.reason !== "") ? [item.slot.reason] : [])));
   const otherProblems = route.problems.filter((problem) => !stepReasons.has(problem));
   return (
     <section aria-labelledby={`engine-route-${route.id}`} className="grid gap-2.5">
@@ -133,11 +133,11 @@ function RouteComponents({ route, control }: { route: StudioRoute; control: Engi
           <h3 id={`engine-route-${route.id}`} className="min-w-0 text-data font-semibold text-fg [overflow-wrap:anywhere]" title={`${route.label}\n${route.id}`}>
             {face.name}
           </h3>
-          <CapabilityBadge task={route.capability} />
-          {face.machine ? <span className="shrink-0 text-caption text-fg-tertiary">{face.machine}</span> : null}
+          <PurposeBadge purpose={route.purpose} />
+          {(face.machine != null && face.machine !== "") ? <span className="shrink-0 text-caption text-fg-tertiary">{face.machine}</span> : null}
         </div>
         <RouteCaveatLine route={route} className="pl-4" />
-        {face.wiring ? <p className="pl-4 text-caption text-fg-tertiary [overflow-wrap:anywhere]">{face.wiring}</p> : null}
+        {(face.wiring != null && face.wiring !== "") ? <p className="pl-4 text-caption text-fg-tertiary [overflow-wrap:anywhere]">{face.wiring}</p> : null}
       </div>
       <ul aria-label={t("「{label}」的步驟元件", { label: face.name })} className="grid gap-1.5">
         {route.steps.map((item) => (
@@ -193,16 +193,16 @@ export function EngineComponents({
   onBackToShot: () => void;
 }) {
   const { engine, catalog, setEngineOpen } = useStudio();
-  const viewed = viewedRouteId ? findRoute(engine.routes, viewedRouteId) : shotRoute;
+  const viewed = (viewedRouteId != null && viewedRouteId !== "") ? findRoute(engine.routes, viewedRouteId) : shotRoute;
   const other = viewed !== null && viewedRouteId !== null && viewed.id !== shotRoute?.id;
   return (
     <>
       {engine.status === "error" ? (
         <EmptyState size="compact" illustration="offline" title={t("讀不到元件組合或元件目錄")} description={engine.error ?? t("主控沒有回應；檢查連線後按「重新讀取」。")} />
       ) : (
-        <RoutesUnavailable engine={engine} onNavigate={() => setEngineOpen(false)} />
+        <RoutesUnavailable engine={engine} onNavigate={() => { setEngineOpen(false); }} />
       )}
-      {other && viewed ? (
+      {other ? (
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-info/30 bg-info/10 px-2.5 py-1.5 text-caption text-info animate-reveal">
           <Info aria-hidden className="size-3.5 shrink-0" />
           <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">

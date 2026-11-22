@@ -86,7 +86,7 @@ function DefaultsButtons({ entries, onPick }: { entries: readonly RegistryGenera
   return (
     <div className="flex flex-wrap gap-1.5">
       {withDefaults.map((entry) => (
-        <Button key={entry.ref} size="sm" variant="secondary" icon={<SlidersHorizontal aria-hidden />} onClick={() => onPick(entry)} className="max-w-full min-w-0">
+        <Button key={entry.ref} size="sm" variant="secondary" icon={<SlidersHorizontal aria-hidden />} onClick={() => { onPick(entry); }} className="max-w-full min-w-0">
           <span className="truncate">{t("套用「{label}」的設定…", { label: pluginText(entry.generation.label, entry.ref) })}</span>
         </Button>
       ))}
@@ -104,7 +104,7 @@ export function ShotPlugins({ shot }: { shot: StudioShot }) {
   const applying = applyingRef === null ? null : (plugins.generation.get(applyingRef) ?? null);
   const refs = project.prompt_plugins ?? NO_REFS;
   const limit = plugins.list?.limits.max_project_plugins ?? null;
-  const setRefs = (next: string[]) => dispatch({ type: "setPromptPlugins", plugins: next });
+  const setRefs = (next: string[]) => { dispatch({ type: "setPromptPlugins", plugins: next }); };
   const loading = plugins.status === "loading";
   return (
     <div className="grid content-start gap-4 p-3">
@@ -127,7 +127,7 @@ export function ShotPlugins({ shot }: { shot: StudioShot }) {
             ))}
           </div>
         ) : (
-          <ActiveChips items={selectedItems(plugins, refs)} onOpen={(ref) => openPluginManager({ ref })} onRemove={(ref) => setRefs(withoutRef(refs, ref))} />
+          <ActiveChips items={selectedItems(plugins, refs)} onOpen={(ref) => { openPluginManager({ ref }); }} onRemove={(ref) => { setRefs(withoutRef(refs, ref)); }} />
         )}
         {refs.length === 0 ? <p className="text-data text-fg-tertiary">{t("這個專案還沒有使用插件項目")}</p> : null}
       </section>
@@ -143,7 +143,7 @@ export function ShotPlugins({ shot }: { shot: StudioShot }) {
         <section aria-label={t("這個鏡頭的檢查結果")} className="grid gap-2">
           <h3 className="text-data font-semibold text-fg-secondary">{t("這個鏡頭")}</h3>
           <ValidationList evaluation={check.evaluation} generation={check.generation} activeCount={refs.length} />
-          <DefaultsButtons entries={check.selection.generation} onPick={(entry) => setApplyingRef(entry.ref)} />
+          <DefaultsButtons entries={check.selection.generation} onPick={(entry) => { setApplyingRef(entry.ref); }} />
         </section>
       ) : null}
 
@@ -159,7 +159,7 @@ export function ShotPlugins({ shot }: { shot: StudioShot }) {
             if (applying) notify({ tone: "success", title: t("已套用「{label}」的設定", { label: pluginText(applying.generation.label, applying.ref) }) });
           },
         }}
-        onClose={() => setApplyingRef(null)}
+        onClose={() => { setApplyingRef(null); }}
       />
     </div>
   );

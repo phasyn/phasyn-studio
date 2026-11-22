@@ -8,8 +8,9 @@ import { Expand } from "@/components/flow/Expand";
 import { cn } from "@/lib/cn";
 import { formatMs, formatTimestamp } from "@/lib/format";
 import { DECODE_LABELS, MODE_LABELS, ROLE_LABELS, SIGMA_LABELS } from "../model/constants";
+import { imageSnapshotDiff, storedImageDeclaration } from "../model/declaredImage";
 import { takeTotal } from "../model/outcome";
-import { snapshotDiff, takeSnapshot } from "../model/params";
+import { takeSnapshot } from "../model/params";
 import type { StudioImageTake } from "../types";
 import { t } from "@/i18n";
 import { formatList } from "@/i18n/format";
@@ -18,7 +19,7 @@ export function DiffTable({ a, b }: { a: StudioImageTake; b: StudioImageTake }) 
   const left = takeSnapshot(a);
   const right = takeSnapshot(b);
   if (!left || !right) return <p className="px-3 pb-2 text-caption text-fg-tertiary">{t("有 take 沒有參數紀錄，無法比較參數。")}</p>;
-  const rows = snapshotDiff(left, right);
+  const rows = imageSnapshotDiff(a, b, left, right);
   if (rows.length === 0) return <p className="px-3 pb-2 text-caption text-fg-tertiary">{t("兩個 take 的參數相同。")}</p>;
   return (
     <table className="mx-3 mb-2 table-fixed border-separate border-spacing-x-2 text-caption">
@@ -67,13 +68,14 @@ export function Facts({ take }: { take: StudioImageTake }) {
   const [open, setOpen] = useState(false);
   const id = useId();
   const timings = Object.entries(take.timings_ms).filter(([key]) => key !== "total");
-  const summary = snap
-    ? t("{width}×{height}・{steps} 步・guidance {guidance}・{sigma_schedule}・μ {value}・{decode}・{mode}{value2}{value3}", { width: snap.width, height: snap.height, steps: snap.steps, guidance: snap.guidance, sigma_schedule: SIGMA_LABELS[snap.sigma_schedule], value: snap.flow_shift_mu ?? t("自動"), decode: DECODE_LABELS[snap.decode], mode: MODE_LABELS[snap.mode], value2: snap.references.length > 0 ? t("・參考 {referencesCount} 張", { referencesCount: snap.references.length }) : "", value3: snap.mask_item_id ? t("・遮罩") : "" })
+  const declaration = storedImageDeclaration(take.params_snapshot);
+  const summary = snap && declaration ? t("{width}×{height}・seed {seed}", { width: snap.width, height: snap.height, seed: take.seed }) : snap
+    ? t("{width}×{height}・{steps} 步・guidance {guidance}・{sigma_schedule}・μ {value}・{decode}・{mode}{value2}{value3}", { width: snap.width, height: snap.height, steps: snap.steps, guidance: snap.guidance, sigma_schedule: SIGMA_LABELS[snap.sigma_schedule], value: snap.flow_shift_mu ?? t("自動"), decode: DECODE_LABELS[snap.decode], mode: MODE_LABELS[snap.mode], value2: snap.references.length > 0 ? t("・參考 {referencesCount} 張", { referencesCount: snap.references.length }) : "", value3: (snap.mask_item_id != null && snap.mask_item_id !== "") ? t("・遮罩") : "" })
     : null;
   return (
     <div className="shrink-0 border-t border-line-subtle bg-canvas">
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5 text-caption text-fg-tertiary">
-        {summary ? (
+        {(summary != null && summary !== "") ? (
           <span className="machine min-w-0 truncate" title={summary}>
             {summary}
           </span>
@@ -87,7 +89,7 @@ export function Facts({ take }: { take: StudioImageTake }) {
           type="button"
           aria-expanded={open}
           aria-controls={`${id}-facts`}
-          onClick={() => setOpen((value) => !value)}
+          onClick={() => { setOpen((value) => !value); }}
           className="pressable ml-auto inline-flex items-center gap-1 rounded-sm px-1 text-action-fg hover:bg-raised"
         >
           <ChevronDown aria-hidden className={cn("size-3.5 transition-[rotate] duration-(--duration-spring-snappy) ease-(--ease-spring-snappy)", open ? "rotate-180" : "")} />
@@ -111,11 +113,15 @@ export function Facts({ take }: { take: StudioImageTake }) {
             <dt className="text-fg-tertiary">{t("運算路由")}</dt>
             <dd className="machine truncate text-fg-secondary">{snap.route}</dd>
             <dt className="text-fg-tertiary">seed</dt>
-            <dd className="machine text-fg-secondary">{`${take.seed}${snap.requested_seed === -1 ? t("（每張隨機抽出）") : snap.batch > 1 ? t("（批次 {batch} 張中的第 {batch_index} 張）", { batch: snap.batch, batch_index: snap.batch_index + 1 }) : ""}`}</dd>
+            <dd className="machine text-fg-secondary">{`${String(take.seed)}${snap.requested_seed === -1 ? t("（每張隨機抽出）") : snap.batch > 1 ? t("（批次 {batch} 張中的第 {batch_index} 張）", { batch: snap.batch, batch_index: snap.batch_index + 1 }) : ""}`}</dd>
             <dt className="text-fg-tertiary">prompt</dt>
             <dd className="line-clamp-3 text-fg-secondary [overflow-wrap:anywhere]">{snap.prompt}</dd>
           </>
         ) : null}
+        {declaration ? <>
+          <dt className="text-fg-tertiary">{t("送出的元件參數")}</dt>
+          <dd className="machine whitespace-pre-wrap text-fg-secondary [overflow-wrap:anywhere]">{JSON.stringify(declaration.parameters, null, 2)}</dd>
+        </> : null}
         {timings.map(([key, ms]) => (
           <div key={key} className="contents">
             <dt className="text-fg-tertiary">{stepName(key)}</dt>

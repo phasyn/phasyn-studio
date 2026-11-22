@@ -1,4 +1,5 @@
-import { forwardRef, useId, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode, type Ref } from "react";
+import { hasSlotContent } from "@/lib/dom";
+import { useId, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode, type Ref } from "react";
 import { cn } from "@/lib/cn";
 import { t } from "@/i18n";
 
@@ -33,9 +34,8 @@ export interface ToolButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonEle
 }
 
 /** 28 px 圖示按鈕；停用時保留焦點，原因寫在 title 並以 aria-describedby 告知輔助技術。按下時縮小並以彈簧回彈（pressable）；切換中＝品牌淡底＋細框。 */
-export const ToolButton = forwardRef<HTMLButtonElement, ToolButtonProps>(function ToolButton(
-  { label, icon, pressed, disabledReason, text, className, onClick, title, type = "button", ...props },
-  ref,
+export function ToolButton(
+  { ref, label, icon, pressed, disabledReason, text, className, onClick, title, type = "button", ...props }: ToolButtonProps & { ref?: Ref<HTMLButtonElement> | undefined },
 ) {
   const reasonId = useId();
   const blocked = Boolean(disabledReason);
@@ -44,7 +44,7 @@ export const ToolButton = forwardRef<HTMLButtonElement, ToolButtonProps>(functio
       <button
         ref={ref}
         type={type}
-        aria-label={text ? undefined : label}
+        aria-label={hasSlotContent(text) ? undefined : label}
         aria-pressed={pressed}
         aria-disabled={blocked || undefined}
         title={blocked ? t("{label}：{value}", { label, value: disabledReason ?? "" }) : (title ?? label)}
@@ -60,7 +60,7 @@ export const ToolButton = forwardRef<HTMLButtonElement, ToolButtonProps>(functio
         aria-describedby={blocked ? reasonId : props["aria-describedby"]}
       >
         {icon}
-        {text ? <span className="whitespace-nowrap">{text}</span> : null}
+        {hasSlotContent(text) ? <span className="whitespace-nowrap">{text}</span> : null}
       </button>
       {blocked ? (
         <span id={reasonId} className="sr-only">
@@ -69,4 +69,4 @@ export const ToolButton = forwardRef<HTMLButtonElement, ToolButtonProps>(functio
       ) : null}
     </>
   );
-});
+}

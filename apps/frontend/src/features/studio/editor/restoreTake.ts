@@ -10,8 +10,8 @@ import { clipEnd, trackClips, type TimelineResult } from "./model";
 /** Effects that time the clip to one take: they go when it plays the whole take again. */
 const TIMING_EFFECTS = ["speed_percent", "hold", "frame_step", "impact", "camera"] as const satisfies readonly (keyof MediaClipEffects)[];
 
-function follows(left: TimelineClip, right: TimelineClip): boolean {
-  return clipEnd(left) - (activeTransition(left.effects)?.frames ?? 0) === right.start_frame;
+function follows(left: TimelineClip | undefined, right: TimelineClip | undefined): boolean {
+  return left !== undefined && clipEnd(left) - (activeTransition(left.effects)?.frames ?? 0) === right?.start_frame;
 }
 
 /** The clip and its neighbours on the track that play the same source back to back (the pieces of one placement). */
@@ -22,8 +22,8 @@ export function takeRun(timeline: StudioTimeline, clipId: string): TimelineClip[
   let first = ordered.findIndex((item) => item.clip_id === clipId);
   let last = first;
   // A transition between two pieces is part of the edit being undone; only the run's outer edges keep theirs
-  while (first > 0 && ordered[first - 1]?.source_id === clip.source_id && follows(ordered[first - 1] as TimelineClip, ordered[first] as TimelineClip)) first -= 1;
-  while (last < ordered.length - 1 && ordered[last + 1]?.source_id === clip.source_id && follows(ordered[last] as TimelineClip, ordered[last + 1] as TimelineClip)) last += 1;
+  while (first > 0 && ordered[first - 1]?.source_id === clip.source_id && follows(ordered[first - 1], ordered[first])) first -= 1;
+  while (last < ordered.length - 1 && ordered[last + 1]?.source_id === clip.source_id && follows(ordered[last], ordered[last + 1])) last += 1;
   return ordered.slice(first, last + 1);
 }
 
@@ -39,8 +39,8 @@ export function restoreTakeProblem(timeline: StudioTimeline, clipId: string, inF
   const last = run.at(-1);
   if (!first || !last) return t("找不到選取的片段");
   const source = timeline.sources.find((item) => item.source_id === first.source_id);
-  if (!source?.shot_id || (source.kind !== "video" && source.kind !== "audio")) return t("只有鏡頭的 take 能還原為整段");
-  if (run.some((clip) => clip.linked_id)) return t("連結的片段請先取消連結再還原");
+  if (!(source?.shot_id != null && source.shot_id !== "") || (source.kind !== "video" && source.kind !== "audio")) return t("只有鏡頭的 take 能還原為整段");
+  if (run.some((clip) => Boolean(clip.linked_id))) return t("連結的片段請先取消連結再還原");
   if (run.length === 1 && !timed(first, inFrame)) return t("這個片段已經是整段 take");
   const span = clipEnd(last) - first.start_frame;
   const available = source.duration_frames - inFrame;
@@ -51,16 +51,15 @@ export function restoreTakeProblem(timeline: StudioTimeline, clipId: string, inF
 /** The run replaced by one clip: the first piece's id, place, name, look and motion; the last piece's outgoing transition. */
 export function restoreTake(timeline: StudioTimeline, clipId: string, inFrame: number): TimelineResult<{ removed: string[]; clip: TimelineClip }> {
   const problem = restoreTakeProblem(timeline, clipId, inFrame);
-  if (problem) return { ok: false, error: problem };
+  if (problem != null && problem !== "") return { ok: false, error: problem };
   const run = takeRun(timeline, clipId);
-  const first = run[0] as TimelineClip;
-  const last = run.at(-1) as TimelineClip;
+  const first = run[0];
+  const last = run.at(-1);
+  if (!first || !last) return { ok: false, error: t("找不到選取的片段") };
   const span = clipEnd(last) - first.start_frame;
-  const effects: MediaClipEffects = { ...first.effects };
-  for (const key of TIMING_EFFECTS) delete effects[key];
-  delete effects.transition_out;
+  const { speed_percent: _speed, hold: _hold, frame_step: _step, impact: _impact, camera: _camera, transition_out: _transition, ...rest } = first.effects ?? {};
   const outgoing = last.effects?.transition_out;
-  if (outgoing) effects.transition_out = outgoing;
+  const effects: MediaClipEffects = outgoing ? { ...rest, transition_out: outgoing } : rest;
   const fadeIn = first.effects?.fade;
   const fadeOut = last.effects?.fade;
   if (fadeIn || fadeOut) effects.fade = { video_in: fadeIn?.video_in ?? 0, audio_in: fadeIn?.audio_in ?? 0, video_out: fadeOut?.video_out ?? 0, audio_out: fadeOut?.audio_out ?? 0 };

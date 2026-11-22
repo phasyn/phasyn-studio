@@ -65,7 +65,7 @@ export function generationActuals({ project, shot, route }: PluginRenderContext)
     video_shift: shot.video_shift ?? dit.video_shift.value,
     audio_shift: shot.audio_shift ?? dit.audio_shift.value,
     route_capability: route?.capability ?? null,
-    reference_video_short_edge: route ? (referenceVideoShortEdge(route) ?? OFFICIAL_REFERENCE_VIDEO_SHORT_EDGE) : null,
+    reference_video_short_edge: route && !route.generationBinding ? (referenceVideoShortEdge(route) ?? OFFICIAL_REFERENCE_VIDEO_SHORT_EDGE) : null,
   };
 }
 

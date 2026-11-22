@@ -39,7 +39,7 @@ function TimeLeftLine({ left }: { left: TimeLeft }) {
   if (left.kind === "known") {
     return (
       <p className="text-caption text-fg-secondary" title={t("依本機成本紀錄；已完成的步驟用實際時間，進行中的步驟＝預估減去已經過的時間")}>
-        <T source={"剩餘約 <0>{left}</0>・{completion}"} values={{ left: formatEtaClock(left.seconds), completion: completionText(left.at) }} slots={[<span className="machine" />]} />
+        <T source={"剩餘約 <0>{left}</0>・{completion}"} values={{ left: formatEtaClock(left.seconds), completion: completionText(left.at) }} slots={[<span key="slot-0" className="machine" />]} />
       </p>
     );
   }
@@ -64,7 +64,7 @@ function DitBar({ fraction }: { fraction: number | null }) {
       title={percent === null ? t("還沒有 DiT 逐步證據，進度未知") : undefined}
       className={cn(METER_TRACK, "w-full")}
     >
-      {percent === null ? <span className={cn("absolute inset-0 bg-brand-gradient opacity-60", SHIMMER)} /> : <span className={METER_FILL} style={{ width: `${percent}%` }} />}
+      {percent === null ? <span className={cn("absolute inset-0 bg-brand-gradient opacity-60", SHIMMER)} /> : <span className={METER_FILL} style={{ width: `${String(percent)}%` }} />}
     </span>
   );
 }

@@ -54,7 +54,7 @@ export function segmentRange(shot: Pick<StudioShot, "title" | "note">, fps: numb
 
 /** `00:01.083 and 00:02.625` → frames. */
 function cueFrames(list: string | undefined, fps: number): number[] {
-  if (!list) return [];
+  if (!(list != null && list !== "")) return [];
   return list.split(/, and |, | and /).map((cue) => Math.round((parseClock(cue) ?? Number.NaN) * fps));
 }
 
@@ -92,7 +92,7 @@ function plannerPrompt(prompt: string, fps: number): PlannerPrompt | null {
   const cuts: number[] = [];
   for (let index = 1; index < shots.length; index += 1) {
     const shot = shots[index];
-    if (!shot || shot.number !== index + 1 || shot.start === null || !CUT_PREFIX_RE.test(shot.prefix)) return null;
+    if (shot?.number !== index + 1 || shot.start === null || !CUT_PREFIX_RE.test(shot.prefix)) return null;
     const cut = Math.round(shot.start * fps);
     if (cut <= (cuts.at(-1) ?? 0)) return null;
     cuts.push(cut);
@@ -128,7 +128,7 @@ function heldPrompt(prompt: string, parsed: PlannerPrompt, target: HeldWindow): 
   if (lastKept && lastShot && lastKept !== lastShot) edits.push({ start: lastKept.textEnd, end: lastShot.textEnd, text: "" });
   kept.forEach((item, position) => {
     const shot = shots[item.index];
-    const prefix = `[Shot ${position + 2}] At ${formatCueTime(item.at, fps)}, `;
+    const prefix = `[Shot ${String(position + 2)}] At ${formatCueTime(item.at, fps)}, `;
     if (shot && prefix !== shot.prefix) edits.push({ start: lineStart(shot), end: shot.textStart, text: prefix });
   });
   if (first > 0) edits.push({ start: lineStart(opening), end: openingShot.textEnd, text: opening.prefix + opening.text });
@@ -138,10 +138,10 @@ function heldPrompt(prompt: string, parsed: PlannerPrompt, target: HeldWindow): 
   const cues = kept.map((item) => formatCueTime(item.at, fps));
   // A window as long as the clip has nothing after it to hold
   const holdCue = held < frames ? formatCueTime(held, fps) : null;
-  text = text.replace(RETENTION_RE, (_match, lead: string, _cuts: string | undefined, motion: string, rest: string) => `${lead}${retentionCuts(cues)}${motion}${holdCue ? retentionHold(holdCue) : ""}${rest}`);
+  text = text.replace(RETENTION_RE, (_match, lead: string, _cuts: string | undefined, motion: string, rest: string) => `${lead}${retentionCuts(cues)}${motion}${(holdCue != null && holdCue !== "") ? retentionHold(holdCue) : ""}${rest}`);
   text = text.replace(
     DEFINITION_RE,
-    (_match, lead: string, _count: string | undefined, _cuts: string | undefined, written: string | undefined, end: string) => `${lead}${written ?? definitionCuts(cues)}${holdCue ? definitionHold(holdCue) : ""}${end}`,
+    (_match, lead: string, _count: string | undefined, _cuts: string | undefined, written: string | undefined, end: string) => `${lead}${written ?? definitionCuts(cues)}${(holdCue != null && holdCue !== "") ? definitionHold(holdCue) : ""}${end}`,
   );
   return text;
 }

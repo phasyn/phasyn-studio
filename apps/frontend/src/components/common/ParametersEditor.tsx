@@ -1,10 +1,12 @@
 import { useId, useState } from "react";
 import { cn } from "@/lib/cn";
-import type { JsonObject } from "@/lib/json";
-import { objectProperties, type JsonSchema, type SchemaIssue } from "@/lib/schema";
+import { isRecord, type JsonObject } from "@/lib/json";
+import { objectProperties, type SchemaIssue } from "@/lib/schema";
 import { JsonEditor } from "./JsonEditor";
 import { SchemaForm } from "./SchemaForm";
 import { t } from "@/i18n";
+
+const EMPTY_ITEMS = [] as const;
 
 /**
  * 呼叫參數（parameters_schema）：表單與 JSON 兩種編輯方式，同一份值。
@@ -15,9 +17,9 @@ export function ParametersEditor({
   value,
   onChange,
   idPrefix,
-  issues = [],
+  issues = EMPTY_ITEMS,
   disabled = false,
-  label = t("呼叫參數"),
+  label: labelProp,
 }: {
   schema: unknown;
   value: JsonObject;
@@ -27,10 +29,11 @@ export function ParametersEditor({
   disabled?: boolean;
   label?: string;
 }) {
+  const label = labelProp ?? t("呼叫參數");
   const hasFields = objectProperties(schema).length > 0;
   const [mode, setMode] = useState<"form" | "json">(hasFields ? "form" : "json");
   const groupId = useId();
-  const rootSchema = (typeof schema === "object" && schema !== null ? schema : undefined) as JsonSchema | undefined;
+  const rootSchema = isRecord(schema) ? schema : undefined;
   return (
     <div className="grid min-w-0 gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -46,7 +49,7 @@ export function ParametersEditor({
               aria-checked={mode === item}
               disabled={item === "form" && !hasFields}
               title={item === "form" && !hasFields ? t("parameters_schema 沒有宣告欄位，只能用 JSON 編輯") : undefined}
-              onClick={() => setMode(item)}
+              onClick={() => { setMode(item); }}
               className={cn(
                 "min-h-8 rounded-sm px-3 text-data transition-colors duration-150 disabled:cursor-not-allowed disabled:text-fg-disabled",
                 mode === item ? "bg-raised text-fg" : "text-fg-secondary hover:text-fg",
@@ -60,7 +63,7 @@ export function ParametersEditor({
       {mode === "form" && hasFields ? (
         <SchemaForm
           schema={schema}
-          rootSchema={rootSchema}
+          {...(rootSchema === undefined ? {} : { rootSchema })}
           value={value}
           onChange={onChange}
           idPrefix={idPrefix}
@@ -73,8 +76,8 @@ export function ParametersEditor({
           id={`${idPrefix}-json`}
           label={t("{label}（JSON）", { label })}
           value={value}
-          accept={(next) => (typeof next === "object" && next !== null && !Array.isArray(next) ? null : t("參數必須是 JSON object"))}
-          onChange={(next) => onChange(next as JsonObject)}
+          accept={(next) => (isRecord(next) ? null : t("參數必須是 JSON object"))}
+          onChange={(next) => { if (isRecord(next)) onChange(next); }}
           issues={issues}
           rows={6}
           disabled={disabled}

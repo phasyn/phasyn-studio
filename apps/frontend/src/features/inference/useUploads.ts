@@ -23,19 +23,19 @@ export interface UploadFailure {
 export function useUploads(pipelineId: string) {
   const [progress, setProgress] = useState<UploadProgress | null>(null);
   const [failures, setFailures] = useState<UploadFailure[]>([]);
-  const busy = useRef(false);
-  const mounted = useRef(true);
+  const busyRef = useRef(false);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
-    mounted.current = true;
+    mountedRef.current = true;
     return () => {
-      mounted.current = false;
+      mountedRef.current = false;
     };
   }, []);
 
   const upload = useCallback(async (files: readonly File[], onUploaded: (file: File, ref: FileRef) => void) => {
-    if (busy.current || files.length === 0) return;
-    busy.current = true;
+    if (busyRef.current || files.length === 0) return;
+    busyRef.current = true;
     const end = beginUpload(pipelineId);
     setFailures([]);
     const failed: UploadFailure[] = [];
@@ -43,7 +43,7 @@ export function useUploads(pipelineId: string) {
       for (let index = 0; index < files.length; index += 1) {
         const file = files[index];
         if (!file) continue;
-        if (mounted.current) setProgress({ index: index + 1, total: files.length, name: file.name, size: file.size });
+        if (mountedRef.current) setProgress({ index: index + 1, total: files.length, name: file.name, size: file.size });
         try {
           const ref = await uploadFile(file);
           onUploaded(file, ref);
@@ -52,16 +52,16 @@ export function useUploads(pipelineId: string) {
         }
       }
     } finally {
-      busy.current = false;
+      busyRef.current = false;
       end();
-      if (mounted.current) {
+      if (mountedRef.current) {
         setProgress(null);
         setFailures(failed);
       }
     }
   }, [pipelineId]);
 
-  const clearFailures = useCallback(() => setFailures([]), []);
+  const clearFailures = useCallback(() => { setFailures([]); }, []);
 
   return { progress, failures, upload, clearFailures };
 }

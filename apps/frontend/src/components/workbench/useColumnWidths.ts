@@ -46,8 +46,8 @@ export function useColumnWidths(tableId: string, specs: readonly ColumnSpec[]): 
   return {
     widths: state.widths,
     total: totalColumnWidth(state.widths, specs),
-    preview: (id, width) => setState((current) => ({ widths: setColumnWidth(current.widths, specs, id, width), dragging: true })),
-    commit: (id, width) => setState((current) => ({ widths: setColumnWidth(current.widths, specs, id, width), dragging: false })),
-    reset: (id) => setState((current) => ({ widths: resetColumnWidth(current.widths, specs, id), dragging: false })),
+    preview: (id, width) => { setState((current) => ({ widths: setColumnWidth(current.widths, specs, id, width), dragging: true })); },
+    commit: (id, width) => { setState((current) => ({ widths: setColumnWidth(current.widths, specs, id, width), dragging: false })); },
+    reset: (id) => { setState((current) => ({ widths: resetColumnWidth(current.widths, specs, id), dragging: false })); },
   };
 }

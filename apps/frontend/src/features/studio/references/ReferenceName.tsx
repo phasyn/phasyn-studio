@@ -1,6 +1,7 @@
 // 參考素材的檔名，可就地重新命名（改的是專案素材庫的名稱，所有用到這個檔案的鏡頭一起變）：雙擊名稱、在這一列按 F2，
 // 或從列的「…」選單開始；Enter 儲存、Esc 取消、離開欄位時名稱合規就儲存，否則還原。欄位關掉後焦點交給呼叫端（onFinished）。
 // 欄位開著時帶 data-escape-local，Esc 只關閉欄位、不關閉外層的專業編輯器。
+import { focusOpenedControl } from "@/lib/dom";
 import { useId, useRef, useState } from "react";
 import { Input } from "@/components/ui/controls";
 import { cn } from "@/lib/cn";
@@ -25,7 +26,7 @@ export function ReferenceName({ name, alias, rename, editing, onEditingChange, o
   const id = useId();
   const [draft, setDraft] = useState(name ?? "");
   // Enter／Esc 已經結束編輯：欄位卸載時的 blur 不再儲存一次（Esc 不能被 blur 存回去）
-  const settled = useRef(false);
+  const settledRef = useRef(false);
   const canRename = rename !== undefined && name !== null && !disabled;
   const problem = rename?.problem(draft) ?? null;
 
@@ -34,12 +35,12 @@ export function ReferenceName({ name, alias, rename, editing, onEditingChange, o
   const start = () => {
     if (!canRename) return;
     setDraft(name);
-    settled.current = false;
+    settledRef.current = false;
     onEditingChange(true);
   };
   const finish = (save: boolean) => {
-    settled.current = true;
-    if (save && !problem && draft.trim() !== name) rename?.onRename(draft.trim());
+    settledRef.current = true;
+    if (save && !(problem != null && problem !== "") && draft.trim() !== name) rename?.onRename(draft.trim());
     onEditingChange(false);
     requestAnimationFrame(() => onFinished?.());
   };
@@ -49,25 +50,25 @@ export function ReferenceName({ name, alias, rename, editing, onEditingChange, o
       <span className="grid min-w-0 gap-0.5 animate-reveal">
         <Input
           compact
-          autoFocus
+          ref={focusOpenedControl}
           value={draft}
           aria-label={t("@{alias} 的檔名", { alias })}
-          aria-invalid={problem ? true : undefined}
+          aria-invalid={(problem != null && problem !== "") ? true : undefined}
           aria-describedby={`${id}-hint`}
           data-escape-local="true"
-          onFocus={(event) => event.currentTarget.select()}
-          onChange={(event) => setDraft(event.target.value)}
+          onFocus={(event) => { event.currentTarget.select(); }}
+          onChange={(event) => { setDraft(event.target.value); }}
           onBlur={() => {
-            if (settled.current) return;
-            settled.current = true;
-            if (!problem && draft.trim() !== name) rename?.onRename(draft.trim());
+            if (settledRef.current) return;
+            settledRef.current = true;
+            if (!(problem != null && problem !== "") && draft.trim() !== name) rename.onRename(draft.trim());
             onEditingChange(false);
           }}
           onKeyDown={(event) => {
             if (event.nativeEvent.isComposing) return;
             if (event.key === "Enter") {
               event.preventDefault();
-              if (!problem) finish(true);
+              if (!(problem != null && problem !== "")) finish(true);
             } else if (event.key === "Escape") {
               event.preventDefault();
               event.stopPropagation();
@@ -76,7 +77,7 @@ export function ReferenceName({ name, alias, rename, editing, onEditingChange, o
           }}
           className="min-h-7 px-2"
         />
-        <span id={`${id}-hint`} className={cn("text-caption", problem ? "text-danger" : "text-fg-tertiary")}>
+        <span id={`${id}-hint`} className={cn("text-caption", (problem != null && problem !== "") ? "text-danger" : "text-fg-tertiary")}>
           {problem ?? t("Enter 儲存、Esc 取消 · {count}/{max} · 所有鏡頭共用這個檔名", { count: draft.trim().length, max: LIBRARY_NAME_MAX })}
         </span>
       </span>
@@ -84,8 +85,8 @@ export function ReferenceName({ name, alias, rename, editing, onEditingChange, o
   }
 
   return (
-    <span className="block truncate text-data text-fg" title={canRename ? t("{name}（雙擊或按 F2 重新命名）", { name }) : name} onDoubleClick={start}>
+    <button disabled={!canRename} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); start(); } }} type="button" className="block truncate text-data text-fg" title={canRename ? t("{name}（雙擊或按 F2 重新命名）", { name }) : name} onDoubleClick={start}>
       {name}
-    </span>
+    </button>
   );
 }

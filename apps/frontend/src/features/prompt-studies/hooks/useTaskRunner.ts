@@ -236,25 +236,26 @@ export function useTaskRunner(env: RunnerEnv) {
   const client = useQueryClient();
   const envRef = useRef(env);
   const [state, setState] = useState<RunnerState>(IDLE);
-  const busy = useRef(false);
-  const stopFlag = useRef(false);
-  const controller = useRef<AbortController | null>(null);
-  const mounted = useRef(true);
+  const busyRef = useRef(false);
+  const stopFlagRef = useRef(false);
+  const stopped = () => stopFlagRef.current;
+  const controllerRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
     envRef.current = env;
   });
 
   useEffect(() => {
-    mounted.current = true;
+    mountedRef.current = true;
     return () => {
-      mounted.current = false;
-      controller.current?.abort();
+      mountedRef.current = false;
+      controllerRef.current?.abort();
     };
   }, []);
 
   const patch = useCallback((change: Partial<RunnerState>) => {
-    if (mounted.current) setState((current) => ({ ...current, ...change }));
+    if (mountedRef.current) setState((current) => ({ ...current, ...change }));
   }, []);
 
   /** 一個 run：建立（或讀回）→ 等結束 → 寫回結果。 */
@@ -269,7 +270,7 @@ export function useTaskRunner(env: RunnerEnv) {
       };
 
       let runId: string;
-      if (step.action === "attach" && step.runId) {
+      if (step.action === "attach" && (step.runId != null && step.runId !== "")) {
         runId = step.runId;
       } else {
         let body: RunRequestBody;
@@ -300,7 +301,7 @@ export function useTaskRunner(env: RunnerEnv) {
 
       let finished: WireRun;
       try {
-        finished = await waitForRun(runId, { signal, onUpdate: (run) => patch({ run }) });
+        finished = await waitForRun(runId, { signal, onUpdate: (run) => { patch({ run }); } });
       } catch (error) {
         if (isAbort(error)) return "aborted";
         if (toErrorInfo(error).status === 404) {
@@ -312,7 +313,7 @@ export function useTaskRunner(env: RunnerEnv) {
       }
       invalidateRuns(client, runId);
       const expected = expectedPipeline(step);
-      if (step.action === "attach" && expected && finished.request.pipeline.pipeline_id !== expected) {
+      if (step.action === "attach" && (expected != null && expected !== "") && finished.request.pipeline.pipeline_id !== expected) {
         await fail(runId, { code: "RUN_MISMATCH", message: "", details: stepErrorDetails({ kind: "run_mismatch", pipeline_id: finished.request.pipeline.pipeline_id, expected }) });
         return "failed";
       }
@@ -337,12 +338,12 @@ export function useTaskRunner(env: RunnerEnv) {
   /** 執行任務：step＝一個 run；loop＝連續執行（rounds＝輪數，"all"＝到任務結束）。 */
   const run = useCallback(
     async (taskId: string, options: { mode: "step" | "loop"; rounds?: number | "all"; allowRetry?: boolean }) => {
-      if (busy.current) return;
-      busy.current = true;
-      stopFlag.current = false;
+      if (busyRef.current) return;
+      busyRef.current = true;
+      stopFlagRef.current = false;
       const abort = new AbortController();
-      controller.current = abort;
-      if (mounted.current) setState({ ...IDLE, busy: true, mode: options.mode, taskId });
+      controllerRef.current = abort;
+      if (mountedRef.current) setState({ ...IDLE, busy: true, mode: options.mode, taskId });
       let allowRetry = options.allowRetry ?? false;
       let runSteps = 0;
       let notice: string | null = null;
@@ -387,7 +388,7 @@ export function useTaskRunner(env: RunnerEnv) {
             }
           }
           if (options.mode === "step" && runSteps >= 1) break;
-          if (stopFlag.current) {
+          if (stopped()) {
             notice = t("已停止（目前的 run 已經完成）");
             break;
           }
@@ -408,9 +409,9 @@ export function useTaskRunner(env: RunnerEnv) {
       } catch (error) {
         patch({ error });
       } finally {
-        busy.current = false;
-        stopFlag.current = false;
-        if (controller.current === abort) controller.current = null;
+        busyRef.current = false;
+        stopFlagRef.current = false;
+        if (controllerRef.current === abort) controllerRef.current = null;
         patch({ busy: false, mode: null, stopRequested: false, description: null, runId: null, notice });
       }
     },
@@ -420,7 +421,7 @@ export function useTaskRunner(env: RunnerEnv) {
   /** 建立任務（凍結設定）後開始執行；studySettings 會一起存進研究的 settings（下次開啟沿用）。 */
   const start = useCallback(
     async (task: PromptStudyTask, options: { mode: "step" | "loop"; rounds?: number | "all" }, studySettings?: Record<string, unknown>) => {
-      if (busy.current) return;
+      if (busyRef.current) return;
       try {
         await envRef.current.doc.update((current) => ({ ...current, settings: studySettings ?? current.settings, tasks: [...current.tasks, task] }));
       } catch (error) {
@@ -434,15 +435,15 @@ export function useTaskRunner(env: RunnerEnv) {
 
   /** 停止連續執行：目前的 run 結束、結果寫回後才停（不取消 run）。 */
   const stop = useCallback(() => {
-    if (!busy.current) return;
-    stopFlag.current = true;
+    if (!busyRef.current) return;
+    stopFlagRef.current = true;
     patch({ stopRequested: true });
   }, [patch]);
 
   /** 結束任務（之後不可再改；已完成的圖片、比較與版本都保留）。 */
   const end = useCallback(
     async (taskId: string) => {
-      if (busy.current) return;
+      if (busyRef.current) return;
       try {
         await envRef.current.doc.update((current) => recordFinish(current, taskId, { state: "cancelled", stopReason: "user_cancel", note: { reason: "user_ended" } }, nowIso()));
       } catch (error) {
@@ -455,11 +456,11 @@ export function useTaskRunner(env: RunnerEnv) {
   /** 人工修改的版本：用 prompt.scene_compile 編譯候選（一個 run；不屬於任何任務）。 */
   const compile = useCallback(
     async (input: { scene: PromptScene; intentional: SectionKey[]; componentKey: string | null }): Promise<ManualCompile | null> => {
-      if (busy.current) return null;
-      busy.current = true;
+      if (busyRef.current) return null;
+      busyRef.current = true;
       const abort = new AbortController();
-      controller.current = abort;
-      if (mounted.current) setState({ ...IDLE, busy: true, mode: "compile", description: t("編譯 core／detailed 候選（prompt.scene_compile）") });
+      controllerRef.current = abort;
+      if (mountedRef.current) setState({ ...IDLE, busy: true, mode: "compile", description: t("編譯 core／detailed 候選（prompt.scene_compile）") });
       try {
         const { catalog, doc } = envRef.current;
         const study = doc.latest();
@@ -469,11 +470,11 @@ export function useTaskRunner(env: RunnerEnv) {
         const created = await createRun(body);
         invalidateRuns(client, created.run_id);
         patch({ runId: created.run_id });
-        const finished = await waitForRun(created.run_id, { signal: abort.signal, onUpdate: (current) => patch({ run: current }) });
+        const finished = await waitForRun(created.run_id, { signal: abort.signal, onUpdate: (current) => { patch({ run: current }); } });
         invalidateRuns(client, created.run_id);
         if (finished.state !== "succeeded") {
           const failure = runFailure(finished);
-          throw new StepProblem(failure.error.code, readStepErrorText(failure.error.details?.text) ?? failure.error.message);
+          throw new StepProblem(failure.error.code, readStepErrorText(failure.error.details?.["text"]) ?? failure.error.message);
         }
         const parsed = readCompile(finished);
         if (!parsed.ok) throw new StepProblem("INVALID_RESULT", parsed.problem);
@@ -482,15 +483,15 @@ export function useTaskRunner(env: RunnerEnv) {
         if (!isAbort(error)) patch({ error });
         return null;
       } finally {
-        busy.current = false;
-        if (controller.current === abort) controller.current = null;
+        busyRef.current = false;
+        if (controllerRef.current === abort) controllerRef.current = null;
         patch({ busy: false, mode: null, runId: null, description: null });
       }
     },
     [client, patch],
   );
 
-  const clearMessages = useCallback(() => patch({ error: null, notice: null }), [patch]);
+  const clearMessages = useCallback(() => { patch({ error: null, notice: null }); }, [patch]);
 
   return { state, run, start, stop, end, compile, clearMessages };
 }

@@ -19,9 +19,20 @@ from __future__ import annotations
 from collections.abc import Sequence
 from ctypes import POINTER, Structure, byref, c_char_p, c_int, c_uint32, c_void_p
 from dataclasses import dataclass
+from typing import TYPE_CHECKING, ClassVar
 
 from .model import TextFailure
 from .native import bind, load, unavailable
+
+
+if TYPE_CHECKING:
+    from _ctypes import _CDataType
+    from collections.abc import Sequence
+
+    type _NativeFields = Sequence[
+        tuple[str, type[_CDataType]] | tuple[str, type[_CDataType], int]
+    ]
+
 
 SONAME = "libfontconfig.so.1"
 
@@ -34,7 +45,11 @@ _OUTLINE_FORMATS = frozenset({b"TrueType", b"CFF"})
 
 
 class _FontSet(Structure):
-    _fields_ = (("nfont", c_int), ("sfont", c_int), ("fonts", POINTER(c_void_p)))
+    _fields_: ClassVar[_NativeFields] = (
+        ("nfont", c_int),
+        ("sfont", c_int),
+        ("fonts", POINTER(c_void_p)),
+    )
 
 
 @dataclass(frozen=True)
@@ -42,7 +57,9 @@ class FontRecord:
     """One installed font as fontconfig wants it rendered for a request."""
 
     file: bytes
-    index: int  # face index; a named instance of a variable font is in the upper 16 bits
+    index: (
+        int  # face index; a named instance of a variable font is in the upper 16 bits
+    )
     family: str
     style: str
     embolden: bool  # synthetic bold: the request is bold and the font is not
@@ -58,23 +75,59 @@ class Fontconfig:
     """The system font configuration, loaded once per worker process."""
 
     def __init__(self) -> None:
+        """Bind the native Fontconfig functions."""
         lib = load(SONAME)
         self._version = bind(lib, "FcGetVersion", c_int)
         self._pattern_create = bind(lib, "FcPatternCreate", c_void_p)
         self._pattern_destroy = bind(lib, "FcPatternDestroy", None, c_void_p)
-        self._add_string = bind(lib, "FcPatternAddString", c_int, c_void_p, c_char_p, c_char_p)
-        self._add_integer = bind(lib, "FcPatternAddInteger", c_int, c_void_p, c_char_p, c_int)
-        self._substitute = bind(lib, "FcConfigSubstitute", c_int, c_void_p, c_void_p, c_int)
+        self._add_string = bind(
+            lib, "FcPatternAddString", c_int, c_void_p, c_char_p, c_char_p
+        )
+        self._add_integer = bind(
+            lib, "FcPatternAddInteger", c_int, c_void_p, c_char_p, c_int
+        )
+        self._substitute = bind(
+            lib, "FcConfigSubstitute", c_int, c_void_p, c_void_p, c_int
+        )
         self._default_substitute = bind(lib, "FcDefaultSubstitute", None, c_void_p)
         self._font_sort = bind(
-            lib, "FcFontSort", POINTER(_FontSet), c_void_p, c_void_p, c_int, c_void_p, POINTER(c_int)
+            lib,
+            "FcFontSort",
+            POINTER(_FontSet),
+            c_void_p,
+            c_void_p,
+            c_int,
+            c_void_p,
+            POINTER(c_int),
         )
         self._font_set_destroy = bind(lib, "FcFontSetDestroy", None, POINTER(_FontSet))
-        self._render_prepare = bind(lib, "FcFontRenderPrepare", c_void_p, c_void_p, c_void_p, c_void_p)
-        self._get_string = bind(lib, "FcPatternGetString", c_int, c_void_p, c_char_p, c_int, POINTER(c_char_p))
-        self._get_integer = bind(lib, "FcPatternGetInteger", c_int, c_void_p, c_char_p, c_int, POINTER(c_int))
-        self._get_bool = bind(lib, "FcPatternGetBool", c_int, c_void_p, c_char_p, c_int, POINTER(c_int))
-        self._get_charset = bind(lib, "FcPatternGetCharSet", c_int, c_void_p, c_char_p, c_int, POINTER(c_void_p))
+        self._render_prepare = bind(
+            lib, "FcFontRenderPrepare", c_void_p, c_void_p, c_void_p, c_void_p
+        )
+        self._get_string = bind(
+            lib,
+            "FcPatternGetString",
+            c_int,
+            c_void_p,
+            c_char_p,
+            c_int,
+            POINTER(c_char_p),
+        )
+        self._get_integer = bind(
+            lib, "FcPatternGetInteger", c_int, c_void_p, c_char_p, c_int, POINTER(c_int)
+        )
+        self._get_bool = bind(
+            lib, "FcPatternGetBool", c_int, c_void_p, c_char_p, c_int, POINTER(c_int)
+        )
+        self._get_charset = bind(
+            lib,
+            "FcPatternGetCharSet",
+            c_int,
+            c_void_p,
+            c_char_p,
+            c_int,
+            POINTER(c_void_p),
+        )
         self._has_char = bind(lib, "FcCharSetHasChar", c_int, c_void_p, c_uint32)
         self._config_destroy = bind(lib, "FcConfigDestroy", None, c_void_p)
         self._kept: list[int] = []  # prepared patterns of kept records
@@ -91,6 +144,7 @@ class Fontconfig:
             self._config = None
 
     def version(self) -> str:
+        """Return the loaded native library version."""
         number = int(self._version())
         return f"{number // 10000}.{number // 100 % 100}.{number % 100}"
 
@@ -98,7 +152,9 @@ class Fontconfig:
         """Whether fontconfig's coverage of the font includes a code point."""
         return bool(self._has_char(record.charset, code))
 
-    def sorted_fonts(self, families: Sequence[str], *, bold: bool, language: str | None) -> list[FontRecord]:
+    def sorted_fonts(
+        self, families: Sequence[str], *, bold: bool, language: str | None
+    ) -> list[FontRecord]:
         """The usable installed fonts, best match first, for upright text of the given weight.
 
         ``families`` are tried in order (the last one is the generic family); with ``language`` the
@@ -110,7 +166,7 @@ class Fontconfig:
         if not pattern:
             raise _out_of_memory()
         try:
-            self._fill(pattern, families, bold, language)
+            self._fill(pattern, families, bold=bold, language=language)
             result = c_int()
             fonts = self._font_sort(self._config, pattern, 0, None, byref(result))
             if not fonts:
@@ -119,7 +175,8 @@ class Fontconfig:
                 return [
                     record
                     for record in (
-                        self._prepare(pattern, fonts.contents.fonts[at]) for at in range(fonts.contents.nfont)
+                        self._prepare(pattern, fonts.contents.fonts[at])
+                        for at in range(fonts.contents.nfont)
                     )
                     if record is not None
                 ]
@@ -128,13 +185,24 @@ class Fontconfig:
         finally:
             self._pattern_destroy(pattern)
 
-    def _fill(self, pattern: int, families: Sequence[str], bold: bool, language: str | None) -> None:
-        added = [self._add_string(pattern, b"family", family.encode("utf-8")) for family in families]
-        added.append(self._add_integer(pattern, b"weight", _WEIGHT_BOLD if bold else _WEIGHT_REGULAR))
+    def _fill(
+        self, pattern: int, families: Sequence[str], *, bold: bool, language: str | None
+    ) -> None:
+        added = [
+            self._add_string(pattern, b"family", family.encode("utf-8"))
+            for family in families
+        ]
+        added.append(
+            self._add_integer(
+                pattern, b"weight", _WEIGHT_BOLD if bold else _WEIGHT_REGULAR
+            )
+        )
         added.append(self._add_integer(pattern, b"slant", _SLANT_ROMAN))
         if language is not None:
             added.append(self._add_string(pattern, b"lang", language.encode("ascii")))
-        if not all(added) or not self._substitute(self._config, pattern, _MATCH_PATTERN):
+        if not all(added) or not self._substitute(
+            self._config, pattern, _MATCH_PATTERN
+        ):
             raise _out_of_memory()
         self._default_substitute(pattern)
 
@@ -162,7 +230,8 @@ class Fontconfig:
             and self._flag(prepared, b"scalable")
             and self._flag(prepared, b"outline")
             and not self._flag(prepared, b"color")
-            and self._get_charset(prepared, b"charset", 0, byref(charset)) == _RESULT_MATCH
+            and self._get_charset(prepared, b"charset", 0, byref(charset))
+            == _RESULT_MATCH
         )
         if file is None or not usable or not charset.value:
             return None
@@ -172,10 +241,14 @@ class Fontconfig:
         return FontRecord(
             file=file,
             index=index.value,
-            family=(self._string(prepared, b"family") or b"").decode("utf-8", "replace"),
+            family=(self._string(prepared, b"family") or b"").decode(
+                "utf-8", "replace"
+            ),
             style=(self._string(prepared, b"style") or b"").decode("utf-8", "replace"),
             embolden=self._flag(prepared, b"embolden"),
-            variations=(self._string(prepared, b"fontvariations") or b"").decode("ascii", "replace"),
+            variations=(self._string(prepared, b"fontvariations") or b"").decode(
+                "ascii", "replace"
+            ),
             charset=charset.value,
         )
 
@@ -189,4 +262,6 @@ class Fontconfig:
     def _flag(self, pattern: int, name: bytes) -> bool:
         """A boolean property; one the font or this fontconfig version does not have is false."""
         value = c_int()
-        return self._get_bool(pattern, name, 0, byref(value)) == _RESULT_MATCH and bool(value.value)
+        return self._get_bool(pattern, name, 0, byref(value)) == _RESULT_MATCH and bool(
+            value.value
+        )

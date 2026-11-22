@@ -1,5 +1,5 @@
 // 插件管理視窗的狀態（由 PluginManagerHost 持有，所以關閉再開啟仍保留篩選、選取與進行中的安裝）與它的 context。
-import { createContext, useContext } from "react";
+import { createContext, use } from "react";
 import type { StudioPluginId, StudioPluginRef } from "@/api/generated/contracts";
 import { t } from "@/i18n";
 import type { ContributionKindFilter } from "../model/contributions";
@@ -68,7 +68,7 @@ export interface ManagerValue {
 export const ManagerContext = createContext<ManagerValue | null>(null);
 
 export function useManager(): ManagerValue {
-  const value = useContext(ManagerContext);
+  const value = use(ManagerContext);
   if (!value) throw new Error(t("useManager 必須在插件管理視窗內使用"));
   return value;
 }

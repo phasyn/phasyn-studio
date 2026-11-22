@@ -63,7 +63,7 @@ export function RunStateOutliner({ counts, total, selected, onSelect, partial, a
               <button
                 type="button"
                 aria-pressed={active}
-                onClick={() => onSelect(row.value)}
+                onClick={() => { onSelect(row.value); }}
                 className={cn(ROW, active ? ACTIVE_ROW : IDLE_ROW)}
               >
                 <row.icon aria-hidden className={cn("size-4 shrink-0", TEXT_TONE[row.tone])} />
@@ -86,7 +86,7 @@ export function RunStateOutliner({ counts, total, selected, onSelect, partial, a
         <button
           type="button"
           aria-pressed={archivedView}
-          onClick={() => onArchivedView(!archivedView)}
+          onClick={() => { onArchivedView(!archivedView); }}
           className={cn(ROW, archivedView ? ACTIVE_ROW : IDLE_ROW)}
           title={archivedView ? t("回到未封存的 run") : t("查看已封存的 run（檔案與紀錄都保留，可取消封存）")}
         >
@@ -112,7 +112,7 @@ export function RunStateFilterBar({ counts, total, selected, onSelect, partial, 
         aria-label={t("依狀態篩選 run")}
         title={partial ? t("只計算已載入的 run；載入更多後計數會更新。") : undefined}
         value={selected}
-        onChange={(event) => onSelect(event.target.value)}
+        onChange={(event) => { onSelect(event.target.value); }}
         className="w-44"
       >
         {rows.map((row) => (
@@ -126,7 +126,7 @@ export function RunStateFilterBar({ counts, total, selected, onSelect, partial, 
         variant={archivedView ? "secondary" : "quiet"}
         icon={<Archive aria-hidden />}
         aria-pressed={archivedView}
-        onClick={() => onArchivedView(!archivedView)}
+        onClick={() => { onArchivedView(!archivedView); }}
         title={archivedView ? t("回到未封存的 run") : t("查看已封存的 run（檔案與紀錄都保留，可取消封存）")}
       >
         {archivedView ? t("已封存（返回一般清單）") : t("已封存")}

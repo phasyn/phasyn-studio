@@ -29,7 +29,7 @@ export function StepInspector({
   nodeLabel: string;
   lookup: DescriptorLookup;
 }) {
-  const descriptor = step.node_id && step.component_id ? lookup(step.node_id, step.component_id) : null;
+  const descriptor = (step.node_id != null && step.node_id !== "") && (step.component_id != null && step.component_id !== "") ? lookup(step.node_id, step.component_id) : null;
   const kind = providerKind(descriptor?.provider_id);
   const outputs = Object.entries(step.outputs);
   const error = step.error ? { ...step.error, remote_outcome_unknown: step.error.remote_outcome_unknown === true || step.remote_outcome_unknown } : null;
@@ -37,7 +37,7 @@ export function StepInspector({
     <div className="flex min-h-0 min-w-0 flex-1 flex-col animate-rise-in">
       <EntityHeader
         icon={kind.icon}
-        art={kind.art}
+        {...(kind.art === undefined ? {} : { art: kind.art })}
         tone={kind.tone}
         title={<code className="machine">{step.step_id}</code>}
         status={<StatusBadge kind="step" value={step.state} />}
@@ -65,7 +65,7 @@ export function StepInspector({
               <IdText value={step.call_id} length={12} />
             </PropertyRow>
             <PropertyRow label={t("紀錄")}>
-              {step.recording_id ? (
+              {(step.recording_id != null && step.recording_id !== "") ? (
                 <Link to={recordingPath(step.recording_id)} className="inline-flex items-center gap-1">
                   recording {step.recording_id.slice(0, 8)}
                   <ExternalLink aria-hidden className="size-3.5" />
@@ -75,7 +75,7 @@ export function StepInspector({
               )}
             </PropertyRow>
             <PropertyRow label="load revision" mono>
-              {step.load_revision === null ? "—" : `#${step.load_revision}`}
+              {step.load_revision === null ? "—" : `#${String(step.load_revision)}`}
             </PropertyRow>
           </PropertyGrid>
           {error ? <ErrorCallout error={error} title={stepErrorTitle(step)} className="mt-3" /> : null}
@@ -121,9 +121,7 @@ export function RunFacts({ run, title }: { run: WireRun; title: string }) {
         title={title}
         status={<StatusBadge kind="run" value={run.state} />}
         description={
-          <>
-            <T source={"流程 <0>{pipeline_id}</0> · {stepsCount} 個步驟"} values={{ pipeline_id: run.request.pipeline.pipeline_id, stepsCount: run.request.pipeline.steps.length }} slots={[<code className="machine" />]} />
-          </>
+          <T source={"流程 <0>{pipeline_id}</0> · {stepsCount} 個步驟"} values={{ pipeline_id: run.request.pipeline.pipeline_id, stepsCount: run.request.pipeline.steps.length }} slots={[<code key="slot-0" className="machine" />]} />
         }
         id={run.run_id}
       />
@@ -143,11 +141,11 @@ export function RunFacts({ run, title }: { run: WireRun; title: string }) {
             <PropertyRow label={t("來源（origin）")}>
               {run.request.origin ? (
                 <span className="grid gap-0.5">
-                  {run.request.origin.source_run_id ? (
+                  {(run.request.origin.source_run_id != null && run.request.origin.source_run_id !== "") ? (
                     <Link to={runPath(run.request.origin.source_run_id)}>{t("來源 run {source_run_id}", { source_run_id: run.request.origin.source_run_id.slice(0, 8) })}</Link>
                   ) : null}
-                  {run.request.origin.preview_asset_id ? <span className="machine">{t("草稿 asset {preview_asset_id}", { preview_asset_id: run.request.origin.preview_asset_id.slice(0, 8) })}</span> : null}
-                  {run.request.origin.note ? <span>{t("備註：{note}", { note: run.request.origin.note })}</span> : null}
+                  {(run.request.origin.preview_asset_id != null && run.request.origin.preview_asset_id !== "") ? <span className="machine">{t("草稿 asset {preview_asset_id}", { preview_asset_id: run.request.origin.preview_asset_id.slice(0, 8) })}</span> : null}
+                  {(run.request.origin.note != null && run.request.origin.note !== "") ? <span>{t("備註：{note}", { note: run.request.origin.note })}</span> : null}
                 </span>
               ) : (
                 "—"

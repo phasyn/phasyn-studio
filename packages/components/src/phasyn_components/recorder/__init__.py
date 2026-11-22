@@ -1,6 +1,13 @@
-"""Recorder SDK。GPU hooks 在 ``phasyn_components.recorder.gpu``（需 torch，延遲匯入）。"""
+"""Recorder SDK（ … #v4-recorder-12）。GPU hooks 在 ``phasyn_components.recorder.gpu``（需 torch，延遲匯入）."""
 
-from .core import DETAIL_MODES, LEVELS, Recorder, Span, environment_facts, merge_summaries
+from .core import (
+    DETAIL_MODES,
+    LEVELS,
+    Recorder,
+    Span,
+    environment_facts,
+    merge_summaries,
+)
 from .metrics import metric, not_applicable, unavailable
 from .rmath import (
     config_diff,
@@ -12,6 +19,7 @@ from .rmath import (
     union_duration_ms,
 )
 from .sink import RecordingSink, list_segments, recording_dir
+
 
 __all__ = [
     "DETAIL_MODES",

@@ -329,6 +329,11 @@
       "kind": "conflict",
       "description": "The resource's current state does not allow this operation."
     },
+    "STUDIO_OUTPUT_MISMATCH": {
+      "status": 409,
+      "kind": "conflict",
+      "description": "The published video does not match the frame count or frame rate promised for this Take."
+    },
     "STUDIO_PLUGIN_INSTALL_DISABLED": {
       "status": 409,
       "kind": "conflict",

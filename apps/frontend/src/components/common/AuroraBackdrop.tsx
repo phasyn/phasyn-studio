@@ -57,9 +57,9 @@ class SceneBoundary extends Component<{ children: ReactNode; onError: (reason: s
 function usePageVisible(): boolean {
   const [visible, setVisible] = useState(() => typeof document === "undefined" || document.visibilityState === "visible");
   useEffect(() => {
-    const update = () => setVisible(document.visibilityState === "visible");
+    const update = () => { setVisible(document.visibilityState === "visible"); };
     document.addEventListener("visibilitychange", update);
-    return () => document.removeEventListener("visibilitychange", update);
+    return () => { document.removeEventListener("visibilitychange", update); };
   }, []);
   return visible;
 }
@@ -79,7 +79,7 @@ export function AuroraBackdrop({ className }: { className?: string }) {
       if (entry) setOnscreen(entry.isIntersecting);
     });
     observer.observe(node);
-    return () => observer.disconnect();
+    return () => { observer.disconnect(); };
   }, []);
 
   const fail = useCallback((reason: string) => {

@@ -50,7 +50,7 @@ function SourceCell({ source }: { source: LogSource }) {
       <span className="truncate">{source.label}</span>
     </>
   );
-  if (source.to) {
+  if (source.to != null && source.to !== "") {
     return (
       <Link to={source.to} title={spec.title} className={cn(className, "no-underline hover:underline")}>
         {content}
@@ -94,10 +94,10 @@ const LogRow = memo(function LogRow({ line, wrap }: { line: LogLine; wrap: boole
         {wrap ? (
           <>
             <p className="m-0 whitespace-pre-wrap">{line.message}</p>
-            {line.detail ? <p className="m-0 whitespace-pre-wrap text-fg-tertiary">{line.detail}</p> : null}
+            {(line.detail != null && line.detail !== "") ? <p className="m-0 whitespace-pre-wrap text-fg-tertiary">{line.detail}</p> : null}
           </>
         ) : (
-          <p className="m-0 truncate" title={line.detail ? `${line.message}\n${line.detail}` : line.message}>
+          <p className="m-0 truncate" title={(line.detail != null && line.detail !== "") ? `${line.message}\n${line.detail}` : line.message}>
             {line.message}
           </p>
         )}
@@ -166,9 +166,9 @@ export function LogTable({ lines, label, wrap, onWrapChange, empty, renderCap = 
   useEffect(() => {
     const element = scrollRef.current;
     if (!element || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => keepPinned());
+    const observer = new ResizeObserver(() => { keepPinned(); });
     observer.observe(element);
-    return () => observer.disconnect();
+    return () => { observer.disconnect(); };
   }, []);
 
   const handleScroll = () => {
@@ -217,7 +217,7 @@ export function LogTable({ lines, label, wrap, onWrapChange, empty, renderCap = 
         onScroll={handleScroll}
         role="region"
         aria-label={t("{label}（捲動區）", { label })}
-        tabIndex={0}
+         /* eslint-disable-line jsx-a11y-x/no-noninteractive-tabindex -- Keyboard users can focus this scrollable region and scroll its overflow. */ tabIndex={0}
         className="min-h-0 flex-1 overflow-auto overscroll-contain focus-visible:outline-offset-[-2px]"
       >
         {/* 高度 0、寬度＝捲動區可視寬度，黏在左上角：右端永遠是可視範圍的右緣，表格沒有捲動時就是「訊息」欄表頭的右端 */}
@@ -227,7 +227,7 @@ export function LogTable({ lines, label, wrap, onWrapChange, empty, renderCap = 
             aria-pressed={wrap}
             aria-label={t("自動換行")}
             title={wrap ? t("改回單行（超出部分截斷，完整內容在提示中）") : t("自動換行並顯示細節")}
-            onClick={() => onWrapChange(!wrap)}
+            onClick={() => { onWrapChange(!wrap); }}
             className="pressable mt-0.5 mr-1 inline-flex size-6 shrink-0 items-center justify-center rounded-md bg-surface text-fg-tertiary transition-colors duration-(--duration-fast) hover:bg-raised hover:text-fg active:bg-sunken active:duration-0 aria-pressed:bg-brand-soft aria-pressed:text-fg"
           >
             <WrapText aria-hidden className="size-3.5" />

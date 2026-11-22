@@ -51,12 +51,12 @@ export interface AnimationChannel extends NumericChannel {
   keys: TimelineKeyframe[];
   update: (keys: TimelineKeyframe[]) => TimelineClip;
 }
-function effectChannels<T extends Effect>(effect: T, clip: TimelineClip, index: number): AnimationChannel[] {
+function effectChannels(effect: Effect, clip: TimelineClip, index: number): AnimationChannel[] {
   const specs: readonly NumericChannel[] = EFFECT_ANIMATION[effect.kind];
   const values: Partial<Record<string, unknown>> = effect;
   const keyframes: Partial<Record<string, TimelineKeyframe[]>> = effect.keyframes ?? {};
   return specs.map((spec) => ({ ...spec, key: `effect:${effect.effect_id}:${spec.key}`, label: t("效果 {index}・{property}", { index: index + 1, property: spec.label }), fallback: Number(values[spec.key]), keys: keyframes[spec.key] ?? [],
-    update: (keys) => ({ ...clip, effect_stack: clip.effect_stack?.map((item) => item.effect_id === effect.effect_id ? { ...effect, keyframes: { ...effect.keyframes, [spec.key]: keys } } : item) }),
+    update: (keys) => clip.effect_stack ? ({ ...clip, effect_stack: clip.effect_stack.map((item) => item.effect_id === effect.effect_id ? { ...effect, keyframes: { ...effect.keyframes, [spec.key]: keys } } : item) }) : clip,
   }));
 }
 /** Stable IDs preserve the selected property when its effect is reordered. */
@@ -101,7 +101,7 @@ export function mapClipKeyframes(clip: TimelineClip, transform: (keys: TimelineK
   let current = { ...clip, motion: { ...clip.motion, keyframes: { ...clip.motion.keyframes } } };
   for (const key of MOTION_CHANNELS) {
     const keys = current.motion.keyframes[key];
-    if (keys?.length) current.motion.keyframes[key] = transform(keys, current.motion[key]);
+    if (keys?.length != null && Boolean(keys.length)) current.motion.keyframes[key] = transform(keys, current.motion[key]);
   }
   for (const channel of compositingChannels(current)) {
     if (!channel.keys.length) continue;

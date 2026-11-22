@@ -37,7 +37,7 @@ const KIND_ICON: Record<AccentKind, LucideIcon> = { action: Activity, flash: Zap
 export function SpeedFeelDialog() {
   const editor = useEditor();
   const clipId = editor.ui.speedFeelClip;
-  const close = () => editor.ui.setSpeedFeelClip(null);
+  const close = () => { editor.ui.setSpeedFeelClip(null); };
   return (
     <Dialog
       open={clipId !== null}
@@ -55,17 +55,17 @@ function SpeedFeelContent({ clipId, onClose }: { clipId: string; onClose: () => 
   const clip = editor.timeline.clips.find((item) => item.clip_id === clipId) ?? null;
   const [tool, setTool] = useState<SpeedFeelTool>(() => requestedSpeedFeelTool(clipId));
   // The tool asked for steers this opening only
-  useEffect(() => clearSpeedFeelTool(), []);
+  useEffect(() => { clearSpeedFeelTool(); }, []);
   // The step each tool applied stays here: switching tools unmounts the one left
   const [effectsApplied, setEffectsApplied] = useState<string | null>(null);
   const [conformApplied, setConformApplied] = useState<string | null>(null);
-  const idPrefix = useId();
+  const idPrefixId = useId();
   const tools = [
     { id: "effects", label: t("加效果"), icon: <Zap aria-hidden /> },
     { id: "conform", label: t("對齊原片切點"), icon: <Magnet aria-hidden /> },
   ];
   return (
-    <DialogContent wide onKeyDown={(event) => event.stopPropagation()}>
+    <DialogContent wide onKeyDown={(event) => { event.stopPropagation(); }}>
       <DialogHeader className="pb-0">
         <DialogTitle className="flex items-center gap-2">
           <Zap aria-hidden className="size-4 text-brand-cyan" />
@@ -76,9 +76,9 @@ function SpeedFeelContent({ clipId, onClose }: { clipId: string; onClose: () => 
             ? t("「{clip}」：比對原片（這個鏡頭的 @Video1 參考影片）的動作重音，在生成沒打到的地方切開片段，加上震動與負片衝擊格。", { clip: clip?.name ?? "" })
             : t("「{clip}」：找出原片（這個鏡頭的 @Video1 參考影片）和生成的切點並配對，在動作最少的地方停格或加快，讓生成的切點落在原片切點的同一格；片段總長不變。", { clip: clip?.name ?? "" })}
         </DialogDescription>
-        <Tabs items={tools} value={tool} onChange={(id) => setTool(id === "conform" ? "conform" : "effects")} idPrefix={idPrefix} label={t("速度感的工具")} size="sm" className="-mx-6 mt-2 border-b-0 px-6" />
+        <Tabs items={tools} value={tool} onChange={(id) => { setTool(id === "conform" ? "conform" : "effects"); }} idPrefix={idPrefixId} label={t("速度感的工具")} size="sm" className="-mx-6 mt-2 border-b-0 px-6" />
       </DialogHeader>
-      <TabPanel key={tool} idPrefix={idPrefix} id={tool} className="flex min-h-0 flex-1 flex-col animate-reveal">
+      <TabPanel key={tool} idPrefix={idPrefixId} id={tool} className="flex min-h-0 flex-1 flex-col animate-reveal">
         {tool === "effects" ? (
           <EffectsTool clipId={clipId} applied={effectsApplied} onApplied={setEffectsApplied} onClose={onClose} />
         ) : (
@@ -111,12 +111,12 @@ function EffectsTool({ clipId, applied, onApplied, onClose }: ToolProps) {
   useEffect(() => cancelSpeedFeel, []);
 
   const apply = () => {
-    if (!plan?.ok || !clip) return;
+    if (!(plan?.ok === true) || !clip) return;
     const label = speedFeelLabel(clipTitle(project, timeline, clip), plan.plan.hits.length);
     if (editor.commit(plan.plan.timeline, label)) onApplied(label);
   };
   const shotId = timeline.sources.find((source) => source.source_id === clip?.source_id)?.shot_id ?? null;
-  const generateHref = shotId ? `/studio/generate?project=${encodeURIComponent(project.project_id)}&shot=${encodeURIComponent(shotId)}` : null;
+  const generateHref = (shotId != null && shotId !== "") ? `/studio/generate?project=${encodeURIComponent(project.project_id)}&shot=${encodeURIComponent(shotId)}` : null;
 
   return (
     <>
@@ -128,7 +128,7 @@ function EffectsTool({ clipId, applied, onApplied, onClose }: ToolProps) {
       >
         {target.ok && clip && analysis ? <Result analysis={analysis} target={target} clip={clip} plan={plan} generateHref={generateHref} onLeave={onClose} /> : null}
       </ToolBody>
-      <ToolFooter applied={applied} onUndone={() => onApplied(null)} reading={target.ok ? { status: status?.status ?? null, start: () => startSpeedFeel(target), cancel: cancelSpeedFeel } : null}>
+      <ToolFooter applied={applied} onUndone={() => { onApplied(null); }} reading={target.ok ? { status: status?.status ?? null, start: () => { startSpeedFeel(target); }, cancel: cancelSpeedFeel } : null}>
         {applied === null && analysis?.verdict === "add" ? (
           <ActionButton variant="primary" icon={<Zap aria-hidden />} disabledReason={plan && !plan.ok ? plan.reason : null} onClick={apply}>
             {t("套用")}
@@ -157,14 +157,14 @@ function Result({ analysis, target, clip, plan, generateHref, onLeave }: ResultP
   const flashes = analysis.verdict === "add" ? flashCheck(analysis) : null;
   const length = target.end - target.first;
   const regenerate =
-    generateHref && (analysis.verdict === "regenerate" || analysis.verdict === "edits")
+    (generateHref != null && generateHref !== "") && (analysis.verdict === "regenerate" || analysis.verdict === "edits")
       ? { href: generateHref, label: analysis.verdict === "regenerate" ? t("到「鏡頭」重新生成這段") : t("到「鏡頭」調整這段"), onLeave }
       : null;
   return (
     <>
       <Verdict verdict={verdict} icon={TONE_ICON[verdict.tone]} regenerate={regenerate} />
       {notes.length > 0 ? <NoteList tone="warning" icon={<Flag aria-hidden />} items={notes} /> : null}
-      {flashes?.warning ? <NoteList tone="danger" icon={<ShieldAlert aria-hidden />} items={[flashes.text]} /> : null}
+      {(flashes?.warning === true) ? <NoteList tone="danger" icon={<ShieldAlert aria-hidden />} items={[flashes.text]} /> : null}
       <Facts className="text-caption">
         <Fact label={t("動作量 p90（生成／原片）")}>
           {t("{take}／{original}", { take: analysis.take.p90.toFixed(1), original: analysis.original.p90.toFixed(1) })}
@@ -212,7 +212,7 @@ function AccentTable({ analysis, plan, at, originalAt }: { analysis: SpeedFeelAn
               const outcome = outcomeText(decision, analysis, hits.get(accent) ?? null, blocked.get(accent) ?? null);
               const KindIcon = KIND_ICON[accent.kind];
               return (
-                <tr key={`${index}:${accent.frame}`} ref={reveal(index)} className="border-t border-line-subtle align-top">
+                <tr key={`${String(index)}:${String(accent.frame)}`} ref={reveal(index)} className="border-t border-line-subtle align-top">
                   <td className="px-2 py-1.5">
                     <span className="machine block text-fg">{at(accent.frame)}</span>
                     <span className="machine block text-caption text-fg-tertiary">{t("原片 {time}", { time: originalAt(accent.frame) })}</span>
@@ -227,7 +227,7 @@ function AccentTable({ analysis, plan, at, originalAt }: { analysis: SpeedFeelAn
                     <span className="flex items-center gap-1.5">
                       <span className="machine w-9 text-fg">{accent.strength.toFixed(2)}</span>
                       <span aria-hidden className="block h-1 w-12 overflow-hidden rounded-full bg-raised">
-                        <span className={cn("block h-full rounded-full", decision.kept ? "bg-brand-cyan/80" : "bg-fg-tertiary/50")} style={{ width: `${Math.round(accent.strength * 100)}%` }} />
+                        <span className={cn("block h-full rounded-full", decision.kept ? "bg-brand-cyan/80" : "bg-fg-tertiary/50")} style={{ width: `${String(Math.round(accent.strength * 100))}%` }} />
                       </span>
                     </span>
                   </td>

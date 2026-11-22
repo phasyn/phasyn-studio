@@ -1,0 +1,22 @@
+{
+  "component_id": "pose-control",
+  "label": "單人姿態控制素材",
+  "provider_id": "media.pose_control",
+  "runtime_id": "performance-cpu",
+  "autostart": false,
+  "folder": "製作/表演",
+  "settings": {
+    "load": {
+      "model_path": "/path/to/models/mediapipe/pose_landmarker_full.task",
+      "device": {
+        "kind": "cpu",
+        "id": "cpu",
+        "resource_group": "cpu-performance"
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "mode": "detailed"
+    }
+  }
+}

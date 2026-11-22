@@ -39,42 +39,42 @@ export function ColumnResizer({
   onReset: () => void;
   className?: string;
 }) {
-  const drag = useRef<DragState | null>(null);
+  const dragRef = useRef<DragState | null>(null);
 
   // 拖曳中卸載（例如切換 Node 分頁）時還原頁面游標與選取。
-  useEffect(() => () => lockPage(false), []);
+  useEffect(() => () => { lockPage(false); }, []);
 
   const finish = (event: PointerEvent<HTMLDivElement>) => {
-    const state = drag.current;
-    if (!state || state.pointer !== event.pointerId) return;
-    drag.current = null;
+    const state = dragRef.current;
+    if (state?.pointer !== event.pointerId) return;
+    dragRef.current = null;
     lockPage(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     onCommit(state.last);
   };
 
   return (
-    <div
+    <div /* eslint-disable-line jsx-a11y-x/no-noninteractive-element-interactions -- This adjustable ARIA separator is operable with arrows and exposes the current value. */
       role="separator"
       aria-orientation="vertical"
       aria-label={t("調整「{label}」欄寬", { label: spec.label })}
       aria-valuenow={width}
       aria-valuemin={spec.minWidth}
       aria-valuemax={maxWidthOf(spec)}
-      aria-valuetext={`${width} px`}
-      tabIndex={0}
+      aria-valuetext={`${String(width)} px`}
+       /* eslint-disable-line jsx-a11y-x/no-noninteractive-tabindex -- This adjustable ARIA separator is operable with arrows and exposes the current value. */ tabIndex={0}
       title={t("拖曳調整「{label}」欄寬；雙擊或 Home 還原預設 {defaultWidth} px", { label: spec.label, defaultWidth: spec.defaultWidth })}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();
         event.stopPropagation();
         event.currentTarget.setPointerCapture(event.pointerId);
-        drag.current = { pointer: event.pointerId, startX: event.clientX, startWidth: width, last: width };
+        dragRef.current = { pointer: event.pointerId, startX: event.clientX, startWidth: width, last: width };
         lockPage(true);
       }}
       onPointerMove={(event) => {
-        const state = drag.current;
-        if (!state || state.pointer !== event.pointerId) return;
+        const state = dragRef.current;
+        if (state?.pointer !== event.pointerId) return;
         const next = dragColumnWidth(spec, state.startWidth, state.startX, event.clientX);
         if (next === state.last) return;
         state.last = next;
@@ -88,7 +88,7 @@ export function ColumnResizer({
         event.stopPropagation();
         onReset();
       }}
-      onClick={(event) => event.stopPropagation()}
+      onClick={(event) => { event.stopPropagation(); }}
       onKeyDown={(event) => {
         const action = columnKeyAction(event.key, event.shiftKey);
         if (!action) return;

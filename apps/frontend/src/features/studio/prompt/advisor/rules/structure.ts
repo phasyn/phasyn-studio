@@ -100,7 +100,7 @@ export function negativePromptRule(ctx: RuleContext): Finding[] {
     finding("format.negative-prompt", {
       title: t("Negative prompt 那一行會被當成要畫的內容"),
       detail: t("刪掉這一行，改成直接描述你想要的畫面。H3 沒有「不要出現」的欄位，這一行列出的東西（例如 blurry、low quality）反而會被當成要出現的內容。"),
-      range: lines[0],
+      ...(lines[0] === undefined ? {} : { range: lines[0] }),
       fix: { label: t("刪除 Negative prompt 那一行"), apply: removeNegativePromptLines },
     }),
   ];

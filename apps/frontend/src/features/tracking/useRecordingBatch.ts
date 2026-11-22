@@ -1,3 +1,4 @@
+import { withRecordValue } from "@/lib/json";
 // 依序送出 recording PATCH（一次一個元件）並記錄逐列結果。
 // - 同時只跑一批（ref 防重送；按鈕在 running 時停用）。
 // - 不自動重試；「停止」只是不再送出後面的請求，已送出的那一個照實回報。
@@ -16,11 +17,6 @@ export interface BatchProgress {
   total: number;
 }
 
-function without<T>(record: Readonly<Record<string, T>>, key: string): Record<string, T> {
-  const out = { ...record };
-  delete out[key];
-  return out;
-}
 
 export function useRecordingBatch() {
   const client = useQueryClient();
@@ -30,6 +26,7 @@ export function useRecordingBatch() {
   const [progress, setProgress] = useState<BatchProgress | null>(null);
   const runningRef = useRef(false);
   const stopRef = useRef(false);
+  const stopped = () => stopRef.current;
 
   useEffect(
     () => () => {
@@ -52,7 +49,7 @@ export function useRecordingBatch() {
     setProgress({ done: 0, total: plan.send.length });
     try {
       for (const [index, item] of plan.send.entries()) {
-        if (stopRef.current) {
+        if (stopped()) {
           const remaining = plan.send.slice(index);
           setResults((previous) => {
             const next = { ...previous };
@@ -86,7 +83,7 @@ export function useRecordingBatch() {
     try {
       const view = await fetchSettings(row.nodeId, row.componentId);
       remember(row.key, row.nodeId, row.componentId, view);
-      setResults((previous) => without(previous, row.key));
+      setResults((previous) => withRecordValue(previous, row.key, undefined));
       void client.invalidateQueries({ queryKey: qk.catalog() });
       return view;
     } catch (error) {
@@ -109,7 +106,7 @@ export function useRecordingBatch() {
     stop: () => {
       stopRef.current = true;
     },
-    clearResults: () => setResults({}),
-    clearResult: (key: string) => setResults((previous) => without(previous, key)),
+    clearResults: () => { setResults({}); },
+    clearResult: (key: string) => { setResults((previous) => withRecordValue(previous, key, undefined)); },
   };
 }

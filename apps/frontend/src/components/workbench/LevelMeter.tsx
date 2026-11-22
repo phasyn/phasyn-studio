@@ -5,6 +5,8 @@
 import { useImperativeHandle, useRef, type Ref } from "react";
 import { cn } from "@/lib/cn";
 
+const EMPTY_ITEMS = [] as const;
+
 export interface LevelMeterHandle {
   /** Show a level and a held peak, both in dB; -Infinity (or anything below the bar's range) shows nothing. */
   set: (level: number, peak: number) => void;
@@ -39,21 +41,21 @@ function fraction(level: number, min: number, max: number): number {
 
 const percent = (value: number) => `${(value * 100).toFixed(2)}%`;
 
-export function LevelMeter({ ref, min = DEFAULT_MIN, max = DEFAULT_MAX, hotFrom = -12, overFrom = -3, ticks = [], className }: LevelMeterProps) {
-  const fill = useRef<HTMLSpanElement>(null);
-  const held = useRef<HTMLSpanElement>(null);
-  const shown = useRef({ level: 0, peak: 0 });
+export function LevelMeter({ ref, min = DEFAULT_MIN, max = DEFAULT_MAX, hotFrom = -12, overFrom = -3, ticks = EMPTY_ITEMS, className }: LevelMeterProps) {
+  const fillRef = useRef<HTMLSpanElement>(null);
+  const heldRef = useRef<HTMLSpanElement>(null);
+  const shownRef = useRef({ level: 0, peak: 0 });
   useImperativeHandle(
     ref,
     () => ({
       set(level, peak) {
         const next = { level: fraction(level, min, max), peak: fraction(peak, min, max) };
-        if (next.level !== shown.current.level && fill.current) fill.current.style.clipPath = `inset(${percent(1 - next.level)} 0 0 0)`;
-        if (next.peak !== shown.current.peak && held.current) {
-          held.current.style.transform = `translateY(${percent(1 - next.peak)})`;
-          held.current.style.opacity = next.peak > 0 ? "1" : "0";
+        if (next.level !== shownRef.current.level && fillRef.current) fillRef.current.style.clipPath = `inset(${percent(1 - next.level)} 0 0 0)`;
+        if (next.peak !== shownRef.current.peak && heldRef.current) {
+          heldRef.current.style.transform = `translateY(${percent(1 - next.peak)})`;
+          heldRef.current.style.opacity = next.peak > 0 ? "1" : "0";
         }
-        shown.current = next;
+        shownRef.current = next;
       },
     }),
     [min, max],
@@ -62,7 +64,7 @@ export function LevelMeter({ ref, min = DEFAULT_MIN, max = DEFAULT_MAX, hotFrom 
   const over = fraction(overFrom, min, max);
   return (
     <span aria-hidden className={cn("relative block min-h-0 overflow-hidden rounded-[3px] border border-line-subtle bg-sunken", className)}>
-      <span ref={fill} className="absolute inset-0" style={{ clipPath: "inset(100% 0 0 0)" }}>
+      <span ref={fillRef} className="absolute inset-0" style={{ clipPath: "inset(100% 0 0 0)" }}>
         <span className="absolute inset-x-0 bottom-0 bg-success" style={{ height: percent(hot) }} />
         <span className="absolute inset-x-0 bg-warning" style={{ bottom: percent(hot), height: percent(over - hot) }} />
         <span className="absolute inset-x-0 top-0 bg-danger" style={{ height: percent(1 - over) }} />
@@ -70,7 +72,7 @@ export function LevelMeter({ ref, min = DEFAULT_MIN, max = DEFAULT_MAX, hotFrom 
       {ticks.map((tick) => (
         <span key={tick} className="absolute inset-x-0 h-px bg-surface/85" style={{ bottom: percent(fraction(tick, min, max)) }} />
       ))}
-      <span ref={held} className="absolute inset-0 opacity-0">
+      <span ref={heldRef} className="absolute inset-0 opacity-0">
         <span className="absolute inset-x-0 top-0 h-0.5 bg-fg" />
       </span>
     </span>

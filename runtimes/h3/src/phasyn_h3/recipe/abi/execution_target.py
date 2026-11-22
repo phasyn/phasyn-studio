@@ -8,15 +8,26 @@ from typing import Any
 from .errors import diagnostic
 
 
-def execution_target_diagnostics(request: Mapping[str, Any], family: str) -> list[dict[str, Any]]:
+def execution_target_diagnostics(
+    request: Mapping[str, Any], family: str
+) -> list[dict[str, Any]]:
+    """Explain whether the requested execution target is available."""
     target = request.get("execution_target", "generation")
     if target not in ("generation", "conditioning"):
-        return [diagnostic("UNSUPPORTED_COMBINATION", "未知 execution_target", field_paths=["execution_target"])]
+        return [
+            diagnostic(
+                "UNSUPPORTED_COMBINATION",
+                "未知 execution_target",
+                field_paths=["execution_target"],
+            )
+        ]
     cache_mode = request.get("conditioning_cache_mode", "off")
     if cache_mode not in ("off", "benchmark_exact"):
         return [
             diagnostic(
-                "UNSUPPORTED_COMBINATION", "未知 conditioning_cache_mode", field_paths=["conditioning_cache_mode"]
+                "UNSUPPORTED_COMBINATION",
+                "未知 conditioning_cache_mode",
+                field_paths=["conditioning_cache_mode"],
             )
         ]
     if target == "generation" and cache_mode == "off":
@@ -38,7 +49,13 @@ def execution_target_diagnostics(request: Mapping[str, Any], family: str) -> lis
                 field_paths=["prompt.context_mode"],
             )
         )
-    allowed = {"ingest", "resolve_context", "prepare_media", "encode_conditioning", "commit_artifacts"}
+    allowed = {
+        "ingest",
+        "resolve_context",
+        "prepare_media",
+        "encode_conditioning",
+        "commit_artifacts",
+    }
     if target == "conditioning" and set(request.get("stage_overrides") or {}) - allowed:
         problems.append(
             diagnostic(

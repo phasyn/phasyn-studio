@@ -14,6 +14,7 @@ export function morphToMonitor(source: HTMLElement | null, apply: () => void): v
   let target: HTMLElement | null = null;
   const transition = document.startViewTransition(() => {
     source.style.removeProperty("view-transition-name");
+    // eslint-disable-next-line @eslint-react/dom-no-flush-sync -- The native view transition takes its new-layout snapshot when this callback returns.
     flushSync(apply);
     target = document.querySelector<HTMLElement>("[data-monitor-stage]");
     target?.style.setProperty("view-transition-name", NAME);

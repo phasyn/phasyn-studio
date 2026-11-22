@@ -15,28 +15,52 @@ from typing import Any, NoReturn
 
 from ..timeline import curve_value
 from ..timeline_limits import MAX_KEYFRAMES
-from .curves import Keys, clip_curves, map_clip_keyframes, slice_compositing, slice_motion, upsert_curve_key
+from .curves import (
+    Keys,
+    clip_curves,
+    map_clip_keyframes,
+    slice_compositing,
+    slice_motion,
+    upsert_curve_key,
+)
 from .model import Doc, clip_duration, clip_output_window, processed_clip_duration
 from .rejection import reject
+
 
 FADE_EDGES = ("video_in", "video_out", "audio_in", "audio_out")
 HOLD_EDGES = ("start", "end")
 
 
+_NORMAL_PERCENT = 100
+
+
 def _no_materialize() -> NoReturn:
-    reject("effect_phase", "這項時間調整無法保留目前裁切的效果相位；請先還原裁切或移除時間效果。")
+    reject(
+        "effect_phase",
+        "這項時間調整無法保留目前裁切的效果相位；請先還原裁切或移除時間效果。",
+    )
 
 
 def _no_retime() -> NoReturn:
-    reject("effect_phase", "這項時間調整無法保留關鍵影格的整數位置；請先調整關鍵影格或文字範圍。")
+    reject(
+        "effect_phase",
+        "這項時間調整無法保留關鍵影格的整數位置；請先調整關鍵影格或文字範圍。",
+    )
 
 
-def _window_cuts_effect(effects: Mapping[str, Any], start: int, end: int, duration: int) -> bool:
+def _window_cuts_effect(
+    effects: Mapping[str, Any], start: int, end: int, duration: int
+) -> bool:
     """Whether the window [start, end) cuts through a hold, a fade or an impact of the complete clock."""
     hold = effects.get("hold") or {}
     fade = effects.get("fade") or {}
     hold_in, core_end = int(hold.get("start", 0)), duration - int(hold.get("end", 0))
-    if (0 < start < hold_in) or (core_end < end < duration) or start >= core_end or end <= hold_in:
+    if (
+        (0 < start < hold_in)
+        or (core_end < end < duration)
+        or start >= core_end
+        or end <= hold_in
+    ):
         return True
     fade_in = max(int(fade.get("video_in", 0)), int(fade.get("audio_in", 0)))
     fade_out = max(int(fade.get("video_out", 0)), int(fade.get("audio_out", 0)))
@@ -48,7 +72,9 @@ def _window_cuts_effect(effects: Mapping[str, Any], start: int, end: int, durati
     return (0 < start < impact_frames) or (end < duration and end < impact_frames)
 
 
-def _materialized_effects(effects: Mapping[str, Any], start: int, end: int, duration: int) -> Doc:
+def _materialized_effects(
+    effects: Mapping[str, Any], start: int, end: int, duration: int
+) -> Doc:
     """The effects of the window as a clip of its own: only the hold, fade and impact of an edge it still has."""
     hold = effects.get("hold") or {}
     fade = effects.get("fade") or {}
@@ -68,11 +94,17 @@ def _materialized_effects(effects: Mapping[str, Any], start: int, end: int, dura
     title = value.get("title")
     if title:
         title_start = max(start, title["start_frame"])
-        title_end = min(end, title["end_frame"] if title["end_frame"] is not None else duration)
+        title_end = min(
+            end, title["end_frame"] if title["end_frame"] is not None else duration
+        )
         if title_start >= title_end:
             del value["title"]
         else:
-            value["title"] = {**title, "start_frame": title_start - start, "end_frame": title_end - start}
+            value["title"] = {
+                **title,
+                "start_frame": title_start - start,
+                "end_frame": title_end - start,
+            }
     return value
 
 
@@ -86,10 +118,18 @@ def materialize_clip_window(clip: Mapping[str, Any]) -> Doc:
         return value
     effects = clip.get("effects") or {}
     camera = effects.get("camera") or {}
-    hidden_key = any(key["frame"] < start or key["frame"] > end for keys in clip_curves(clip) for key in keys)
+    hidden_key = any(
+        key["frame"] < start or key["frame"] > end
+        for keys in clip_curves(clip)
+        for key in keys
+    )
     shaking = bool(camera.get("shake_px")) and bool(camera.get("shake_frames"))
     # Restarting tempo processing on a cropped source changes PCM even at exact frame boundaries.
-    if hidden_key or shaking or int(effects.get("speed_percent", 100)) != 100:
+    if (
+        hidden_key
+        or shaking
+        or int(effects.get("speed_percent", 100)) != _NORMAL_PERCENT
+    ):
         _no_materialize()
     hold_in = int((effects.get("hold") or {}).get("start", 0))
     core_end = duration - int((effects.get("hold") or {}).get("end", 0))
@@ -99,9 +139,15 @@ def materialize_clip_window(clip: Mapping[str, Any]) -> Doc:
     if first % int(effects.get("frame_step", 1)):
         _no_materialize()
     if clip.get("effects") is not None:
-        value["effects"] = _materialized_effects(copy.deepcopy(dict(clip["effects"])), start, end, duration)
+        value["effects"] = _materialized_effects(
+            copy.deepcopy(dict(clip["effects"])), start, end, duration
+        )
     value["in_frame"] = clip["in_frame"] + first
-    value["out_frame"] = clip["out_frame"] if end == duration else clip["in_frame"] + min(core_end, end) - hold_in
+    value["out_frame"] = (
+        clip["out_frame"]
+        if end == duration
+        else clip["in_frame"] + min(core_end, end) - hold_in
+    )
     value["motion"] = slice_motion(clip["motion"], start, end)
     value.update(slice_compositing(clip, start, end))
     if processed_clip_duration(value) != end - start:
@@ -109,12 +155,16 @@ def materialize_clip_window(clip: Mapping[str, Any]) -> Doc:
     return value
 
 
-def _merged_effects(clip: Mapping[str, Any], old: Mapping[str, Any], requested: Mapping[str, Any]) -> Doc:
+def _merged_effects(
+    clip: Mapping[str, Any], old: Mapping[str, Any], requested: Mapping[str, Any]
+) -> Doc:
     """``old`` with the members the request changed; of a hold or a fade only the edges that changed."""
     current = clip.get("effects") or {}
     merged: Doc = dict(old)
     for name in dict.fromkeys([*current, *requested]):
-        if current.get(name) == requested.get(name) and (name in current) == (name in requested):
+        if current.get(name) == requested.get(name) and (name in current) == (
+            name in requested
+        ):
             continue
         if name in ("hold", "fade"):
             edges = HOLD_EDGES if name == "hold" else FADE_EDGES
@@ -149,7 +199,11 @@ def _clock_map(
             return new_start + Fraction((frame - old_start) * new_core, old_core)
         if old_end == 0:
             return None
-        return new_start + new_core + Fraction((frame - old_start - old_core) * new_end, old_end)
+        return (
+            new_start
+            + new_core
+            + Fraction((frame - old_start - old_core) * new_end, old_end)
+        )
 
     boundaries: list[int] = []
     if old_start > 0 and new_start * old_core != new_core * old_start:
@@ -164,33 +218,56 @@ def _whole(value: Fraction | None) -> int | None:
 
 
 def _retimed_keys(
-    keys: Keys, fallback: float, position: Callable[[int], Fraction | None], boundaries: list[int]
+    keys: Keys,
+    fallback: float,
+    position: Callable[[int], Fraction | None],
+    boundaries: list[int],
 ) -> Keys:
     """Keys moved to the new clock; a key is added where the time scale changes under a curve."""
     prepared = keys
     for boundary in boundaries:
-        if any(key["frame"] < boundary for key in prepared) and any(key["frame"] > boundary for key in prepared):
-            prepared = upsert_curve_key(prepared, boundary, curve_value(prepared, boundary, fallback))
+        if any(key["frame"] < boundary for key in prepared) and any(
+            key["frame"] > boundary for key in prepared
+        ):
+            prepared = upsert_curve_key(
+                prepared, boundary, curve_value(prepared, boundary, fallback)
+            )
     frames = [_whole(position(key["frame"])) for key in prepared]
-    if len(prepared) > MAX_KEYFRAMES or None in frames or len(set(frames)) != len(frames):
+    if (
+        len(prepared) > MAX_KEYFRAMES
+        or None in frames
+        or len(set(frames)) != len(frames)
+    ):
         _no_retime()
-    return [{**key, "frame": frame} for key, frame in zip(prepared, frames, strict=True)]
+    return [
+        {**key, "frame": frame} for key, frame in zip(prepared, frames, strict=True)
+    ]
 
 
-def change_clip_timing(clip: Mapping[str, Any], effects: Mapping[str, Any] | None) -> Doc:
+def change_clip_timing(
+    clip: Mapping[str, Any], effects: Mapping[str, Any] | None
+) -> Doc:
     """The clip with ``effects`` as its new effects, keys and title following the content they sit on."""
     before = materialize_clip_window(clip)
     merged = _merged_effects(clip, before.get("effects") or {}, effects or {})
     value: Doc = {**before, "effects": merged}
     position, boundaries = _clock_map(before, value)
-    value = map_clip_keyframes(value, lambda keys, fallback: _retimed_keys(keys, fallback, position, boundaries))
+    value = map_clip_keyframes(
+        value,
+        lambda keys, fallback: _retimed_keys(keys, fallback, position, boundaries),
+    )
     title = merged.get("title")
     if title:
         start = _whole(position(title["start_frame"]))
-        end = None if title["end_frame"] is None else _whole(position(title["end_frame"]))
+        end = (
+            None if title["end_frame"] is None else _whole(position(title["end_frame"]))
+        )
         if start is None or (title["end_frame"] is not None and end is None):
             _no_retime()
-        value["effects"] = {**merged, "title": {**title, "start_frame": start, "end_frame": end}}
+        value["effects"] = {
+            **merged,
+            "title": {**title, "start_frame": start, "end_frame": end},
+        }
     if clip_duration(value) <= 0:
         _no_retime()
     return value

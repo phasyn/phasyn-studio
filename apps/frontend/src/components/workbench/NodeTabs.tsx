@@ -42,14 +42,14 @@ export function NodeTabs({
   panelId?: string;
   className?: string;
 }) {
-  const refs = useRef(new Map<string, HTMLButtonElement>());
+  const refsRef = useRef(new Map<string, HTMLButtonElement>());
   const listRef = useRef<HTMLDivElement>(null);
   const vertical = orientation === "vertical";
   const focusAt = (index: number) => {
     const item = items[(index + items.length) % items.length];
     if (!item) return;
     onChange(item.id);
-    refs.current.get(item.id)?.focus();
+    refsRef.current.get(item.id)?.focus();
   };
   const selectedIndex = items.findIndex((item) => item.id === value);
   return (
@@ -68,8 +68,8 @@ export function NodeTabs({
           <button
             key={item.id}
             ref={(node) => {
-              if (node) refs.current.set(item.id, node);
-              else refs.current.delete(item.id);
+              if (node) refsRef.current.set(item.id, node);
+              else refsRef.current.delete(item.id);
             }}
             type="button"
             role="tab"
@@ -78,7 +78,7 @@ export function NodeTabs({
             aria-controls={selected ? panelId : undefined}
             tabIndex={tabbable ? 0 : -1}
             title={item.title ?? item.label}
-            onClick={() => onChange(item.id)}
+            onClick={() => { onChange(item.id); }}
             onKeyDown={(event) => {
               if (event.key === (vertical ? "ArrowDown" : "ArrowRight")) focusAt(index + 1);
               else if (event.key === (vertical ? "ArrowUp" : "ArrowLeft")) focusAt(index - 1);
@@ -100,7 +100,7 @@ export function NodeTabs({
             )}
           >
             <Server aria-hidden className={selected ? "text-action-fg" : "text-fg-tertiary"} />
-            <span className={cn("min-w-0 truncate", vertical && "flex-1", item.muted && !selected && "text-fg-tertiary")}>{item.label}</span>
+            <span className={cn("min-w-0 truncate", vertical && "flex-1", (item.muted === true) && !selected && "text-fg-tertiary")}>{item.label}</span>
             {item.count !== undefined && item.count !== null ? (
               <span className="machine shrink-0 rounded-full bg-overlay px-1.5 text-caption font-normal text-fg-tertiary">{item.count}</span>
             ) : null}

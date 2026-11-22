@@ -230,7 +230,6 @@
   "{value}（非最終結果）・第 {step}／{total} 步{value2}": "{value} (not the final result) · step {step}/{total}{value2}",
   "最後一張預覽": "Last preview",
   "讀取預覽…": "Loading preview…",
-  "預覽步驟已結束：等待解碼與合成，完成後換成最終圖片": "Preview steps are done: waiting for decoding and compositing; the final image replaces this when finished",
   "取消生成": "Cancel Generation",
   "已執行 {formatElapsed}": "Running for {formatElapsed}",
   "這張圖片的階段": "Stages of this image",
@@ -504,7 +503,6 @@
   "取消整個 run {run_id}：這張圖片會停止。已經完成的圖片保留。": "Cancels the whole run {run_id}: this image will stop. Images already finished are kept.",
   "DiT 步數": "DiT steps",
   "{label}：{reason}": "{label}: {reason}",
-  "take {number} 的 DiT 步數（預覽）": "DiT steps of take {number} (preview)",
   "預覽 {step}／{total}": "Preview {step}/{total}",
   "還沒有 take": "No Takes Yet",
   "圖片讀不到": "Can't Load Image",
@@ -526,7 +524,6 @@
   "Image Studio 與 Video Studio 共用同一個專案與素材庫：在這裡生成的圖片，可以直接用在同一個專案的影片鏡頭。": "Image Studio and Video Studio share the same projects and library: images generated here can be used directly in video shots of the same project.",
   "{title}\n切換專案或新增專案（與 Video Studio 共用）": "{title}\nSwitch or create a project (shared with Video Studio)",
   "在 Video Studio 開啟這個專案": "Open in Video Studio",
-  "先保存，再切到同一個專案的 Video Studio": "Save, then switch to Video Studio for the same project",
   "設定已變更 {stale}": "Settings changed: {stale}",
   "讀取主控上的元件…": "Loading components from the Controller…",
   "這台主控沒有這種元件": "This Controller has no component of this kind",
@@ -587,7 +584,6 @@
   "還沒有選擇運算路由": "No compute route chosen yet",
   "這台主控沒有可以當「{role}」的元件": "This Controller has no component that can serve as “{role}”",
   "範本接不起這些元件，沒有建立。可以到元件組合頁用範本手動建立。": "The template couldn't wire these components together, so nothing was created. You can build one by hand from a template on the Pipelines page.",
-  "Video Studio 還不支援以素材庫圖片當 fl2va 首幀（契約與渲染規劃尚未整合；目前的首幀只能「從前一個鏡頭接續」）": "Video Studio doesn't yet support library images as the fl2va first frame (the contract and render planning aren't integrated yet; for now the first frame can only “continue from the previous shot”)",
   "主控的同時執行數已滿；等其中一個 run 結束或取消後再試。": "The controller's concurrent runs are all in use. Wait for one to finish or cancel it, then try again.",
   "沒有送出：{reason}": "Not sent: {reason}",
   "沒有送出：目前有其他 run 正在執行": "Not sent: other runs are running",
@@ -595,5 +591,8 @@
   "DiT（{value}）沒有載入預覽 VAE（preview_vae）：這次不會有中間預覽；要預覽請在元件設定啟用 preview_vae 後重新啟動元件": "The DiT ({value}) didn't load a preview VAE (preview_vae): this run has no intermediate previews. To get previews, enable preview_vae in the component settings and restart the component",
   "這個 DiT（{value}）沒有載入預覽 VAE（preview_vae）：生成時不會有中間預覽（最終圖片不受影響）。": "This DiT ({value}) didn't load a preview VAE (preview_vae): generation runs without intermediate previews (the final image is not affected).",
   "完整解碼：這個尺寸比 1024×1024 大，顯存可能不足（元件會回錯誤，不會自動改成分塊）。建議改成分塊解碼。": "Full decode: this size is larger than 1024×1024 and may not fit in GPU memory (the component then returns an error; it never switches to tiled on its own). Tiled decode is recommended.",
-  "改成分塊解碼": "Switch to tiled decode"
+  "改成分塊解碼": "Switch to tiled decode",
+  "先保存，再切到同一個專案的 Video Studio": "Save, then open this project in Video Studio",
+  "生成引擎未就緒：按一下開啟，啟動需要的元件\n{reason}": "Generation engine not ready: click to open it and start the components it needs\n{reason}",
+  "・實驗": " · experimental"
 }

@@ -151,7 +151,7 @@ export function stageBand(stage: Pick<StageFit, "samples" | "residual">, kind: "
  * soon as any of it reaches a size that failed (that call stays conservative).
  */
 function riskOf(step: EstimateStep, work: StageWork, stage: StageFit): EstimateRisk | null {
-  if (!work.risk || !stage.risk || stage.risk.unit !== work.risk.unit) return null;
+  if (!work.risk || stage.risk?.unit !== work.risk.unit) return null;
   const { measure, unit, range } = work.risk;
   const { maxSucceeded, minFailed } = stage.risk;
   const base = { stepId: step.stepId, componentId: step.componentId, stage: stage.stage, measure, unit, maxSucceeded, minFailed };

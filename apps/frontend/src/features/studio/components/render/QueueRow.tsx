@@ -85,13 +85,13 @@ export function QueueRow({ item, index, active, archived, onSelect }: { item: Qu
   const first = item.takes[0];
   const single = item.takes.length === 1 ? first : undefined;
   const route = first && item.kind !== "batch" ? routeName(routeDisplayLabel(engine.routes, first.take.route)).name : "";
-  const meta = joinInline([formatTimestamp(item.createdAt), single ? `seed ${single.take.seed}` : "", route].filter(Boolean));
+  const meta = joinInline([formatTimestamp(item.createdAt), single && single.take.seed !== null ? `seed ${String(single.take.seed)}` : "", route].filter(Boolean));
   const rendering = item.state === "rendering";
   return (
     <li ref={reveal(index)}>
       <button
         type="button"
-        onClick={() => onSelect(item.runId)}
+        onClick={() => { onSelect(item.runId); }}
         aria-current={active ? "true" : undefined}
         className={cn(LIST_ROW, "grid w-full min-w-0 content-center gap-1 px-3 py-2 text-left", rendering ? "min-h-[5.5rem]" : "min-h-[3.25rem]", active ? LIST_ROW_SELECTED : LIST_ROW_IDLE)}
       >

@@ -1,3 +1,4 @@
+import { isRecord } from "@/lib/json";
 // In and Out marks of the sources loaded in the Source monitor: remembered per browser, bounded, and keyed by the
 // media version and the timebase, so changed media or another frame rate starts with fresh marks. Marks never alter
 // the shots the media came from.
@@ -15,8 +16,8 @@ interface SourceMark extends SourceRange {
 }
 
 function isMark(item: unknown): item is SourceMark {
-  if (typeof item !== "object" || item === null) return false;
-  const entry = item as Record<string, unknown>;
+  if (!isRecord(item)) return false;
+  const entry = item;
   const { key, inFrame, outFrame } = entry;
   if (typeof key !== "string" || key.length > 600 || typeof inFrame !== "number" || typeof outFrame !== "number") return false;
   return Number.isSafeInteger(inFrame) && inFrame >= 0 && Number.isSafeInteger(outFrame) && outFrame > inFrame && outFrame <= MAX_SOURCE_FRAMES;

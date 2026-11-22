@@ -24,6 +24,6 @@ export function stageSteps(stages: readonly TakeStage[]): FlowStep[] {
     if (stage.state === "failed") return { id: stage.stepId, label: stage.label, state: "error", detail: t("失敗") };
     if (stage.state === "cancelled") return { id: stage.stepId, label: stage.label, state: "cancelled", detail: t("已取消") };
     if (stage.state === "interrupted") return { id: stage.stepId, label: stage.label, state: "interrupted", detail: t("已中斷") };
-    return { id: stage.stepId, label: stage.label, state: "pending", detail: stage.state === "waiting" ? t("等待資源") : undefined };
+    return { id: stage.stepId, label: stage.label, state: "pending", ...(stage.state === "waiting" ? { detail: t("等待資源") } : {}) };
   });
 }

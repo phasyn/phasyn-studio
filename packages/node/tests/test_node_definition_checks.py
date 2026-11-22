@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 from node_testkit import assert_valid, echo_definition, make_config, running_node
 
+
 pytestmark = pytest.mark.anyio
 
 
@@ -31,9 +32,19 @@ async def test_put_checks_settings_with_the_provider(tmp_path: Path) -> None:
     base = echo_definition("extra", group="cpu-extra")
     cases = [
         (refused(base, invoke={"bogus": 1}), "bogus"),  # unknown field
-        (refused(base, load={"precision": {"compute_dtype": "int3"}}), "int3"),  # unsupported value
         (
-            refused(base, load={"part_overrides": [{"selector": "nothing.*", "settings": {"compute_dtype": "fp32"}}]}),
+            refused(base, load={"precision": {"compute_dtype": "int3"}}),
+            "int3",
+        ),  # unsupported value
+        (
+            refused(
+                base,
+                load={
+                    "part_overrides": [
+                        {"selector": "nothing.*", "settings": {"compute_dtype": "fp32"}}
+                    ]
+                },
+            ),
             "nothing.*",
         ),
     ]
@@ -42,7 +53,9 @@ async def test_put_checks_settings_with_the_provider(tmp_path: Path) -> None:
             resp = await node.client.put(url, json=definition)
             assert resp.status_code == 422, resp.text
             body = resp.json()
-            assert body["code"] == "UNSUPPORTED_SETTING" and culprit in json.dumps(body["details"], ensure_ascii=False)
+            assert body["code"] == "UNSUPPORTED_SETTING" and culprit in json.dumps(
+                body["details"], ensure_ascii=False
+            )
         assert "extra" not in node.service.instances
         assert not (config.data_dir / "config" / "components" / "extra.json").exists()
 
@@ -50,7 +63,15 @@ async def test_put_checks_settings_with_the_provider(tmp_path: Path) -> None:
         assert created.status_code == 200, created.text
         assert_valid("ComponentDescriptor", created.json())
         # one set of rules: what PUT refuses, a settings PATCH refuses too
-        patched = await node.client.patch(f"{url}/settings", json={"patch": {"invoke": {"bogus": 1}}})
-        assert patched.status_code == 422 and patched.json()["code"] == "UNSUPPORTED_SETTING"
+        patched = await node.client.patch(
+            f"{url}/settings", json={"patch": {"invoke": {"bogus": 1}}}
+        )
+        assert (
+            patched.status_code == 422
+            and patched.json()["code"] == "UNSUPPORTED_SETTING"
+        )
         replaced = await node.client.put(url, json=refused(base, invoke={"bogus": 1}))
-        assert replaced.status_code == 422 and node.service.instances["extra"].settings.stored["invoke"] == {}
+        assert (
+            replaced.status_code == 422
+            and node.service.instances["extra"].settings.stored["invoke"] == {}
+        )

@@ -51,7 +51,7 @@ export function ProblemsRow({
   onShowAll: () => void;
 }) {
   const items = findings(problems, unused, length);
-  const hasNotice = Boolean(notice.error || notice.entry);
+  const hasNotice = Boolean((notice.error ?? "") || notice.entry);
   if (items.length === 0 && !hasNotice) return null;
   const shown = items.length > MAX_LINES ? items.slice(0, MAX_LINES - 1) : items;
   const hidden = items.length - shown.length;

@@ -55,8 +55,8 @@ export const SCENES_NOT_DECLARED =
 
 export function probeSupport(component: ComponentDescriptor | null): ProbeSupport {
   if (!component) return { scenes: false, usable: false, reason: t("找不到媒體探測元件（media.probe）：到「元件修改・元件」新增，或勾選不偵測"), warning: null };
-  const properties = component.settings.parameters_schema.properties;
-  const scenes = isRecord(properties) && isRecord(properties.scenes);
+  const properties = component.settings.parameters_schema["properties"];
+  const scenes = isRecord(properties) && isRecord(properties["scenes"]);
   const ready = component.state === "ready" || component.state === "busy";
   return {
     scenes,
@@ -86,27 +86,28 @@ const num = (value: unknown): number | null => (typeof value === "number" && Num
 /** MediaInfo → 換角需要的欄位；切鏡只保留 (0, duration) 內的有限數字，排序去重。 */
 export function parseProbeInfo(value: unknown): ProbeSceneInfo | null {
   if (!isRecord(value)) return null;
-  const duration = num(value.duration_seconds);
-  const fpsNum = num(value.fps_num);
-  const fpsDen = num(value.fps_den);
+  const duration = num(value["duration_seconds"]);
+  const fpsNum = num(value["fps_num"]);
+  const fpsDen = num(value["fps_den"]);
   let cuts: number[] | null = null;
-  if (Array.isArray(value.scene_cuts_seconds)) {
-    const list = value.scene_cuts_seconds.flatMap((item) => {
+  if (Array.isArray(value["scene_cuts_seconds"])) {
+    const list = value["scene_cuts_seconds"].flatMap((item) => {
       const cut = num(item);
       return cut !== null && cut > 0 && (duration === null || cut < duration) ? [cut] : [];
     });
     cuts = [...new Set(list)].sort((a, b) => a - b);
   }
-  const detection = isRecord(value.scene_detection) && num(value.scene_detection.threshold) !== null && num(value.scene_detection.min_gap_seconds) !== null
-    ? { threshold: value.scene_detection.threshold as number, min_gap_seconds: value.scene_detection.min_gap_seconds as number }
-    : null;
+  const rawDetection = value["scene_detection"];
+  const threshold = isRecord(rawDetection) ? num(rawDetection["threshold"]) : null;
+  const gap = isRecord(rawDetection) ? num(rawDetection["min_gap_seconds"]) : null;
+  const detection = threshold === null || gap === null ? null : { threshold, min_gap_seconds: gap };
   return {
     duration_seconds: duration !== null && duration > 0 ? duration : null,
-    width: num(value.width),
-    height: num(value.height),
-    has_audio: typeof value.has_audio === "boolean" ? value.has_audio : null,
+    width: num(value["width"]),
+    height: num(value["height"]),
+    has_audio: typeof value["has_audio"] === "boolean" ? value["has_audio"] : null,
     fps: fpsNum !== null && fpsDen !== null && fpsDen > 0 ? fpsNum / fpsDen : null,
-    frame_count: num(value.frame_count),
+    frame_count: num(value["frame_count"]),
     scene_cuts_seconds: cuts,
     scene_detection: detection,
   };
@@ -124,7 +125,7 @@ export type ProbeOutcome =
 export function probeOutcome(run: WireRun): ProbeOutcome {
   if (run.state === "running") return { state: "running" };
   const step = parseRunStep(PROBE_STEP, run.steps[PROBE_STEP]);
-  const output = step.outputs.info;
+  const output = step.outputs["info"];
   if (run.state === "succeeded") {
     const info = output && "value" in output ? parseProbeInfo(output.value) : null;
     if (!info) return { state: "failed", error: { code: "OUTPUT_MISSING", message: t("偵測的 run 成功，但讀不到 MediaInfo") } };

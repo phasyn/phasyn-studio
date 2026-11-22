@@ -28,7 +28,7 @@ export function TimelineStatus({ gestureError, drop, effect, totalFrames, fps }:
   const error = gestureError ?? drop?.error ?? effect?.error ?? null;
   const text = error ?? (drop ? dropHint(drop, fps) : (effect?.hint ?? formatTimecode(totalFrames, fps)));
   return (
-    <span title={text} className={cn("machine min-w-0 max-w-[60%] shrink-0 truncate px-2 text-caption", error ? "text-danger" : drop || effect ? "text-fg-secondary" : "text-fg-tertiary")}>
+    <span title={text} className={cn("machine min-w-0 max-w-[60%] shrink-0 truncate px-2 text-caption", (error != null && error !== "") ? "text-danger" : drop || effect ? "text-fg-secondary" : "text-fg-tertiary")}>
       {text}
     </span>
   );

@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { samplingConflicts, type SamplingKey } from "@/lib/ditSampling";
 import { SectionTitle } from "@/features/studio-shell";
 import { ditDefaults, findRoute, routeName, type ParameterDefault, type StudioRoute } from "../model/routes";
+import { samplingControl } from "../model/studioGenerationBinding";
 import { useStudio } from "../studioContext";
 import { NumberField } from "./fields";
 import { FormatSelect } from "./ProjectSettings";
@@ -44,6 +45,7 @@ function SamplingField({
   min,
   max,
   onChange,
+  accepts,
 }: {
   field: SamplingKey;
   label: string;
@@ -54,6 +56,7 @@ function SamplingField({
   integer?: boolean;
   min: number;
   max: number;
+  accepts: (value: number) => boolean;
   onChange: (value: number | null) => void;
 }) {
   const id = useId();
@@ -67,9 +70,9 @@ function SamplingField({
         <label htmlFor={`${id}-input`} className="text-caption font-medium text-fg-secondary">
           {label}
         </label>
-        <HelpButton open={help} onToggle={() => setHelp((open) => !open)} controls={`${id}-help`} label={label} text={helpText} />
+        <HelpButton open={help} onToggle={() => { setHelp((open) => !open); }} controls={`${id}-help`} label={label} text={helpText} />
         {value !== null ? (
-          <Button size="sm" variant="quiet" className="ml-auto min-h-7 px-1.5 text-caption animate-fade-in" icon={<RotateCcw aria-hidden />} onClick={() => onChange(null)} title={source}>
+          <Button size="sm" variant="quiet" className="ml-auto min-h-7 px-1.5 text-caption animate-fade-in" icon={<RotateCcw aria-hidden />} onClick={() => { onChange(null); }} title={source}>
             {t("還原預設")}
           </Button>
         ) : null}
@@ -81,6 +84,7 @@ function SamplingField({
         min={min}
         max={max}
         allowEmpty
+        accepts={accepts}
         placeholder={fallback.value === null ? t("預設") : String(fallback.value)}
         describedBy={note ? `${id}-help ${id}-note` : `${id}-help`}
         onCommit={onChange}
@@ -108,7 +112,7 @@ function FormatField() {
         <label htmlFor={`${id}-format`} className="text-caption font-medium text-fg-secondary">
           {label}
         </label>
-        <HelpButton open={help} onToggle={() => setHelp((open) => !open)} controls={`${id}-help`} label={label} text={helpText} />
+        <HelpButton open={help} onToggle={() => { setHelp((open) => !open); }} controls={`${id}-help`} label={label} text={helpText} />
       </div>
       <FormatSelect id={`${id}-format`} />
       <HelpText id={`${id}-help`} open={help}>
@@ -123,16 +127,23 @@ export function QualitySettings({ shot }: { shot: StudioShot }) {
   const route = findRoute(engine.routes, shot.route);
   const defaults = ditDefaults(route);
   const dit = route?.steps.find((item) => item.step.step_id === route.ditStepId)?.slot.component ?? null;
-  const update = (patch: Pick<Partial<StudioShot>, "steps" | "video_shift" | "audio_shift">) => dispatch({ type: "updateShot", shotId: shot.shot_id, patch });
+  const update = (patch: Pick<Partial<StudioShot>, "steps" | "video_shift" | "audio_shift">) => { dispatch({ type: "updateShot", shotId: shot.shot_id, patch }); };
+  const keys = ["steps", "video_shift", "audio_shift"] as const;
+  const controls = keys.map(key => ({ key, ...samplingControl(route?.generationBinding, key) }));
+  const incompatible = controls.filter(({ key, accepts }) => shot[key] != null && !accepts(shot[key]));
   return (
     <div className="grid gap-5">
       <section className="grid gap-2.5">
         <SectionTitle icon={Timer}>{t("DiT 去噪")}</SectionTitle>
-        <SamplingField field="steps" label={t("步數")} integer min={1} max={200} value={shot.steps} fallback={defaults.steps} route={route} dit={dit} onChange={(steps) => update({ steps })} />
-        <div className="grid grid-cols-2 gap-3">
-          <SamplingField field="video_shift" label="video shift" min={0.01} max={100} value={shot.video_shift} fallback={defaults.video_shift} route={route} dit={dit} onChange={(value) => update({ video_shift: value })} />
-          <SamplingField field="audio_shift" label="audio shift" min={0.01} max={100} value={shot.audio_shift} fallback={defaults.audio_shift} route={route} dit={dit} onChange={(value) => update({ audio_shift: value })} />
-        </div>
+        {incompatible.length > 0 && <div className="grid gap-1" role="status">
+          <p className="text-caption text-warning">{t("目前路由無法使用這些覆寫：{fields}", { fields: incompatible.map(c => c.key).join(", ") })}</p>
+          <Button size="sm" variant="secondary" onClick={() => { update(Object.fromEntries(incompatible.map(c => [c.key, null]))); }}>{t("清除不相容的覆寫")}</Button>
+        </div>}
+        {controls.filter(c => c.available).map(({ key, min, max, integer, accepts }) =>
+          <SamplingField key={key} field={key} label={key === "steps" ? t("步數") : key} integer={integer}
+            min={min} max={max} value={shot[key]} fallback={defaults[key]} route={route} dit={dit} accepts={accepts}
+            onChange={value => { update({ [key]: value }); }} />
+        )}
       </section>
       <section className="grid gap-1.5">
         <SectionTitle icon={MonitorCog}>{t("解析度")}</SectionTitle>

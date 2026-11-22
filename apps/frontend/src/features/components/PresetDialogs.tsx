@@ -29,14 +29,14 @@ export interface SavePresetTarget {
 function SavePresetForm({ target, onDone, onCancel }: { target: SavePresetTarget; onDone: (preset: Preset) => void; onCancel: () => void }) {
   const presets = usePresets();
   const save = useSavePreset();
-  const [presetId, setPresetId] = useState(slugId(`${target.componentId}-preset`, "preset"));
-  const [label, setLabel] = useState(t("{componentId} 設定", { componentId: target.componentId }));
+  const [presetId, setPresetId] = useState(() => slugId(`${target.componentId}-preset`, "preset"));
+  const [label, setLabel] = useState(() => t("{componentId} 設定", { componentId: target.componentId }));
   const [overwrite, setOverwrite] = useState(false);
   const idError = localIdError(presetId, "preset_id ");
   const existing = presets.data?.items.find((item) => item.preset_id === presetId) ?? null;
   const blockReason = idError ?? (existing && !overwrite ? t("已有同名 preset：勾選覆寫或改用其他 ID") : null);
   const submit = () => {
-    if (blockReason || save.isPending) return;
+    if ((blockReason ?? "") || save.isPending) return;
     save.mutate({ preset_id: presetId, label: label || presetId, provider_id: target.providerId, settings: cloneJson(target.settings) }, { onSuccess: onDone });
   };
   return (
@@ -45,19 +45,19 @@ function SavePresetForm({ target, onDone, onCancel }: { target: SavePresetTarget
         <div className="grid gap-4 md:grid-cols-2">
           <Field id="preset-id" label="preset_id" error={idError}>
             {(describedBy) => (
-              <Input id="preset-id" className="machine" value={presetId} aria-describedby={describedBy} aria-invalid={Boolean(idError) || undefined} onChange={(event) => setPresetId(event.target.value)} />
+              <Input id="preset-id" className="machine" value={presetId} aria-describedby={describedBy} aria-invalid={Boolean(idError) || undefined} onChange={(event) => { setPresetId(event.target.value); }} />
             )}
           </Field>
           <Field id="preset-label" label={t("名稱")}>
-            {(describedBy) => <Input id="preset-label" value={label} aria-describedby={describedBy} onChange={(event) => setLabel(event.target.value)} />}
+            {(describedBy) => <Input id="preset-label" value={label} aria-describedby={describedBy} onChange={(event) => { setLabel(event.target.value); }} />}
           </Field>
         </div>
         <p className="text-caption text-fg-tertiary">
-          <T source={"provider：<0>{providerId}</0>。preset 是普通 JSON 副本：不是資格證書，也不會回寫正在跑的呼叫。"} values={{ providerId: target.providerId }} slots={[<code className="machine" />]} />
+          <T source={"provider：<0>{providerId}</0>。preset 是普通 JSON 副本：不是資格證書，也不會回寫正在跑的呼叫。"} values={{ providerId: target.providerId }} slots={[<code key="slot-0" className="machine" />]} />
         </p>
         {existing ? (
           <Callout tone="warning" title={t("已有 preset「{label}」使用此 ID（provider {provider_id}）", { label: existing.label, provider_id: existing.provider_id })}>
-            <Checkbox id="preset-overwrite" label={t("覆寫既有 preset")} checked={overwrite} onChange={(event) => setOverwrite(event.target.checked)} />
+            <Checkbox id="preset-overwrite" label={t("覆寫既有 preset")} checked={overwrite} onChange={(event) => { setOverwrite(event.target.checked); }} />
           </Callout>
         ) : null}
         <JsonView value={target.settings} label={t("將保存的設定（目前已保存的 stored）")} maxHeightClass="max-h-64" />
@@ -83,7 +83,7 @@ export function SavePresetDialog({ target, onOpenChange, onDone }: { target: Sav
           <DialogTitle>{t("將已保存設定存為 preset")}</DialogTitle>
           <DialogDescription>{t("保存的是伺服器上已保存（stored）的設定，不含未儲存的草稿。")}</DialogDescription>
         </DialogHeader>
-        {target ? <SavePresetForm target={target} onDone={onDone} onCancel={() => onOpenChange(false)} /> : null}
+        {target ? <SavePresetForm target={target} onDone={onDone} onCancel={() => { onOpenChange(false); }} /> : null}
       </DialogContent>
     </Dialog>
   );
@@ -107,19 +107,19 @@ function applied(preset: Preset, current: InstanceSettings, keepDevice: boolean)
 /** Deleting one preset after confirmation: only the preset file goes; component settings it was applied to stay. */
 function DeletePresetDialog({ preset, onOpenChange, onDeleted }: { preset: Preset; onOpenChange: (open: boolean) => void; onDeleted: (presetId: string) => void }) {
   const remove = useDeletePreset();
-  const inFlight = useRef(false);
+  const inFlightRef = useRef(false);
   const send = () => {
-    if (inFlight.current) return;
-    inFlight.current = true;
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     remove.mutate(preset.preset_id, {
-      onSuccess: () => onDeleted(preset.preset_id),
+      onSuccess: () => { onDeleted(preset.preset_id); },
       onSettled: () => {
-        inFlight.current = false;
+        inFlightRef.current = false;
       },
     });
   };
   return (
-    <Dialog open onOpenChange={(open) => (remove.isPending ? undefined : onOpenChange(open))}>
+    <Dialog open onOpenChange={(open) => { if (!(remove.isPending)) { onOpenChange(open); } }}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("刪除 preset「{label}」？", { label: preset.label || preset.preset_id })}</DialogTitle>
@@ -132,7 +132,7 @@ function DeletePresetDialog({ preset, onOpenChange, onDeleted }: { preset: Prese
           {remove.isError ? <ErrorCallout error={remove.error} write title={t("preset 沒有刪除")} /> : null}
         </DialogBody>
         <DialogFooter>
-          <Button variant="quiet" disabled={remove.isPending} onClick={() => onOpenChange(false)}>
+          <Button variant="quiet" disabled={remove.isPending} onClick={() => { onOpenChange(false); }}>
             {t("取消")}
           </Button>
           <Button variant="danger" icon={<Trash2 aria-hidden />} pending={remove.isPending} onClick={send}>
@@ -195,7 +195,7 @@ function ApplyPresetForm({ target, onApply, onCancel }: { target: ApplyPresetTar
                       value={item.preset_id}
                       checked={selected === item.preset_id}
                       disabled={mismatch}
-                      onChange={() => setSelected(item.preset_id)}
+                      onChange={() => { setSelected(item.preset_id); }}
                     />
                     <span className="min-w-0">
                       <span className="block text-body">{item.label}</span>
@@ -212,7 +212,7 @@ function ApplyPresetForm({ target, onApply, onCancel }: { target: ApplyPresetTar
                     icon={<Trash2 aria-hidden />}
                     aria-label={t("刪除 preset「{label}」", { label: item.label || item.preset_id })}
                     title={t("刪除 preset（已套用過它的元件設定不受影響）")}
-                    onClick={() => setDeleting(item)}
+                    onClick={() => { setDeleting(item); }}
                   />
                 </div>
               );
@@ -226,7 +226,7 @@ function ApplyPresetForm({ target, onApply, onCancel }: { target: ApplyPresetTar
               label={t("保留本 instance 的 device 與 model_path")}
               description={t("preset 可能來自其他 Node／裝置；取消勾選則一併套用 preset 的 device 與路徑。")}
               checked={keepDevice}
-              onChange={(event) => setKeepDevice(event.target.checked)}
+              onChange={(event) => { setKeepDevice(event.target.checked); }}
             />
             <section className="grid gap-2">
               <h3 className="text-data font-semibold text-fg">{t("套用後與目前草稿的差異（{changesCount}）", { changesCount: changes.length })}</h3>
@@ -245,7 +245,7 @@ function ApplyPresetForm({ target, onApply, onCancel }: { target: ApplyPresetTar
         <DeletePresetDialog
           key={deleting.preset_id}
           preset={deleting}
-          onOpenChange={(open) => (open ? undefined : setDeleting(null))}
+          onOpenChange={(open) => { if (!(open)) { setDeleting(null); } }}
           onDeleted={(presetId) => {
             if (selected === presetId) setSelected(null);
             setDeleting(null);
@@ -256,7 +256,7 @@ function ApplyPresetForm({ target, onApply, onCancel }: { target: ApplyPresetTar
         <Button variant="quiet" onClick={onCancel}>
           {t("取消")}
         </Button>
-        <ActionButton variant="primary" icon={<ClipboardPaste aria-hidden />} disabledReason={next ? null : t("請先選擇 preset")} onClick={() => next && onApply(next)}>
+        <ActionButton variant="primary" icon={<ClipboardPaste aria-hidden />} disabledReason={next ? null : t("請先選擇 preset")} onClick={() => { if (next) onApply(next); }}>
           {t("套用到草稿（尚未儲存）")}
         </ActionButton>
       </DialogFooter>
@@ -281,7 +281,7 @@ export function ApplyPresetDialog({
           <DialogTitle>{t("套用 preset 到草稿")}</DialogTitle>
           <DialogDescription>{t("套用不會觸碰進行中的呼叫，也不會自動儲存或重新載入。")}</DialogDescription>
         </DialogHeader>
-        {target ? <ApplyPresetForm target={target} onApply={onApply} onCancel={() => onOpenChange(false)} /> : null}
+        {target ? <ApplyPresetForm target={target} onApply={onApply} onCancel={() => { onOpenChange(false); }} /> : null}
       </DialogContent>
     </Dialog>
   );

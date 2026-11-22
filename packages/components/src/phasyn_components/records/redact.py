@@ -35,17 +35,35 @@ from typing import Any
 
 from ..pathscrub import REDACTED, redact_paths
 
-REDACT_FIELDS: frozenset[str] = frozenset({"hostname", "device_ids", "prompts", "paths"})
+
+REDACT_FIELDS: frozenset[str] = frozenset(
+    {"hostname", "device_ids", "prompts", "paths"}
+)
 REDACT_ALL = "all"
 
 _HOSTNAME_KEYS = frozenset({"hostname", "controller_label", "node_label"})
-_ENDPOINT_KEYS = frozenset({"endpoint", "controller_endpoint", "advertise_url", "controller_url"})
-_URL = re.compile(r"(?i)\b(https?://)(?:[^\s/@]*@)?(\[[0-9A-Fa-f:.%]+\]|[^\s/:?#\[\]\"'<>]+)")
-_LOCAL_SUFFIXES = (".local", ".lan", ".internal", ".localdomain", ".home.arpa", ".localhost")
+_ENDPOINT_KEYS = frozenset(
+    {"endpoint", "controller_endpoint", "advertise_url", "controller_url"}
+)
+_URL = re.compile(
+    r"(?i)\b(https?://)(?:[^\s/@]*@)?(\[[0-9A-Fa-f:.%]+\]|[^\s/:?#\[\]\"'<>]+)"
+)
+_LOCAL_SUFFIXES = (
+    ".local",
+    ".lan",
+    ".internal",
+    ".localdomain",
+    ".home.arpa",
+    ".localhost",
+)
 _NAME_MIN = 2  # a one-letter label would be masked inside unrelated words
-_DEVICE_KEYS = frozenset({"device_id", "gpu_device_id", "gpu_uuid", "cuda_visible_devices", "pci_bus_id"})
+_DEVICE_KEYS = frozenset(
+    {"device_id", "gpu_device_id", "gpu_uuid", "cuda_visible_devices", "pci_bus_id"}
+)
 _PROMPT_KEY = re.compile(r"^(?:[a-z0-9]+_)*prompts?$|^prompt_text$|^captions?$")
-_GPU_UUID = re.compile(r"\b(?:GPU|MIG)-[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\b")
+_GPU_UUID = re.compile(
+    r"\b(?:GPU|MIG)-[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}\b"
+)
 
 
 def parse_redact(values: Iterable[str]) -> frozenset[str]:
@@ -65,7 +83,9 @@ def parse_redact(values: Iterable[str]) -> frozenset[str]:
                 selected.add(name)
             else:
                 allowed = ", ".join(sorted({*REDACT_FIELDS, REDACT_ALL}))
-                raise ValueError(f"unknown redact category {name!r}; expected one of: {allowed}")
+                raise ValueError(
+                    f"unknown redact category {name!r}; expected one of: {allowed}"
+                )
     return frozenset(selected)
 
 
@@ -73,11 +93,13 @@ class Redactor:
     """Applies a fixed set of redaction categories to JSON-like documents."""
 
     def __init__(self, fields: Iterable[str] = ()) -> None:
+        """Initialize redactor with its configuration."""
         self.fields = parse_redact(fields)
         self._names: set[str] = set()  # host names and labels seen so far (lower case)
         self._names_re: re.Pattern[str] | None = None
 
     def __bool__(self) -> bool:
+        """Report whether redaction is active."""
         return bool(self.fields)
 
     def _learn(self, name: str) -> None:
@@ -85,7 +107,11 @@ class Redactor:
         if len(name) >= _NAME_MIN and name != REDACTED and name not in self._names:
             self._names.add(name)
             longest_first = sorted(self._names, key=len, reverse=True)
-            self._names_re = re.compile(r"(?i)(?<![\w.-])(?:" + "|".join(map(re.escape, longest_first)) + r")(?![\w-])")
+            self._names_re = re.compile(
+                r"(?i)(?<![\w.-])(?:"
+                + "|".join(map(re.escape, longest_first))
+                + r")(?![\w-])"
+            )
 
     def _private_host(self, host: str) -> bool:
         bare = host.strip("[]").partition("%")[0].lower().rstrip(".")
@@ -108,9 +134,12 @@ class Redactor:
             return f"{match.group(1)}{REDACTED}"
 
         value = _URL.sub(mask, value)
-        return self._names_re.sub(REDACTED, value) if self._names_re is not None else value
+        return (
+            self._names_re.sub(REDACTED, value) if self._names_re is not None else value
+        )
 
     def text(self, value: str) -> str:
+        """Remove sensitive values from text."""
         if "hostname" in self.fields:
             value = self._hosts(value)
         if "device_ids" in self.fields:
@@ -125,13 +154,17 @@ class Redactor:
             return doc
         return self._walk(doc, key=None, parent_key=None)
 
-    def _key_redacted(self, key: str | None, parent_key: str | None, value: Any) -> bool:
+    def _key_redacted(
+        self, key: str | None, parent_key: str | None, value: Any
+    ) -> bool:
         if key is None or value is None:
             return False
         lowered = key.lower()
         if "hostname" in self.fields and lowered in _HOSTNAME_KEYS:
             return True
-        if "device_ids" in self.fields and (lowered in _DEVICE_KEYS or (lowered == "id" and parent_key == "device")):
+        if "device_ids" in self.fields and (
+            lowered in _DEVICE_KEYS or (lowered == "id" and parent_key == "device")
+        ):
             return True
         # Under input_summary the keys are port names: the entry keeps its type_id, only "value" goes.
         return (
@@ -151,8 +184,15 @@ class Redactor:
         if self._key_redacted(key, parent_key, node):
             return REDACTED
         if isinstance(node, Mapping):
-            out = {k: self._walk(v, key=str(k), parent_key=key) for k, v in node.items()}
-            if "prompts" in self.fields and key is not None and parent_key == "input_summary" and "value" in out:
+            out = {
+                k: self._walk(v, key=str(k), parent_key=key) for k, v in node.items()
+            }
+            if (
+                "prompts" in self.fields
+                and key is not None
+                and parent_key == "input_summary"
+                and "value" in out
+            ):
                 out["value"] = REDACTED
             return out
         if isinstance(node, list):
@@ -162,4 +202,11 @@ class Redactor:
         return node
 
 
-__all__ = ["REDACTED", "REDACT_ALL", "REDACT_FIELDS", "Redactor", "parse_redact", "redact_paths"]
+__all__ = [
+    "REDACTED",
+    "REDACT_ALL",
+    "REDACT_FIELDS",
+    "Redactor",
+    "parse_redact",
+    "redact_paths",
+]

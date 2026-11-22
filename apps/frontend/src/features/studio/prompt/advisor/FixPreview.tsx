@@ -1,4 +1,6 @@
 // 套用修正或改寫前的預覽：逐行差異（刪除／新增／未變更），使用者按「套用」才會改字。展開時 reveal。
+import { focusOpenedControl } from "@/lib/dom";
+import { withOccurrenceKeys } from "@/lib/occurrenceKeys";
 import { Check, X } from "lucide-react";
 import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
@@ -40,14 +42,14 @@ export function FixPreview({ id, label, before, after, blockedReason, onConfirm,
       {unchanged ? (
         <p className="text-caption text-fg-tertiary">{t("目前的文字已經符合，不需要修改。")}</p>
       ) : (
-        <div role="region" className="max-h-72 overflow-auto rounded-md border border-line-subtle bg-sunken py-1 text-caption leading-5" tabIndex={0} aria-label={t("修改前後的差異")}>
-          {hunks.map((hunk, hunkIndex) => (
-            <div key={hunkIndex}>
+        <div role="region" className="max-h-72 overflow-auto rounded-md border border-line-subtle bg-sunken py-1 text-caption leading-5"  /* eslint-disable-line jsx-a11y-x/no-noninteractive-tabindex -- Keyboard users can focus this scrollable region and scroll its overflow. */ tabIndex={0} aria-label={t("修改前後的差異")}>
+          {withOccurrenceKeys(hunks, (hunk) => JSON.stringify(hunk.lines[0])).map(({ item: hunk, key }) => (
+            <div key={key}>
               {hunk.skipped > 0 ? <p className="px-2 text-fg-disabled">{t("⋯ 略過 {skipped} 行未變更", { skipped: hunk.skipped })}</p> : null}
-              {hunk.lines.map((line, lineIndex) => {
+              {withOccurrenceKeys(hunk.lines, (line) => JSON.stringify([line.kind, line.text])).map(({ item: line, key }) => {
                 const style = LINE_STYLE[line.kind];
                 return (
-                  <p key={lineIndex} className={cn("flex gap-1.5 px-2 whitespace-pre-wrap [overflow-wrap:anywhere]", style.className)}>
+                  <p key={key} className={cn("flex gap-1.5 px-2 whitespace-pre-wrap [overflow-wrap:anywhere]", style.className)}>
                     <span aria-hidden className="machine w-3 shrink-0 select-none">
                       {style.marker}
                     </span>
@@ -63,11 +65,11 @@ export function FixPreview({ id, label, before, after, blockedReason, onConfirm,
         </div>
       )}
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {blocked && !unchanged ? <span className="mr-auto text-caption text-fg-tertiary">{blocked}</span> : null}
-        <Button size="sm" variant="quiet" icon={<X aria-hidden />} onClick={onCancel} autoFocus={Boolean(blocked)}>
+        {(blocked != null && blocked !== "") && !unchanged ? <span className="mr-auto text-caption text-fg-tertiary">{blocked}</span> : null}
+        <Button size="sm" variant="quiet" icon={<X aria-hidden />} onClick={onCancel} ref={focusOpenedControl} data-initial-focus={Boolean(blocked)}>
           {t("取消")}
         </Button>
-        <Button size="sm" variant="primary" icon={<Check aria-hidden />} disabled={Boolean(blocked)} title={blocked ?? undefined} onClick={onConfirm} autoFocus={!blocked}>
+        <Button size="sm" variant="primary" icon={<Check aria-hidden />} disabled={Boolean(blocked)} title={blocked ?? undefined} onClick={onConfirm} ref={focusOpenedControl} data-initial-focus={!(blocked != null && blocked !== "")}>
           {t("套用")}
         </Button>
       </div>

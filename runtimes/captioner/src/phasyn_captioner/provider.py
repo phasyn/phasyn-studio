@@ -88,6 +88,14 @@ def _schema() -> dict[str, Any]:
     )
 
 
+def _tied_embeddings(config: Mapping[str, Any]) -> bool:
+    """A model whose output head reuses the input embeddings generates text without an lm_head tensor."""
+    text = config.get("text_config")
+    return config.get("tie_word_embeddings") is True or (
+        isinstance(text, Mapping) and text.get("tie_word_embeddings") is True
+    )
+
+
 def _model_problem(model_path: str | None) -> str | None:
     if not model_path:
         return "未設定 load.model_path（Qwen-VL 權重目錄）"
@@ -96,7 +104,8 @@ def _model_problem(model_path: str | None) -> str | None:
     if not cfg.is_file():
         return f"找不到 {identity.display_path(cfg, root)}"
     try:
-        archs = json.loads(cfg.read_text(encoding="utf-8")).get("architectures") or []
+        doc = json.loads(cfg.read_text(encoding="utf-8"))
+        archs = doc.get("architectures") or []
     except ValueError:
         return f"{identity.display_path(cfg, root)} 無法解析"
     if not any(a in SUPPORTED_ARCHS for a in archs):
@@ -107,7 +116,7 @@ def _model_problem(model_path: str | None) -> str | None:
             weights = json.loads(index.read_text(encoding="utf-8")).get("weight_map") or {}
         except ValueError:
             return f"{identity.display_path(index, root)} 無法解析"
-        if not any(k.endswith("lm_head.weight") for k in weights):
+        if not _tied_embeddings(doc) and not any(k.endswith("lm_head.weight") for k in weights):
             return "權重沒有 lm_head，無法做文字生成（只能當 feature encoder）"
     if not ((root / "preprocessor_config.json").is_file() or (root / "processor_config.json").is_file()):
         return "缺少 processor 設定（preprocessor_config.json）"

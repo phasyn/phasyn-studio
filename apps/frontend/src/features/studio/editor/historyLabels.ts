@@ -46,7 +46,7 @@ function clipLabel(before: TimelineClip, after: TimelineClip): string {
   if (!same(before.effect_stack, after.effect_stack)) return t("調整效果");
   if (!same(before.mask, after.mask)) return t("調整遮罩");
   if (before.blend_mode !== after.blend_mode) return t("調整混合模式");
-  if (before.linked_id !== after.linked_id) return after.linked_id ? t("連結片段") : t("取消連結");
+  if (before.linked_id !== after.linked_id) return (after.linked_id != null && after.linked_id !== "") ? t("連結片段") : t("取消連結");
   return t("調整片段");
 }
 
@@ -104,11 +104,11 @@ export function commandLabel(edit: EditCommand): string | null {
     case "place":
       return edit.mode === "insert" ? t("插入") : t("覆寫");
     case "delete":
-      return edit.ripple ? t("波紋刪除") : t("刪除片段");
+      return (edit.ripple === true) ? t("波紋刪除") : t("刪除片段");
     case "rangeDelete":
       return edit.ripple ? t("擷取") : t("提升");
     case "trim":
-      return edit.ripple ? t("波紋修剪") : t("修剪片段");
+      return (edit.ripple === true) ? t("波紋修剪") : t("修剪片段");
     case "roll":
       return t("滾動編輯");
     case "slide":
@@ -125,6 +125,8 @@ export function commandLabel(edit: EditCommand): string | null {
       return t("連結片段");
     case "unlink":
       return t("取消連結");
+    case "fixedLengthTiming":
+      return t("時間");
     case "restoreTake":
       return t("還原為整段 take");
     case "patchClip":
@@ -135,5 +137,7 @@ export function commandLabel(edit: EditCommand): string | null {
       return t("新增軌道");
     case "removeTrack":
       return t("刪除軌道");
+    case "duck":
+      return t("自動壓低音量");
   }
 }

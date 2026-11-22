@@ -31,10 +31,10 @@ function place(panel: HTMLElement, anchor: HTMLElement, host: HTMLElement): void
   const frame = floatingFrame(host);
   const seen = anchor.getBoundingClientRect();
   const rect = { left: seen.left - frame.left, top: seen.top - frame.top, right: seen.right - frame.left, bottom: seen.bottom - frame.top };
-  panel.style.maxHeight = `${Math.max(160, frame.height - 16)}px`;
+  panel.style.maxHeight = `${String(Math.max(160, frame.height - 16))}px`;
   const position = placeMenu(rect, { width: panel.offsetWidth, height: panel.offsetHeight }, { width: frame.width, height: frame.height }, 6);
-  panel.style.left = `${position.left}px`;
-  panel.style.top = `${position.top}px`;
+  panel.style.left = `${String(position.left)}px`;
+  panel.style.top = `${String(position.top)}px`;
   panel.style.setProperty("--motion-pop-y", position.top + 1 < rect.top ? "var(--motion-shift)" : "calc(var(--motion-shift) * -1)");
 }
 
@@ -50,9 +50,9 @@ function Panel({ id, anchor, host, label, onClose, className, children }: Omit<P
   useLayoutEffect(() => {
     const panel = ref.current;
     if (!present || !panel) return;
-    const observer = new ResizeObserver(() => place(panel, anchor, host));
+    const observer = new ResizeObserver(() => { place(panel, anchor, host); });
     for (const child of panel.children) observer.observe(child);
-    return () => observer.disconnect();
+    return () => { observer.disconnect(); };
   }, [present, anchor, host]);
 
   useLayoutEffect(() => {
@@ -62,19 +62,19 @@ function Panel({ id, anchor, host, label, onClose, className, children }: Omit<P
 
   const onPointer = useEffectEvent((event: PointerEvent) => {
     const target = event.target;
-    if (!(target instanceof Node) || ref.current?.contains(target) || anchor.contains(target)) return;
+    if (!(target instanceof Node) || Boolean(ref.current?.contains(target)) || anchor.contains(target)) return;
     onClose(false);
   });
   const onScroll = useEffectEvent((event: Event) => {
-    if (event.target instanceof Node && ref.current?.contains(event.target)) return;
+    if (event.target instanceof Node && Boolean(ref.current?.contains(event.target))) return;
     onClose(false);
   });
-  const onResize = useEffectEvent(() => onClose(false));
+  const onResize = useEffectEvent(() => { onClose(false); });
   useEffect(() => {
     if (!present) return;
-    const pointer = (event: PointerEvent) => onPointer(event);
-    const scroll = (event: Event) => onScroll(event);
-    const resize = () => onResize();
+    const pointer = (event: PointerEvent) => { onPointer(event); };
+    const scroll = (event: Event) => { onScroll(event); };
+    const resize = () => { onResize(); };
     document.addEventListener("pointerdown", pointer, true);
     window.addEventListener("scroll", scroll, true);
     window.addEventListener("resize", resize);

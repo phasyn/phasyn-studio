@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import contextlib
 import gc
+import json
 import os
 import sys
 import tempfile
@@ -35,8 +36,9 @@ import uuid
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import AbstractContextManager
 from dataclasses import replace
+from importlib import import_module
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict, Unpack, cast
 
 from phasyn_components.errors import Cancelled
 
@@ -45,13 +47,31 @@ from phasyn_h3.recipe.abi.errors import diagnostic
 from phasyn_h3.recipe.abi.stage import StageContext, StageResult
 
 from . import PROVIDER_ID, PROVIDER_VERSION
+from ._arguments import validate_keywords
+from ._observations import RuntimeObservation
 from .acceleration import quant_variant
 from .errors import ShimError, UnsupportedCombination, classify_exception
 from .lifecycle import ComponentRegistry, HostMemoryInsufficient
 from .measure import cost_message, runtime_measurements
 from .policy import ComponentPolicy, StagePolicy, resolve_stage_policy
 
+
+class _ProviderArguments(TypedDict, total=False):
+    workdir: str | Path | None
+    actor_instance_id: str | None
+    backend: Any
+    component_backend: Any
+    video_vae_scope: str
+    weight_streaming: Mapping[str, Any] | None
+    on_component: Callable[[str, Any, Any], AbstractContextManager[Any]] | None
+    on_evict: Callable[[], None] | None
+
+
+_SUMMARY_MAX_CHARS = 1900
+
+
 if TYPE_CHECKING:
+    from .regional_compile_cache import RegionBank
     from .sglang_env import SglangSession
 
 _NON_MODULE_KINDS = ("processor", "tokenizer")
@@ -77,79 +97,112 @@ def _visible_index(device: Mapping[str, Any]) -> int | None:
 
 
 class SGLangH3Provider:
+    """Run native H3 stages against the pinned SGLang implementation."""
+
     provider_id = PROVIDER_ID
     provider_version = PROVIDER_VERSION
 
     session: SglangSession | None
 
     def __init__(
-        self,
-        device: Mapping[str, Any],
-        *,
-        workdir: str | Path | None = None,
-        actor_instance_id: str | None = None,
-        backend: Any = None,
-        component_backend: Any = None,
-        video_vae_scope: str = "full",
-        weight_streaming: Mapping[str, Any] | None = None,
-        on_component: Callable[[str, Any, Any], AbstractContextManager[Any]] | None = None,
-        on_evict: Callable[[], None] | None = None,
+        self, device: Mapping[str, Any], **arguments: Unpack[_ProviderArguments]
     ) -> None:
         """``video_vae_scope`` (orchestration only): which video-VAE half the component loader builds.
+
         ``weight_streaming`` (orchestration only, decode half): None, or the resolved
         ``provider_options.weight_streaming`` — the loader then builds a streaming shell
         (``stages/vae_weight_streaming.py``).
         ``on_component(kind, run, module)`` wraps every use of a component's module (the host's DiT
-        instrumentation); ``on_evict`` runs after every evict (``ComponentRegistry``)."""
+        instrumentation); ``on_evict`` runs after every evict (``ComponentRegistry``).
+        """
+        validate_keywords(arguments, _ProviderArguments)
+        workdir = arguments.get("workdir")
+        actor_instance_id = arguments.get("actor_instance_id")
+        backend = arguments.get("backend")
+        component_backend = arguments.get("component_backend")
+        video_vae_scope = arguments.get("video_vae_scope", "full")
+        weight_streaming = arguments.get("weight_streaming")
+        on_component = arguments.get("on_component")
+        on_evict = arguments.get("on_evict")
+        self._h3_compile_bank: RegionBank | None = None
         self.device = dict(device)
-        base = workdir or os.environ.get("PHASYN_ACTOR_WORKDIR") or tempfile.gettempdir()
+        base = (
+            workdir or os.environ.get("PHASYN_ACTOR_WORKDIR") or tempfile.gettempdir()
+        )
         self.workdir = Path(base) / "sglang_h3"
         self.workdir.mkdir(parents=True, exist_ok=True)
-        self.actor_instance_id = actor_instance_id or os.environ.get("PHASYN_ACTOR_INSTANCE_ID") or str(uuid.uuid4())
+        self.actor_instance_id = (
+            actor_instance_id
+            or os.environ.get("PHASYN_ACTOR_INSTANCE_ID")
+            or str(uuid.uuid4())
+        )
         if backend is None:
-            from .backend import TorchCudaBackend
+            cuda_backend = import_module(
+                "phasyn_h3.recipe.runtime.backend"
+            ).TorchCudaBackend
 
-            backend = TorchCudaBackend(self.device, visible_index=_visible_index(self.device))
+            backend = cuda_backend(
+                self.device, visible_index=_visible_index(self.device)
+            )
         self.backend = backend
         if component_backend is None:
-            from .loaders import SglangComponentBackend
-            from .sglang_env import SglangSession
+            component_backend = import_module(
+                "phasyn_h3.recipe.runtime.loaders"
+            ).SglangComponentBackend
+            session_type = import_module(
+                "phasyn_h3.recipe.runtime.sglang_env"
+            ).SglangSession
 
-            self.session = SglangSession(self.workdir)
-            component_backend = SglangComponentBackend(
-                self.session, backend, self.workdir, video_vae_scope=video_vae_scope, weight_streaming=weight_streaming
+            self.session = session_type(self.workdir)
+            component_backend = component_backend(
+                self.session,
+                backend,
+                self.workdir,
+                video_vae_scope=video_vae_scope,
+                weight_streaming=weight_streaming,
             )
         else:
             self.session = getattr(component_backend, "session", None)
         self.components = component_backend
         self.registry = ComponentRegistry(
-            component_backend, actor_instance_id=self.actor_instance_id, on_evict=on_evict
+            component_backend,
+            actor_instance_id=self.actor_instance_id,
+            on_evict=on_evict,
         )
         self._on_component = on_component
         self._last_leases: dict[str, ComponentLease] = {}
-        self._stage_h2d_bytes = 0  # weight bytes copied host->device during the current stage
+        self._stage_h2d_bytes = (
+            0  # weight bytes copied host->device during the current stage
+        )
         self._environment: dict[str, Any] | None = None
 
     # ------------------------------------------------------------------ facts
     def environment(self) -> dict[str, Any]:
+        """Describe the environment that executes this component."""
         if self._environment is None:
             self._environment = self.backend.environment()
         return dict(self._environment)
 
     def torch_device(self) -> Any:
+        """Return the torch device selected for this runtime."""
         return self.backend.torch_device()
 
     def server_args(self) -> Any:
+        """Return the SGLang arguments for this provider."""
         if self.session is None or self.session.server_args is None:
             raise ShimError(
-                "SERVER_ARGS_UNAVAILABLE", "SGLang ServerArgs 尚未建立（先載入元件）", error_code="INTERNAL"
+                "SERVER_ARGS_UNAVAILABLE",
+                "SGLang ServerArgs 尚未建立（先載入元件）",
+                error_code="INTERNAL",
             )
         return self.session.server_args
 
     def pipeline_config(self) -> Any:
+        """Return the resolved SGLang pipeline configuration."""
         return self.server_args().pipeline_config
 
     def last_lease(self, kind: str) -> ComponentLease | None:
+        """Return the component lease most recently used by the provider."""
         return self._last_leases.get(kind)
 
     # ------------------------------------------------------------ components
@@ -161,7 +214,11 @@ class SGLangH3Provider:
         adaln = stage_policy.adaln_mode
         if adaln == "fixed":
             adaln = f"fixed@{(stage_policy.effective_profile.get('adaln') or {}).get('cache_ref')}"
-        lora = stage_policy.lora.adapters_signature if stage_policy.lora is not None else "none"
+        lora = (
+            stage_policy.lora.adapters_signature
+            if stage_policy.lora is not None
+            else "none"
+        )
         # the LoRA identity leaves out the PDD grouping (one file, one sidecar); the fused heads differ per grouping
         specs = stage_policy.lora.specs if stage_policy.lora is not None else ()
         blocks = next((spec.pdd_blocks for spec in specs if spec.pdd_blocks), None)
@@ -169,10 +226,14 @@ class SGLangH3Provider:
             lora = f"{lora};pdd={'-'.join(str(b) for b in blocks)}"
         key = f"adaln={adaln};lora={lora}"
         # online quant: which layers stayed BF16 (acceleration.quant_variant)
-        quant = quant_variant((stage_policy.effective_profile.get("components") or {}).get("transformer"))
+        quant = quant_variant(
+            (stage_policy.effective_profile.get("components") or {}).get("transformer")
+        )
         return f"{key};{quant}" if quant else key
 
-    def _spec_for(self, location: Any, policy: ComponentPolicy | None, variant_key: str = "") -> ComponentLoadSpec:
+    def _spec_for(
+        self, location: Any, policy: ComponentPolicy | None, variant_key: str = ""
+    ) -> ComponentLoadSpec:
         return ComponentLoadSpec(
             model_id=location.model_id,
             model_revision=location.model_revision,
@@ -181,7 +242,12 @@ class SGLangH3Provider:
             path=str(location.path),
             weight_format=policy.weight_format if policy else "native",
             compute_dtype=policy.compute_dtype if policy else "native",
-            quantization={"scheme": policy.quant_scheme, "provider": policy.quant_provider} if policy else {},
+            quantization={
+                "scheme": policy.quant_scheme,
+                "provider": policy.quant_provider,
+            }
+            if policy
+            else {},
             offload=policy.offload if policy else "none",
             resident_layers=policy.resident_layers if policy else 0,
             prefetch_depth=policy.prefetch_depth if policy else 1,
@@ -204,22 +270,35 @@ class SGLangH3Provider:
         ``keep_on_device`` (load_dit) leaves the component on the device for the
         next stage of the same process whatever its policy says.
         """
-        from .loaders import locate_component
+        locate_component = import_module(
+            "phasyn_h3.recipe.runtime.loaders"
+        ).locate_component
 
         location = locate_component(run.plan.get("model") or {}, kind)
         comp_policy = policy_override or run.policy.components.get(kind)
         if kind not in _NON_MODULE_KINDS and comp_policy is None:
-            raise UnsupportedCombination("COMPONENT_POLICY_MISSING", f"{run.kind} 沒有 {kind} 的 component policy")
+            raise UnsupportedCombination(
+                "COMPONENT_POLICY_MISSING",
+                f"{run.kind} 沒有 {kind} 的 component policy",
+            )
         stage_policy: StagePolicy = run.policy
         if policy_override is not None:
-            stage_policy = replace(stage_policy, components={**stage_policy.components, kind: policy_override})
-        spec = self._spec_for(location, comp_policy, self._variant_key(kind, stage_policy))
+            stage_policy = replace(
+                stage_policy,
+                components={**stage_policy.components, kind: policy_override},
+            )
+        spec = self._spec_for(
+            location, comp_policy, self._variant_key(kind, stage_policy)
+        )
         register = getattr(self.components, "register_request", None)
         if callable(register):
             register(spec, policy=stage_policy, location=location)
         self._evict_siblings(run, kind, spec)
         lease = self.registry.acquire(
-            spec, residency=comp_policy.residency.as_dict() if comp_policy is not None else None
+            spec,
+            residency=comp_policy.residency.as_dict()
+            if comp_policy is not None
+            else None,
         )
         self._last_leases[kind] = lease
         if comp_policy is not None:
@@ -227,13 +306,19 @@ class SGLangH3Provider:
             transfer = facts.get("last_transfer") or {}
             if transfer:
                 run.fact("COMPONENT_ACQUIRED", {"kind": kind, **facts})
-                moved = transfer.get("transferred_bytes", (transfer.get("transfer") or {}).get("bytes"))
+                moved = transfer.get(
+                    "transferred_bytes", (transfer.get("transfer") or {}).get("bytes")
+                )
                 if transfer.get("kind") == "load" and moved is None:
                     moved = transfer.get("bytes")
                 self._stage_h2d_bytes += int(moved or 0)
         handle = lease.handle
         module = getattr(handle, "module", handle)
-        hook = self._on_component(kind, run, module) if self._on_component is not None else contextlib.nullcontext()
+        hook = (
+            self._on_component(kind, run, module)
+            if self._on_component is not None
+            else contextlib.nullcontext()
+        )
         try:
             with hook:
                 yield module
@@ -243,21 +328,30 @@ class SGLangH3Provider:
                 self._apply_after_use(run, kind, lease.component_key, comp_policy)
 
     def _evict_siblings(self, run: Any, kind: str, spec: ComponentLoadSpec) -> None:
-        """One runtime identity per component and process: an idle copy of the same
-        component under other settings (e.g. another decode precision) is evicted
-        before a new one loads, so host and device never hold both."""
+        """One runtime identity per component and process: an idle copy of the same component under other settings (e.g. another decode precision) is evicted before a new one loads, so host and device never hold both."""
         for key in self.registry.siblings(spec):
-            try:
+            with RuntimeObservation() as eviction:
                 report = self.registry.evict(key)
-            except Exception as exc:  # busy or failing: leave it, report
-                run.warn("COMPONENT_SIBLING_KEPT", f"{kind}: {key} 無法釋放：{exc}"[:500])
+            if (exc := eviction.error) is not None:
+                run.warn(
+                    "COMPONENT_SIBLING_KEPT", f"{kind}: {key} 無法釋放：{exc}"[:500]
+                )
                 continue
             run.fact(
                 "COMPONENT_SIBLING_EVICTED",
-                {"kind": kind, **{k: report.get(k) for k in ("component_key", *_REPORT_KEYS) if k in report}},
+                {
+                    "kind": kind,
+                    **{
+                        k: report.get(k)
+                        for k in ("component_key", *_REPORT_KEYS)
+                        if k in report
+                    },
+                },
             )
 
-    def _apply_after_use(self, run: Any, kind: str, key: str, comp_policy: ComponentPolicy) -> None:
+    def _apply_after_use(
+        self, run: Any, kind: str, key: str, comp_policy: ComponentPolicy
+    ) -> None:
         """Between-use placement after the last reference is dropped.
 
         Never raises: this runs in ``finally`` (also while a stage failure
@@ -267,7 +361,7 @@ class SGLangH3Provider:
         requested_after = comp_policy.residency.after_use
         effective = requested_after
         report: dict[str, Any] = {}
-        try:
+        with RuntimeObservation() as residency:
             if requested_after == "device":
                 trim = getattr(self.components, "trim", None)
                 lease = self.registry.get(key)
@@ -285,10 +379,12 @@ class SGLangH3Provider:
                     effective = "drop"
             else:
                 report = self.registry.evict(key)
-        except Exception as exc:
+        if (stage_error := residency.error) is not None:
             run.warn(
                 "COMPONENT_RESIDENCY_FAILED",
-                f"{kind}：after_use={requested_after} 失敗：{type(exc).__name__}: {exc}"[:1000],
+                f"{kind}：after_use={requested_after} 失敗：{type(stage_error).__name__}: {stage_error}"[
+                    :1000
+                ],
             )
             return
         run.fact(
@@ -333,11 +429,15 @@ class SGLangH3Provider:
         return report
 
     def shutdown(self) -> None:
+        """Release the components and resources owned by this host."""
+        if self._h3_compile_bank is not None:
+            self._h3_compile_bank.close()
+            self._h3_compile_bank = None
         self.registry.evict_all()
         self.backend.synchronize()
         self.backend.empty_cache()
         with contextlib.suppress(Exception):
-            from sglang.multimodal_gen.runtime.distributed.parallel_state import (
+            from sglang.multimodal_gen.runtime.distributed.parallel_state import (  # type: ignore[import-untyped]
                 destroy_distributed_environment,
                 destroy_model_parallel,
             )
@@ -345,7 +445,9 @@ class SGLangH3Provider:
             destroy_model_parallel()
             destroy_distributed_environment()
 
-    def _failed(self, exc: BaseException, extra: list[dict[str, Any]], code: str | None = None) -> StageResult:
+    def _failed(
+        self, exc: BaseException, extra: list[dict[str, Any]], code: str | None = None
+    ) -> StageResult:
         code = code or classify_exception(exc)
         diagnostics = list(extra)
         if isinstance(exc, ShimError):
@@ -354,39 +456,52 @@ class SGLangH3Provider:
             # the traceback goes to stderr (the component process log); the diagnostic names the
             # innermost frames so a failure is locatable from the recording alone
             tb = traceback.extract_tb(exc.__traceback__)
-            where = " ← ".join(f"{Path(f.filename).name}:{f.lineno} {f.name}" for f in reversed(tb[-3:]))
-            print("".join(traceback.format_exception(exc)), file=sys.stderr, flush=True)
-            diagnostics.append(diagnostic(code, f"{type(exc).__name__}: {exc}（{where}）"[:2000]))
+            where = " ← ".join(
+                f"{Path(f.filename).name}:{f.lineno} {f.name}"
+                for f in reversed(tb[-3:])
+            )
+            sys.stderr.write("".join(traceback.format_exception(exc)) + "\n")
+            sys.stderr.flush()
+            diagnostics.append(
+                diagnostic(code, f"{type(exc).__name__}: {exc}（{where}）"[:2000])
+            )
         return StageResult(
-            status="failed", outputs=[], diagnostics=diagnostics, active_profile_digest=None, error_code=code
+            status="failed",
+            outputs=[],
+            diagnostics=diagnostics,
+            active_profile_digest=None,
+            error_code=code,
         )
 
     def _memory_fact(self) -> dict[str, Any]:
-        """RUNTIME_MEMORY: device allocator/NVML numbers, the process's host RSS
-        (``peak_host_bytes`` = this stage's VmHWM, ``max_rss_bytes`` = process
-        peak), host copies it keeps (``host_cached_bytes``: host-cached components;
-        ``pinned_host_bytes``: pinned memory of every component, layerwise host stores
-        of device-resident ones included) and this stage's host->device weight
-        transfers (``h2d_bytes``)."""
-        import json
-
+        """RUNTIME_MEMORY: device allocator/NVML numbers, the process's host RSS (``peak_host_bytes`` = this stage's VmHWM, ``max_rss_bytes`` = process peak), host copies it keeps (``host_cached_bytes``: host-cached components; ``pinned_host_bytes``: pinned memory of every component, layerwise host stores of device-resident ones included) and this stage's host->device weight transfers (``h2d_bytes``)."""
         snap: dict[str, Any] = dict(self.backend.memory_snapshot())
         _device, host = self.registry.residency_report()
         snap["host_cached_bytes"] = sum(int(c.get("host_bytes") or 0) for c in host)
         _held, pinned = self.registry.held_host_bytes()
         snap["pinned_host_bytes"] = int(pinned)
         snap["h2d_bytes"] = int(self._stage_h2d_bytes)
-        return diagnostic("RUNTIME_MEMORY", json.dumps(snap, sort_keys=True)[:2000], severity="info")
+        return diagnostic(
+            "RUNTIME_MEMORY", json.dumps(snap, sort_keys=True)[:2000], severity="info"
+        )
 
     def execute_stage(self, stage: Mapping[str, Any], ctx: StageContext) -> StageResult:
-        from .stages import stage_runner
-        from .stages.common import StageRun
+        """Execute a declared native stage and publish its result."""
+        stage_runner = import_module("phasyn_h3.recipe.runtime.stages").stage_runner
+        stage_run_type = import_module(
+            "phasyn_h3.recipe.runtime.stages.common"
+        ).StageRun
 
         kind = str(stage.get("kind"))
         try:
             runner = stage_runner(kind)
         except KeyError:
-            return self._failed(UnsupportedCombination("STAGE_KIND_NOT_RUNTIME", f"sglang_h3 不執行 {kind}"), [])
+            return self._failed(
+                UnsupportedCombination(
+                    "STAGE_KIND_NOT_RUNTIME", f"sglang_h3 不執行 {kind}"
+                ),
+                [],
+            )
         facts = self.backend.facts()
         try:
             policy = resolve_stage_policy(
@@ -398,19 +513,30 @@ class SGLangH3Provider:
             )
         except ShimError as exc:
             return self._failed(exc, [])
-        run = StageRun(provider=self, stage=stage, ctx=ctx, policy=policy)
+        run = stage_run_type(provider=self, stage=stage, ctx=ctx, policy=policy)
         if policy.applied_overrides:
-            run.fact("MEMORY_LEVEL_OVERRIDES", {"level": policy.memory_level, "overrides": policy.applied_overrides})
+            run.fact(
+                "MEMORY_LEVEL_OVERRIDES",
+                {"level": policy.memory_level, "overrides": policy.applied_overrides},
+            )
         self.backend.reset_peak()
         self._stage_h2d_bytes = 0
         try:
-            result = runner(run)
+            with RuntimeObservation(Cancelled, ShimError) as stage_call:
+                result = runner(run)
         except Cancelled:  # StageCanceled and phasyn_media's MediaCanceled: the host turns it into a cancel
             raise
         except ShimError as exc:
-            return self._failed(exc, [*run.diagnostics, self._memory_fact(), *self._measure_facts(kind, run)])
-        except Exception as exc:
-            code = classify_exception(exc)
+            return self._failed(
+                exc,
+                [
+                    *run.diagnostics,
+                    self._memory_fact(),
+                    *self._measure_facts(kind, run),
+                ],
+            )
+        if (stage_error := stage_call.error) is not None:
+            code = classify_exception(stage_error)
             memory = self._memory_fact()
             if code == "GPU_OOM":
                 # drop any partially built tensors before reporting the failure
@@ -419,14 +545,17 @@ class SGLangH3Provider:
                     self.backend.synchronize()
                 with contextlib.suppress(Exception):
                     self.backend.empty_cache()
-            return self._failed(exc, [*run.diagnostics, memory, *self._measure_facts(kind, run)], code)
+            return self._failed(
+                stage_error,
+                [*run.diagnostics, memory, *self._measure_facts(kind, run)],
+                code,
+            )
         result.diagnostics.append(self._memory_fact())
         result.diagnostics.extend(self._measure_facts(kind, run))
-        return result
+        return cast("StageResult", result)
 
     def _measure_facts(self, kind: str, run: Any) -> list[dict[str, Any]]:
-        """RUNTIME_COMPUTE, and RUNTIME_COST when the stage recorded ETA work (``StageRun.cost``); for
-        failed stages too, so a failure still reports the size it ran into."""
+        """RUNTIME_COMPUTE, and RUNTIME_COST when the stage recorded ETA work (``StageRun.cost``); for failed stages too, so a failure still reports the size it ran into."""
         facts = [self._compute_fact(kind, run)]
         text = cost_message(kind, list((run.measurements.get("cost") or {}).values()))
         if text is not None:
@@ -434,14 +563,14 @@ class SGLangH3Provider:
         return facts
 
     def _compute_fact(self, kind: str, run: Any) -> dict[str, Any]:
-        """RUNTIME_COMPUTE: the stage's analytic FLOPs and compute timing (``measure.py``), for failed
-        stages too.  When the JSON would not fit the diagnostic, ``per_step_seconds`` is summarized."""
-        import json
+        """RUNTIME_COMPUTE: the stage's analytic FLOPs and compute timing (``measure.py``), for failed stages too.
 
+        When the JSON would not fit the diagnostic, ``per_step_seconds`` is summarized.
+        """
         doc = dict(runtime_measurements(kind, run.measurements))
         text = json.dumps(doc, sort_keys=True, allow_nan=False)
         steps = doc.get("per_step_seconds") or []
-        if len(text) > 1900 and steps:
+        if len(text) > _SUMMARY_MAX_CHARS and steps:
             ordered = sorted(steps)
             doc["per_step_seconds"] = None
             doc["per_step_summary"] = {

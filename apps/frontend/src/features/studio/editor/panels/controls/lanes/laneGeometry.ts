@@ -22,7 +22,7 @@ export function laneFraction(clip: TimelineClip, frame: number): number | null {
  * measured from the edge of the whole panel body (the width of the property column) instead of from the cell.
  */
 export function laneLeft(fraction: number, before = "0px"): string {
-  return `calc(${before} + ${LANE_INSET}px + (100% - ${before} - ${2 * LANE_INSET}px) * ${fraction.toFixed(5)})`;
+  return `calc(${before} + ${String(LANE_INSET)}px + (100% - ${before} - ${String(2 * LANE_INSET)}px) * ${fraction.toFixed(5)})`;
 }
 
 /** The sequence frame under a pointer on a lane cell, kept on the clip. */

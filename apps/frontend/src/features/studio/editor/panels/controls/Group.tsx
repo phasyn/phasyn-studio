@@ -4,7 +4,7 @@
 // step of the history. Which groups are open is remembered per kind of clip (GroupsContext); a group a command asked
 // for is shown open whatever is remembered.
 import { ChevronRight, RotateCcw } from "lucide-react";
-import { useContext, useId, useState, type ReactNode } from "react";
+import { use, useId, useState, type ReactNode } from "react";
 import { SPRING_SNAPPY, TOOL_BUTTON } from "@/components/ui/look";
 import { t } from "@/i18n";
 import { cn } from "@/lib/cn";
@@ -31,12 +31,12 @@ export interface GroupProps {
 }
 
 export function Group({ id, title, changed = false, onReset, resetKeys = 0, selected = false, onChoose, actions, children }: GroupProps) {
-  const groups = useContext(GroupsContext);
-  const locked = useContext(FieldLockContext);
+  const groups = use(GroupsContext);
+  const locked = use(FieldLockContext);
   const bodyId = useId();
   const [confirming, setConfirming] = useState(false);
   const open = groups.open.includes(id) || groups.forced === id;
-  const toggle = () => groups.setOpen(id, !open);
+  const toggle = () => { groups.setOpen(id, !open); };
   const toggleLabel = open ? t("收合{label}", { label: title }) : t("展開{label}", { label: title });
   return (
     <section aria-label={title}>
@@ -60,7 +60,7 @@ export function Group({ id, title, changed = false, onReset, resetKeys = 0, sele
               setConfirming(false);
               onReset();
             }}
-            onCancel={() => setConfirming(false)}
+            onCancel={() => { setConfirming(false); }}
           />
         ) : (
           <>
@@ -71,7 +71,7 @@ export function Group({ id, title, changed = false, onReset, resetKeys = 0, sele
                 aria-controls={bodyId}
                 title={title}
                 onClick={() => {
-                  if (!onChoose?.()) toggle();
+                  if (!(onChoose?.() === true)) toggle();
                 }}
                 className="min-w-0 flex-1 truncate rounded-sm py-1 text-left text-data font-semibold text-fg"
               >

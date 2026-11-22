@@ -17,7 +17,7 @@ import { t } from "@/i18n";
 import { formatList } from "@/i18n/format";
 
 function localDate(now = new Date()): string {
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  return `${String(now.getFullYear())}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
 const keyOf = (measurement: SwapMeasurement) => `${measurement.nodeId}/${measurement.componentId}`;
@@ -32,14 +32,14 @@ function MeasureRow({ measurement, recorded, onRecorded }: { measurement: SwapMe
     patch.mutate(
       { limits: recordedLimits(measurement, localDate()) },
       {
-        onSuccess: () => onRecorded(t("已記錄成「{dit}」的換角上限；換角精靈之後用量測過的值，元件修改頁可以再調整。", { dit: measurement.label })),
-        onError: (error) => setFailure(t("沒有記錄：{reason}", { reason: errorText(error) })),
+        onSuccess: () => { onRecorded(t("已記錄成「{dit}」的換角上限；換角精靈之後用量測過的值，元件修改頁可以再調整。", { dit: measurement.label })); },
+        onError: (error) => { setFailure(t("沒有記錄：{reason}", { reason: errorText(error) })); },
       },
     );
   };
   return (
     <div className="grid gap-2 rounded-lg border border-line-subtle bg-sunken/60 px-3 py-2.5">
-      {recorded ? null : (
+      {(recorded != null && recorded !== "") ? null : (
         <>
           <p className="text-caption text-fg-secondary [overflow-wrap:anywhere]">
             {t("這次跑完的設定還沒記在「{dit}」的換角上限：{frames}・畫面 {formats}（{takes} 段）。記錄後，換角精靈就用這些量測過的值，不再用保守的預設上限。", {
@@ -55,7 +55,7 @@ function MeasureRow({ measurement, recorded, onRecorded }: { measurement: SwapMe
         </>
       )}
       {message ? (
-        <p ref={messageRef} role="status" className={recorded ? "text-caption text-success" : "text-caption text-danger"}>
+        <p ref={messageRef} role="status" className={(recorded != null && recorded !== "") ? "text-caption text-success" : "text-caption text-danger"}>
           {message}
         </p>
       ) : null}
@@ -78,7 +78,7 @@ export function MeasureSection() {
           key={keyOf(measurement)}
           measurement={measurement}
           recorded={recorded[keyOf(measurement)]}
-          onRecorded={(text) => setRecorded((current) => ({ ...current, [keyOf(measurement)]: text }))}
+          onRecorded={(text) => { setRecorded((current) => ({ ...current, [keyOf(measurement)]: text })); }}
         />
       ))}
     </Section>

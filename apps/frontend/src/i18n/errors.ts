@@ -85,6 +85,7 @@ const ERROR_TEXTS: Readonly<Record<string, ErrorText>> = {
   PROCESS_EXIT_UNCONFIRMED: { headline: () => t("未能確認程序已結束") },
   NODE_INTERNAL_ERROR: { headline: () => t("Node 內部錯誤") },
   RUNTIME_ERROR: { headline: () => t("執行錯誤"), hint: () => t("執行錯誤：設定與 metrics 已保留，請檢查紀錄後手動調整。") },
+  STUDIO_OUTPUT_MISMATCH: { headline: () => t("執行輸出與 Take 不符") },
   MODEL_OUTPUT_INVALID: { headline: () => t("模型輸出無法解讀") },
   GPU_OOM: { headline: () => t("顯存不足（GPU OOM）"), hint: () => t("顯存不足：設定與 metrics 已保留，請手動調整後建立新的 run。") },
   HOST_OOM: { headline: () => t("主記憶體不足"), hint: () => t("主記憶體不足：設定與 metrics 已保留，請減少同時載入的元件或手動調整後重新執行。") },
@@ -140,7 +141,7 @@ export const CLIENT_CODES: readonly string[] = [
  * 其他回傳 null，由呼叫端改用伺服器原文當標題（不顯示空泛的「錯誤」）。
  */
 export function errorHeadline(code: string | null | undefined): string | null {
-  if (!code) return null;
+  if (!(code != null && code !== "")) return null;
   const text = ERROR_TEXTS[code];
   if (text) return text.headline();
   const http = /^HTTP_(\d{3})$/.exec(code);
@@ -158,12 +159,12 @@ const KIND_HINTS: Readonly<Record<ErrorKind, () => string>> = {
 
 /** The registry kind of a server code (contracts/error-codes.json); null for client-produced or unknown codes. */
 export function errorKind(code: string | null | undefined): ErrorKind | null {
-  return code ? (ERROR_CODE_KINDS[code] ?? null) : null;
+  return (code != null && code !== "") ? (ERROR_CODE_KINDS[code] ?? null) : null;
 }
 
 /** The next-step hint for a code: its own hint, else the hint for its kind, else null. */
 export function errorHint(code: string | null | undefined): string | null {
-  if (!code) return null;
+  if (!(code != null && code !== "")) return null;
   const own = ERROR_TEXTS[code]?.hint;
   if (own) return own();
   const kind = errorKind(code);

@@ -171,7 +171,7 @@ describe("the editor reads the timeline the Controller answers and keeps its edi
     history.reconcile(live, false);
     const undone = history.undo(live);
     expect(undone?.ok).toBe(true);
-    if (!undone?.ok) return;
+    if (!(undone?.ok === true)) return;
     expect(timelineProblem(undone.value)).toBeNull();
     expect(undone.value.clips).toEqual(before.clips);
     expect(undone.value.sources).toEqual(before.sources);

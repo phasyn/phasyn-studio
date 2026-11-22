@@ -34,7 +34,7 @@ export function durationOrNull(value: number): number | null {
 /** 素材庫名稱（契約 1–200 字）。 */
 export function libraryName(fileName: string): string {
   const trimmed = fileName.trim();
-  return trimmed.length === 0 ? t("未命名檔案") : [...trimmed].slice(0, 200).join("");
+  return trimmed.length === 0 ? t("未命名檔案") : Array.from(trimmed).slice(0, 200).join("");
 }
 
 function waitForMetadata(element: HTMLMediaElement, timeoutMs: number): Promise<boolean> {
@@ -45,17 +45,18 @@ function waitForMetadata(element: HTMLMediaElement, timeoutMs: number): Promise<
       element.removeEventListener("error", onError);
       resolve(ok);
     };
-    const onLoaded = () => finish(true);
-    const onError = () => finish(false);
-    const timer = window.setTimeout(() => finish(false), timeoutMs);
+    const onLoaded = () => { finish(true); };
+    const onError = () => { finish(false); };
+    const timer = window.setTimeout(() => { finish(false); }, timeoutMs);
     element.addEventListener("loadedmetadata", onLoaded, { once: true });
     element.addEventListener("error", onError, { once: true });
   });
 }
 
-interface BrowserAudioHints {
-  audioTracks?: { length: number };
-  mozHasAudio?: boolean;
+function browserAudioHint(video: HTMLVideoElement): boolean | null {
+  const tracks: unknown = "audioTracks" in video ? video.audioTracks : null;
+  if (tracks !== null && typeof tracks === "object" && "length" in tracks && typeof tracks.length === "number") return tracks.length > 0;
+  return "mozHasAudio" in video && typeof video.mozHasAudio === "boolean" ? video.mozHasAudio : null;
 }
 
 async function imageFacts(file: File): Promise<MediaFacts> {
@@ -77,21 +78,18 @@ async function timedFacts(file: File, kind: "video" | "audio"): Promise<MediaFac
   try {
     element.src = url;
     const loaded = await waitForMetadata(element, 15000);
-    if (kind === "audio") {
+    if (!(element instanceof HTMLVideoElement)) {
       const duration = loaded ? durationOrNull(element.duration) : null;
       return { width: null, height: null, duration_seconds: duration, has_audio: duration === null ? null : true };
     }
-    const video = element as HTMLVideoElement;
     let hasAudio: boolean | null = await mp4HasAudio(blobSource(file)).catch(() => null);
     if (hasAudio === null && loaded) {
-      const hints = video as unknown as BrowserAudioHints;
-      if (hints.audioTracks) hasAudio = hints.audioTracks.length > 0;
-      else if (typeof hints.mozHasAudio === "boolean") hasAudio = hints.mozHasAudio;
+      hasAudio = browserAudioHint(element);
     }
     return {
-      width: loaded ? dimension(video.videoWidth) : null,
-      height: loaded ? dimension(video.videoHeight) : null,
-      duration_seconds: loaded ? durationOrNull(video.duration) : null,
+      width: loaded ? dimension(element.videoWidth) : null,
+      height: loaded ? dimension(element.videoHeight) : null,
+      duration_seconds: loaded ? durationOrNull(element.duration) : null,
       has_audio: hasAudio,
     };
   } finally {

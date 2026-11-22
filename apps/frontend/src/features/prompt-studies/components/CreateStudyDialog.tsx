@@ -46,7 +46,7 @@ function LibraryPicker({ onPick, selected }: { onPick: (item: StudioLibraryItem,
       {projects.isError ? (
         <ErrorCallout error={projects.error} title={t("無法讀取 Studio 專案列表")} onRetry={() => void projects.refetch()} retrying={projects.isFetching} />
       ) : (
-        <Select id={`${id}-project`} compact value={projectId ?? ""} onChange={(event) => setProjectId(event.target.value || null)} disabled={projects.isPending}>
+        <Select id={`${id}-project`} compact value={projectId ?? ""} onChange={(event) => { setProjectId(event.target.value || null); }} disabled={projects.isPending}>
           <option value="">{projects.isPending ? t("讀取中…") : t("選擇專案")}</option>
           {(projects.data?.items ?? []).map((item) => (
             <option key={item.project_id} value={item.project_id}>
@@ -70,7 +70,7 @@ function LibraryPicker({ onPick, selected }: { onPick: (item: StudioLibraryItem,
               <button
                 type="button"
                 aria-pressed={selected === item.file.file_id}
-                onClick={() => projectId && onPick(item, projectId)}
+                onClick={() => { if (projectId) onPick(item, projectId); }}
                 className="pressable group/tile grid w-full gap-1 rounded-lg border border-line-subtle p-1 text-left text-caption text-fg-secondary hover:border-line-control aria-pressed:border-brand-blue/60 aria-pressed:bg-brand-gradient-soft aria-pressed:text-fg focus-visible:outline-2 focus-visible:outline-focus"
               >
                 <span className="block overflow-hidden rounded-md">
@@ -81,7 +81,7 @@ function LibraryPicker({ onPick, selected }: { onPick: (item: StudioLibraryItem,
                 <span className="truncate" title={item.name}>
                   {item.name}
                 </span>
-                <span className="machine text-fg-tertiary">{item.width && item.height ? `${item.width}×${item.height}` : t("尺寸未知")}</span>
+                <span className="machine text-fg-tertiary">{Boolean(item.width) && Boolean(item.height) ? `${String(item.width)}×${String(item.height)}` : t("尺寸未知")}</span>
               </button>
             </li>
           ))}
@@ -131,7 +131,7 @@ export function CreateStudyDialog({ open, onOpenChange, onCreated }: { open: boo
   const upload = async (file: File) => {
     const problem = sourceFileProblem(file);
     setUploadProblem(problem);
-    if (problem) return;
+    if (problem != null && problem !== "") return;
     setUploading(true);
     setError(null);
     try {
@@ -158,7 +158,7 @@ export function CreateStudyDialog({ open, onOpenChange, onCreated }: { open: boo
           : null;
 
   const create = async () => {
-    if (blockReason || !source || saving) return;
+    if ((blockReason ?? "") || !source || saving) return;
     setSaving(true);
     setError(null);
     try {
@@ -180,7 +180,7 @@ export function CreateStudyDialog({ open, onOpenChange, onCreated }: { open: boo
     }
   };
 
-  const updateCrop = (index: number, key: CropKey, text: string) => setCropDrafts((current) => current.map((draft, at) => (at === index ? { ...draft, [key]: text } : draft)));
+  const updateCrop = (index: number, key: CropKey, text: string) => { setCropDrafts((current) => current.map((draft, at) => (at === index ? { ...draft, [key]: text } : draft))); };
 
   return (
     <Dialog open={open} onOpenChange={close}>
@@ -201,7 +201,7 @@ export function CreateStudyDialog({ open, onOpenChange, onCreated }: { open: boo
                   { id: "library", label: t("Studio 素材庫") },
                 ]}
                 value={tab}
-                onChange={(next) => setTab(next === "library" ? "library" : "upload")}
+                onChange={(next) => { setTab(next === "library" ? "library" : "upload"); }}
                 idPrefix={`${id}-source`}
                 label={t("來源圖片的取得方式")}
                 className="w-fit"
@@ -230,19 +230,19 @@ export function CreateStudyDialog({ open, onOpenChange, onCreated }: { open: boo
                   />
                 </label>
                 <p className="text-caption text-fg-tertiary">{t("PNG、JPEG 或 WebP，最多 24 MiB；透明區在視覺模型輸入時合成白底。")}</p>
-                {uploadProblem ? <p className="text-caption text-danger">{uploadProblem}</p> : null}
+                {(uploadProblem != null && uploadProblem !== "") ? <p className="text-caption text-danger">{uploadProblem}</p> : null}
               </div>
               <div role="tabpanel" id={`${id}-source-panel-library`} aria-labelledby={`${id}-source-tab-library`} hidden={tab !== "library"}>
-                {tab === "library" ? <LibraryPicker selected={source?.origin === "library" ? source.file.file_id : null} onPick={(item, projectId) => pickSource({ file: item.file, name: item.name, origin: "library", library: { project_id: projectId, item_id: item.item_id } })} /> : null}
+                {tab === "library" ? <LibraryPicker selected={source?.origin === "library" ? source.file.file_id : null} onPick={(item, projectId) => { pickSource({ file: item.file, name: item.name, origin: "library", library: { project_id: projectId, item_id: item.item_id } }); }} /> : null}
               </div>
             </section>
             <section className="grid content-start gap-2" aria-label={t("預覽")}>
               {source ? (
                 <>
                   <div className={cn(MEDIA_FRAME, "animate-rise-in")}>
-                    <StudyImage key={source.file.file_id} file={source.file} alt={t("來源圖片預覽")} className="max-h-72 w-full rounded-none border-0 bg-transparent" onSize={(width, height) => setSize({ width, height })} />
+                    <StudyImage key={source.file.file_id} file={source.file} alt={t("來源圖片預覽")} className="max-h-72 w-full rounded-none border-0 bg-transparent" onSize={(width, height) => { setSize({ width, height }); }} />
                   </div>
-                  <p className="machine text-caption text-fg-tertiary">{`${size ? `${size.width}×${size.height}` : t("尺寸讀取中")} · ${source.file.media_type} · ${formatBytes(source.file.size_bytes)}`}</p>
+                  <p className="machine text-caption text-fg-tertiary">{`${size ? `${String(size.width)}×${String(size.height)}` : t("尺寸讀取中")} · ${source.file.media_type} · ${formatBytes(source.file.size_bytes)}`}</p>
                 </>
               ) : (
                 <div className="grid min-h-40 place-items-center rounded-xl border border-dashed border-line-strong bg-canvas/60">
@@ -256,13 +256,13 @@ export function CreateStudyDialog({ open, onOpenChange, onCreated }: { open: boo
               <label htmlFor={`${id}-title`} className="text-caption text-fg-secondary">
                 {t("研究名稱")}
               </label>
-              <Input id={`${id}-title`} compact maxLength={LIMITS.title} value={title} placeholder={t("未命名研究")} onChange={(event) => setTitle(event.target.value)} />
+              <Input id={`${id}-title`} compact maxLength={LIMITS.title} value={title} placeholder={t("未命名研究")} onChange={(event) => { setTitle(event.target.value); }} />
             </div>
             <div className="grid gap-1">
               <label htmlFor={`${id}-language`} className="text-caption text-fg-secondary">
                 {t("Prompt 語言")}
               </label>
-              <Select id={`${id}-language`} compact value={language} onChange={(event) => setLanguage(event.target.value === "en" ? "en" : "zh-TW")}>
+              <Select id={`${id}-language`} compact value={language} onChange={(event) => { setLanguage(event.target.value === "en" ? "en" : "zh-TW"); }}>
                 <option value="zh-TW">{LANGUAGE_LABELS["zh-TW"]}</option>
                 <option value="en">{LANGUAGE_LABELS.en}</option>
               </Select>
@@ -293,12 +293,12 @@ export function CreateStudyDialog({ open, onOpenChange, onCreated }: { open: boo
                             value={draft[key]}
                             aria-invalid={invalid || undefined}
                             aria-describedby={invalid ? `${id}-crop-problems` : undefined}
-                            onChange={(event) => updateCrop(index, key, event.target.value)}
+                            onChange={(event) => { updateCrop(index, key, event.target.value); }}
                           />
                         </div>
                       );
                     })}
-                    <Button size="icon-sm" variant="danger" aria-label={t("移除 {view_id}", { view_id: draft.view_id })} title={t("移除 {view_id}", { view_id: draft.view_id })} onClick={() => setCropDrafts((current) => current.filter((_, at) => at !== index))}>
+                    <Button size="icon-sm" variant="danger" aria-label={t("移除 {view_id}", { view_id: draft.view_id })} title={t("移除 {view_id}", { view_id: draft.view_id })} onClick={() => { setCropDrafts((current) => current.filter((_, at) => at !== index)); }}>
                       <Trash2 aria-hidden />
                     </Button>
                   </fieldset>
@@ -326,10 +326,10 @@ export function CreateStudyDialog({ open, onOpenChange, onCreated }: { open: boo
               </Button>
             </div>
           </Disclosure>
-          {error ? <ErrorCallout error={error} write title={source ? t("建立研究失敗；輸入保留") : t("上傳失敗")} /> : null}
+          {(error != null) ? <ErrorCallout error={error} write title={source ? t("建立研究失敗；輸入保留") : t("上傳失敗")} /> : null}
         </DialogBody>
         <DialogFooter>
-          <Button variant="quiet" onClick={() => close(false)} disabled={saving || uploading}>
+          <Button variant="quiet" onClick={() => { close(false); }} disabled={saving || uploading}>
             {t("取消")}
           </Button>
           <ActionButton variant="primary" icon={<ImagePlus aria-hidden />} pending={saving} disabledReason={saving ? null : blockReason} onClick={() => void create()}>

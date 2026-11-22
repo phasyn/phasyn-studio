@@ -31,16 +31,16 @@ export function useSearchParamText(key: string, delayMs: number = SEARCH_PARAM_S
 
   // setSearchParams builds on the parameters of the render that created it: the delayed write uses the latest one, so
   // it never reverts a parameter that another control changed in the meantime.
-  const latestSetParams = useRef(setParams);
+  const latestSetParamsRef = useRef(setParams);
   useEffect(() => {
-    latestSetParams.current = setParams;
+    latestSetParamsRef.current = setParams;
   }, [setParams]);
 
   useEffect(() => {
     if (text === urlText) return;
     const timer = window.setTimeout(() => {
       setExpected(text);
-      latestSetParams.current(
+      latestSetParamsRef.current(
         (previous) => {
           const next = new URLSearchParams(previous);
           if (text) next.set(key, text);
@@ -50,7 +50,7 @@ export function useSearchParamText(key: string, delayMs: number = SEARCH_PARAM_S
         { replace: true },
       );
     }, delayMs);
-    return () => window.clearTimeout(timer);
+    return () => { window.clearTimeout(timer); };
   }, [text, urlText, key, delayMs]);
 
   return [text, setText] as const;

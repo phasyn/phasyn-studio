@@ -4,12 +4,12 @@
 // 最新版上（使用者選擇「保留兩邊」時；見 hooks/useImageDocument）。不合法或沒有效果的動作回傳原物件。
 import type { StudioShot } from "@/api/generated/contracts";
 import { firstFrameItemId, IMAGE_MASK_NOTE, projectReducer, type ProjectAction } from "@/features/studio";
-import { valuesEqual } from "@/lib/json";
+import { fieldValue, changedItems, valuesEqual } from "@/lib/json";
 import type { ImageLibraryItem, ImageStudioProject, StudioImageShot, StudioImageTake } from "../types";
 import { LIMITS } from "./constants";
 import { addReference } from "./references";
 import { attachFirstFrame, attachReference, firstFrameBlockedReason, type VideoUse } from "./sendToVideo";
-import { imageShots, type ImageShotPatch } from "./shots";
+import { activeImageTake, imageShots, type ImageShotPatch } from "./shots";
 
 /**
  * Image Studio 繪製並保存的遮罩在素材庫的備註（只有帶這個備註、且沒有任何地方引用的遮罩，換新遮罩時才會從素材庫移除）。
@@ -29,7 +29,7 @@ export type ImageProjectAction =
   /** 加一張參考圖（以套用當下的參考清單判斷上限與底圖；上傳完成時用）。 */
   | { type: "addImageReference"; shotId: string; itemId: string }
   | { type: "addImageTakes"; shotId: string; takes: StudioImageTake[] }
-  /** activateOnSuccess：這個 take 變成成功時，若同一個 run 還沒有使用中的 take，就把它設為使用中（批次中最先完成的那張）。 */
+  /** activateOnSuccess：這個 take 變成成功時，若圖片還沒有使用中的 take，就選用這次先完成的候選。 */
   | { type: "updateImageTake"; runId: string; takeId: string; patch: Partial<StudioImageTake>; activateOnSuccess?: boolean }
   | { type: "setActiveImageTake"; shotId: string; takeId: string | null }
   /** 永久刪除 run 之後移除專案中引用它們的 take（主控沒有處理 image_shots 時的本機補齊；已移除時沒有效果）。 */
@@ -47,14 +47,11 @@ function withShots(project: ImageStudioProject, shots: StudioImageShot[]): Image
 }
 
 function mapImageShot(project: ImageStudioProject, shotId: string, fn: (shot: StudioImageShot) => StudioImageShot): ImageStudioProject {
-  let changed = false;
-  const shots = imageShots(project).map((shot) => {
+  const shots = changedItems(imageShots(project), (shot) => {
     if (shot.image_shot_id !== shotId) return shot;
-    const next = fn(shot);
-    changed ||= next !== shot;
-    return next;
+    return fn(shot);
   });
-  return changed ? withShots(project, shots) : project;
+  return shots !== null ? withShots(project, shots) : project;
 }
 
 function video(project: ImageStudioProject, action: ProjectAction): ImageStudioProject {
@@ -76,13 +73,11 @@ function linkTake(project: ImageStudioProject, item: ImageLibraryItem): ImageStu
   const source = item.source;
   if (source?.kind !== "image_take") return project;
   return mapImageShot(project, source.image_shot_id, (shot) => {
-    let changed = false;
-    const takes = shot.takes.map((take) => {
+    const takes = changedItems(shot.takes, (take) => {
       if (take.take_id !== source.take_id || take.library_item_id === item.item_id) return take;
-      changed = true;
       return { ...take, library_item_id: item.item_id };
     });
-    return changed ? { ...shot, takes } : shot;
+    return takes !== null ? { ...shot, takes } : shot;
   });
 }
 
@@ -101,7 +96,7 @@ export function libraryItemInUse(project: ImageStudioProject, itemId: string, ig
 }
 
 function shallowSame(shot: StudioImageShot, patch: ImageShotPatch): boolean {
-  return (Object.keys(patch) as (keyof ImageShotPatch)[]).every((key) => valuesEqual(shot[key], patch[key]));
+  return Object.entries(patch).every(([key, value]) => valuesEqual(fieldValue(shot, key), value));
 }
 
 export function imageProjectReducer(project: ImageStudioProject, action: ImageProjectAction): ImageStudioProject {
@@ -111,7 +106,7 @@ export function imageProjectReducer(project: ImageStudioProject, action: ImagePr
     case "addImageShot": {
       const shots = imageShots(project);
       if (shots.length >= LIMITS.shots || shots.some((shot) => shot.image_shot_id === action.shot.image_shot_id)) return project;
-      const index = action.afterShotId ? shots.findIndex((shot) => shot.image_shot_id === action.afterShotId) : -1;
+      const index = (action.afterShotId != null && action.afterShotId !== "") ? shots.findIndex((shot) => shot.image_shot_id === action.afterShotId) : -1;
       const next = [...shots];
       next.splice(index >= 0 ? index + 1 : next.length, 0, action.shot);
       return withShots(project, next);
@@ -157,21 +152,20 @@ export function imageProjectReducer(project: ImageStudioProject, action: ImagePr
         return { ...shot, takes: [...shot.takes, ...fresh] };
       });
     case "updateImageTake": {
-      let changed = false;
-      const shots = imageShots(project).map((shot) => {
+      const shots = changedItems(imageShots(project), (shot) => {
         const index = shot.takes.findIndex((take) => take.take_id === action.takeId && take.run_id === action.runId);
         const current = shot.takes[index];
         if (!current) return shot;
         const updated = { ...current, ...action.patch };
         if (valuesEqual(updated, current)) return shot;
-        changed = true;
         const takes = [...shot.takes];
         takes[index] = updated;
-        const runHasActive = shot.takes.some((take) => take.run_id === action.runId && take.take_id === shot.active_take_id && take.state === "succeeded");
-        const activate = action.activateOnSuccess === true && updated.state === "succeeded" && current.state !== "succeeded" && !runHasActive;
-        return { ...shot, takes, active_take_id: activate ? updated.take_id : shot.active_take_id };
+        if (updated.state !== "succeeded" || current.state === "succeeded") return { ...shot, takes };
+        const selected = activeImageTake(shot);
+        const active = selected?.take_id ?? (action.activateOnSuccess === true ? updated.take_id : shot.active_take_id);
+        return { ...shot, takes, active_take_id: active };
       });
-      return changed ? withShots(project, shots) : project;
+      return shots !== null ? withShots(project, shots) : project;
     }
     case "setActiveImageTake":
       return mapImageShot(project, action.shotId, (shot) => {
@@ -180,15 +174,13 @@ export function imageProjectReducer(project: ImageStudioProject, action: ImagePr
       });
     case "removeImageTakes": {
       const runs = new Set(action.runIds);
-      let changed = false;
-      const shots = imageShots(project).map((shot) => {
+      const shots = changedItems(imageShots(project), (shot) => {
         const takes = shot.takes.filter((take) => !runs.has(take.run_id));
         if (takes.length === shot.takes.length) return shot;
-        changed = true;
         const active = takes.some((take) => take.take_id === shot.active_take_id) ? shot.active_take_id : null;
         return { ...shot, takes, active_take_id: active };
       });
-      return changed ? withShots(project, shots) : project;
+      return shots !== null ? withShots(project, shots) : project;
     }
     case "addLibraryItems": {
       let next = addLibrary(project, action.items);
@@ -205,8 +197,8 @@ export function imageProjectReducer(project: ImageStudioProject, action: ImagePr
       if (action.item && next === project && !(project.library ?? []).some((item) => item.item_id === nextId)) return project;
       next = mapImageShot(next, action.shotId, (current) => ({ ...current, mask_item_id: nextId, mask_invert: nextId === null ? false : current.mask_invert }));
       const old = shot.mask_item_id;
-      const oldItem = old ? (next.library ?? []).find((item) => item.item_id === old) : undefined;
-      if (oldItem && oldItem.note === MASK_NOTE && !libraryItemInUse(next, oldItem.item_id)) {
+      const oldItem = (old != null && old !== "") ? (next.library ?? []).find((item) => item.item_id === old) : undefined;
+      if (oldItem?.note === MASK_NOTE && !libraryItemInUse(next, oldItem.item_id)) {
         next = { ...next, library: (next.library ?? []).filter((item) => item.item_id !== oldItem.item_id) };
       }
       return next;

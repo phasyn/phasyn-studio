@@ -1,7 +1,7 @@
 """NodeGateway 測試工具：真實元件子程序（CPU runtime = 目前 venv 的 python + phasyn_components.runtime_host，
 provider test.echo）、假主控（httpx.MockTransport）、以 httpx.ASGITransport 呼叫 Node 的 HTTP。
 
-模組名稱刻意不叫 conftest／helpers，避免與其他套件的測試模組撞名。"""
+模組名稱刻意不叫 conftest/helpers，避免與其他套件的測試模組撞名。"""
 
 from __future__ import annotations
 
@@ -14,16 +14,18 @@ import uuid
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, override
 
 import httpx
 import psutil
 from fastapi import FastAPI
 from phasyn_components import contracts, testing
 from phasyn_components.settings import normalize_recording
+
 from phasyn_node.app import create_app
 from phasyn_node.config import NodeConfig, config_from_dict
 from phasyn_node.service import NodeService
+
 
 CONTROLLER_HOST = "controller.test:8080"
 CONTROLLER = f"http://{CONTROLLER_HOST}"
@@ -36,12 +38,17 @@ def runtime_children() -> list[psutil.Process]:
     found: list[psutil.Process] = []
     for proc in psutil.Process().children(recursive=True):
         with contextlib.suppress(psutil.Error):
-            if RUNTIME_MODULE in " ".join(proc.cmdline()) and "--component-id" in proc.cmdline():
+            if (
+                RUNTIME_MODULE in " ".join(proc.cmdline())
+                and "--component-id" in proc.cmdline()
+            ):
                 found.append(proc)
     return found
 
 
-def cpu_runtime(runtime_id: str = "cpu", python: str | None = None, **env: str) -> dict[str, Any]:
+def cpu_runtime(
+    runtime_id: str = "cpu", python: str | None = None, **env: str
+) -> dict[str, Any]:
     """CPU runtime in this venv; the test.* providers are enabled explicitly through the runtime env."""
     return {
         "runtime_id": runtime_id,
@@ -61,7 +68,9 @@ def recording(**overrides: Any) -> dict[str, Any]:
     return normalize_recording({"mode": "detailed", **overrides})
 
 
-def echo_definition(component_id: str, group: str = "cpu-echo", **load: Any) -> dict[str, Any]:
+def echo_definition(
+    component_id: str, group: str = "cpu-echo", **load: Any
+) -> dict[str, Any]:
     load_settings: dict[str, Any] = {
         "device": {"kind": "cpu", "id": "cpu", "resource_group": group},
         "precision": {"compute_dtype": "native"},
@@ -114,14 +123,18 @@ class FakeController:
         self.nodes: dict[str, dict[str, Any]] = {}
         self.catalog_puts: list[dict[str, Any]] = []
         self.batches: list[dict[str, Any]] = []
-        self.preview_notices: list[tuple[str, dict[str, Any]]] = []  # (path, RunStepPreviewNotice)
+        self.preview_notices: list[
+            tuple[str, dict[str, Any]]
+        ] = []  # (path, RunStepPreviewNotice)
         self.problems: list[str] = []
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
         if request.method == "PUT" and path.startswith("/api/catalog/"):
             body = json.loads(request.content)
-            self.problems += [f"NodeSnapshot {p}" for p in contracts.errors("NodeSnapshot", body)]
+            self.problems += [
+                f"NodeSnapshot {p}" for p in contracts.errors("NodeSnapshot", body)
+            ]
             if path != f"/api/catalog/{body.get('node_id')}":
                 self.problems.append(f"catalog path {path} != node_id")
             self.catalog_puts.append(body)
@@ -144,7 +157,9 @@ class FakeController:
             return httpx.Response(200, json=ack)
         if request.method == "POST" and path == "/api/telemetry/batches":
             body = json.loads(request.content)
-            self.problems += [f"EventBatch {p}" for p in contracts.errors("EventBatch", body)]
+            self.problems += [
+                f"EventBatch {p}" for p in contracts.errors("EventBatch", body)
+            ]
             self.batches.append(body)
             ack = {
                 "accepted_events": len(body.get("events") or []),
@@ -153,12 +168,23 @@ class FakeController:
                 "message": "ok",
             }
             return httpx.Response(200, json=ack)
-        if request.method == "POST" and path.startswith("/api/runs/") and path.endswith("/preview"):
+        if (
+            request.method == "POST"
+            and path.startswith("/api/runs/")
+            and path.endswith("/preview")
+        ):
             body = json.loads(request.content)
-            self.problems += [f"RunStepPreviewNotice {p}" for p in contracts.errors("RunStepPreviewNotice", body)]
+            self.problems += [
+                f"RunStepPreviewNotice {p}"
+                for p in contracts.errors("RunStepPreviewNotice", body)
+            ]
             self.preview_notices.append((path, body))
-            return httpx.Response(200, json={"accepted": True, "message": "fake controller"})
-        return httpx.Response(404, json={"code": "NOT_FOUND", "message": "fake controller"})
+            return httpx.Response(
+                200, json={"accepted": True, "message": "fake controller"}
+            )
+        return httpx.Response(
+            404, json={"code": "NOT_FOUND", "message": "fake controller"}
+        )
 
     def records(self, kind: str) -> list[dict[str, Any]]:
         return [item for batch in self.batches for item in batch[kind]]
@@ -176,10 +202,13 @@ class Router(httpx.AsyncBaseTransport):
     def add(self, netloc: str, transport: httpx.AsyncBaseTransport) -> None:
         self.routes[netloc] = transport
 
+    @override
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         transport = self.routes.get(request.url.netloc.decode("ascii"))
         if transport is None:
-            raise httpx.ConnectError(f"no route to {request.url.netloc!r}", request=request)
+            raise httpx.ConnectError(
+                f"no route to {request.url.netloc!r}", request=request
+            )
         return await transport.handle_async_request(request)
 
 
@@ -194,48 +223,72 @@ class Node:
         response = await self.client.get("/api/components")
         assert response.status_code == 200, response.text
         body = response.json()
-        assert not contracts.errors("ListComponents", body), contracts.errors("ListComponents", body)
+        assert not contracts.errors("ListComponents", body), contracts.errors(
+            "ListComponents", body
+        )
         return {c["component_id"]: c for c in body["items"]}
 
     async def component(self, component_id: str) -> dict[str, Any]:
         return (await self.components())[component_id]
 
-    async def wait_state(self, component_id: str, *states: str, timeout: float = 15.0) -> dict[str, Any]:
+    async def wait_state(
+        self, component_id: str, *states: str, limit_s: float = 15.0
+    ) -> dict[str, Any]:
         async def check() -> dict[str, Any] | None:
             desc = await self.component(component_id)
             return desc if desc["state"] in states else None
 
-        return await wait_until(check, timeout=timeout, what=f"{component_id} → {states}")
+        descriptor = await wait_until(
+            check, limit_s=limit_s, what=f"{component_id} → {states}"
+        )
+        assert isinstance(descriptor, dict)
+        return descriptor
 
     async def control(self, component_id: str, action: str) -> httpx.Response:
-        return await self.client.post(f"/api/components/{component_id}/control", json={"action": action})
+        return await self.client.post(
+            f"/api/components/{component_id}/control", json={"action": action}
+        )
 
     async def start_ready(self, *component_ids: str) -> None:
-        responses = await asyncio.gather(*(self.control(cid, "start") for cid in component_ids))
+        responses = await asyncio.gather(
+            *(self.control(cid, "start") for cid in component_ids)
+        )
         for response in responses:
             assert response.status_code == 200, response.text
         for cid in component_ids:
             await self.wait_state(cid, "ready")
 
     async def invoke(self, component_id: str, body: dict[str, Any]) -> httpx.Response:
-        return await self.client.post(f"/api/components/{component_id}/invoke", json=body)
+        return await self.client.post(
+            f"/api/components/{component_id}/invoke", json=body
+        )
 
     async def cancel(self, component_id: str, call_id: str) -> httpx.Response:
-        return await self.client.post(f"/api/components/{component_id}/cancel", json={"call_id": call_id})
+        return await self.client.post(
+            f"/api/components/{component_id}/cancel", json={"call_id": call_id}
+        )
 
 
 @contextlib.asynccontextmanager
-async def running_node(config: NodeConfig, transport: httpx.AsyncBaseTransport | None = None) -> AsyncIterator[Node]:
+async def running_node(
+    config: NodeConfig, transport: httpx.AsyncBaseTransport | None = None
+) -> AsyncIterator[Node]:
     app = create_app(config, http_transport=transport or Router())
     async with (
         app.router.lifespan_context(app),
-        httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url=config.advertise_url, timeout=60) as client,
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url=config.advertise_url,
+            timeout=60,
+        ) as client,
     ):
         yield Node(app=app, service=app.state.service, client=client, config=config)
 
 
-async def wait_until(predicate: Callable[[], Any], *, timeout: float = 10.0, what: str = "condition") -> Any:
-    deadline = time.monotonic() + timeout
+async def wait_until(
+    predicate: Callable[[], Any], *, limit_s: float = 10.0, what: str = "condition"
+) -> Any:
+    deadline = time.monotonic() + limit_s
     while True:
         result = predicate()
         if asyncio.iscoroutine(result):
@@ -247,29 +300,39 @@ async def wait_until(predicate: Callable[[], Any], *, timeout: float = 10.0, wha
         await asyncio.sleep(0.02)
 
 
+@dataclass(frozen=True, kw_only=True)
+class InvokeOptions:
+    call_id: str | None = None
+    required_loaded_revision: int | None = None
+    timeout_seconds: int = 60
+    type_id: str = "test.echo.v1"
+    port: str = "value"
+
+
+DEFAULT_INVOKE_OPTIONS = InvokeOptions()
+
+
 def invoke_body(
     *,
     value: Any = None,
     file: dict[str, Any] | None = None,
-    call_id: str | None = None,
     parameters: dict[str, Any] | None = None,
-    required_loaded_revision: int | None = None,
-    timeout_seconds: int = 60,
-    type_id: str = "test.echo.v1",
-    port: str = "value",
+    options: InvokeOptions = DEFAULT_INVOKE_OPTIONS,
 ) -> dict[str, Any]:
     item: dict[str, Any] = (
-        {"type_id": type_id, "file": file} if file is not None else {"type_id": type_id, "value": value}
+        {"type_id": options.type_id, "file": file}
+        if file is not None
+        else {"type_id": options.type_id, "value": value}
     )
     return {
-        "call_id": call_id or str(uuid.uuid4()),
+        "call_id": options.call_id or str(uuid.uuid4()),
         "run_id": None,
         "step_id": None,
-        "inputs": {port: item},
+        "inputs": {options.port: item},
         "parameters": parameters or {},
-        "required_loaded_revision": required_loaded_revision,
+        "required_loaded_revision": options.required_loaded_revision,
         "recording": recording(),
-        "timeout_seconds": timeout_seconds,
+        "timeout_seconds": options.timeout_seconds,
     }
 
 
@@ -280,4 +343,8 @@ def assert_valid(definition: str, obj: Any) -> None:
 
 def read_stream(recording_dir: Path, stream: str) -> list[dict[str, Any]]:
     path = recording_dir / "streams" / f"{stream}.0000.jsonl"
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [
+        json.loads(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]

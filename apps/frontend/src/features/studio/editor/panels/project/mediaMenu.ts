@@ -46,14 +46,14 @@ export function mediaMenu(editor: Editor, item: MediaItem, actions: MediaMenuAct
       icon: Gauge,
       separatorBefore: true,
       disabledReason: proxyBlocked(editor, source),
-      onSelect: () => createProxy(editor, source),
+      onSelect: () => { createProxy(editor, source); },
     },
     {
       id: "library",
       label: t("在素材庫顯示"),
       icon: Library,
-      disabledReason: libraryId ? null : t("素材庫只能定位上傳的素材；鏡頭的 take 在素材庫的「渲染結果」"),
-      onSelect: () => openAssetLibrary(libraryId ?? null),
+      disabledReason: (libraryId != null && libraryId !== "") ? null : t("素材庫只能定位上傳的素材；鏡頭的 take 在素材庫的「渲染結果」"),
+      onSelect: () => { openAssetLibrary(libraryId ?? null); },
     },
     ...(item.shorter ? [{ id: "shorter", label: t("套用並裁短…"), icon: Scissors, separatorBefore: true, onSelect: actions.applyShorter }] : []),
   ];

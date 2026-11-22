@@ -60,7 +60,7 @@ function appearanceOf(character: SwapCharacterText): string {
 /** 取代對象：英文且沒有限定詞時補 the。 */
 function whoOf(character: SwapCharacterText, index: number): string {
   const text = clean(character.who, FIELD_LIMITS.who);
-  if (!text) return `the character replaced by <Subject ${index + 1}>`;
+  if (!text) return `the character replaced by <Subject ${String(index + 1)}>`;
   if (CJK.test(text) || !/^[A-Za-z]/.test(text) || DETERMINER.test(text)) return text;
   return `the ${text}`;
 }
@@ -76,8 +76,8 @@ export function noList(text: string): string {
     .filter(Boolean);
   const parts = items.map((item) => `no ${item}`);
   if (parts.length <= 1) return parts[0] ?? "";
-  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
-  return `${parts.slice(0, -1).join(", ")}, and ${parts.at(-1)}`;
+  if (parts.length === 2) return `${String(parts[0])} and ${String(parts[1])}`;
+  return `${parts.slice(0, -1).join(", ")}, and ${String(parts.at(-1))}`;
 }
 
 const SPOKEN = /<d>([\s\S]*?)<\/d>/g;
@@ -111,19 +111,19 @@ export function formatCueTime(frames: number, fps = H3_FPS): string {
 
 function englishList(items: readonly string[]): string {
   if (items.length <= 1) return items[0] ?? "";
-  if (items.length === 2) return `${items[0]} and ${items[1]}`;
-  return `${items.slice(0, -1).join(", ")}, and ${items.at(-1)}`;
+  if (items.length === 2) return `${String(items[0])} and ${String(items[1])}`;
+  return `${items.slice(0, -1).join(", ")}, and ${String(items.at(-1))}`;
 }
 
 /** The cuts of the @Video1 definition: `, with 3 shots that cut at 00:01.083 and 00:02.625`; empty without cuts. */
 export function definitionCuts(cues: readonly string[]): string {
-  return cues.length > 0 ? `, with ${cues.length + 1} shots that cut at ${englishList(cues)}` : "";
+  return cues.length > 0 ? `, with ${String(cues.length + 1)} shots that cut at ${englishList(cues)}` : "";
 }
 
 /** The cuts of the @Video1 retention line: `cut at 00:01.083, ` or `cuts at 00:01.083 and 00:02.625, `; empty without cuts. */
 export function retentionCuts(cues: readonly string[]): string {
   if (cues.length === 0) return "";
-  return cues.length === 1 ? `cut at ${cues[0]}, ` : `cuts at ${englishList(cues)}, `;
+  return cues.length === 1 ? `cut at ${String(cues[0])}, ` : `cuts at ${englishList(cues)}, `;
 }
 
 /** The held reference in the @Video1 definition (after its cuts or note). */
@@ -140,7 +140,7 @@ export function retentionHold(cue: string): string {
 export function swapPrompt(input: SegmentPromptInput): string {
   const fps = input.fps ?? H3_FPS;
   const characters = input.characters;
-  const subjects = characters.map((_, index) => `<Subject ${index + 1}>`);
+  const subjects = characters.map((_, index) => `<Subject ${String(index + 1)}>`);
   const cues = input.windowCuts.map((frames) => formatCueTime(frames, fps));
   const style = clean(input.style, FIELD_LIMITS.style);
   const language = clean(input.dialogueLanguage, FIELD_LIMITS.language);
@@ -153,9 +153,9 @@ export function swapPrompt(input: SegmentPromptInput): string {
 
   const definitions = characters.map(
     (character, index) =>
-      `<Subject ${index + 1}> is the ${appearanceOf(character)} in @Image${index + 1}, providing the face, hairstyle, costume, and accessories exactly as drawn. @Image${index + 1} is a character illustration on a plain white background; only the character's appearance is used, not the white background, the crop, or the pose.`,
+      `<Subject ${String(index + 1)}> is the ${appearanceOf(character)} in @Image${String(index + 1)}, providing the face, hairstyle, costume, and accessories exactly as drawn. @Image${String(index + 1)} is a character illustration on a plain white background; only the character's appearance is used, not the white background, the crop, or the pose.`,
   );
-  const content = (note ? `: ${note}` : definitionCuts(cues)) + (holdCue ? definitionHold(holdCue) : "");
+  const content = (note ? `: ${note}` : definitionCuts(cues)) + ((holdCue != null && holdCue !== "") ? definitionHold(holdCue) : "");
   definitions.push(
     hasCharacters
       ? `@Video1 is a motion and camera reference only${content}. Its characters are replaced and must not appear.`
@@ -163,20 +163,20 @@ export function swapPrompt(input: SegmentPromptInput): string {
   );
   if (input.hasAudio) definitions.push(`<Audio 1> is the original soundtrack of @Video1, providing the ${language ? `${language} ` : ""}dialogue, the voices, the ambience, and the mood.`);
 
-  const replacements = characters.map((character, index) => `${subjects[index]} replaces ${whoOf(character, index)}`);
+  const replacements = characters.map((character, index) => `${String(subjects[index])} replaces ${whoOf(character, index)}`);
   // 兩個子句之間也用「, and」
-  const replaced = replacements.length === 2 ? `${replacements[0]}, and ${replacements[1]}` : englishList(replacements);
+  const replaced = replacements.length === 2 ? `${String(replacements[0])}, and ${String(replacements[1])}` : englishList(replacements);
   const summary = hasCharacters
-    ? `[reference generation] A ${seconds}-second clip that follows only the camera work, shot sizes, cut timing, and body motion of @Video1, while every character is redrawn as the referenced subjects: ${replaced}.`
-    : `[reference generation] A ${seconds}-second clip that follows the camera work, shot sizes, cut timing, and motion of @Video1. None of the replaced characters appear in this segment.`;
+    ? `[reference generation] A ${String(seconds)}-second clip that follows only the camera work, shot sizes, cut timing, and body motion of @Video1, while every character is redrawn as the referenced subjects: ${replaced}.`
+    : `[reference generation] A ${String(seconds)}-second clip that follows the camera work, shot sizes, cut timing, and motion of @Video1. None of the replaced characters appear in this segment.`;
 
   const retention = characters.map((character, index) => {
     const not = noList(character.mustNot);
-    const absent = not ? (CJK.test(not) ? `; ${subjects[index]} must not have: ${not}` : `; ${subjects[index]} has ${not}`) : "";
-    return `${subjects[index]} (appears wherever ${whoOf(character, index)} appears in @Video1): fully_preserved - same ${appearanceOf(character)}${absent}.`;
+    const absent = not ? (CJK.test(not) ? `; ${String(subjects[index])} must not have: ${not}` : `; ${String(subjects[index])} has ${not}`) : "";
+    return `${String(subjects[index])} (appears wherever ${whoOf(character, index)} appears in @Video1): fully_preserved - same ${appearanceOf(character)}${absent}.`;
   });
   const cutText = retentionCuts(cues);
-  const heldText = holdCue ? retentionHold(holdCue) : "";
+  const heldText = (holdCue != null && holdCue !== "") ? retentionHold(holdCue) : "";
   retention.push(
     hasCharacters
       ? `@Video1 (camera path, shot sizes, ${cutText}body motion${heldText}): weak_reference - use only its framing, camera movement, timing, and poses; do not keep its characters' faces, hairstyles, costumes, accessories, subtitles, or watermark.`
@@ -192,7 +192,7 @@ export function swapPrompt(input: SegmentPromptInput): string {
   const spoken = lines.length > 0 ? ` ${speaker} says: ${lines.map((line) => `<d>${line}</d>`).join(" ")} The speaker's mouth moves visibly with each line.` : "";
   const shots = [`[Shot 1] The opening shot of @Video1, with the same framing, camera movement, and body motion${presence}.${spoken}`];
   cues.forEach((cue, index) => {
-    shots.push(`[Shot ${index + 2}] At ${cue}, the camera cuts to the next shot of @Video1, with the same composition, camera movement, and body motion${hasCharacters ? `; the characters stay drawn as ${englishList(subjects)}` : ""}.`);
+    shots.push(`[Shot ${String(index + 2)}] At ${cue}, the camera cuts to the next shot of @Video1, with the same composition, camera movement, and body motion${hasCharacters ? `; the characters stay drawn as ${englishList(subjects)}` : ""}.`);
   });
 
   const sections: [string, string[]][] = [

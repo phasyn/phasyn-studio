@@ -7,10 +7,11 @@
 
 Upstream (SG:time_request.py:32-69, ``minimax_h3_time_shift_sigmas``)::
 
-    base = torch.linspace(1.0, 0.0, num_steps + 1, dtype=torch.float32)   # CPU
-    shifted = float(shift) * base / (1 + (float(shift) - 1) * base)        # float32 ops
+    base = torch.linspace(1.0, 0.0, num_steps + 1, dtype=torch.float32)  # CPU
+    shifted = float(shift) * base / (1 + (float(shift) - 1) * base)  # float32 ops
     shifted, _ = torch.unique_consecutive(shifted, return_counts=True)
-    if shifted[-1] > 0: shifted = cat([shifted, [0.0]])
+    if shifted[-1] > 0:
+        shifted = cat([shifted, [0.0]])
 
 ``torch.linspace`` on CPU evaluates ``start + step * i`` for ``i < n // 2`` and
 ``end - step * (n - 1 - i)`` otherwise (ATen RangeFactoriesKernel).  Whether the
@@ -36,32 +37,48 @@ from typing import Any
 
 import numpy as np
 
-from phasyn_h3.recipe.abi.tensors import read_header_from_bytes, tensor_bytes, write_safetensors
+from phasyn_h3.recipe.abi.tensors import (
+    read_header_from_bytes,
+    tensor_bytes,
+    write_safetensors,
+)
 
-from . import constants as C
+from . import constants
 
-LINSPACE_ROUNDING_FMA = "fma"  # torch CPU AVX2/AVX-512 capability (x86-64 hosts that build the plans)
+
+_MIN_POINTS = 2
+
+
+LINSPACE_ROUNDING_FMA = (
+    "fma"  # torch CPU AVX2/AVX-512 capability (x86-64 hosts that build the plans)
+)
 LINSPACE_ROUNDING_SEPARATE = "separate"  # torch CPU DEFAULT capability (no FMA)
 LINSPACE_ROUNDING = LINSPACE_ROUNDING_FMA
 _MAX_EXACT_POINTS = 1 << 21  # float64 evaluation of 1 + step*i is exact up to here
 
 
-def torch_cpu_linspace_f32(num_points: int, *, rounding: str = LINSPACE_ROUNDING) -> np.ndarray:
+def torch_cpu_linspace_f32(
+    num_points: int, *, rounding: str = LINSPACE_ROUNDING
+) -> np.ndarray:
     """Bit-exact emulation of ``torch.linspace(1.0, 0.0, num_points, dtype=float32)`` on CPU."""
     n = int(num_points)
-    if not 2 <= n <= _MAX_EXACT_POINTS:
+    if not _MIN_POINTS <= n <= _MAX_EXACT_POINTS:
         raise ValueError(f"num_points must be within 2..{_MAX_EXACT_POINTS}")
     if rounding not in (LINSPACE_ROUNDING_FMA, LINSPACE_ROUNDING_SEPARATE):
         raise ValueError(f"unknown linspace rounding {rounding!r}")
     start = np.float32(1.0)
     end = np.float32(0.0)
-    step = np.float32(np.float32(end - start) / np.float32(n - 1))  # float32 division, as ATen
+    step = np.float32(
+        np.float32(end - start) / np.float32(n - 1)
+    )  # float32 division, as ATen
     half = n // 2
     out = np.empty(n, dtype=np.float32)
     first = np.arange(half, dtype=np.int64)
     if rounding == LINSPACE_ROUNDING_FMA:
         # |step| >= 2**-21 and i < 2**21 => start + step*i is exact in float64; one rounding to f32 == fmaf.
-        out[:half] = (np.float64(start) + np.float64(step) * first.astype(np.float64)).astype(np.float32)
+        out[:half] = (
+            np.float64(start) + np.float64(step) * first.astype(np.float64)
+        ).astype(np.float32)
     else:
         out[:half] = start + step * first.astype(np.float32)
     k = (n - 1 - np.arange(half, n, dtype=np.int64)).astype(np.float64)
@@ -69,8 +86,10 @@ def torch_cpu_linspace_f32(num_points: int, *, rounding: str = LINSPACE_ROUNDING
     return out
 
 
-def time_shift_sigmas(num_steps: int, shift: float, *, rounding: str = LINSPACE_ROUNDING) -> np.ndarray:
-    """numpy float32 emulation of ``minimax_h3_time_shift_sigmas`` (non-DMD branch)."""
+def time_shift_sigmas(
+    num_steps: int, shift: float, *, rounding: str = LINSPACE_ROUNDING
+) -> np.ndarray:
+    """Numpy float32 emulation of ``minimax_h3_time_shift_sigmas`` (non-DMD branch)."""
     if isinstance(num_steps, bool) or int(num_steps) != num_steps or num_steps <= 0:
         raise ValueError("MiniMax H3 num_steps must be > 0")
     shift_value = float(shift)
@@ -78,10 +97,14 @@ def time_shift_sigmas(num_steps: int, shift: float, *, rounding: str = LINSPACE_
         raise ValueError("MiniMax H3 shift_scale must be > 0")
     base = torch_cpu_linspace_f32(int(num_steps) + 1, rounding=rounding)
     s = np.float32(shift_value)  # python scalar -> tensor dtype (float32)
-    s_minus_one = np.float32(shift_value - 1.0)  # (float(shift) - 1) evaluated in Python double first
+    s_minus_one = np.float32(
+        shift_value - 1.0
+    )  # (float(shift) - 1) evaluated in Python double first
     shifted = (s * base) / (np.float32(1.0) + s_minus_one * base)
     keep = np.ones(shifted.shape[0], dtype=bool)
-    keep[1:] = shifted[1:] != shifted[:-1]  # torch.unique_consecutive (exact equality, -0.0 == 0.0)
+    keep[1:] = (
+        shifted[1:] != shifted[:-1]
+    )  # torch.unique_consecutive (exact equality, -0.0 == 0.0)
     shifted = shifted[keep]
     if float(shifted[-1]) > 0.0:
         shifted = np.concatenate([shifted, np.zeros(1, dtype=np.float32)])
@@ -89,10 +112,12 @@ def time_shift_sigmas(num_steps: int, shift: float, *, rounding: str = LINSPACE_
 
 
 def grid_bytes(grid: np.ndarray) -> bytes:
+    """Serialize the sigma grid for identity checks."""
     return np.ascontiguousarray(grid, dtype="<f4").tobytes()
 
 
 def grid_digest(grid: np.ndarray) -> str:
+    """Hash the canonical sigma grid."""
     return hashlib.sha256(grid_bytes(grid)).hexdigest()
 
 
@@ -100,7 +125,7 @@ def _scalar_text(value: Any) -> str:
     return repr(float(value))
 
 
-def sigma_payload(
+def sigma_payload(  # noqa: PLR0913 - Preserve the existing provider or recipe ABI.
     video: np.ndarray,
     audio: np.ndarray,
     *,
@@ -120,8 +145,8 @@ def sigma_payload(
         "dtype": "F32",
         "layout": "S",
         "linspace_rounding": rounding,
-        "semantics": C.SCHEDULE_SEMANTICS,
-        "source": f"sglang@{C.SGLANG_REVISION}:minimax_h3/time_request.py:minimax_h3_time_shift_sigmas",
+        "semantics": constants.SCHEDULE_SEMANTICS,
+        "source": f"sglang@{constants.SGLANG_REVISION}:minimax_h3/time_request.py:minimax_h3_time_shift_sigmas",
         "steps": str(int(steps)),
         "video_shift": _scalar_text(video_shift),
     }
@@ -146,7 +171,9 @@ def pdd_block_bounds(blocks: Sequence[int]) -> list[int]:
     return out
 
 
-def block_boundary_sigmas(blocks: Sequence[int], shift: float, *, rounding: str = LINSPACE_ROUNDING) -> np.ndarray:
+def block_boundary_sigmas(
+    blocks: Sequence[int], shift: float, *, rounding: str = LINSPACE_ROUNDING
+) -> np.ndarray:
     """The plan grid of a non-uniform PDD grouping: the ``sum(blocks)``-interval grid at the block boundaries.
 
     Same float32 emulation as :func:`time_shift_sigmas`; a boundary of a block is a point of the full PDD grid, so
@@ -157,7 +184,9 @@ def block_boundary_sigmas(blocks: Sequence[int], shift: float, *, rounding: str 
     total = sum(int(b) for b in blocks)
     full = time_shift_sigmas(total, shift, rounding=rounding)
     if int(full.shape[0]) != total + 1:
-        raise ValueError(f"the {total}-interval PDD grid collapsed to {int(full.shape[0])} points")
+        raise ValueError(
+            f"the {total}-interval PDD grid collapsed to {int(full.shape[0])} points"
+        )
     return full[pdd_block_bounds(blocks)].copy()
 
 
@@ -180,7 +209,9 @@ def build_schedule(
     """
     if pdd_blocks is not None:
         if isinstance(steps, bool) or int(steps) != len(pdd_blocks):
-            raise ValueError(f"PDD blocks {list(pdd_blocks)} give {len(pdd_blocks)} steps, the plan asks for {steps}")
+            raise ValueError(
+                f"PDD blocks {list(pdd_blocks)} give {len(pdd_blocks)} steps, the plan asks for {steps}"
+            )
         video = block_boundary_sigmas(pdd_blocks, video_shift, rounding=rounding)
         audio = block_boundary_sigmas(pdd_blocks, audio_shift, rounding=rounding)
     else:
@@ -212,14 +243,14 @@ def build_schedule(
         "video_shift": video_shift,
         "audio_shift": audio_shift,
         "sigmas_digest": hashlib.sha256(payload).hexdigest(),
-        "semantics_version": C.SCHEDULE_SEMANTICS,
-        "rng_policy_id": C.RNG_POLICY_ID,
+        "semantics_version": constants.SCHEDULE_SEMANTICS,
+        "rng_policy_id": constants.RNG_POLICY_ID,
     }
     facts = {
         "video_sigmas_sha256": grid_digest(video),
         "audio_sigmas_sha256": grid_digest(audio),
         "linspace_rounding": rounding,
-        "scheduler": C.SCHEDULER_ID,
+        "scheduler": constants.SCHEDULER_ID,
         "dit_forwards": int(video.shape[0]) - 1,
     }
     if pdd_blocks is not None:
@@ -235,5 +266,7 @@ def read_sigma_payload(payload: bytes) -> Mapping[str, np.ndarray]:
         info = header.tensors[name]
         if info.dtype != "F32" or len(info.shape) != 1:
             raise ValueError(f"{name} must be F32 [S]")
-        out[name] = np.frombuffer(tensor_bytes(payload, header, name), dtype="<f4").astype(np.float32)
+        out[name] = np.frombuffer(
+            tensor_bytes(payload, header, name), dtype="<f4"
+        ).astype(np.float32)
     return out

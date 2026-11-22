@@ -18,11 +18,12 @@ import { TextRows } from "./controls/TextRows";
 
 function ClipText({ clip }: { clip: TimelineClip }) {
   const editor = useEditor();
+  // eslint-disable-next-line @eslint-react/no-unstable-context-value -- The lock reason is a primitive string or null; React compares it by value.
   const lock = lockReason(editor.timeline, clip, editor.linked);
   const standalone = editor.sourceOf(clip)?.kind === "text";
   return (
-    <DensityContext.Provider value="comfortable">
-      <FieldLockContext.Provider value={lock}>
+    <DensityContext value="comfortable">
+      <FieldLockContext value={lock}>
         <div data-keep-focus="" className="flex min-h-0 flex-1 flex-col">
           <header className="flex h-10 shrink-0 items-center gap-2 border-b border-line-subtle px-3">
             <Type aria-hidden className="size-4 shrink-0 text-brand-violet" />
@@ -35,8 +36,8 @@ function ClipText({ clip }: { clip: TimelineClip }) {
             <TextRows clip={clip} standalone={standalone} edits={clipEdits(editor, editor.warn)} />
           </div>
         </div>
-      </FieldLockContext.Provider>
-    </DensityContext.Provider>
+      </FieldLockContext>
+    </DensityContext>
   );
 }
 
@@ -47,7 +48,7 @@ export function TextDock() {
   if (picture?.effects?.title) return <ClipText key={picture.clip_id} clip={picture} />;
   const lock = picture ? lockReason(editor.timeline, picture, editor.linked) : null;
   const addToClip = () => {
-    if (picture && !lock) clipEdits(editor, editor.warn).perform(withTitle(picture, newTitle()));
+    if (picture && !(lock != null && lock !== "")) clipEdits(editor, editor.warn).perform(withTitle(picture, newTitle()));
   };
   return (
     <div data-keep-focus="" className="grid min-h-0 flex-1 place-items-center overflow-y-auto">
@@ -70,7 +71,7 @@ export function TextDock() {
               <Button
                 size="sm"
                 variant="quiet"
-                aria-disabled={lock ? true : undefined}
+                aria-disabled={(lock != null && lock !== "") ? true : undefined}
                 title={lock ?? t("把文字加在選取的片段上，跟著片段一起移動")}
                 onClick={addToClip}
               >

@@ -11,6 +11,7 @@ export {
   propertySchema,
   requiredKeys,
   resolveSchema,
+  schemaControl,
   schemaDefaults,
   type FieldInfo,
   type FieldKind,

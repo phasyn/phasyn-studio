@@ -24,7 +24,7 @@ import { searchTasks, type ReconstructRequest, type SearchController } from "./c
 function SearchConfigForm({ search, readOnly }: { search: SearchController; readOnly: boolean }) {
   const id = useId();
   const draft = search.draft;
-  const set = (key: keyof SearchDraft, value: string) => search.setDraft({ ...draft, [key]: value });
+  const set = (key: keyof SearchDraft, value: string) => { search.setDraft({ ...draft, [key]: value }); };
   const validation = validateSearch(draft);
   const required = validation.ok ? validation.plan.requiredImages : validation.requiredImages;
   const visionOps = validation.ok ? validation.plan.visionOps : validation.visionOps;
@@ -32,13 +32,13 @@ function SearchConfigForm({ search, readOnly }: { search: SearchController; read
     <div className="grid gap-2">
       <PropertyGrid>
         <PropertyRow label={t("搜尋 seed")} htmlFor={`${id}-search`} hint={t("1–4 個，不重複")}>
-          <Input id={`${id}-search`} compact className="machine" value={draft.searchSeeds} readOnly={readOnly} onChange={(event) => set("searchSeeds", event.target.value)} />
+          <Input id={`${id}-search`} compact className="machine" value={draft.searchSeeds} readOnly={readOnly} onChange={(event) => { set("searchSeeds", event.target.value); }} />
         </PropertyRow>
         <PropertyRow label={t("保留驗證 seed")} htmlFor={`${id}-holdout`} hint={t("2–4 個，不能與搜尋 seed 重疊")}>
-          <Input id={`${id}-holdout`} compact className="machine" value={draft.holdoutSeeds} readOnly={readOnly} onChange={(event) => set("holdoutSeeds", event.target.value)} />
+          <Input id={`${id}-holdout`} compact className="machine" value={draft.holdoutSeeds} readOnly={readOnly} onChange={(event) => { set("holdoutSeeds", event.target.value); }} />
         </PropertyRow>
         <PropertyRow label={t("輪數")} htmlFor={`${id}-rounds`} hint={t("含初始輪，最多 4")}>
-          <Select id={`${id}-rounds`} compact value={draft.rounds} disabled={readOnly} onChange={(event) => set("rounds", event.target.value)}>
+          <Select id={`${id}-rounds`} compact value={draft.rounds} disabled={readOnly} onChange={(event) => { set("rounds", event.target.value); }}>
             {[1, 2, 3, 4].map((value) => (
               <option key={value} value={String(value)}>
                 {t("{value} 輪", { value })}
@@ -47,10 +47,10 @@ function SearchConfigForm({ search, readOnly }: { search: SearchController; read
           </Select>
         </PropertyRow>
         <PropertyRow label={t("圖片預算")} htmlFor={`${id}-budget`} hint={t("{minImages}–{maxImages} 張，要涵蓋最壞情況", { minImages: SEARCH_LIMITS.minImages, maxImages: SEARCH_LIMITS.maxImages })}>
-          <Input id={`${id}-budget`} compact className="machine" inputMode="numeric" value={draft.budget} readOnly={readOnly} onChange={(event) => set("budget", event.target.value)} />
+          <Input id={`${id}-budget`} compact className="machine" inputMode="numeric" value={draft.budget} readOnly={readOnly} onChange={(event) => { set("budget", event.target.value); }} />
         </PropertyRow>
         <PropertyRow label={t("無改善停止")} htmlFor={`${id}-stop`} hint={t("連續幾輪沒有改善就提前進入保留驗證")}>
-          <Select id={`${id}-stop`} compact value={draft.stopAfter} disabled={readOnly} onChange={(event) => set("stopAfter", event.target.value)}>
+          <Select id={`${id}-stop`} compact value={draft.stopAfter} disabled={readOnly} onChange={(event) => { set("stopAfter", event.target.value); }}>
             {[1, 2, 3].map((value) => (
               <option key={value} value={String(value)}>
                 {t("{value} 輪", { value })}
@@ -148,7 +148,7 @@ export function SearchInspector({ ws, search }: { ws: Workspace; search: SearchC
                 providerId={ROLE_PROVIDER[role]}
                 choices={ws.choices[role]}
                 value={ws.chosen[role]}
-                onChange={(key) => ws.setComponent(role, key)}
+                onChange={(key) => { ws.setComponent(role, key); }}
                 loading={ws.catalogLoading}
                 disabled={runner.state.busy || Boolean(open)}
               />
@@ -163,14 +163,14 @@ export function SearchInspector({ ws, search }: { ws: Workspace; search: SearchC
         ) : (
           <div className="grid w-full gap-2">
             <div className="flex flex-wrap items-center gap-2">
-              <ActionButton variant="primary" size="sm" icon={<StepForward aria-hidden />} disabledReason={block} onClick={() => search.start("step", 1)}>
+              <ActionButton variant="primary" size="sm" icon={<StepForward aria-hidden />} disabledReason={block} onClick={() => { search.start("step", 1); }}>
                 {t("開始：執行第一步")}
               </ActionButton>
               <span className="inline-flex items-center gap-1.5">
                 <label htmlFor={`${id}-rounds`} className="text-caption text-fg-secondary">
                   {t("或連續")}
                 </label>
-                <Select id={`${id}-rounds`} compact className="w-auto min-w-28" value={rounds} onChange={(event) => setRounds(event.target.value)}>
+                <Select id={`${id}-rounds`} compact className="w-auto min-w-28" value={rounds} onChange={(event) => { setRounds(event.target.value); }}>
                   {[1, 2, 3, 4].map((value) => (
                     <option key={value} value={String(value)}>
                       {t("{value} 輪", { value })}
@@ -178,7 +178,7 @@ export function SearchInspector({ ws, search }: { ws: Workspace; search: SearchC
                   ))}
                   <option value="all">{t("到結束")}</option>
                 </Select>
-                <ActionButton size="sm" icon={<Play aria-hidden />} disabledReason={block} onClick={() => search.start("loop", rounds === "all" ? "all" : Number(rounds))}>
+                <ActionButton size="sm" icon={<Play aria-hidden />} disabledReason={block} onClick={() => { search.start("loop", rounds === "all" ? "all" : Number(rounds)); }}>
                   {t("開始並連續執行")}
                 </ActionButton>
               </span>

@@ -25,11 +25,13 @@ from typing import Any
 import pytest
 from h3_examples import component, models_dir
 from phasyn_components.errors import ComponentError
+
 from phasyn_h3 import config
 from phasyn_h3.plan import ALLOCATOR_CONF_ENV, DIT_ALLOCATOR_CONF, apply_runtime_env
 from phasyn_h3.providers import VideoEncodeProvider
 from phasyn_h3.recipe.runtime.errors import UnsupportedCombination
 from phasyn_h3.recipe.runtime.stages import vae_frame_streaming as fs
+
 
 STREAM = "venc-gpu1-fp32-stream"
 STREAM_FP16 = "venc-gpu1-fp16-stream"
@@ -37,7 +39,7 @@ RESIDENT = "venc-gpu1"
 
 
 def settings(component_id: str, **options: Any) -> dict[str, Any]:
-    out = copy.deepcopy(component(component_id)["settings"])
+    out: dict[str, Any] = copy.deepcopy(component(component_id)["settings"])
     out["load"]["provider_options"].update(options)
     return out
 
@@ -59,10 +61,12 @@ def check(doc: dict[str, Any]) -> list[str]:
 
 @pytest.mark.static
 def test_the_option_exists_only_for_video_encode_and_the_schema_validates_it() -> None:
-    import jsonschema
+    import jsonschema  # noqa: PLC0415 - Keep this optional experiment dependency behind its runtime check.
 
     schema = VideoEncodeProvider.describe(None).settings_schema
-    props = schema["properties"]["load"]["properties"]["provider_options"]["properties"]["frame_streaming"]
+    props = schema["properties"]["load"]["properties"]["provider_options"][
+        "properties"
+    ]["frame_streaming"]
     assert set(props["properties"]) == {"enabled", "frames_per_pass", "precision"}
     assert props["additionalProperties"] is False
     for role in config.ROLE_COMPONENTS:
@@ -70,7 +74,10 @@ def test_the_option_exists_only_for_video_encode_and_the_schema_validates_it() -
         assert has == (role == "video_encode"), role
     # fp16 compute is offered to the video encode (only usable with frame_streaming, check_supported)
     assert config.COMPUTE_DTYPES["video_encode"] == ["native", "fp32", "fp16"]
-    assert "fp16" not in config.COMPUTE_DTYPES["reference"] and "fp16" not in config.COMPUTE_DTYPES["audio_encode"]
+    assert (
+        "fp16" not in config.COMPUTE_DTYPES["reference"]
+        and "fp16" not in config.COMPUTE_DTYPES["audio_encode"]
+    )
     for cid in (STREAM, STREAM_FP16, RESIDENT):
         jsonschema.validate(component(cid)["settings"], schema)
     for bad in (
@@ -98,9 +105,14 @@ def test_the_streaming_templates_load_on_gpu_1_with_their_precision(
     # runner keep the encode from overlapping their calls (HANDOFF.md, scheduling requirement)
     assert doc["settings"]["load"]["device"]["resource_group"] == "gpu-1"
     check(doc["settings"])
-    profile = config.build_profile("video_encode", doc["settings"], profile_id="p", revision=1)
+    profile = config.build_profile(
+        "video_encode", doc["settings"], profile_id="p", revision=1
+    )
     assert profile["mode"] == mode
-    assert profile["vae"]["spatial_tile"] == 256 and profile["vae"]["spatial_overlap"] == 64
+    assert (
+        profile["vae"]["spatial_tile"] == 256
+        and profile["vae"]["spatial_overlap"] == 64
+    )
     resolved = config.frame_streaming_settings("video_encode", doc["settings"]["load"])
     assert resolved == {"frames_per_pass": 2, "precision": precision}
     assert fs.FrameStreamingConfig.from_mapping(resolved).precision == precision
@@ -109,20 +121,39 @@ def test_the_streaming_templates_load_on_gpu_1_with_their_precision(
 @pytest.mark.static
 def test_the_combination_rules() -> None:
     assert check(settings(STREAM)) == []
-    assert check(settings(STREAM, frame_streaming={"enabled": True})) == []  # every field has a default
-    assert check(settings(STREAM, video_vae_scope="full")) == []  # the streaming does not depend on the scope
+    assert (
+        check(settings(STREAM, frame_streaming={"enabled": True})) == []
+    )  # every field has a default
+    assert (
+        check(settings(STREAM, video_vae_scope="full")) == []
+    )  # the streaming does not depend on the scope
     doc = settings(STREAM)
-    doc["load"]["offload"] = {"mode": "component", "max_pinned_bytes": 1 << 30, "after_use": "host"}
+    doc["load"]["offload"] = {
+        "mode": "component",
+        "max_pinned_bytes": 1 << 30,
+        "after_use": "host",
+    }
     assert check(doc) == []
 
     def refused(doc: dict[str, Any], words: str) -> None:
         with pytest.raises(ComponentError) as exc:
             check(doc)
-        assert exc.value.code == "UNSUPPORTED_SETTING" and words in str(exc.value), str(exc.value)
+        assert exc.value.code == "UNSUPPORTED_SETTING" and words in str(exc.value), str(
+            exc.value
+        )
 
-    refused(settings(STREAM, frame_streaming={"enabled": True, "frames_per_pass": 0}), "frames_per_pass")
-    refused(settings(STREAM, frame_streaming={"enabled": True, "frames_per_pass": True}), "frames_per_pass")
-    refused(settings(STREAM, frame_streaming={"enabled": True, "precision": "fp16"}), "precision=fp16")
+    refused(
+        settings(STREAM, frame_streaming={"enabled": True, "frames_per_pass": 0}),
+        "frames_per_pass",
+    )
+    refused(
+        settings(STREAM, frame_streaming={"enabled": True, "frames_per_pass": True}),
+        "frames_per_pass",
+    )
+    refused(
+        settings(STREAM, frame_streaming={"enabled": True, "precision": "fp16"}),
+        "precision=fp16",
+    )
     refused(settings(STREAM, frame_streaming="on"), "object")
     # fp16 follows the fp16 rules: approximate profile, compute_dtype fp16, and only the streaming implements it
     doc = settings(STREAM_FP16)
@@ -137,7 +168,14 @@ def test_the_combination_rules() -> None:
     doc = settings(STREAM_FP16, frame_streaming={"enabled": True, "precision": "fp32"})
     refused(doc, "precision=fp32")
     # off: the other fields are not interpreted
-    assert check(settings(RESIDENT, frame_streaming={"enabled": False, "frames_per_pass": 99})) == []
+    assert (
+        check(
+            settings(
+                RESIDENT, frame_streaming={"enabled": False, "frames_per_pass": 99}
+            )
+        )
+        == []
+    )
 
 
 # ---------------------------------------------------------------------------------------------- default off
@@ -146,7 +184,11 @@ def test_the_combination_rules() -> None:
 @pytest.mark.static
 @pytest.mark.parametrize(
     "off",
-    [None, {"enabled": False}, {"enabled": False, "frames_per_pass": 1, "precision": "fp16"}],
+    [
+        None,
+        {"enabled": False},
+        {"enabled": False, "frames_per_pass": 1, "precision": "fp16"},
+    ],
     ids=["absent", "disabled", "disabled-with-fields"],
 )
 def test_off_changes_nothing_that_reaches_the_runtime(
@@ -158,8 +200,13 @@ def test_off_changes_nothing_that_reaches_the_runtime(
     provider = provider_for(doc)
     # the encode_references stage dict gets exactly the options it got before the option existed
     assert provider.stage_options() == {"reference_scope": "visual"}
-    assert fs.stage_config({**provider.stage_options(), "kind": "encode_references"}) is None
-    fs.check_precision(None, "fp32")  # the stage's precision rule passes: the production encode runs
+    assert (
+        fs.stage_config({**provider.stage_options(), "kind": "encode_references"})
+        is None
+    )
+    fs.check_precision(
+        None, "fp32"
+    )  # the stage's precision rule passes: the production encode runs
     assert provider.host_options() == {"video_vae_scope": "encode_only"}
     assert "frame_streaming" not in provider.observe_loaded()
     # the runtime profile (and so every plan and its digest) is the same document
@@ -171,16 +218,27 @@ def test_off_changes_nothing_that_reaches_the_runtime(
     # the component process environment: no allocator setting for the production encode
     for name in ALLOCATOR_CONF_ENV:
         monkeypatch.delenv(name, raising=False)
-    env = apply_runtime_env(model_root=Path("/models"), options=provider.options, role="video_encode")
+    env = apply_runtime_env(
+        model_root=Path("/models"), options=provider.options, role="video_encode"
+    )
     assert not set(env) & set(ALLOCATOR_CONF_ENV)
     assert check(doc) == []
 
 
 @pytest.mark.static
 def test_the_default_settings_and_role_defaults_do_not_carry_the_option() -> None:
-    assert "frame_streaming" not in config.ROLE_DEFAULTS["video_encode"]["provider_options"]
-    assert "frame_streaming" not in config.default_settings("video_encode")["load"]["provider_options"]
-    assert config.frame_streaming_settings("video_decode", settings(STREAM)["load"]) is None
+    assert (
+        "frame_streaming"
+        not in config.ROLE_DEFAULTS["video_encode"]["provider_options"]
+    )
+    assert (
+        "frame_streaming"
+        not in config.default_settings("video_encode")["load"]["provider_options"]
+    )
+    assert (
+        config.frame_streaming_settings("video_decode", settings(STREAM)["load"])
+        is None
+    )
 
 
 # ---------------------------------------------------------------------------------------------- on
@@ -192,26 +250,50 @@ def test_on_reaches_the_stage_resolved(monkeypatch: pytest.MonkeyPatch) -> None:
     resolved = {"frames_per_pass": 2, "precision": "fp32"}
     assert config.frame_streaming_settings("video_encode", doc["load"]) == resolved
     provider = provider_for(doc)
-    assert provider.stage_options() == {"reference_scope": "visual", "frame_streaming": resolved}
-    assert provider.host_options() == {"video_vae_scope": "encode_only"}  # nothing changes at load
+    assert provider.stage_options() == {
+        "reference_scope": "visual",
+        "frame_streaming": resolved,
+    }
+    assert provider.host_options() == {
+        "video_vae_scope": "encode_only"
+    }  # nothing changes at load
     assert fs.stage_config(provider.stage_options()) == fs.FrameStreamingConfig()
     # precision follows compute_dtype when the field is left out
     doc = settings(STREAM_FP16, frame_streaming={"enabled": True, "frames_per_pass": 5})
-    assert config.frame_streaming_settings("video_encode", doc["load"]) == {"frames_per_pass": 5, "precision": "fp16"}
+    assert config.frame_streaming_settings("video_encode", doc["load"]) == {
+        "frames_per_pass": 5,
+        "precision": "fp16",
+    }
     # the streaming encoder's allocator gets expandable segments; an operator's own setting is left alone
     for name in ALLOCATOR_CONF_ENV:
         monkeypatch.delenv(name, raising=False)
-    env = apply_runtime_env(model_root=Path("/models"), options=provider.options, role="video_encode")
-    assert env[ALLOCATOR_CONF_ENV[0]] == DIT_ALLOCATOR_CONF == os.environ[ALLOCATOR_CONF_ENV[0]]
+    env = apply_runtime_env(
+        model_root=Path("/models"), options=provider.options, role="video_encode"
+    )
+    assert (
+        env[ALLOCATOR_CONF_ENV[0]]
+        == DIT_ALLOCATOR_CONF
+        == os.environ[ALLOCATOR_CONF_ENV[0]]
+    )
     monkeypatch.delenv(ALLOCATOR_CONF_ENV[0])
     monkeypatch.setenv(ALLOCATOR_CONF_ENV[1], "max_split_size_mb:64")
-    env = apply_runtime_env(model_root=Path("/models"), options=provider.options, role="video_encode")
-    assert ALLOCATOR_CONF_ENV[0] not in env and os.environ[ALLOCATOR_CONF_ENV[1]] == "max_split_size_mb:64"
+    env = apply_runtime_env(
+        model_root=Path("/models"), options=provider.options, role="video_encode"
+    )
+    assert (
+        ALLOCATOR_CONF_ENV[0] not in env
+        and os.environ[ALLOCATOR_CONF_ENV[1]] == "max_split_size_mb:64"
+    )
 
 
 @pytest.mark.static
 def test_the_runtime_config_and_the_stage_precision_rule_are_strict() -> None:
-    assert fs.FrameStreamingConfig.from_mapping({"frames_per_pass": 17, "precision": "fp16"})
+    assert (
+        fs.FrameStreamingConfig.from_mapping(
+            {"frames_per_pass": 17, "precision": "fp16"}
+        ).frames_per_pass
+        == 17
+    )
     for bad in (
         {"enabled": True},
         {"frames_per_pass": 0},
@@ -225,7 +307,9 @@ def test_the_runtime_config_and_the_stage_precision_rule_are_strict() -> None:
             fs.FrameStreamingConfig.from_mapping(bad)  # type: ignore[arg-type]
     fs.check_precision(fs.FrameStreamingConfig(precision="fp16"), "fp16")
     with pytest.raises(UnsupportedCombination) as exc:
-        fs.check_precision(None, "fp16")  # an fp16 video VAE encode exists only streamed
+        fs.check_precision(
+            None, "fp16"
+        )  # an fp16 video VAE encode exists only streamed
     assert exc.value.reason_code == "VAE_FP16_ENCODE_NEEDS_FRAME_STREAMING"
     with pytest.raises(UnsupportedCombination):
         fs.check_precision(fs.FrameStreamingConfig(precision="fp32"), "fp16")
@@ -235,9 +319,11 @@ def test_the_runtime_config_and_the_stage_precision_rule_are_strict() -> None:
 
 
 def _runtime() -> Any:
-    torch = pytest.importorskip("torch", reason="需要 runtime tuple 環境；未驗證，不算通過")
+    torch = pytest.importorskip(
+        "torch", reason="需要 runtime tuple 環境；未驗證，不算通過"
+    )
     pytest.importorskip("sglang", reason="需要 runtime tuple 環境；未驗證，不算通過")
-    import frame_streaming_harness as harness
+    import frame_streaming_harness as harness  # noqa: PLC0415 - Keep this optional experiment dependency behind its runtime check.
 
     for name in ("reference_encoding", "keyframe_encoding", "packed_tokens"):
         harness.stage_module(name)
@@ -263,35 +349,55 @@ def _production_moments(vae: Any, frames: Any) -> Any:
     weight = next(vae.parameters())
     processor = vae.processor
     video = processor.convert_numpy_to_tensor(frames, weight.device)
-    video = processor.transform_tensor(video, runtime_owned=True).transpose(0, 1).unsqueeze(0)
+    video = (
+        processor.transform_tensor(video, runtime_owned=True)
+        .transpose(0, 1)
+        .unsqueeze(0)
+    )
     used = processor.get_suitable_video_length(int(video.shape[2]))
-    h, w = processor._align_to_total_patch_size(int(video.shape[3]), int(video.shape[4]))
-    video = processor._crop_to_align(video[:, :, :used], h, w, is_video=True).to(weight.dtype)
+    h, w = processor._align_to_total_patch_size(
+        int(video.shape[3]), int(video.shape[4])
+    )
+    video = processor._crop_to_align(video[:, :, :used], h, w, is_video=True).to(
+        weight.dtype
+    )
     with torch.inference_mode():
         return vae.encode_temporal(video)
 
 
 @pytest.mark.gpu
-def test_streamed_recipe_equals_the_production_function_with_one_pass_per_clip() -> None:
+def test_streamed_recipe_equals_the_production_function_with_one_pass_per_clip() -> (
+    None
+):
     """Random-weight H3 encoder, 22 synthetic frames (2 clips, the second padded), 8 tiles of 64 px (overlap 32)."""
     torch, harness = _runtime()
     reference = harness.stage_module("reference_encoding")
     vae = harness.random_encoder(0)
     frames = harness.synthetic_frames(22, 96, 160)
     want = reference.minimax_h3_encode_reference_video_rows(vae, frames, _Arch)
-    rows, lt, lh, lw, facts = fs.stream_reference_video_rows(vae, frames, _Arch, fs.FrameStreamingConfig(17))
+    rows, lt, lh, lw, facts = fs.stream_reference_video_rows(
+        vae, frames, _Arch, fs.FrameStreamingConfig(17)
+    )
     assert (lt, lh, lw) == tuple(want[1:]) and torch.equal(rows, want[0])
-    assert facts["clips"] == 2 and facts["tiles_per_clip"] == 8 and facts["tail_start_level"] == 3
+    assert (
+        facts["clips"] == 2
+        and facts["tiles_per_clip"] == 8
+        and facts["tail_start_level"] == 3
+    )
     assert facts["weights_in_host_memory"]["parked_bytes"] > 0
     # fewer frames per pass: the same latent shape; the rows differ only where an FP32 difference of the moments
     # flips the FP16 rounding of the sample (the moments are compared below)
-    rows2, *dims, _facts = fs.stream_reference_video_rows(vae, frames, _Arch, fs.FrameStreamingConfig(2))
+    rows2, *dims, _facts = fs.stream_reference_video_rows(
+        vae, frames, _Arch, fs.FrameStreamingConfig(2)
+    )
     assert tuple(dims) == tuple(want[1:]) and _rel(rows2, want[0]) < 1e-4
 
 
 @pytest.mark.gpu
 @pytest.mark.parametrize("frames_per_pass", [1, 2, 3, 5])
-def test_fewer_frames_per_pass_change_only_the_accumulation_order(frames_per_pass: int) -> None:
+def test_fewer_frames_per_pass_change_only_the_accumulation_order(
+    frames_per_pass: int,
+) -> None:
     """The streamed moments against ``encode_temporal``: FP32 within 1e-5 relative; the FP64 copies of the same two
     computations agree to rounding level (so the FP32 difference is the convolutions' accumulation order)."""
     torch, harness = _runtime()
@@ -319,20 +425,29 @@ def test_the_weights_are_moved_never_changed_and_always_restored() -> None:
     fs.stream_reference_video_rows(vae, frames, _Arch, fs.FrameStreamingConfig(2))
     after = dict(vae.named_parameters())
     assert all(torch.equal(before[n], after[n]) for n in before)
-    assert all(not p.is_inference() for p in after.values())  # still ordinary tensors, as loaded
+    assert all(
+        not p.is_inference() for p in after.values()
+    )  # still ordinary tensors, as loaded
 
     calls = 0
 
-    def cancel() -> None:  # the stage's cancel point, raised in the middle of the first clip's heads
+    def cancel() -> (
+        None
+    ):  # the stage's cancel point, raised in the middle of the first clip's heads
         nonlocal calls
         calls += 1
         if calls == 2:
             raise RuntimeError("cancelled")
 
     with pytest.raises(RuntimeError, match="cancelled"):
-        fs.stream_reference_video_rows(vae, frames, _Arch, fs.FrameStreamingConfig(2), check_cancel=cancel)
+        fs.stream_reference_video_rows(
+            vae, frames, _Arch, fs.FrameStreamingConfig(2), check_cancel=cancel
+        )
     after = dict(vae.named_parameters())
-    assert all(torch.equal(before[n], after[n]) and after[n].device == before[n].device for n in before)
+    assert all(
+        torch.equal(before[n], after[n]) and after[n].device == before[n].device
+        for n in before
+    )
 
 
 @pytest.mark.gpu
@@ -341,7 +456,9 @@ def test_a_failed_start_puts_every_weight_back() -> None:
     torch, harness = _runtime()
     vae = harness.random_encoder(5)
     before = {name: p.detach().clone() for name, p in vae.named_parameters()}
-    streamer = fs.CausalStreamEncoder(vae, dtype=torch.float16, device=torch.device("cpu"))
+    streamer = fs.CausalStreamEncoder(
+        vae, dtype=torch.float16, device=torch.device("cpu")
+    )
     park = streamer.parking.park
     calls = 0
 
@@ -357,7 +474,9 @@ def test_a_failed_start_puts_every_weight_back() -> None:
         pass
     assert calls == 5 and not streamer.parking._parked and streamer._half is None
     after = dict(vae.named_parameters())
-    assert all(torch.equal(before[n], after[n]) and not after[n].is_inference() for n in before)
+    assert all(
+        torch.equal(before[n], after[n]) and not after[n].is_inference() for n in before
+    )
 
 
 @pytest.mark.gpu
@@ -367,11 +486,15 @@ def test_unsupported_encoders_are_refused() -> None:
 
     def refused(vae: Any) -> str:
         with pytest.raises(UnsupportedCombination) as exc:
-            fs.stream_reference_video_rows(vae, frames, _Arch, fs.FrameStreamingConfig(2))
+            fs.stream_reference_video_rows(
+                vae, frames, _Arch, fs.FrameStreamingConfig(2)
+            )
         return str(exc.value.reason_code)
 
     vae = harness.random_encoder(3)
-    vae.encoder.norm_out = torch.nn.GroupNorm(32, vae.encoder.norm_out.num_channels)  # normalizes over time too
+    vae.encoder.norm_out = torch.nn.GroupNorm(
+        32, vae.encoder.norm_out.num_channels
+    )  # normalizes over time too
     assert refused(vae) == "FRAME_STREAMING_UNSUPPORTED_VAE"
     vae = harness.random_encoder(3)
     vae.stack_tiling = True
@@ -387,7 +510,10 @@ def test_unsupported_encoders_are_refused() -> None:
     assert refused(vae) == "FRAME_STREAMING_UNSUPPORTED_VAE"
     with pytest.raises(UnsupportedCombination) as exc:  # fp16 needs CUDA
         fs.stream_reference_video_rows(
-            harness.random_encoder(3), frames, _Arch, fs.FrameStreamingConfig(2, precision="fp16")
+            harness.random_encoder(3),
+            frames,
+            _Arch,
+            fs.FrameStreamingConfig(2, precision="fp16"),
         )
     assert exc.value.reason_code == "FRAME_STREAMING_INVALID"
 
@@ -400,11 +526,18 @@ def test_streamed_recipe_with_the_real_checkpoint() -> None:
     root = models_dir()
     reference = harness.stage_module("reference_encoding")
     vae, arch = harness.build_encoder(root / "MiniMax-H3" / "Ref2VA" / "video_vae")
-    vae.tile_size, vae.tile_overlap_min = 64, 32  # several tiles on a small crop (both paths read these)
+    vae.tile_size, vae.tile_overlap_min = (
+        64,
+        32,
+    )  # several tiles on a small crop (both paths read these)
     frames = harness.synthetic_frames(22, 96, 160, seed=4)
     want = reference.minimax_h3_encode_reference_video_rows(vae, frames, arch)
-    rows, lt, lh, lw, _facts = fs.stream_reference_video_rows(vae, frames, arch, fs.FrameStreamingConfig(17))
+    rows, lt, lh, lw, _facts = fs.stream_reference_video_rows(
+        vae, frames, arch, fs.FrameStreamingConfig(17)
+    )
     assert (lt, lh, lw) == tuple(want[1:]) and torch.equal(rows, want[0])
     with torch.inference_mode():
-        got, _ = fs.stream_moments(vae, frames, fs.FrameStreamingConfig(2), device=torch.device("cpu"))
+        got, _ = fs.stream_moments(
+            vae, frames, fs.FrameStreamingConfig(2), device=torch.device("cpu")
+        )
     assert _rel(got, _production_moments(vae, frames)) < 1e-5

@@ -1,3 +1,4 @@
+import { isNonzeroNumber } from "@/lib/json";
 // Notifications (bottom right, above the status bar, newest at the bottom, at most four): they stay clear of the tab
 // strips under the toolbar (the shot inspector's Prompt／參考／插件 tabs) that people reach for right after an action.
 // Presented with Motion: a new one slides in from the right with the bouncy spring; a closed or expired one leaves (8 px right, 0.98, fade, --duration-exit)
@@ -37,7 +38,7 @@ function NoticeItem({ notice, onDismiss, onEngine }: { notice: Notice; onDismiss
   const exiting = !useIsPresent();
   const Icon = NOTICE_ICONS[notice.tone];
   const id = notice.id;
-  const { paused, pauseHandlers } = useHoverFocusTimeout(notice.timeoutMs ?? null, !exiting, () => onDismiss(id));
+  const { paused, pauseHandlers } = useHoverFocusTimeout(notice.timeoutMs ?? null, !exiting, () => { onDismiss(id); });
   return (
     <motion.div
       layout
@@ -59,7 +60,7 @@ function NoticeItem({ notice, onDismiss, onEngine }: { notice: Notice; onDismiss
       </span>
       <div className="grid min-w-0 flex-1 gap-1">
         <p className="text-data font-medium text-fg">{notice.title}</p>
-        {notice.detail ? <p className="text-caption text-fg-secondary [overflow-wrap:anywhere]">{notice.detail}</p> : null}
+        {(notice.detail != null && notice.detail !== "") ? <p className="text-caption text-fg-secondary [overflow-wrap:anywhere]">{notice.detail}</p> : null}
         {notice.link ? (
           notice.link.to === "#engine" ? (
             <button type="button" onClick={onEngine} className="pressable justify-self-start rounded-sm text-caption text-action-fg underline-offset-2 hover:underline">
@@ -74,9 +75,9 @@ function NoticeItem({ notice, onDismiss, onEngine }: { notice: Notice; onDismiss
       </div>
       <button
         type="button"
-        onClick={() => onDismiss(id)}
+        onClick={() => { onDismiss(id); }}
         aria-label={t("關閉通知")}
-        title={notice.timeoutMs ? (paused ? t("關閉通知（自動關閉已暫停）") : t("關閉通知（滑過時暫停自動關閉）")) : t("關閉通知")}
+        title={isNonzeroNumber(notice.timeoutMs) ? (paused ? t("關閉通知（自動關閉已暫停）") : t("關閉通知（滑過時暫停自動關閉）")) : t("關閉通知")}
         className="pressable inline-flex size-6 shrink-0 items-center justify-center rounded-md text-fg-tertiary hover:bg-white/10 hover:text-fg active:bg-sunken"
       >
         <X aria-hidden className="size-3.5" />

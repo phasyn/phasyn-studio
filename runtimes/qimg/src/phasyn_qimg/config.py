@@ -25,6 +25,7 @@ from phasyn_components.settings import normalize_recording
 
 from . import SIZE_MULTIPLE
 
+
 GIB = 1024**3
 DEFAULT_BASE = "qwen-image-2.1"
 # Libraries recorded in actual_settings of the Qwen-Image providers
@@ -80,7 +81,11 @@ PREPARE_PARAMS: dict[str, Any] = {
         "default": 1024,
         "description": "輸出寬（px，32 的倍數）：遮罩與合成底圖縮放到這個尺寸；DiT 的 width 必須相同",
     },
-    "height": {**SIZE_SCHEMA, "default": 1024, "description": "輸出高（px，32 的倍數）"},
+    "height": {
+        **SIZE_SCHEMA,
+        "default": 1024,
+        "description": "輸出高（px，32 的倍數）",
+    },
     "reference_resolution": {
         "type": "integer",
         "minimum": REFERENCE_RESOLUTION_MIN,
@@ -93,15 +98,19 @@ PREPARE_PARAMS: dict[str, Any] = {
         "minimum": 0,
         "maximum": MAX_REFERENCES - 1,
         "default": 0,
-        "description": "遮罩合成的底圖是第幾張參考圖（0 起）；null＝沒有底圖（此時不能接遮罩）",
+        "description": "遮罩合成的底圖是第幾張參考圖（0 起）；null\N{FULLWIDTH EQUALS SIGN}沒有底圖（此時不能接遮罩）",
     },
-    "mask_invert": {"type": "boolean", "default": False, "description": "反轉遮罩（白＝重新生成、黑＝保留底圖）"},
+    "mask_invert": {
+        "type": "boolean",
+        "default": False,
+        "description": "反轉遮罩（白\N{FULLWIDTH EQUALS SIGN}重新生成、黑\N{FULLWIDTH EQUALS SIGN}保留底圖）",
+    },
 }
 CONDITIONING_PARAMS: dict[str, Any] = {
     "cfg": {
         "type": "boolean",
         "default": False,
-        "description": "true＝同時編碼 negative_prompt（空白時以單一空白字元編碼）。必須與 DiT 的 guidance > 1 一致，DiT 會檢查",
+        "description": "true\N{FULLWIDTH EQUALS SIGN}同時編碼 negative_prompt（空白時以單一空白字元編碼）。必須與 DiT 的 guidance > 1 一致，DiT 會檢查",
     },
 }
 VAE_ENCODE_PARAMS: dict[str, Any] = {
@@ -115,7 +124,7 @@ VAE_DECODE_PARAMS: dict[str, Any] = {
     "mode": {
         "enum": ["full", "tiled"],
         "default": "full",
-        "description": "full＝完整解碼（峰值記憶體隨輸出尺寸增加）；tiled＝分塊解碼（較省記憶體，可能出現接縫）。不會依尺寸自動切換",
+        "description": "full\N{FULLWIDTH EQUALS SIGN}完整解碼（峰值記憶體隨輸出尺寸增加）；tiled\N{FULLWIDTH EQUALS SIGN}分塊解碼（較省記憶體，可能出現接縫）。不會依尺寸自動切換",
     },
 }
 COMPOSE_PARAMS: dict[str, Any] = {
@@ -135,15 +144,22 @@ PARAMS_BY_ROLE: dict[str, dict[str, Any]] = {
 
 
 def parameters_schema(role: str) -> dict[str, Any]:
-    return {"type": "object", "properties": copy.deepcopy(PARAMS_BY_ROLE[role]), "additionalProperties": False}
+    """Describe accepted invocation parameters."""
+    return {
+        "type": "object",
+        "properties": copy.deepcopy(PARAMS_BY_ROLE[role]),
+        "additionalProperties": False,
+    }
 
 
 def resolve_params(role: str, parameters: Mapping[str, Any]) -> dict[str, Any]:
-    """schema 預設值疊上本次參數，並以 parameters_schema 驗證（未宣告或不合法 → 422）。"""
+    """Schema 預設值疊上本次參數，並以 parameters_schema 驗證（未宣告或不合法 → 422）."""
     props = PARAMS_BY_ROLE[role]
     merged = {name: copy.deepcopy(spec.get("default")) for name, spec in props.items()}
     merged.update(dict(parameters))
-    contracts.validate_with_schema(parameters_schema(role), merged, code="INVALID_ARGUMENT", what=f"{role} 參數")
+    contracts.validate_with_schema(
+        parameters_schema(role), merged, code="INVALID_ARGUMENT", what=f"{role} 參數"
+    )
     return merged
 
 
@@ -165,11 +181,11 @@ def offload_schema(role: str) -> dict[str, Any]:
         "properties": {
             "mode": {
                 "enum": modes,
-                "description": "none＝整個模組一起搬；sequential＝accelerate cpu_offload（權重留在 host，逐子模組上 GPU）",
+                "description": "none\N{FULLWIDTH EQUALS SIGN}整個模組一起搬；sequential\N{FULLWIDTH EQUALS SIGN}accelerate cpu_offload（權重留在 host，逐子模組上 GPU）",
             },
             "after_use": {
                 "enum": ["keep", "host"],
-                "description": "兩次呼叫之間權重的位置：keep＝留在裝置上；host＝回到主記憶體（下次呼叫再搬上 GPU）",
+                "description": "兩次呼叫之間權重的位置：keep\N{FULLWIDTH EQUALS SIGN}留在裝置上；host\N{FULLWIDTH EQUALS SIGN}回到主記憶體（下次呼叫再搬上 GPU）",
             },
             "pinned": {
                 "type": "boolean",
@@ -182,8 +198,11 @@ def offload_schema(role: str) -> dict[str, Any]:
 
 
 def build_settings_schema(role: str) -> dict[str, Any]:
+    """Describe the allowed component settings."""
     if role in ("prepare", "compose"):
-        return settings_schema(invoke_properties=PARAMS_BY_ROLE[role], device_kinds=("cpu",))
+        return settings_schema(
+            invoke_properties=PARAMS_BY_ROLE[role], device_kinds=("cpu",)
+        )
     dtypes = ["bf16"] if role == "conditioning" else ["bf16", "fp32"]
     return settings_schema(
         precision_properties={
@@ -193,7 +212,22 @@ def build_settings_schema(role: str) -> dict[str, Any]:
             }
         },
         offload_schema=offload_schema(role),
-        provider_options={"base": _base_schema()},
+        provider_options={
+            "base": _base_schema(),
+            **(
+                {
+                    "encoding_cache_mib": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 16384,
+                        "default": 0,
+                        "description": "此元件在 Node 的前置編碼快取容量（MiB），0 表示停用。",
+                    }
+                }
+                if role in ("conditioning", "vae_encode")
+                else {}
+            ),
+        },
         invoke_properties=PARAMS_BY_ROLE[role],
         require_model_path=True,
         device_kinds=("cuda", "cpu"),
@@ -201,6 +235,7 @@ def build_settings_schema(role: str) -> dict[str, Any]:
 
 
 def default_settings(role: str) -> dict[str, Any]:
+    """Build the default component settings."""
     recording = normalize_recording({"mode": "detailed"})
     if role in ("prepare", "compose"):
         group = "cpu-qimg-prepare" if role == "prepare" else "cpu-image-compose"
@@ -237,7 +272,10 @@ def diffusers_problem() -> str | None:
 
 
 def runtime_problem(role: str) -> str | None:
-    missing = [name for name in RUNTIME_MODULES[role] if importlib.util.find_spec(name) is None]
+    """Return the runtime dependency problem, if any."""
+    missing = [
+        name for name in RUNTIME_MODULES[role] if importlib.util.find_spec(name) is None
+    ]
     if missing:
         return f"此 runtime 沒有安裝 {', '.join(missing)}（qimg 元件需要 qimg-x86_64 之類的 GPU runtime 環境）"
     return diffusers_problem() if role in DIFFUSERS_ROLES else None
@@ -247,7 +285,9 @@ def model_root(load: Mapping[str, Any]) -> Path:
     """``load.model_path``: the models root every relative model path is resolved against."""
     root = str(load.get("model_path") or "")
     if not root:
-        raise ComponentError("COMPONENT_NOT_CONFIGURED", "未設定 load.model_path（models 根目錄）")
+        raise ComponentError(
+            "COMPONENT_NOT_CONFIGURED", "未設定 load.model_path（models 根目錄）"
+        )
     return Path(root)
 
 
@@ -257,12 +297,15 @@ def model_dir(load: Mapping[str, Any]) -> Path:
     rel = str((load.get("provider_options") or {}).get("base") or DEFAULT_BASE)
     pure = PurePosixPath(rel)
     if pure.is_absolute() or ".." in pure.parts or not pure.parts:
-        raise ComponentError("UNSUPPORTED_SETTING", f"provider_options.base 必須是相對目錄（收到 {rel!r}）")
+        raise ComponentError(
+            "UNSUPPORTED_SETTING",
+            f"provider_options.base 必須是相對目錄（收到 {rel!r}）",
+        )
     return root / rel
 
 
 def model_problem(role: str, settings: Mapping[str, Any] | None) -> str | None:
-    """describe() 用：模型檔是否就位（只看檔案是否存在，不載入）。"""
+    """describe() 用：模型檔是否就位（只看檔案是否存在，不載入）."""
     if settings is None or role not in MODEL_SUBDIRS:
         return None
     load = settings.get("load") or {}
@@ -277,12 +320,14 @@ def model_problem(role: str, settings: Mapping[str, Any] | None) -> str | None:
         path = base / sub
         markers = ("config.json", "preprocessor_config.json", "tokenizer_config.json")
         if not any((path / m).is_file() for m in markers):
-            return f"缺少 {sub}：{display_path(path, root)}；找不到 config／processor 設定"
+            return (
+                f"缺少 {sub}：{display_path(path, root)}；找不到 config／processor 設定"
+            )
     return None
 
 
 def check_load(role: str, load: Mapping[str, Any]) -> dict[str, Any]:
-    """組合規則（schema 擋不住的部分）→ 正規化後的 offload；不支援 → UNSUPPORTED_SETTING。"""
+    """組合規則（schema 擋不住的部分）→ 正規化後的 offload；不支援 → UNSUPPORTED_SETTING."""
     device = load.get("device") or {}
     kind = device.get("kind")
     if role in ("prepare", "compose"):
@@ -301,33 +346,46 @@ def check_load(role: str, load: Mapping[str, Any]) -> dict[str, Any]:
         )
     if mode == "sequential":
         if kind != "cuda":
-            raise ComponentError("UNSUPPORTED_SETTING", "offload.mode=sequential 需要 CUDA 裝置")
+            raise ComponentError(
+                "UNSUPPORTED_SETTING", "offload.mode=sequential 需要 CUDA 裝置"
+            )
         if after_use != "host":
             raise ComponentError(
                 "UNSUPPORTED_SETTING",
                 "offload.mode=sequential 的權重一律留在 host；after_use 必須是 host（不默默改成別的意思）",
             )
         if pinned:
-            raise ComponentError("UNSUPPORTED_SETTING", "offload.pinned 只用於 mode=none＋after_use=host")
+            raise ComponentError(
+                "UNSUPPORTED_SETTING",
+                "offload.pinned 只用於 mode=none\N{FULLWIDTH PLUS SIGN}after_use=host",
+            )
     if pinned and after_use != "host":
-        raise ComponentError("UNSUPPORTED_SETTING", "offload.pinned 只用於 after_use=host")
+        raise ComponentError(
+            "UNSUPPORTED_SETTING", "offload.pinned 只用於 after_use=host"
+        )
     return {"mode": mode, "after_use": after_use, "pinned": pinned}
 
 
 def compute_dtype_name(load: Mapping[str, Any]) -> str:
+    """Return the configured computation dtype name."""
     return str((load.get("precision") or {}).get("compute_dtype") or "bf16")
 
 
 def check_output_size(width: int, height: int) -> None:
+    """Validate the requested image dimensions."""
     for name, value in (("width", width), ("height", height)):
-        if not isinstance(value, int) or isinstance(value, bool):
-            raise ComponentError("INVALID_ARGUMENT", f"{name} 必須是整數")
-        if not SIZE_MIN <= value <= SIZE_MAX or value % SIZE_MULTIPLE:
-            raise ComponentError(
-                "INVALID_ARGUMENT",
-                f"{name}={value} 不合法：需要 {SIZE_MIN}–{SIZE_MAX} 且是 {SIZE_MULTIPLE} 的倍數"
-                "（Qwen-Image 2.1 一個影像 slot＝2×2 latent token＝32 px；不自動取整）",
-            )
+        _check_dimension(name, value)
+
+
+def _check_dimension(name: str, value: object) -> None:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ComponentError("INVALID_ARGUMENT", f"{name} 必須是整數")
+    if not SIZE_MIN <= value <= SIZE_MAX or value % SIZE_MULTIPLE:
+        raise ComponentError(
+            "INVALID_ARGUMENT",
+            f"{name}={value} 不合法：需要 {SIZE_MIN}\N{EN DASH}{SIZE_MAX} 且是 {SIZE_MULTIPLE} 的倍數"
+            "（Qwen-Image 2.1 一個影像 slot\N{FULLWIDTH EQUALS SIGN}2×2 latent token\N{FULLWIDTH EQUALS SIGN}32 px；不自動取整）",
+        )
 
 
 __all__ = [

@@ -1,3 +1,4 @@
+import { isListed } from "@/lib/json";
 import { ArrowRight, Plus, Trash } from "lucide-react";
 import type { Port } from "@/api/generated/contracts";
 import type { WirePipeline } from "@/api/types";
@@ -39,8 +40,7 @@ export function PipelineInputsEditor({
   typeSuggestions: readonly string[];
 }) {
   const stable = useStableKeys(pipeline.inputs.length);
-  const update = (index: number, patch: Partial<Port>) =>
-    onChange({ ...pipeline, inputs: pipeline.inputs.map((port, position) => (position === index ? { ...port, ...patch } : port)) });
+  const update = (index: number, patch: Partial<Port>) => { onChange({ ...pipeline, inputs: pipeline.inputs.map((port, position) => (position === index ? { ...port, ...patch } : port)) }); };
   const suggestions = [...new Set([...KNOWN_TYPES, ...typeSuggestions])].sort();
   return (
     <section className="grid gap-2" aria-labelledby="pipeline-inputs-title">
@@ -87,12 +87,12 @@ export function PipelineInputsEditor({
                 <tr key={stable.keys[index]}>
                   <Td className="w-44">
                     <CommitInput
-                      id={`pipeline-input-${index}-name`}
+                      id={`pipeline-input-${String(index)}-name`}
                       label={t("輸入 {index} 名稱", { index: index + 1 })}
                       value={port.name}
                       onCommit={(next) => {
                         const error = localIdError(next, t("名稱 "));
-                        if (error) return error;
+                        if (error != null && error !== "") return error;
                         if (pipeline.inputs.some((other, position) => position !== index && other.name === next)) return t("名稱重複");
                         onChange(renameInput(pipeline, port.name, next));
                         return null;
@@ -105,7 +105,7 @@ export function PipelineInputsEditor({
                       className="machine"
                       list="pipeline-type-ids"
                       value={port.type_id}
-                      onChange={(event) => update(index, { type_id: event.target.value.trim() })}
+                      onChange={(event) => { update(index, { type_id: event.target.value.trim() }); }}
                     />
                   </Td>
                   <Td>
@@ -114,18 +114,18 @@ export function PipelineInputsEditor({
                       className="size-4 accent-action"
                       aria-label={t("輸入 {name} 必填", { name: port.name })}
                       checked={port.required}
-                      onChange={(event) => update(index, { required: event.target.checked })}
+                      onChange={(event) => { update(index, { required: event.target.checked }); }}
                     />
                   </Td>
                   <Td className="w-32">
-                    <Select aria-label={t("輸入 {name} 的傳輸方式", { name: port.name })} value={port.transport} onChange={(event) => update(index, { transport: event.target.value as Port["transport"] })}>
+                    <Select aria-label={t("輸入 {name} 的傳輸方式", { name: port.name })} value={port.transport} onChange={(event) => { const value = event.target.value; if (isListed(value, ["inline", "file", "either"] as const)) update(index, { transport: value }); }}>
                       <option value="inline">inline</option>
                       <option value="file">file</option>
                       <option value="either">either</option>
                     </Select>
                   </Td>
                   <Td>
-                    <Input aria-label={t("輸入 {name} 的說明", { name: port.name })} value={port.description} onChange={(event) => update(index, { description: event.target.value })} />
+                    <Input aria-label={t("輸入 {name} 的說明", { name: port.name })} value={port.description} onChange={(event) => { update(index, { description: event.target.value }); }} />
                   </Td>
                   <Td>
                     <Button
@@ -162,7 +162,7 @@ export function PipelineOutputsEditor({
 }) {
   const entries = Object.entries(pipeline.outputs);
   const stable = useStableKeys(entries.length);
-  const rebuild = (next: Array<[string, { from_step: string; output: string }]>) => onChange({ ...pipeline, outputs: Object.fromEntries(next) });
+  const rebuild = (next: [string, { from_step: string; output: string }][]) => { onChange({ ...pipeline, outputs: Object.fromEntries(next) }); };
   const options = pipeline.steps.flatMap((step) => {
     const descriptor = lookup(step.node_id, step.component_id);
     return (descriptor?.outputs ?? []).map((port) => ({ value: outputValue(step.step_id, port.name), label: `${step.step_id}.${port.name} · ${port.type_id}` }));
@@ -197,13 +197,13 @@ export function PipelineOutputsEditor({
             return (
               <li key={stable.keys[index]} className="flex flex-wrap items-start gap-2">
                 <CommitInput
-                  id={`pipeline-output-${index}-name`}
+                  id={`pipeline-output-${String(index)}-name`}
                   label={t("輸出 {index} 名稱", { index: index + 1 })}
                   className="w-44"
                   value={name}
                   onCommit={(next) => {
                     const error = localIdError(next, t("名稱 "));
-                    if (error) return error;
+                    if (error != null && error !== "") return error;
                     if (entries.some(([other], position) => position !== index && other === next)) return t("名稱重複");
                     rebuild(entries.map((entry, position) => (position === index ? [next, entry[1]] : entry)));
                     return null;
@@ -266,13 +266,13 @@ export function WiringSummary({ edges }: { edges: readonly WiringEdge[] }) {
       ) : (
         <ol className="grid gap-1 rounded-lg border border-line-subtle bg-sunken px-3 py-2">
           {edges.map((edge, index) => (
-            <li key={`${edge.from}-${edge.to}-${index}`} className="flex flex-wrap items-center gap-2 text-data">
+            <li key={`${edge.from}-${edge.to}-${String(index)}`} className="flex flex-wrap items-center gap-2 text-data">
               <span className="min-w-10 shrink-0 text-caption text-fg-tertiary">{KIND_LABEL[edge.kind]}</span>
               <code className="machine text-fg-secondary">{edge.from}</code>
               <ArrowRight aria-label={t("接到")} className="size-3.5 text-fg-tertiary" />
               <code className="machine text-fg">{edge.to}</code>
               {/* 型別色與節點圖的接點、連線一致（文字／條件＝info、latent＝entity、媒體＝file，其他中性） */}
-              <code className={cn("machine text-caption", edge.typeId ? TEXT_TONE[typeTone(edge.typeId)] : "text-fg-tertiary")}>{edge.typeId ?? t("型別未知")}</code>
+              <code className={cn("machine text-caption", (edge.typeId != null && edge.typeId !== "") ? TEXT_TONE[typeTone(edge.typeId)] : "text-fg-tertiary")}>{edge.typeId ?? t("型別未知")}</code>
             </li>
           ))}
         </ol>

@@ -26,7 +26,7 @@ const round = (value: number) => Math.round(value * 100) / 100;
 export function indicatorTransform(axis: IndicatorAxis, placement: IndicatorPlacement): string {
   const offset = round(placement.offset);
   const size = round(placement.size);
-  return axis === "x" ? `translateX(${offset}px) scaleX(${size})` : `translateY(${offset}px) scaleY(${size})`;
+  return axis === "x" ? `translateX(${String(offset)}px) scaleX(${String(size)})` : `translateY(${String(offset)}px) scaleY(${String(size)})`;
 }
 
 /** CSS 時間值（"180ms"、"0.24s"）→ 毫秒；空字串或無法解析回 null（呼叫端改用預設）。 */

@@ -51,8 +51,8 @@ export function BrandImage({
           height={height}
           draggable={false}
           decoding="async"
-          onLoad={() => settle("ok")}
-          onError={() => settle("missing")}
+          onLoad={() => { settle("ok"); }}
+          onError={() => { settle("missing"); }}
           className={cn(
             "absolute inset-0 size-full object-contain select-none transition-opacity duration-(--duration-base) ease-standard",
             status === "ok" ? "opacity-100" : "opacity-0",

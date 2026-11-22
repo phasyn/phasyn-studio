@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type MutationOptions, type QueryClient } from "@tanstack/react-query";
 import type { PipelineLayout } from "./generated/contracts";
-import { ApiError, apiJson } from "./http";
+import { ApiError, contractJson } from "./http";
 import { qk } from "./keys";
 import type { WirePipeline } from "./types";
 import { t } from "@/i18n";
@@ -16,7 +16,7 @@ export interface PipelineList {
 export function usePipelines() {
   return useQuery({
     queryKey: qk.pipelines(),
-    queryFn: ({ signal }) => apiJson<PipelineList>("/api/pipelines", { signal }),
+    queryFn: ({ signal }) => contractJson("PipelineList", "/api/pipelines", { signal }),
     staleTime: 5000,
     refetchOnWindowFocus: true,
   });
@@ -25,7 +25,7 @@ export function usePipelines() {
 export function usePipeline(pipelineId: string | null) {
   return useQuery({
     queryKey: qk.pipeline(pipelineId ?? ""),
-    queryFn: ({ signal }) => apiJson<WirePipeline>(`/api/pipelines/${encodeURIComponent(pipelineId ?? "")}`, { signal }),
+    queryFn: ({ signal }) => contractJson("WirePipeline", `/api/pipelines/${encodeURIComponent(pipelineId ?? "")}`, { signal }),
     enabled: pipelineId !== null && pipelineId.length > 0,
     staleTime: 5000,
   });
@@ -76,8 +76,8 @@ export function useSavePipeline() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (pipeline: WirePipeline) =>
-      apiJson<WirePipeline>(`/api/pipelines/${encodeURIComponent(pipeline.pipeline_id)}`, { method: "PUT", json: pipeline }),
-    onSuccess: (saved) => applySavedPipeline(client, saved),
+      contractJson("WirePipeline", `/api/pipelines/${encodeURIComponent(pipeline.pipeline_id)}`, { method: "PUT", json: pipeline }),
+    onSuccess: (saved) => { applySavedPipeline(client, saved); },
   });
 }
 
@@ -101,9 +101,9 @@ export function useDeletePipeline() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (pipelineId: string) =>
-      apiJson<{ pipeline_id: string; deleted: boolean }>(`/api/pipelines/${encodeURIComponent(pipelineId)}`, { method: "DELETE" }),
+      contractJson("DeletedPipeline", `/api/pipelines/${encodeURIComponent(pipelineId)}`, { method: "DELETE" }),
     retry: false,
-    onSuccess: (_result, pipelineId) => forgetPipeline(client, pipelineId),
+    onSuccess: (_result, pipelineId) => { forgetPipeline(client, pipelineId); },
     onError: (error, pipelineId) => {
       if (isNotFound(error)) forgetPipeline(client, pipelineId);
     },
@@ -121,7 +121,7 @@ const LAYOUT_PATH = "/api/pipeline-layout";
 export function usePipelineLayout() {
   return useQuery({
     queryKey: qk.pipelineLayout(),
-    queryFn: ({ signal }) => apiJson<PipelineLayout>(LAYOUT_PATH, { signal }),
+    queryFn: ({ signal }) => contractJson("PipelineLayout", LAYOUT_PATH, { signal }),
     staleTime: 5000,
     refetchOnWindowFocus: true,
   });
@@ -171,7 +171,7 @@ export function layoutSaveEpoch(client: QueryClient): number {
 }
 
 export function putPipelineLayout(layout: PipelineLayout): Promise<PipelineLayout> {
-  return apiJson<PipelineLayout>(LAYOUT_PATH, { method: "PUT", json: layout });
+  return contractJson("PipelineLayout", LAYOUT_PATH, { method: "PUT", json: layout });
 }
 
 /**
@@ -245,6 +245,6 @@ export function layoutSaveCause(error: unknown): unknown {
 export function unknownPipelineIds(error: unknown): string[] {
   const cause = layoutSaveCause(error);
   if (!(cause instanceof ApiError) || cause.code !== "INVALID_ARGUMENT") return [];
-  const ids = cause.details.unknown_pipeline_ids;
+  const ids = cause.details["unknown_pipeline_ids"];
   return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string") : [];
 }

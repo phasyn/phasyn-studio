@@ -51,17 +51,17 @@ export function OverviewTab({ plugin, preview }: { plugin: StudioPlugin; preview
       <dl className="grid grid-cols-[minmax(5.5rem,auto)_minmax(0,1fr)] gap-x-5 gap-y-2 text-data">
         {summary ? <Fact label={t("內容")}>{summary}</Fact> : null}
         {plugin.author ? <Fact label={t("作者")}>{plugin.author.name}</Fact> : null}
-        {plugin.author?.url ? (
+        {(plugin.author?.url != null && plugin.author.url !== "") ? (
           <Fact label={t("網站")}>
             <span className="machine">{plugin.author.url}</span>
           </Fact>
         ) : null}
-        {plugin.license ? <Fact label={t("授權")}>{plugin.license}</Fact> : null}
+        {(plugin.license != null && plugin.license !== "") ? <Fact label={t("授權")}>{plugin.license}</Fact> : null}
         <Fact label={t("來源")}>{sourceLabel(plugin.source)}</Fact>
         {plugin.engines ? (
           <Fact label={t("相容版本")}>
             <span className="machine">{plugin.engines.phasyn}</span>
-            {host ? <span className="text-fg-tertiary">{t("（這台主控 {host}）", { host })}</span> : null}
+            {(host != null && host !== "") ? <span className="text-fg-tertiary">{t("（這台主控 {host}）", { host })}</span> : null}
           </Fact>
         ) : null}
         {plugin.has_code ? (
@@ -72,17 +72,17 @@ export function OverviewTab({ plugin, preview }: { plugin: StudioPlugin; preview
         <Fact label={t("大小")}>
           <span className="machine">{t("{size}・{count} 個檔案", { size: formatBytes(plugin.size_bytes), count: plugin.file_count })}</span>
         </Fact>
-        {!preview && plugin.installed_at ? (
+        {!preview && (plugin.installed_at != null && plugin.installed_at !== "") ? (
           <Fact label={t("安裝時間")}>
             <TimeText iso={plugin.installed_at} />
           </Fact>
         ) : null}
-        {!preview && plugin.updated_at && plugin.updated_at !== plugin.installed_at ? (
+        {!preview && (plugin.updated_at != null && plugin.updated_at !== "") && plugin.updated_at !== plugin.installed_at ? (
           <Fact label={t("更新時間")}>
             <TimeText iso={plugin.updated_at} />
           </Fact>
         ) : null}
-        {plugin.digest ? (
+        {(plugin.digest != null && plugin.digest !== "") ? (
           <Fact label="digest">
             <IdText value={plugin.digest} length={12} />
           </Fact>

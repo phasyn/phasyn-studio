@@ -129,7 +129,7 @@ function request(key: string, url: string, seconds: number): Promise<string | nu
  * failed, while `url` is null, and while `paused` keeps new captures from starting (a cached one still shows).
  */
 export function useHeadThumbnail(url: string | null, frame: number, fps: number, paused: boolean): string | null {
-  const key = url && fps > 0 ? `${url}|${frame}|${fps}` : null;
+  const key = (url != null && url !== "") && fps > 0 ? `${url}|${String(frame)}|${String(fps)}` : null;
   const cached = key === null ? undefined : cache.get(key);
   const [result, setResult] = useState<{ key: string; src: string | null } | null>(null);
   useEffect(() => {

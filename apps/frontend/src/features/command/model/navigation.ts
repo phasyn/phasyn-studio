@@ -30,7 +30,7 @@ export function formatShortTime(iso: string): string {
  */
 export function openProjectOf(pathname: string, search: string): string | null {
   if (pathname !== "/image" && !pathname.startsWith("/studio/")) return null;
-  return new URLSearchParams(search).get("project") || null;
+  return ((new URLSearchParams(search).get("project")) ?? "") || null;
 }
 
 /** 路由路徑（去掉 query 與 hash）。 */

@@ -13,7 +13,7 @@ export function errorText(error: unknown): string {
 /** 圖片頁面的網址（同一個專案；shot／take 可省略）。 */
 export function imagePath(projectId: string, params: { shot?: string | null; take?: string | null } = {}): string {
   const search = new URLSearchParams({ project: projectId });
-  if (params.shot) search.set("shot", params.shot);
-  if (params.take) search.set("take", params.take);
+  if (params.shot != null && params.shot !== "") search.set("shot", params.shot);
+  if (params.take != null && params.take !== "") search.set("take", params.take);
   return `/image?${search.toString()}`;
 }

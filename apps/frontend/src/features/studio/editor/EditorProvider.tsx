@@ -19,6 +19,8 @@ import { useEditorKeys } from "./useEditorKeys";
 import { useFileDropGuard } from "./useFileDropGuard";
 import { useEditorState } from "./useEditorState";
 import { useTransport } from "./useTransport";
+import { DialogueJobsRunner } from "../dialogue/useDialogueJobs";
+import { LibraryFixHost } from "../fix";
 
 export function EditorProvider({ children }: { children: ReactNode }) {
   const studio = useStudio();
@@ -59,13 +61,13 @@ export function EditorProvider({ children }: { children: ReactNode }) {
     totalFrames: state.totalFrames,
     fps: state.fps,
     setMonitorMode,
-    onAudioBlocked: () => notify({ tone: "warning", title: t("無法啟動瀏覽器音訊輸出") }),
+    onAudioBlocked: () => { notify({ tone: "warning", title: t("無法啟動瀏覽器音訊輸出") }); },
   });
 
   // A shot chosen in the Shots workspace selects its clip here (the reverse happens in select()); a new shot joins the film
   const { selectShotClip, placeShot } = state;
-  const shots = useEffectEvent((): ShotListener => ({ selected: selectShotClip, added: placeShot }));
-  useEffect(() => listenShots({ selected: (shotId) => shots().selected(shotId), added: (shot) => shots().added(shot) }), [listenShots]);
+  const shots = useEffectEvent((): ShotListener => ({ selected: selectShotClip, added: (shot) => { placeShot(shot); } }));
+  useEffect(() => listenShots({ selected: (shotId) => { shots().selected(shotId); }, added: (shot) => { shots().added(shot); } }), [listenShots]);
 
   const focus = useMemo(() => ({ panel, setPanel }), [panel]);
   const ui = useMemo<EditorUi>(
@@ -73,7 +75,7 @@ export function EditorProvider({ children }: { children: ReactNode }) {
       transform,
       setTransform,
       intent,
-      request: (next) => setIntent((current) => ({ ...next, id: (current?.id ?? 0) + 1 })),
+      request: (next) => { setIntent((current) => ({ ...next, id: (current?.id ?? 0) + 1 })); },
       pastingAttributes,
       setPastingAttributes,
       speedFeelClip,
@@ -83,18 +85,20 @@ export function EditorProvider({ children }: { children: ReactNode }) {
   );
   const { workspace: routeWorkspace } = useParams();
   const workspace: EditorWorkspaceId = routeWorkspace === "generate" || routeWorkspace === "render" ? routeWorkspace : "edit";
-  const editor: Editor = { ...studio, ...state, workspace, transport, view, focus, ui, drafts, sourceMonitor };
+  const editor = useMemo<Editor>(() => ({ ...studio, ...state, workspace, transport, view, focus, ui, drafts, sourceMonitor }), [studio, state, workspace, transport, view, focus, ui, drafts, sourceMonitor]);
   useEditorKeys(editor);
   useFileDropGuard();
   return (
-    <EditorContext.Provider value={editor}>
-      <EditorDraftContext.Provider value={drafts}>
+    <EditorContext value={editor}>
+      <EditorDraftContext value={drafts}>
         {children}
+        <DialogueJobsRunner />
+        <LibraryFixHost />
         <ShorterTakeDialog />
         <PasteAttributesDialog />
         <SpeedFeelDialog />
         <EditAnnouncer history={history} />
-      </EditorDraftContext.Provider>
-    </EditorContext.Provider>
+      </EditorDraftContext>
+    </EditorContext>
   );
 }

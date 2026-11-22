@@ -22,6 +22,7 @@ from phasyn_components.upstream import Mismatch, Pin, mismatches, missing_attrs
 
 from .errors import UnsupportedCombination
 
+
 _RT = "sglang.multimodal_gen.runtime"
 _KLVAE = f"{_RT}.models.vaes.minimax_h3_video_vae.klvae"
 _BASE_MODULE = f"{_RT}.models.vaes.minimax_h3_video_vae.base_module"
@@ -112,6 +113,27 @@ SOURCES: dict[str, dict[str, tuple[str, str, str]]] = {
             "4a615fe39391a903b343bdb3456162f65a78b41f472ff0506deff3dd143dc907",
         ),
     },
+    "regional_compile": {
+        "minimax_h3.py MiniMaxH3MLP.forward (regional compile)": (
+            _DIT,
+            "MiniMaxH3MLP.forward",
+            "d96a062886b092683475278d01ac9e1ac4244c9e12b00505cfda51390d365ecd",
+        ),
+        "minimax_h3.py _silu_mul": (
+            _DIT,
+            "_silu_mul",
+            "6480e8ae34f6f7333a8746108c14eca6a2c507475acd3471669836fa6ec0ad16",
+        ),
+    },
+    # mlp_token_chunk.chunked_mlp: the block MLP is row-wise (fc1, SiLU-and-mul, fc2), so row chunks compute
+    # the same rows; wraps each block's ``mlp.forward`` for the loop only, above ENGAGE_ROWS
+    "mlp_token_chunk": {
+        "minimax_h3.py MiniMaxH3MLP.forward (row chunks)": (
+            _DIT,
+            "MiniMaxH3MLP.forward",
+            "d96a062886b092683475278d01ac9e1ac4244c9e12b00505cfda51390d365ecd",
+        ),
+    },
     # ref_kv_cache.RefKvSession: what the skip path relies on. The model forward takes a
     # packed sequence without the reference rows (reduced kwargs), every block operation but attention is
     # row-wise, and the attention core hands the post-RoPE q/k/v to the backend's forward_varlen, which the
@@ -169,6 +191,47 @@ SOURCES: dict[str, dict[str, tuple[str, str, str]]] = {
             f"{_RT}.layers.attention.backends.flash_attn",
             "FlashAttentionImpl.forward",
             "a4bbc413c4d399c6efe6b069a30be3a0741850f2792541cc43f6fc40a7514842",
+        ),
+    },
+    # nag.NagSession: the model forward takes the extended packed sequence (negative text rows after the live rows),
+    # ``_embed`` writes text / video / audio rows and zeroes the rest (the wrapper fills the negative rows), every
+    # block operation but attention is row-wise, and the attention core hands the post-RoPE q/k/v to the backend's
+    # forward_varlen, which the session's proxy runs as the positive / negative / padding segments
+    "nag": {
+        "minimax_h3.py MiniMaxH3DiTModel.forward (NAG extended sequence)": (
+            _DIT,
+            "MiniMaxH3DiTModel.forward",
+            "274135d3568715d7ceb5a86739dcb34d7b9009850a704987ca0487102913c750",
+        ),
+        "minimax_h3.py MiniMaxH3DiTModel._embed (NAG extended sequence)": (
+            _DIT,
+            "MiniMaxH3DiTModel._embed",
+            "6a44b617a901e75da191ecf806132e6d10ba6a1264faf5e4df56fdc30545cab9",
+        ),
+        "minimax_h3.py MiniMaxH3DiTModel.refine_prompt_embeds (NAG extended sequence)": (
+            _DIT,
+            "MiniMaxH3DiTModel.refine_prompt_embeds",
+            "2e7d0ab10ac28a5936912f70457da92bcae1d54bce6c21e3105bd2bbe0b881cc",
+        ),
+        "minimax_h3.py MiniMaxH3DiTBlock.forward (NAG extended sequence)": (
+            _DIT,
+            "MiniMaxH3DiTBlock.forward",
+            "1c83bf67248375dc8337c60e8b998710e1b1111f5173ec1fb02a05e06c94130a",
+        ),
+        "minimax_h3.py MiniMaxH3Attention.forward (NAG extended sequence)": (
+            _DIT,
+            "MiniMaxH3Attention.forward",
+            "cea6bdb2ad9de828c7b6b7fc7218515272db2d76aacf1408a991bde70bb6cb77",
+        ),
+        "minimax_h3.py _minimax_h3_attention_core_impl (NAG extended sequence)": (
+            _DIT,
+            "_minimax_h3_attention_core_impl",
+            "44440ad73b381b44b9774287bab7f14250f0c79524946d40068fc298b6dfbc78",
+        ),
+        "minimax_h3.py MiniMaxH3FinalLayer.forward (NAG extended sequence)": (
+            _DIT,
+            "MiniMaxH3FinalLayer.forward",
+            "b62cda911a369ef6bed463bea8d3aad4f96b2ec8e65531b8aeeacf238a400bc9",
         ),
     },
     # stages/vae_fp32_accel.fp32_decode_scope
@@ -383,13 +446,18 @@ LAYERWISE_MANAGER_ATTRS = (
     "_strided_cpu_weights",
     "_mapped_cpu_weights",
 )
-LAYERWISE_MODULE_ATTRS = ("layerwise_offload_managers", "_managed_layer_parameter_names")
+LAYERWISE_MODULE_ATTRS = (
+    "layerwise_offload_managers",
+    "_managed_layer_parameter_names",
+)
 ROPE_CACHE_MODULE = "sglang.srt.layers.rotary_embedding.factory"
 ROPE_CACHE_ATTRS = ("_ROPE_DICT.clear",)
 
 
 def _resolver(module: str, qualname: str, owner: object | None) -> Any:
-    if owner is not None:  # the instance's own attribute (a subclass or a replaced method must match too)
+    if (
+        owner is not None
+    ):  # the instance's own attribute (a subclass or a replaced method must match too)
         name = qualname.rsplit(".", 1)[-1]
         return lambda: getattr(owner, name)
 
@@ -411,10 +479,12 @@ def pins(group: str, *, owner: object | None = None) -> list[Pin]:
 
 
 def all_pins() -> list[Pin]:
+    """Return the upstream source identities checked by this runtime."""
     return [pin for group in SOURCES for pin in pins(group)]
 
 
 def mismatch_error(mismatch: Mismatch, *, what: str) -> UnsupportedCombination:
+    """Build the diagnostic for a pinned source mismatch."""
     return UnsupportedCombination(
         "UPSTREAM_PATCH_SOURCE_MISMATCH",
         f"{mismatch.label} 的上游原始碼與釘版 SGLang de487f8 不同；{what}不套用在未審核的程式上",

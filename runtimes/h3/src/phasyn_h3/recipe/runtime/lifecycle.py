@@ -33,13 +33,15 @@ import threading
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from phasyn_h3.recipe.abi.component import ComponentLease, ComponentLoadSpec
-from phasyn_h3.recipe.abi.timeutil import UTC, to_rfc3339
+from phasyn_h3.recipe.abi.timeutil import to_rfc3339
 
+from ._observations import RuntimeObservation
 from .errors import ComponentBusy, ShimError
+
 
 ABSENT = "absent"
 LOADING = "loading"
@@ -65,6 +67,8 @@ _TRANSITIONS = {
 
 @dataclass
 class LoadResult:
+    """Report the component loaded into a runtime."""
+
     handle: Any
     allocated_bytes: int | None
     peak_loading_bytes: int | None
@@ -73,6 +77,8 @@ class LoadResult:
 
 @dataclass
 class UnloadResult:
+    """Report the result of releasing a resident component."""
+
     released_bytes: int
     cuda_synchronized: bool
     details: dict[str, Any] = field(default_factory=dict)
@@ -100,43 +106,62 @@ class RestoreResult:
     details: dict[str, Any] = field(default_factory=dict)
 
 
-class HostMemoryInsufficient(ShimError):
+class HostMemoryInsufficientError(ShimError):
     """The host cannot hold the component; raised before anything moved."""
 
     error_code = "RESOURCE_EXHAUSTED"
 
 
-class ComponentBackend(Protocol):
-    def load(self, spec: ComponentLoadSpec) -> LoadResult: ...
+HostMemoryInsufficientError.__name__ = "HostMemoryInsufficient"
+HostMemoryInsufficientError.__qualname__ = "HostMemoryInsufficient"
+HostMemoryInsufficient = HostMemoryInsufficientError
 
-    def unload(self, handle: Any, spec: ComponentLoadSpec) -> UnloadResult: ...
+
+class ComponentBackend(Protocol):
+    """Define component loading and unloading on a device."""
+
+    def load(self, spec: ComponentLoadSpec) -> LoadResult:
+        """Load the component described by the specification."""
+        ...
+
+    def unload(self, handle: Any, spec: ComponentLoadSpec) -> UnloadResult:
+        """Release the loaded component from its execution device."""
+        ...
 
 
 def component_key_for(spec: ComponentLoadSpec) -> str:
     """Stable, contract-safe key (component-residency.schema.json pattern, <=128)."""
     digest = hashlib.sha256(spec.single_flight_key.encode("utf-8")).hexdigest()[:24]
-    base = "".join(ch if ch.isalnum() or ch in "_.-" else "-" for ch in spec.component_id)[:90] or "component"
+    base = (
+        "".join(ch if ch.isalnum() or ch in "_.-" else "-" for ch in spec.component_id)[
+            :90
+        ]
+        or "component"
+    )
     if not base[0].isalnum():
         base = "c" + base
     return f"{base}:{digest}"
 
 
 def _held_host_bytes(footprint: Any, entry: Any) -> tuple[int, int] | None:
-    """(host, pinned) bytes the component holds in host memory: the backend's
-    ``host_footprint(handle)`` hook (``None`` = cannot tell), else the registry's own
-    record (host copy from an offload or a component-offload store)."""
+    """(host, pinned) bytes the component holds in host memory: the backend's ``host_footprint(handle)`` hook (``None`` = cannot tell), else the registry's own record (host copy from an offload or a component-offload store)."""
     if not callable(footprint):
         return int(entry.host_bytes), int(entry.pinned_bytes)
     if entry.handle is None:
         return None
-    try:
+    with RuntimeObservation() as telemetry:
         held = footprint(entry.handle)
-    except Exception:
+    if telemetry.error is not None:
         return None
     if not isinstance(held, Mapping):
         return None
     host, pinned = held.get("host_bytes"), held.get("pinned_bytes")
-    if not isinstance(host, int) or not isinstance(pinned, int) or host < 0 or pinned < 0:
+    if (
+        not isinstance(host, int)
+        or not isinstance(pinned, int)
+        or host < 0
+        or pinned < 0
+    ):
         return None
     return host, pinned
 
@@ -153,10 +178,14 @@ class _Entry:
     host_bytes: int = 0
     pinned_bytes: int = 0
     error: str | None = None
-    flight_error: str | None = None  # the last load/restore flight failed (waiters raise)
+    flight_error: str | None = (
+        None  # the last load/restore flight failed (waiters raise)
+    )
     loaded_at: float | None = None
     last_used_at: float | None = None
-    last_used_wall: float | None = None  # time.time of the last acquire/release (reports)
+    last_used_wall: float | None = (
+        None  # time.time() of the last acquire/release (reports)
+    )
     load_details: dict[str, Any] = field(default_factory=dict)
     last_transfer: dict[str, Any] = field(default_factory=dict)
     residency: dict[str, Any] = field(default_factory=dict)
@@ -164,6 +193,8 @@ class _Entry:
 
 
 class ComponentRegistry:
+    """Track loaded components and their usage across stages."""
+
     def __init__(
         self,
         backend: ComponentBackend,
@@ -173,8 +204,7 @@ class ComponentRegistry:
         wall_clock: Callable[[], float] = time.time,
         on_evict: Callable[[], None] | None = None,
     ):
-        """``on_evict`` runs after every :meth:`evict` (also a failed one), e.g. to drop process-wide caches
-        of the evicted model's code (the component host clears SGLang's shared RoPE cache)."""
+        """``on_evict`` runs after every :meth:`evict` (also a failed one), e.g. to drop process-wide caches of the evicted model's code (the component host clears SGLang's shared RoPE cache)."""
         self._backend = backend
         self._actor = actor_instance_id
         self._on_evict = on_evict
@@ -223,12 +253,7 @@ class ComponentRegistry:
         key = component_key_for(spec)
         while True:
             with self._lock:
-                entry = self._entries.get(key)
-                if entry is None:
-                    entry = _Entry(key=key, spec=spec)
-                    self._entries[key] = entry
-                if residency is not None:
-                    entry.residency = dict(residency)
+                entry = _acquire_entry(self, key, spec, residency)
                 if entry.state in (RESIDENT_IDLE, IN_USE):
                     self._set_state(entry, IN_USE)
                     entry.refcount += 1
@@ -237,7 +262,9 @@ class ComponentRegistry:
                     entry.last_transfer = {}
                     return self._lease(entry)
                 if entry.state == EVICTING:
-                    raise ComponentBusy("COMPONENT_EVICTING", f"{key} 正在釋放，請稍後重試")
+                    raise ComponentBusy(
+                        "COMPONENT_EVICTING", f"{key} 正在釋放，請稍後重試"
+                    )
                 flight: str | None = None
                 if entry.state in (ABSENT, FAILED, HOST_CACHED):
                     flight = "restore" if entry.state == HOST_CACHED else "load"
@@ -252,16 +279,7 @@ class ComponentRegistry:
                 return self._do_load(entry)
             if flight == "restore":
                 return self._do_restore(entry)
-            assert waiter is not None
-            if not waiter.wait(timeout_s):
-                raise ShimError("COMPONENT_LOAD_TIMEOUT", f"等待 {key} 載入逾時", error_code="WORKER_UNAVAILABLE")
-            with self._lock:
-                if entry.flight_error is not None or entry.state == FAILED:
-                    raise ShimError(
-                        "COMPONENT_LOAD_FAILED",
-                        f"{key} 載入失敗：{entry.flight_error or entry.error}",
-                        error_code="MODEL_ERROR",
-                    )
+            _await_load(waiter, timeout_s, key, self, entry)
             # loop: resident now -> take a reference
 
     def _do_load(self, entry: _Entry) -> ComponentLease:
@@ -280,7 +298,10 @@ class ComponentRegistry:
             entry.allocated_bytes = result.allocated_bytes
             entry.peak_loading_bytes = result.peak_loading_bytes
             entry.load_details = dict(result.details)
-            entry.last_transfer = {"kind": "load", **dict(result.details.get("transfer") or {})}
+            entry.last_transfer = {
+                "kind": "load",
+                **dict(result.details.get("transfer") or {}),
+            }
             host = result.details.get("host_store") or {}
             entry.host_bytes = int(host.get("host_bytes") or 0)
             entry.pinned_bytes = int(host.get("pinned_bytes") or 0)
@@ -296,14 +317,14 @@ class ComponentRegistry:
         self.restore_calls += 1
         restore = getattr(self._backend, "restore", None)
         try:
-            if not callable(restore):
-                raise ShimError("RESTORE_NOT_SUPPORTED", "component backend 沒有 restore", error_code="INTERNAL")
-            result: RestoreResult = restore(entry.handle, entry.spec)
+            result = _restore_component(restore, entry)
         except BaseException as exc:
             with self._lock:
                 # the backend rolled back: the host copy is still the truth
                 entry.state = HOST_CACHED
-                entry.error = entry.flight_error = f"restore: {type(exc).__name__}: {exc}"[:2000]
+                entry.error = entry.flight_error = (
+                    f"restore: {type(exc).__name__}: {exc}"[:2000]
+                )
                 entry.done.set()
             raise
         with self._lock:
@@ -346,7 +367,12 @@ class ComponentRegistry:
         with self._lock:
             entry = self._entries.get(component_key)
             if entry is None or entry.state == ABSENT:
-                return {"component_key": component_key, "state": ABSENT, "released_bytes": 0, "note": "not resident"}
+                return {
+                    "component_key": component_key,
+                    "state": ABSENT,
+                    "released_bytes": 0,
+                    "note": "not resident",
+                }
             if entry.state == HOST_CACHED:
                 return {
                     "component_key": component_key,
@@ -362,15 +388,15 @@ class ComponentRegistry:
                 )
             if entry.state == FAILED:
                 raise ShimError(
-                    "COMPONENT_FAILED", f"{component_key} 處於 failed，只能 evict", error_code="STATE_CONFLICT"
+                    "COMPONENT_FAILED",
+                    f"{component_key} 處於 failed，只能 evict",
+                    error_code="STATE_CONFLICT",
                 )
             self._set_state(entry, EVICTING)
             handle, spec = entry.handle, entry.spec
         offload = getattr(self._backend, "offload", None)
         try:
-            if not callable(offload):
-                raise HostMemoryInsufficient("OFFLOAD_NOT_SUPPORTED", "component backend 沒有 host offload")
-            result: OffloadResult = offload(handle, spec)
+            result = _offload_component(offload, handle, spec)
         except HostMemoryInsufficient:
             with self._lock:
                 self._set_state(entry, RESIDENT_IDLE)
@@ -384,7 +410,11 @@ class ComponentRegistry:
             entry.allocated_bytes = 0
             entry.host_bytes = int(result.host_bytes)
             entry.pinned_bytes = int(result.pinned_bytes)
-            entry.last_transfer = {"kind": "offload", "seconds": round(float(result.seconds), 6), **result.details}
+            entry.last_transfer = {
+                "kind": "offload",
+                "seconds": round(float(result.seconds), 6),
+                **result.details,
+            }
             self._set_state(entry, HOST_CACHED)
         return {
             "component_key": component_key,
@@ -457,6 +487,7 @@ class ComponentRegistry:
         }
 
     def get(self, component_key: str) -> ComponentLease | None:
+        """Look up the component registered under the supplied key."""
         with self._lock:
             entry = self._entries.get(component_key)
             return None if entry is None else self._lease(entry)
@@ -477,6 +508,7 @@ class ComponentRegistry:
             }
 
     def snapshot(self) -> list[dict[str, Any]]:
+        """Snapshot the current component residency state."""
         with self._lock:
             return [
                 {
@@ -530,15 +562,21 @@ class ComponentRegistry:
                 if "idle_unload_seconds" in e.residency:
                     doc["idle_unload_seconds"] = e.residency["idle_unload_seconds"]
                 doc["last_used_at"] = (
-                    None if e.last_used_wall is None else to_rfc3339(datetime.fromtimestamp(e.last_used_wall, UTC))
+                    None
+                    if e.last_used_wall is None
+                    else to_rfc3339(datetime.fromtimestamp(e.last_used_wall, UTC))
                 )
                 if e.state not in (RESIDENT_IDLE, IN_USE, HOST_CACHED):
                     continue
                 held = _held_host_bytes(footprint, e)
                 if e.state == HOST_CACHED:
                     # never None here: the report counts a host entry by these bytes
-                    host_bytes, pinned_bytes = held if held is not None else (e.host_bytes, e.pinned_bytes)
-                    host.append({**doc, "host_bytes": host_bytes, "pinned_bytes": pinned_bytes})
+                    host_bytes, pinned_bytes = (
+                        held if held is not None else (e.host_bytes, e.pinned_bytes)
+                    )
+                    host.append(
+                        {**doc, "host_bytes": host_bytes, "pinned_bytes": pinned_bytes}
+                    )
                 else:
                     device.append(
                         {
@@ -551,6 +589,7 @@ class ComponentRegistry:
         return device, host
 
     def keys(self) -> list[str]:
+        """Return the keys of registered components."""
         with self._lock:
             return sorted(self._entries)
 
@@ -597,9 +636,9 @@ class ComponentRegistry:
                     entry.state = RESIDENT_IDLE
                 if entry.state == LOADING:
                     continue
-            try:
+            with RuntimeObservation() as eviction:
                 reports.append(self.evict(key))
-            except Exception as exc:  # report, keep going
+            if (exc := eviction.error) is not None:
                 reports.append({"component_key": key, "error": str(exc)[:500]})
         return reports
 
@@ -621,3 +660,58 @@ __all__ = [
     "UnloadResult",
     "component_key_for",
 ]
+
+
+def _acquire_entry(
+    self: ComponentRegistry,
+    key: Any,
+    spec: ComponentLoadSpec,
+    residency: Mapping[str, Any] | None,
+) -> Any:
+    entry = self._entries.get(key)
+    if entry is None:
+        entry = _Entry(key=key, spec=spec)
+        self._entries[key] = entry
+    if residency is not None:
+        entry.residency = dict(residency)
+    return entry
+
+
+def _await_load(
+    waiter: Any, timeout_s: float | None, key: Any, self: ComponentRegistry, entry: Any
+) -> None:
+    if waiter is None:
+        raise RuntimeError("waiter is unavailable in this stage")
+    if not waiter.wait(timeout_s):
+        raise ShimError(
+            "COMPONENT_LOAD_TIMEOUT",
+            f"等待 {key} 載入逾時",
+            error_code="WORKER_UNAVAILABLE",
+        )
+    with self._lock:
+        if entry.flight_error is not None or entry.state == FAILED:
+            raise ShimError(
+                "COMPONENT_LOAD_FAILED",
+                f"{key} 載入失敗：{entry.flight_error or entry.error}",
+                error_code="MODEL_ERROR",
+            )
+
+
+def _restore_component(restore: Any, entry: _Entry) -> RestoreResult:
+    if not callable(restore):
+        raise ShimError(
+            "RESTORE_NOT_SUPPORTED",
+            "component backend 沒有 restore",
+            error_code="INTERNAL",
+        )
+    result: RestoreResult = restore(entry.handle, entry.spec)
+    return result
+
+
+def _offload_component(offload: Any, handle: Any, spec: Any) -> OffloadResult:
+    if not callable(offload):
+        raise HostMemoryInsufficient(
+            "OFFLOAD_NOT_SUPPORTED", "component backend 沒有 host offload"
+        )
+    result: OffloadResult = offload(handle, spec)
+    return result

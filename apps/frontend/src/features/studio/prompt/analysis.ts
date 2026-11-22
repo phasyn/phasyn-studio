@@ -19,7 +19,13 @@ function span(start: number, end: number): string {
 export function analyzePrompt(
   doc: PromptDocument,
   text: string,
-  options: { references: readonly StudioReference[]; usedAliases: readonly string[]; durationSeconds?: number | null },
+  options: {
+    references: readonly StudioReference[];
+    usedAliases: readonly string[];
+    durationSeconds?: number | null;
+    /** The route is driven by the shot's references (表演影片, 音訊驅動): they are used without an @ name. */
+    drivenByReferences?: boolean;
+  },
 ): PromptNote[] {
   const notes: PromptNote[] = [];
   const duration = options.durationSeconds ?? null;
@@ -72,7 +78,7 @@ export function analyzePrompt(
   if (options.references.length > 0) {
     const used = new Set(options.usedAliases);
     for (const ref of options.references) {
-      if (!used.has(ref.alias)) notes.push({ tone: "info", text: t("@{alias} 沒有在 prompt 中使用（仍會送給 H3）", { alias: ref.alias }) });
+      if (options.drivenByReferences !== true && !used.has(ref.alias)) notes.push({ tone: "info", text: t("@{alias} 沒有在 prompt 中使用（仍會送給 H3）", { alias: ref.alias }) });
     }
     const count = (kind: StudioReference["kind"]) => options.references.filter((ref) => ref.kind === kind).length;
     // 聲音標籤的上限包含可能有原聲的參考影片

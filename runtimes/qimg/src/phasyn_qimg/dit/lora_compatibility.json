@@ -1,0 +1,31 @@
+{
+  "lora_compatibility": {
+    "version": 1,
+    "revision": "qwen-image-2.1-adapter-variants-v1",
+    "adapters": {
+      "layout": "list",
+      "path": [
+        "provider_options",
+        "adapters"
+      ],
+      "key": [
+        "name"
+      ],
+      "allow_absent": true
+    },
+    "unlisted": "allow",
+    "requires": [
+      {
+        "scope": "load",
+        "path": [
+          "provider_options",
+          "variant"
+        ],
+        "allow": [
+          "bf16"
+        ]
+      }
+    ],
+    "rules": []
+  }
+}

@@ -26,7 +26,7 @@ export function useRenderBlock(shot: StudioShot): RenderBlock {
   const lanes = useProjectLanes(project.project_id);
   if (!shot.prompt.trim()) return { problem: t("先在「Prompt」分頁輸入 prompt"), preflight: null };
   if (shotStatus(shot, project) === "rendering") return { problem: t("這個鏡頭正在渲染"), preflight: null };
-  if (runBlockedReason) return { problem: runBlockedReason, preflight: null };
+  if (runBlockedReason != null && runBlockedReason !== "") return { problem: runBlockedReason, preflight: null };
   const route = laneRouteFor(engine.routes, lanes, shot);
   return { problem: null, preflight: engineBlock(engineUnavailable(engine)) ?? renderProblem(project, { ...shot, route }, { routes: engine.routes, catalog, plugins }) };
 }
@@ -35,4 +35,17 @@ export function useRenderBlock(shot: StudioShot): RenderBlock {
 export function renderDisabledReason(block: RenderBlock, busy: "render" | "export" | null | undefined): string | null {
   const busyReason = busy === "export" ? t("正在送出匯出請求") : busy === "render" ? t("正在送出渲染請求") : null;
   return block.problem ?? block.preflight?.text ?? (busy === "render" ? null : busyReason);
+}
+
+export type ShortcutRender = { action: "render" } | { action: "wait" } | { action: "explain"; reason: string };
+
+/**
+ * What Ctrl+Enter in the properties panel does: render the shot; nothing while a render request is being sent (the
+ * button shows it pending); or, when the shot cannot render, say why (the 「渲染鏡頭」 button's reason) instead of
+ * silently doing nothing.
+ */
+export function shortcutRender(block: RenderBlock, busy: "render" | "export" | null | undefined): ShortcutRender {
+  if (busy === "render") return { action: "wait" };
+  const reason = renderDisabledReason(block, busy);
+  return reason === null ? { action: "render" } : { action: "explain", reason };
 }

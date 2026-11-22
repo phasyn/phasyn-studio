@@ -1,5 +1,9 @@
 import { QueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/api/http";
+import { qk } from "@/api/keys";
+import { setRunNamer } from "@/lib/errors";
+import { isRecord } from "@/lib/json";
+import { runDisplayName, type NamedRun } from "@/lib/runName";
 
 /**
  * The app's QueryClient.
@@ -14,7 +18,7 @@ import { ApiError } from "@/api/http";
  * 4xx are not retried. Writes (mutations) are never resent.
  */
 export function createQueryClient(): QueryClient {
-  return new QueryClient({
+  const client = new QueryClient({
     defaultOptions: {
       queries: {
         networkMode: "always",
@@ -28,4 +32,26 @@ export function createQueryClient(): QueryClient {
       mutations: { networkMode: "always", retry: false },
     },
   });
+  // Failure texts name a run by what the app already read about it (its own query or a run list), never by its id
+  setRunNamer((runId) => {
+    const own = client.getQueryData(qk.run(runId));
+    if (isNamedRun(own)) return runDisplayName(own);
+    for (const [, data] of client.getQueriesData({ queryKey: qk.runs() })) {
+      const pages = isRecord(data) && Array.isArray(data["pages"]) ? data["pages"] : [];
+      for (const page of pages) {
+        const items: unknown = isRecord(page) ? page["items"] : null;
+        if (!Array.isArray(items)) continue;
+        const found: unknown = items.find((item) => isRecord(item) && item["run_id"] === runId);
+        if (isNamedRun(found)) return runDisplayName(found);
+      }
+    }
+    return null;
+  });
+  return client;
+}
+
+function isNamedRun(value: unknown): value is NamedRun {
+  if (!isRecord(value) || typeof value["run_id"] !== "string" || !isRecord(value["request"])) return false;
+  const pipeline = value["request"]["pipeline"];
+  return isRecord(pipeline) && typeof pipeline["label"] === "string";
 }

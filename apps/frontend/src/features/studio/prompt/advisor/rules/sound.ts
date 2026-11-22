@@ -93,7 +93,7 @@ function soundRules(ctx: RuleContext): Finding[] {
     }
   }
 
-  const inSound = scan.dialogues.filter((dialogue) => [soundscape, music].some((section) => section && dialogue.start >= section.bodyStart && dialogue.start < section.end));
+  const inSound = scan.dialogues.filter((dialogue) => [soundscape, music].some((section) => Boolean(section && dialogue.start >= section.bodyStart && dialogue.start < section.end)));
   const firstInSound = inSound[0];
   if (firstInSound) {
     out.push(

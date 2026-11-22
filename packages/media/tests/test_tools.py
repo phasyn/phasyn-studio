@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 import pytest
+
 from phasyn_media.errors import MediaError
 from phasyn_media.tools import (
     BoundedTail,
@@ -35,7 +36,9 @@ def test_timeout_kills_the_whole_process_group(tmp_path: Path) -> None:
         run_tool(_python(code), timeout=3.0, what="sleeper")
     assert err.value.code == "MEDIA_TOOL_FAILED"
     # The child is gone now, so waiting cannot help: a missing marker means the host was too slow to start it.
-    assert marker.exists(), "the child was killed before it started its grandchild; the timeout was too short here"
+    assert marker.exists(), (
+        "the child was killed before it started its grandchild; the timeout was too short here"
+    )
     grandchild = int(marker.read_text())
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
@@ -50,9 +53,14 @@ def test_timeout_kills_the_whole_process_group(tmp_path: Path) -> None:
 
 def test_pure_helpers() -> None:
     assert input_url("/srv/in.mp4") == "file:/srv/in.mp4"
-    assert redact("open /srv/a/in.mp4 failed", {"/srv/a/in.mp4": "<input>"}) == "open <input> failed"
+    assert (
+        redact("open /srv/a/in.mp4 failed", {"/srv/a/in.mp4": "<input>"})
+        == "open <input> failed"
+    )
     stderr = "frame=1\n[h264 @ 0x55d] Driver does not support the required nvenc API version\nConversion failed!\n"
-    assert summarize_stderr(stderr).startswith("Driver does not support the required nvenc API version")
+    assert summarize_stderr(stderr).startswith(
+        "Driver does not support the required nvenc API version"
+    )
     listing = " V....D libx264  libx264 H.264 (codec h264)\n A....D aac  AAC (Advanced Audio Coding)\n"
     encoders = parse_encoders("Encoders:\n ------\n" + listing)
     assert (encoders["libx264"].codec, encoders["aac"].media) == ("h264", "audio")

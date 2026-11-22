@@ -43,10 +43,35 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import asdict, dataclass, replace
 from typing import Any
 
-from .encode import CODECS, CPU_ENCODERS, NVENC_ENCODERS, PIXEL_FORMATS, encoder_args, video_filter
+from .encode import (
+    CODECS,
+    CPU_ENCODERS,
+    NVENC_ENCODERS,
+    PIXEL_FORMATS,
+    encoder_args,
+    video_filter,
+)
 from .errors import MediaError
 from .mux import AUDIO_CODECS, CONTAINERS, MP4_PCM_MESSAGE, mp4_pcm_conflict
-from .tools import encoder_pixel_formats, find_ffmpeg, list_encoders, run_tool, summarize_stderr, tool_env
+from .tools import (
+    EncoderInfo,
+    encoder_pixel_formats,
+    find_ffmpeg,
+    list_encoders,
+    run_tool,
+    summarize_stderr,
+    tool_env,
+)
+
+
+_SM_VERSION_PARTS = 2
+_SM_VERSION_BASE = 10
+_SM_H264_MIN = 50
+_SM_HEVC_MIN = 52
+_SM_HEVC_10BIT_MIN = 60
+_SM_ADA = 89
+_SM_BLACKWELL_MIN = 120
+
 
 CPU = "cpu_ffmpeg"
 NVENC = "nvenc"
@@ -65,6 +90,8 @@ _PROBE_FRAMES = 3
 
 @dataclass(frozen=True)
 class EncoderCapability:
+    """An identified encoder and its availability on the current machine."""
+
     codec: str
     provider: str
     encoder_name: str
@@ -80,10 +107,12 @@ class EncoderCapability:
 
     @property
     def capability_id(self) -> str:
+        """Return the stable identifier for this encoder capability."""
         base = f"media.encode.{self.codec}.{self.provider}"
         return f"{base}.{self.device_uuid}"[:128] if self.device_uuid else base
 
     def as_dict(self) -> dict[str, Any]:
+        """Return the serializable field values."""
         doc = asdict(self)
         doc["pixel_formats"] = list(self.pixel_formats)
         doc["capability_id"] = self.capability_id
@@ -92,6 +121,8 @@ class EncoderCapability:
 
 @dataclass(frozen=True)
 class RouteDecision:
+    """The selected codec route and its selection evidence."""
+
     allowed: bool
     provider: str | None
     encoder_name: str | None
@@ -103,6 +134,7 @@ class RouteDecision:
     device_index: int | None = None
 
     def as_dict(self) -> dict[str, Any]:
+        """Return the serializable field values."""
         doc = asdict(self)
         doc["field_paths"] = list(self.field_paths)
         return doc
@@ -115,10 +147,14 @@ def parse_sm(value: Any) -> int | None:
     """Compute capability as an integer: ``"8.6"``/``"86"``/``86``/``(8, 6)`` -> 86, ``"12.0"`` -> 120."""
     if value is None or isinstance(value, bool):
         return None
-    if isinstance(value, (tuple, list)) and len(value) == 2 and all(isinstance(v, int) for v in value):
+    if (
+        isinstance(value, (tuple, list))
+        and len(value) == _SM_VERSION_PARTS
+        and all(isinstance(v, int) for v in value)
+    ):
         return int(value[0]) * 10 + int(value[1])
     if isinstance(value, int):
-        return value if value >= 10 else None
+        return value if value >= _SM_VERSION_BASE else None
     text = str(value).strip().lower().removeprefix("sm_").removeprefix("sm")
     match = re.fullmatch(r"(\d{1,2})\.(\d)", text)
     if match:
@@ -128,7 +164,9 @@ def parse_sm(value: Any) -> int | None:
     return None
 
 
-def _device_facts(device: Mapping[str, Any]) -> tuple[int | None, str | None, str | None, int | None, str]:
+def _device_facts(
+    device: Mapping[str, Any],
+) -> tuple[int | None, str | None, str | None, int | None, str]:
     index = device.get("index", device.get("device_index"))
     index = index if isinstance(index, int) and not isinstance(index, bool) else None
     uuid = device.get("uuid") or device.get("device_uuid")
@@ -146,21 +184,9 @@ def nvenc_rule(codec: str, sm: int | None) -> tuple[tuple[str, ...], str, str]:
         return (), "NVENC_ABSENT", f"sm{sm} 為資料中心 GPU，沒有 NVENC 編碼引擎"
     if sm in NO_DESKTOP_NVENC_SM:
         return (), "NVENC_ABSENT", f"sm{sm}（Tegra/Jetson）不提供桌面 NVENC API"
-    if sm < 50:
+    if sm < _SM_H264_MIN:
         return (), "NVENC_GENERATION_TOO_OLD", f"sm{sm} 世代過舊，不登記 NVENC"
-    if codec == "h264":
-        return ("yuv420p",), "DOCUMENTED", "支援矩陣：H.264 NVENC（8-bit 4:2:0）"
-    if codec == "hevc":
-        if sm < 52:
-            return (), "NVENC_HEVC_UNSUPPORTED", f"sm{sm} 的 NVENC 不支援 HEVC 編碼"
-        if sm < 60:
-            return ("yuv420p",), "DOCUMENTED", "支援矩陣：HEVC NVENC 僅 8-bit"
-        return ("yuv420p", "yuv420p10le"), "DOCUMENTED", "支援矩陣：HEVC NVENC 8/10-bit"
-    if codec == "av1":
-        if sm == 89 or sm >= 120:
-            return ("yuv420p", "yuv420p10le"), "DOCUMENTED", "支援矩陣：AV1 NVENC 8/10-bit"
-        return (), "NVENC_AV1_UNSUPPORTED", f"sm{sm} 的 NVENC 不支援 AV1 編碼"
-    return (), "INVALID_ARGUMENT", f"未知 codec {codec}"
+    return _codec_rule(codec, sm)
 
 
 # --------------------------------------------------------------------------- detection
@@ -193,7 +219,12 @@ def classify_probe_failure(text: str) -> tuple[str, bool]:
 
 
 def _probe_encode(
-    ffmpeg: str, encoder_name: str, pixel_format: str, *, env_extra: Mapping[str, str], timeout: float
+    ffmpeg: str,
+    encoder_name: str,
+    pixel_format: str,
+    *,
+    env_extra: Mapping[str, str],
+    timeout: float,
 ) -> tuple[bool, str]:
     """Encode a few tiny frames to the null muxer; returns (passed, root-cause reason)."""
     width, height = _PROBE_SIZE
@@ -243,53 +274,28 @@ def detect_encoder_capabilities(
     for codec in wanted:
         if codec not in CODECS:
             raise MediaError("INVALID_ARGUMENT", f"未知 codec：{codec}")
-    out: list[EncoderCapability] = []
 
-    for codec in wanted:
-        name = next((n for n in CPU_ENCODERS[codec] if n in built), None)
-        if name is None:
-            out.append(
-                EncoderCapability(
-                    codec=codec,
-                    provider=CPU,
-                    encoder_name=CPU_ENCODERS[codec][0],
-                    device_uuid=None,
-                    pixel_formats=(),
-                    available=False,
-                    reason=f"此 FFmpeg 建置沒有 {' / '.join(CPU_ENCODERS[codec])}",
-                    status=STATUS_UNSUPPORTED,
-                    reason_code="ENCODER_NOT_BUILT",
-                )
-            )
-            continue
-        supported = set(encoder_pixel_formats(name, exe))
-        formats = tuple(f for f in PIXEL_FORMATS if f in supported)
-        cap = EncoderCapability(
-            codec=codec,
-            provider=CPU,
-            encoder_name=name,
-            device_uuid=None,
-            pixel_formats=formats,
-            available=bool(formats),
-            reason=f"FFmpeg 建置包含 {name}" if formats else f"{name} 不支援 yuv420p/yuv420p10le",
-            status=STATUS_DOCUMENTED if formats else STATUS_UNSUPPORTED,
-            reason_code="DOCUMENTED" if formats else "PIXEL_FORMAT_UNSUPPORTED",
-        )
-        if probe and formats:
-            cap = _apply_probe(cap, exe, {}, probe_timeout_seconds)
-        out.append(cap)
+    out = _cpu_capabilities(
+        wanted, built, exe, probe=probe, probe_timeout_seconds=probe_timeout_seconds
+    )
 
     facts = sorted(
         (_device_facts(g) for g in gpus if str(g.get("kind") or "cuda") == "cuda"),
         key=lambda f: (f[0] if f[0] is not None else 1 << 30, str(f[1])),
     )
     for index, uuid, name, sm, _kind in facts:
-        fatal: EncoderCapability | None = None  # e.g. driver too old: same verdict for every codec
+        fatal: EncoderCapability | None = (
+            None  # e.g. driver too old: same verdict for every codec
+        )
         for codec in wanted:
             encoder = NVENC_ENCODERS[codec]
             formats, code, reason = nvenc_rule(codec, sm)
             if encoder not in built:
-                formats, code, reason = (), "ENCODER_NOT_BUILT", f"此 FFmpeg 建置沒有 {encoder}"
+                formats, code, reason = (
+                    (),
+                    "ENCODER_NOT_BUILT",
+                    f"此 FFmpeg 建置沒有 {encoder}",
+                )
             base = EncoderCapability(
                 codec=codec,
                 provider=NVENC,
@@ -306,17 +312,26 @@ def detect_encoder_capabilities(
             )
             if probe and formats:
                 if uuid is None and index is None:
-                    base = replace(base, reason="缺少 GPU uuid/index，無法 probe", reason_code="DEVICE_UNKNOWN")
+                    base = replace(
+                        base,
+                        reason="缺少 GPU uuid/index，無法 probe",
+                        reason_code="DEVICE_UNKNOWN",
+                    )
                 elif fatal is not None:
                     base = replace(
                         base,
                         pixel_formats=(),
                         status=STATUS_UNSUPPORTED,
                         reason_code=fatal.reason_code,
-                        reason=f"同一 GPU 先前 probe 已失敗（{fatal.encoder_name}）：{fatal.reason}"[:2000],
+                        reason=f"同一 GPU 先前 probe 已失敗（{fatal.encoder_name}）：{fatal.reason}"[
+                            :2000
+                        ],
                     )
                 else:
-                    env = {"CUDA_DEVICE_ORDER": "PCI_BUS_ID", "CUDA_VISIBLE_DEVICES": uuid or str(index)}
+                    env = {
+                        "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
+                        "CUDA_VISIBLE_DEVICES": uuid or str(index),
+                    }
                     base = _apply_probe(base, exe, env, probe_timeout_seconds)
                     if base.reason_code in FATAL_PROBE_CODES:
                         fatal = base
@@ -324,12 +339,16 @@ def detect_encoder_capabilities(
     return out
 
 
-def _apply_probe(cap: EncoderCapability, ffmpeg: str, env: Mapping[str, str], timeout: float) -> EncoderCapability:
+def _apply_probe(
+    cap: EncoderCapability, ffmpeg: str, env: Mapping[str, str], timeout: float
+) -> EncoderCapability:
     passed: list[str] = []
     failures: list[str] = []
     failure_code = "PROBE_FAILED"
     for pixel_format in cap.pixel_formats:
-        ok, why = _probe_encode(ffmpeg, cap.encoder_name, pixel_format, env_extra=env, timeout=timeout)
+        ok, why = _probe_encode(
+            ffmpeg, cap.encoder_name, pixel_format, env_extra=env, timeout=timeout
+        )
         if ok:
             passed.append(pixel_format)
             continue
@@ -362,21 +381,34 @@ def _apply_probe(cap: EncoderCapability, ffmpeg: str, env: Mapping[str, str], ti
 # --------------------------------------------------------------------------- routing
 
 
-def _refuse(code: str, reason: str, fields: Sequence[str], requested: str | None) -> RouteDecision:
-    return RouteDecision(False, None, None, None, code, reason, tuple(fields), requested)
-
-
-def _allow(cap: EncoderCapability, code: str, reason: str, requested: str) -> RouteDecision:
+def _refuse(
+    code: str, reason: str, fields: Sequence[str], requested: str | None
+) -> RouteDecision:
     return RouteDecision(
-        True,
-        cap.provider,
-        cap.encoder_name,
-        cap.device_uuid,
-        code,
-        reason,
-        ("output.encode_provider",),
-        requested,
-        cap.device_index,
+        allowed=False,
+        provider=None,
+        encoder_name=None,
+        device_uuid=None,
+        reason_code=code,
+        reason=reason,
+        field_paths=tuple(fields),
+        requested_provider=requested,
+    )
+
+
+def _allow(
+    cap: EncoderCapability, code: str, reason: str, requested: str
+) -> RouteDecision:
+    return RouteDecision(
+        allowed=True,
+        provider=cap.provider,
+        encoder_name=cap.encoder_name,
+        device_uuid=cap.device_uuid,
+        reason_code=code,
+        reason=reason,
+        field_paths=("output.encode_provider",),
+        requested_provider=requested,
+        device_index=cap.device_index,
     )
 
 
@@ -387,7 +419,7 @@ def _label(cap: EncoderCapability) -> str:
     return f"{who} {cap.encoder_name}"
 
 
-def route_codec(
+def route_codec(  # noqa: PLR0913 - Preserve the public keyword signature.
     *,
     codec: str,
     pixel_format: str,
@@ -398,13 +430,7 @@ def route_codec(
     capabilities: Iterable[EncoderCapability],
 ) -> RouteDecision:
     """Decide the concrete encoder for an output request (frozen into the plan)."""
-    fields = {
-        "codec": "output.video_codec",
-        "pixel_format": "output.pixel_format",
-        "container": "output.container",
-        "audio_codec": "output.audio_codec",
-        "provider": "output.encode_provider",
-    }
+    fields = _ROUTE_FIELDS
     for key, value, allowed in (
         ("codec", codec, CODECS),
         ("pixel_format", pixel_format, PIXEL_FORMATS),
@@ -414,10 +440,18 @@ def route_codec(
     ):
         if value not in allowed:
             return _refuse(
-                "INVALID_ARGUMENT", f"{fields[key]} 不在允許清單：{', '.join(allowed)}", [fields[key]], provider
+                "INVALID_ARGUMENT",
+                f"{fields[key]} 不在允許清單：{', '.join(allowed)}",
+                [fields[key]],
+                provider,
             )
     if mp4_pcm_conflict(container, audio_codec):
-        return _refuse("MP4_PCM_UNSUPPORTED", MP4_PCM_MESSAGE, [fields["container"], fields["audio_codec"]], provider)
+        return _refuse(
+            "MP4_PCM_UNSUPPORTED",
+            MP4_PCM_MESSAGE,
+            [fields["container"], fields["audio_codec"]],
+            provider,
+        )
     caps = list(capabilities)
     device_uuid = None
     if device is not None:
@@ -425,81 +459,266 @@ def route_codec(
         if kind != "cuda":
             device_uuid = None
 
-    def usable(cap: EncoderCapability) -> bool:
-        return cap.codec == codec and cap.available and pixel_format in cap.pixel_formats
-
-    def find(prov: str, uuid: str | None) -> EncoderCapability | None:
-        return next((c for c in caps if c.codec == codec and c.provider == prov and c.device_uuid == uuid), None)
-
-    def nvenc_order(cap: EncoderCapability) -> tuple[int, str]:
-        return (cap.device_index if cap.device_index is not None else 1 << 30, cap.device_uuid or "")
-
-    codec_fields = [fields["codec"], fields["provider"]]
+    selection = _Route(codec, pixel_format, caps, provider, device_uuid)
     if provider == CPU:
-        cap = find(CPU, None)
+        return selection.cpu()
+    if provider == NVENC:
+        return (
+            selection.selected_nvenc() if device is not None else selection.any_nvenc()
+        )
+    return selection.automatic()
+
+
+def _codec_rule(codec: str, sm: int) -> tuple[tuple[str, ...], str, str]:
+    if codec == "h264":
+        return ("yuv420p",), "DOCUMENTED", "支援矩陣：H.264 NVENC（8-bit 4:2:0）"
+    if codec == "hevc":
+        return _hevc_rule(sm)
+    if codec == "av1":
+        if sm == _SM_ADA or sm >= _SM_BLACKWELL_MIN:
+            return (
+                ("yuv420p", "yuv420p10le"),
+                "DOCUMENTED",
+                "支援矩陣：AV1 NVENC 8/10-bit",
+            )
+        return (), "NVENC_AV1_UNSUPPORTED", f"sm{sm} 的 NVENC 不支援 AV1 編碼"
+    return (), "INVALID_ARGUMENT", f"未知 codec {codec}"
+
+
+def _hevc_rule(sm: int) -> tuple[tuple[str, ...], str, str]:
+    if sm < _SM_HEVC_MIN:
+        return (), "NVENC_HEVC_UNSUPPORTED", f"sm{sm} 的 NVENC 不支援 HEVC 編碼"
+    if sm < _SM_HEVC_10BIT_MIN:
+        return ("yuv420p",), "DOCUMENTED", "支援矩陣：HEVC NVENC 僅 8-bit"
+    return ("yuv420p", "yuv420p10le"), "DOCUMENTED", "支援矩陣：HEVC NVENC 8/10-bit"
+
+
+def _cpu_capabilities(
+    wanted: Sequence[str],
+    built: Mapping[str, EncoderInfo],
+    exe: str,
+    *,
+    probe: bool,
+    probe_timeout_seconds: float,
+) -> list[EncoderCapability]:
+    out: list[EncoderCapability] = []
+    for codec in wanted:
+        name = next((n for n in CPU_ENCODERS[codec] if n in built), None)
+        if name is None:
+            out.append(
+                EncoderCapability(
+                    codec=codec,
+                    provider=CPU,
+                    encoder_name=CPU_ENCODERS[codec][0],
+                    device_uuid=None,
+                    pixel_formats=(),
+                    available=False,
+                    reason=f"此 FFmpeg 建置沒有 {' / '.join(CPU_ENCODERS[codec])}",
+                    status=STATUS_UNSUPPORTED,
+                    reason_code="ENCODER_NOT_BUILT",
+                )
+            )
+            continue
+        supported = set(encoder_pixel_formats(name, exe))
+        formats = tuple(f for f in PIXEL_FORMATS if f in supported)
+        cap = EncoderCapability(
+            codec=codec,
+            provider=CPU,
+            encoder_name=name,
+            device_uuid=None,
+            pixel_formats=formats,
+            available=bool(formats),
+            reason=f"FFmpeg 建置包含 {name}"
+            if formats
+            else f"{name} 不支援 yuv420p/yuv420p10le",
+            status=STATUS_DOCUMENTED if formats else STATUS_UNSUPPORTED,
+            reason_code="DOCUMENTED" if formats else "PIXEL_FORMAT_UNSUPPORTED",
+        )
+        if probe and formats:
+            cap = _apply_probe(cap, exe, {}, probe_timeout_seconds)
+        out.append(cap)
+    return out
+
+
+_ROUTE_FIELDS = {
+    "codec": "output.video_codec",
+    "pixel_format": "output.pixel_format",
+    "container": "output.container",
+    "audio_codec": "output.audio_codec",
+    "provider": "output.encode_provider",
+}
+
+
+def _nvenc_order(cap: EncoderCapability) -> tuple[int, str]:
+    return (
+        cap.device_index if cap.device_index is not None else 1 << 30,
+        cap.device_uuid or "",
+    )
+
+
+@dataclass
+class _Route:
+    codec: str
+    pixel_format: str
+    caps: list[EncoderCapability]
+    provider: str
+    device_uuid: str | None
+
+    def usable(self, cap: EncoderCapability) -> bool:
+        codec, pixel_format = self.codec, self.pixel_format
+        return (
+            cap.codec == codec and cap.available and pixel_format in cap.pixel_formats
+        )
+
+    def find(self, prov: str, uuid: str | None) -> EncoderCapability | None:
+        caps, codec = self.caps, self.codec
+        return next(
+            (
+                c
+                for c in caps
+                if c.codec == codec and c.provider == prov and c.device_uuid == uuid
+            ),
+            None,
+        )
+
+    def cpu(self) -> RouteDecision:
+        codec, pixel_format, provider = self.codec, self.pixel_format, self.provider
+        codec_fields = [_ROUTE_FIELDS["codec"], _ROUTE_FIELDS["provider"]]
+        cap = self.find(CPU, None)
         if cap is None or not cap.available:
-            reason = cap.reason if cap is not None else f"此節點沒有 {codec} 的 CPU 編碼器"
-            return _refuse(cap.reason_code if cap is not None else "ENCODER_NOT_BUILT", reason, codec_fields, provider)
+            reason = (
+                cap.reason if cap is not None else f"此節點沒有 {codec} 的 CPU 編碼器"
+            )
+            return _refuse(
+                cap.reason_code if cap is not None else "ENCODER_NOT_BUILT",
+                reason,
+                codec_fields,
+                provider,
+            )
         if pixel_format not in cap.pixel_formats:
             return _refuse(
                 "PIXEL_FORMAT_UNSUPPORTED",
                 f"{cap.encoder_name} 不支援 {pixel_format}",
-                [fields["pixel_format"], fields["provider"]],
+                [_ROUTE_FIELDS["pixel_format"], _ROUTE_FIELDS["provider"]],
                 provider,
             )
         return _allow(cap, "OK", f"使用 {_label(cap)}", provider)
 
-    if provider == NVENC:
-        if device is not None:
-            if device_uuid is None:
-                return _refuse("DEVICE_NOT_CUDA", "指定的裝置不是可用 NVENC 的 CUDA GPU", codec_fields, provider)
-            cap = find(NVENC, device_uuid)
-            if cap is None:
-                return _refuse("DEVICE_UNKNOWN", "此裝置沒有登記的 NVENC 能力", codec_fields, provider)
-            if cap.status == STATUS_UNSUPPORTED:
-                return _refuse(
-                    cap.reason_code,
-                    f"{cap.reason}；不會自動改派其他 provider，如需改派請選 auto_validated",
-                    codec_fields,
-                    provider,
-                )
-            if pixel_format not in cap.pixel_formats:
-                return _refuse(
-                    "PIXEL_FORMAT_UNSUPPORTED",
-                    f"{_label(cap)} 不支援 {pixel_format}",
-                    [fields["pixel_format"], fields["provider"]],
-                    provider,
-                )
-            if not cap.available:
-                return _refuse(
-                    "NVENC_NOT_PROBED", f"{_label(cap)} 尚未通過實測 probe，不能派工", codec_fields, provider
-                )
-            return _allow(cap, "OK", f"使用 {_label(cap)}", provider)
-        candidates = sorted((c for c in caps if c.provider == NVENC and usable(c)), key=nvenc_order)
-        if candidates:
-            return _allow(candidates[0], "OK", f"使用 {_label(candidates[0])}", provider)
-        return _refuse("NO_VALIDATED_PROVIDER", f"沒有已驗證的 {codec} NVENC（{pixel_format}）", codec_fields, provider)
-
-    # auto_validated
-    cpu = find(CPU, None)
-    if cpu is not None and usable(cpu):
-        return _allow(cpu, "ROUTED_CPU", f"auto_validated：{_label(cpu)}", provider)
-    same = find(NVENC, device_uuid) if device_uuid is not None else None
-    if same is not None and usable(same):
-        return _allow(same, "ROUTED_NVENC_SAME_DEVICE", f"auto_validated：{_label(same)}", provider)
-    others = sorted(
-        (c for c in caps if c.provider == NVENC and c.device_uuid != device_uuid and usable(c)), key=nvenc_order
-    )
-    if others:
-        why = f"（{same.reason}）" if same is not None and same.status == STATUS_UNSUPPORTED else ""
-        return _allow(
-            others[0], "ROUTED_NVENC_OTHER_DEVICE", f"auto_validated：改派 {_label(others[0])}{why}", provider
+    def selected_nvenc(self) -> RouteDecision:
+        provider, device_uuid, pixel_format = (
+            self.provider,
+            self.device_uuid,
+            self.pixel_format,
         )
-    reasons = [f"{_label(c)}：{c.reason}" for c in caps if c.codec == codec][:6]
-    return _refuse(
-        "NO_VALIDATED_PROVIDER",
-        f"沒有已驗證的 provider 可編碼 {codec}/{pixel_format}；plan 保持 blocked"
-        + (f"（{'；'.join(reasons)}）" if reasons else ""),
-        [*codec_fields, fields["pixel_format"]],
-        provider,
-    )
+        codec_fields = [_ROUTE_FIELDS["codec"], _ROUTE_FIELDS["provider"]]
+        if device_uuid is None:
+            return _refuse(
+                "DEVICE_NOT_CUDA",
+                "指定的裝置不是可用 NVENC 的 CUDA GPU",
+                codec_fields,
+                provider,
+            )
+        cap = self.find(NVENC, device_uuid)
+        if cap is None:
+            return _refuse(
+                "DEVICE_UNKNOWN",
+                "此裝置沒有登記的 NVENC 能力",
+                codec_fields,
+                provider,
+            )
+        if cap.status == STATUS_UNSUPPORTED:
+            return _refuse(
+                cap.reason_code,
+                f"{cap.reason}；不會自動改派其他 provider，如需改派請選 auto_validated",
+                codec_fields,
+                provider,
+            )
+        if pixel_format not in cap.pixel_formats:
+            return _refuse(
+                "PIXEL_FORMAT_UNSUPPORTED",
+                f"{_label(cap)} 不支援 {pixel_format}",
+                [_ROUTE_FIELDS["pixel_format"], _ROUTE_FIELDS["provider"]],
+                provider,
+            )
+        if not cap.available:
+            return _refuse(
+                "NVENC_NOT_PROBED",
+                f"{_label(cap)} 尚未通過實測 probe，不能派工",
+                codec_fields,
+                provider,
+            )
+        return _allow(cap, "OK", f"使用 {_label(cap)}", provider)
+
+    def any_nvenc(self) -> RouteDecision:
+        caps, provider, codec, pixel_format = (
+            self.caps,
+            self.provider,
+            self.codec,
+            self.pixel_format,
+        )
+        codec_fields = [_ROUTE_FIELDS["codec"], _ROUTE_FIELDS["provider"]]
+        candidates = sorted(
+            (c for c in caps if c.provider == NVENC and self.usable(c)),
+            key=_nvenc_order,
+        )
+        if candidates:
+            return _allow(
+                candidates[0], "OK", f"使用 {_label(candidates[0])}", provider
+            )
+        return _refuse(
+            "NO_VALIDATED_PROVIDER",
+            f"沒有已驗證的 {codec} NVENC（{pixel_format}）",
+            codec_fields,
+            provider,
+        )
+
+    def automatic(self) -> RouteDecision:
+        caps, provider, codec, pixel_format, device_uuid = (
+            self.caps,
+            self.provider,
+            self.codec,
+            self.pixel_format,
+            self.device_uuid,
+        )
+        codec_fields = [_ROUTE_FIELDS["codec"], _ROUTE_FIELDS["provider"]]
+        cpu = self.find(CPU, None)
+        if cpu is not None and self.usable(cpu):
+            return _allow(cpu, "ROUTED_CPU", f"auto_validated：{_label(cpu)}", provider)
+        same = self.find(NVENC, device_uuid) if device_uuid is not None else None
+        if same is not None and self.usable(same):
+            return _allow(
+                same,
+                "ROUTED_NVENC_SAME_DEVICE",
+                f"auto_validated：{_label(same)}",
+                provider,
+            )
+        others = sorted(
+            (
+                c
+                for c in caps
+                if c.provider == NVENC
+                and c.device_uuid != device_uuid
+                and self.usable(c)
+            ),
+            key=_nvenc_order,
+        )
+        if others:
+            why = (
+                f"（{same.reason}）"
+                if same is not None and same.status == STATUS_UNSUPPORTED
+                else ""
+            )
+            return _allow(
+                others[0],
+                "ROUTED_NVENC_OTHER_DEVICE",
+                f"auto_validated：改派 {_label(others[0])}{why}",
+                provider,
+            )
+        reasons = [f"{_label(c)}：{c.reason}" for c in caps if c.codec == codec][:6]
+        return _refuse(
+            "NO_VALIDATED_PROVIDER",
+            f"沒有已驗證的 provider 可編碼 {codec}/{pixel_format}；plan 保持 blocked"
+            + (f"（{'；'.join(reasons)}）" if reasons else ""),
+            [*codec_fields, _ROUTE_FIELDS["pixel_format"]],
+            provider,
+        )

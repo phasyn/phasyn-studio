@@ -1,7 +1,7 @@
 // Run 結果整理：收集輸出、同源判斷（latent_id／blob SHA／manifest SHA）、final latent 的 manifest 摘要。
 import type { Asset, FileRef, LatentRef, Rational } from "@/api/generated/contracts";
 import { asAsset, asTypedValueMap, isFileRef, runSteps, type RunStepView, type WireRun, type WireTypedValue } from "@/api/types";
-import { isRecord } from "@/lib/json";
+import { stringifyJson, isRecord } from "@/lib/json";
 import { t } from "@/i18n";
 import { formatList } from "@/i18n/format";
 
@@ -32,7 +32,7 @@ export function runValues(run: WireRun): RunValue[] {
   const identity = (value: WireTypedValue): string => {
     if ("file" in value) return `file:${value.file.node_id}/${value.file.file_id}`;
     const asset = value.type_id === "media.asset.v1" ? asAsset(value.value) : null;
-    return asset ? `asset:${asset.asset_id}` : `inline:${JSON.stringify(value.value) ?? ""}`;
+    return asset ? `asset:${asset.asset_id}` : `inline:${stringifyJson(value.value) ?? ""}`;
   };
   for (const [port, value] of Object.entries(asTypedValueMap(run.outputs))) {
     seen.add(identity(value));
@@ -71,7 +71,7 @@ export type RunOutputKind = "image" | "video" | "other";
 /** The file a run-level output carries: a file value, or an asset value with its file. */
 function outputFile(value: WireTypedValue): FileRef | null {
   if ("file" in value) return value.file;
-  return isRecord(value.value) && isFileRef(value.value.file) ? value.value.file : null;
+  return isRecord(value.value) && isFileRef(value.value["file"]) ? value.value["file"] : null;
 }
 
 /**
@@ -96,7 +96,7 @@ export function findAsset(run: WireRun, assetId: string): Asset | null {
 
 /** 同一 run 中以此 latent 為來源的草稿 asset（用於「從此來源正式解碼」帶入 preview_asset_id）。 */
 export function previewAssetForLatent(run: WireRun, latent: FileRef): Asset | null {
-  const latentId = typeof latent.metadata.latent_id === "string" ? latent.metadata.latent_id : null;
+  const latentId = typeof latent.metadata["latent_id"] === "string" ? latent.metadata["latent_id"] : null;
   return (
     runAssets(run).find(
       (asset) =>
@@ -119,16 +119,16 @@ export interface LatentFacts {
 /** video.final-latent.v1 FileRef 的 manifest 摘要（metadata：latent_id、latent_space_id、shape、dtype、links.blob）。 */
 export function latentFacts(file: FileRef): LatentFacts {
   const meta = isRecord(file.metadata) ? file.metadata : {};
-  const links = isRecord(meta.links) ? meta.links : {};
-  const rawShape: unknown = meta.shape;
+  const links = isRecord(meta["links"]) ? meta["links"] : {};
+  const rawShape: unknown = meta["shape"];
   const shape = Array.isArray(rawShape) && rawShape.every((item): item is number => typeof item === "number") ? rawShape : null;
   return {
-    latentId: typeof meta.latent_id === "string" ? meta.latent_id : null,
-    latentSpaceId: typeof meta.latent_space_id === "string" ? meta.latent_space_id : null,
+    latentId: typeof meta["latent_id"] === "string" ? meta["latent_id"] : null,
+    latentSpaceId: typeof meta["latent_space_id"] === "string" ? meta["latent_space_id"] : null,
     shape,
-    dtype: typeof meta.dtype === "string" ? meta.dtype : null,
-    layout: typeof meta.layout === "string" ? meta.layout : null,
-    blob: isFileRef(links.blob) ? links.blob : null,
+    dtype: typeof meta["dtype"] === "string" ? meta["dtype"] : null,
+    layout: typeof meta["layout"] === "string" ? meta["layout"] : null,
+    blob: isFileRef(links["blob"]) ? links["blob"] : null,
   };
 }
 
@@ -148,7 +148,7 @@ export function durationSeconds(frameCount: number, fps: Rational | null): numbe
  * read failed): then only steps without a recording_id count, so a pending or failed read never reports one missing.
  */
 export function stepsMissingRecording(steps: readonly RunStepView[], indexed: ReadonlySet<string> | null): RunStepView[] {
-  return steps.filter((step) => step.call_id && step.node_id && (!step.recording_id || (indexed !== null && !indexed.has(step.recording_id))));
+  return steps.filter((step) => step.call_id != null && step.call_id !== "" && step.node_id != null && step.node_id !== "" && (step.recording_id == null || step.recording_id === "" || (indexed !== null && !indexed.has(step.recording_id))));
 }
 
 /** States in which a step ended without succeeding, in the order they are listed after the done count. */
@@ -162,7 +162,7 @@ export interface StepProgress {
   /** succeeded／total; null without steps (no progress is drawn). */
   fraction: number | null;
   /** Steps that ended without succeeding, by state (only states that occur, in ENDED_STATES order); never counted as done. */
-  ended: ReadonlyArray<{ state: EndedStepState; count: number }>;
+  ended: readonly { state: EndedStepState; count: number }[];
 }
 
 /**

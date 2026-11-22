@@ -45,7 +45,7 @@ export function PromptAdvisorBadge({ text, mode = null, frames, references, libr
   const id = useId();
   const fit = useToolbarFit();
   const [anchor, setAnchor] = useState<HTMLButtonElement | null>(null);
-  const { findings } = useAdvisorFindings({ text, mode, frames, references, library, firstFrame });
+  const { findings } = useAdvisorFindings({ text, mode, frames, references, library, ...(firstFrame === undefined ? {} : { firstFrame }) });
   const empty = text.trim() === "";
   const issues = empty ? [] : findings.filter((item) => item.severity !== "info");
   const counts = countBySeverity(issues);
@@ -58,7 +58,7 @@ export function PromptAdvisorBadge({ text, mode = null, frames, references, libr
   const name = t("修正與建議：{value}", { value: empty ? t("prompt 是空的") : parts.length > 0 ? formatList(parts) : t("沒有發現問題") });
   const tone = counts.error > 0 ? CHIP_TONE.error : counts.warning > 0 ? CHIP_TONE.warning : CHIP_TONE.suggestion;
   const close = (restoreFocus: boolean) => {
-    if (restoreFocus && anchor?.isConnected) anchor.focus();
+    if (restoreFocus && (anchor?.isConnected === true)) anchor.focus();
     setAnchor(null);
   };
   return (
@@ -72,7 +72,7 @@ export function PromptAdvisorBadge({ text, mode = null, frames, references, libr
         aria-haspopup="dialog"
         aria-expanded={anchor !== null}
         aria-controls={anchor ? id : undefined}
-        onClick={(event) => setAnchor(anchor ? null : event.currentTarget)}
+        onClick={(event) => { setAnchor(anchor ? null : event.currentTarget); }}
         className={cn(TOOL, toolPadding(fit), className)}
       >
         {fit.advisorLabel ? <span aria-hidden>{t("建議", undefined, { context: "advisor-badge" })}</span> : null}

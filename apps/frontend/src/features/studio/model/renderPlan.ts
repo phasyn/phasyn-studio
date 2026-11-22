@@ -5,11 +5,13 @@
 //   （同一 run 內依序執行），否則把它使用中的 take 當 run 輸入；
 //   素材庫圖片：素材檔（media.image.v1）直接當元件組合的首幀輸入（沒有取影格步驟）。
 // 純函式：不送出、不重試、不改鏡頭設定；不能渲染時回傳繁中原因，由呼叫端顯示。seed -1 在這裡抽出實際值並回傳。
-import type { Catalog, Port, StudioProject, StudioShot, StudioTake, StudioTakeReference } from "@/api/generated/contracts";
+import type { Catalog, Port, StudioProject, StudioReference, StudioShot, StudioTake, StudioTakeReference } from "@/api/generated/contracts";
 import type { RunRequestBody, WireBinding, WireRun, WireStep, WireTypedValue } from "@/api/types";
 import { describeConflicts, samplingConflicts, stepsContractProblem } from "@/lib/ditSampling";
-import { cloneJson } from "@/lib/json";
+import { cloneJson, isRecord } from "@/lib/json";
 import { compilePrompt } from "../prompt";
+import { EMPTY_PROMPT_PROBLEM, H3_TAG_SOURCE, MENTION_SOURCE } from "../prompt/compile";
+import { attestsClock, bindingProblem, boundParameters, clockProblem, frameLimits, generationValues } from "./studioGenerationBinding";
 import { materialsFor, validateReferences } from "../references";
 import {
   continuityMode,
@@ -22,7 +24,8 @@ import {
   type FrameSelection,
   type TakeContinuity,
 } from "./continuity";
-import { H3_FPS } from "./frames";
+import { drivingReference } from "./drivingMedia";
+import { DRIVING_KIND, DRIVING_ROLES, h3Rules, type DrivingRole } from "./providerTraits";
 import { ditPlacement, rootsFirst } from "./lanes";
 import { localId, RANDOM_SEED, randomSeed } from "./project";
 import { ASSET_TYPE, ditDefaults, findRoute, IMAGE_TYPE, MATERIALS_TYPE, PROMPT_TYPE, PROVIDER, ROUTE_MISSING, routeContinuity, type RouteTask, type StudioRoute } from "./routes";
@@ -34,6 +37,7 @@ import { applyPromptPlugins, pluginBlockItems, pluginBlockText, takePluginFields
 
 /** 契約的 id 長度上限（step_id、輸入名稱）。 */
 const MAX_ID = 160;
+const H3_REFERENCE_SYNTAX = new RegExp(`${MENTION_SOURCE}|${H3_TAG_SOURCE}`);
 
 export interface RenderContext {
   /** Studio 路由（元件組合）；由 routes.ts deriveStudioRoutes 推導。 */
@@ -48,13 +52,15 @@ export interface RenderContext {
 
 export interface PlannedBranch {
   shotId: string;
+  expectedFps?: StudioProject["format"]["fps"];
   /** "" 或 "_0"、"_1"…（批次／變體）。 */
   suffix: string;
   /** run 輸出鍵（final／final_n），寫進 take.output_key。 */
   outputKey: string;
   /** 實際送出的 seed（-1 已換成隨機值）。 */
   seed: number;
-  task: RouteTask;
+  /** H3 任務；不是 H3 的路線（表演影片、音訊驅動）為 null，take 不記任務。 */
+  task: RouteTask | null;
   /** 鏡頭的路由（元件組合 id）。 */
   route: string;
   /** 實際送出的參考素材（ref2va 以外為空陣列）。 */
@@ -96,7 +102,7 @@ const fail = (problem: string, kind: RenderProblemKind = "engine", items: readon
 /** 在 taken 中找一個還沒用過的 id：先試 base＋suffix，再試 base2＋suffix…（後綴永遠在最後，分支判斷才會一致）。 */
 function uniqueId(base: string, suffix: string, taken: Set<string>): string {
   let candidate = `${base}${suffix}`;
-  for (let n = 2; taken.has(candidate); n += 1) candidate = `${base}${n}${suffix}`;
+  for (let n = 2; taken.has(candidate); n += 1) candidate = `${base}${String(n)}${suffix}`;
   taken.add(candidate);
   return candidate;
 }
@@ -105,17 +111,123 @@ function uniqueId(base: string, suffix: string, taken: Set<string>): string {
 function overrideParameters(providerId: string | null, base: Record<string, unknown>, values: { task: RouteTask; shot: StudioShot; project: StudioProject; seed: number }): Record<string, unknown> {
   const parameters = cloneJson(base);
   if (providerId === PROVIDER.te) {
-    parameters.task = values.task;
-    parameters.width = values.project.format.width;
-    parameters.height = values.project.format.height;
-    parameters.frames = values.shot.frames;
+    parameters["task"] = values.task;
+    parameters["width"] = values.project.format.width;
+    parameters["height"] = values.project.format.height;
+    parameters["frames"] = values.shot.frames;
   } else if (providerId === PROVIDER.dit) {
-    parameters.seed = values.seed;
-    if (values.shot.steps !== null) parameters.steps = values.shot.steps;
-    if (values.shot.video_shift !== null) parameters.video_shift = values.shot.video_shift;
-    if (values.shot.audio_shift !== null) parameters.audio_shift = values.shot.audio_shift;
+    parameters["seed"] = values.seed;
+    if (values.shot.steps !== null) parameters["steps"] = values.shot.steps;
+    if (values.shot.video_shift !== null) parameters["video_shift"] = values.shot.video_shift;
+    if (values.shot.audio_shift !== null) parameters["audio_shift"] = values.shot.audio_shift;
   }
   return parameters;
+}
+
+const ROLE_NAMES: Readonly<Record<DrivingRole, string>> = { character_image: t("角色圖片"), performance_video: t("表演影片"), source_audio: t("驅動音訊") };
+
+/** An integer parameter of the generator's schema (seed, steps), or null when it does not declare one. */
+function integerSchema(route: StudioRoute, stepId: string, name: string): { minimum: number; maximum: number } | null {
+  const component = route.steps.find((item) => item.step.step_id === stepId)?.slot.component;
+  const properties = component?.settings.parameters_schema["properties"];
+  const schema = isRecord(properties) ? properties[name] : undefined;
+  if (!isRecord(schema) || schema["type"] !== "integer") return null;
+  const { minimum, maximum } = schema;
+  return { minimum: typeof minimum === "number" ? minimum : 0, maximum: typeof maximum === "number" ? maximum : Number.MAX_SAFE_INTEGER };
+}
+
+interface DrivenBranch {
+  steps: WireStep[];
+  ports: Port[];
+  inputs: Record<string, WireTypedValue>;
+  final: { from_step: string; output: string };
+  seed: number;
+  references: StudioTakeReference[];
+}
+
+/**
+ * One branch on a studio_creative route (表演影片, 音訊驅動): the shot's first image / video / audio reference goes to the
+ * route's role inputs, the prompt (after the project's plugins) to its prompt input, the seed and the shot's steps to the
+ * generator when its schema declares them. The length comes from the driving media, so frames are not sent. A first
+ * frame, H3 @ tags or a missing driving file refuses the render with the reason.
+ */
+function drivenBranch(
+  project: StudioProject,
+  shot: StudioShot,
+  route: StudioRoute,
+  prompt: string,
+  ids: { suffix: string; takenSteps: Set<string>; takenInputs: Set<string> },
+  draw: () => number,
+): DrivenBranch | { problem: string; kind: RenderProblemKind } {
+  const name = shot.title || shot.shot_id;
+  const library = project.library ?? [];
+  const references = shot.references ?? [];
+  if (continuityMode(shot) !== "none") return { problem: t("「{name}」設定了首幀，但路線「{label}」由驅動素材生成，不使用首幀：在「方式」重新選一次", { name, label: route.label }), kind: "shot" };
+  const media = new Map<string, { role: DrivingRole; item: (typeof library)[number]; reference: StudioReference }>();
+  for (const role of DRIVING_ROLES) {
+    const input = route.drivingInputs[role];
+    if (input === undefined) continue;
+    const reference = drivingReference(references, DRIVING_KIND[role]);
+    const item = reference ? library.find((entry) => entry.item_id === reference.item_id) : undefined;
+    if (!reference || !item) return { problem: t("「{name}」還沒有{role}：在「參考」分頁選一個", { name, role: ROLE_NAMES[role] }), kind: "references" };
+    media.set(input, { role, item, reference });
+  }
+  const steps: WireStep[] = [];
+  const ports: Port[] = [];
+  const inputs: Record<string, WireTypedValue> = {};
+  const stepIds = new Map(route.steps.map((item) => [item.step.step_id, `${item.step.step_id}${ids.suffix}`]));
+  for (const id of stepIds.values()) {
+    if (id.length > MAX_ID || ids.takenSteps.has(id)) return { problem: t("元件組合「{label}」的步驟 id「{id}」太長或重複，無法組成批次 run", { label: route.label, id }), kind: "engine" };
+    ids.takenSteps.add(id);
+  }
+  const inputNames = new Map<string, string>();
+  for (const port of route.pipeline.inputs) {
+    const renamed = uniqueId(port.name, ids.suffix, ids.takenInputs);
+    if (renamed.length > MAX_ID) return { problem: t("元件組合「{label}」的輸入名稱「{name}」太長，無法組成批次 run", { label: route.label, name: port.name }), kind: "engine" };
+    inputNames.set(port.name, renamed);
+    const driven = media.get(port.name);
+    const isPrompt = port.name === route.promptInput && prompt.trim() !== "";
+    if (!driven && !isPrompt) {
+      if (port.name === route.promptInput && port.required) return { problem: t("「{name}」的 prompt：{problems}", { name, problems: EMPTY_PROMPT_PROBLEM }), kind: "prompt" };
+      if (port.required) return { problem: t("元件組合「{label}」的必填輸入「{name}」（{type_id}）Studio 無法提供", { label: route.label, name: port.name, type_id: port.type_id }), kind: "engine" };
+      continue;
+    }
+    ports.push({ ...port, name: renamed, description: driven ? t("「{name}」的{role}：{value}", { name, role: ROLE_NAMES[driven.role], value: driven.item.name }) : name });
+    inputs[renamed] = driven ? { type_id: port.type_id, file: driven.item.file } : { type_id: PROMPT_TYPE, value: prompt };
+  }
+  // seed: the shot's fixed seed must fit the generator's range; a random one is drawn inside it
+  const generator = route.generatorStepId ?? route.final.from_step;
+  const seedSchema = integerSchema(route, generator, "seed");
+  let seed = shot.seed === RANDOM_SEED ? draw() : shot.seed;
+  if (seedSchema) {
+    if (shot.seed === RANDOM_SEED) seed = seedSchema.minimum + (seed % (seedSchema.maximum - seedSchema.minimum + 1));
+    else if (seed < seedSchema.minimum || seed > seedSchema.maximum) return { problem: t("「{name}」的 seed {seed} 超出這條路線接受的範圍（{min}–{max}）", { name, seed, min: seedSchema.minimum, max: seedSchema.maximum }), kind: "shot" };
+  } else if (shot.seed !== RANDOM_SEED) {
+    return { problem: t("「{name}」固定了 seed，但路線「{label}」不接受 seed：把 seed 改成隨機", { name, label: route.label }), kind: "shot" };
+  }
+  const stepsSchema = shot.steps === null ? null : integerSchema(route, generator, "steps");
+  if (shot.steps !== null && (!stepsSchema || shot.steps < stepsSchema.minimum || shot.steps > stepsSchema.maximum)) {
+    return { problem: t("「{name}」的步數 {steps} 這條路線不接受：在畫質分頁清除步數", { name, steps: shot.steps }), kind: "shot" };
+  }
+  if (shot.video_shift !== null || shot.audio_shift !== null) return { problem: t("「{name}」設定了 shift，但路線「{label}」不接受：在畫質分頁清除 shift", { name, label: route.label }), kind: "shot" };
+  const rewrite = (binding: WireBinding): WireBinding => {
+    if ("from_step" in binding) return { from_step: stepIds.get(binding.from_step) ?? `${binding.from_step}${ids.suffix}`, output: binding.output };
+    if ("from_input" in binding) return { from_input: inputNames.get(binding.from_input) ?? binding.from_input };
+    return cloneJson(binding);
+  };
+  const sent = new Set(Object.keys(inputs).map((renamed) => [...inputNames].find(([, value]) => value === renamed)?.[0]));
+  for (const { step } of route.steps) {
+    const parameters = cloneJson(step.parameters);
+    if (step.step_id === generator) {
+      if (seedSchema) parameters["seed"] = seed;
+      if (shot.steps !== null) parameters["steps"] = shot.steps;
+    }
+    // Optional inputs Studio does not send (a cached conditioning, an empty prompt) are left unbound
+    const bound = Object.entries(step.inputs).filter(([, binding]) => !("from_input" in binding) || sent.has(binding.from_input));
+    steps.push({ ...step, step_id: stepIds.get(step.step_id) ?? step.step_id, inputs: Object.fromEntries(bound.map(([port, binding]) => [port, rewrite(binding)])), parameters });
+  }
+  const takeRefs = takeReferences([...media.values()].map((entry) => entry.reference), library);
+  return { steps, ports, inputs, final: { from_step: stepIds.get(route.final.from_step) ?? route.final.from_step, output: route.final.output }, seed, references: takeRefs };
 }
 
 /** run 名稱的首幀標記：（首幀接續）／（圖片首幀）；批次時加「含」。沒有首幀時是空字串。 */
@@ -149,11 +261,28 @@ export function planRender(
   const takenInputs = new Set<string>();
 
   for (const [index, shot] of shots.entries()) {
-    const suffix = single ? "" : `_${index}`;
+    const suffix = single ? "" : `_${String(index)}`;
     const name = shot.title || shot.shot_id;
     const route = findRoute(context.routes, shot.route);
     if (!route) return fail(t("「{name}」：{routeMissing}", { name, routeMissing: ROUTE_MISSING }));
     if (!route.ready) return fail(t("「{name}」的元件組合「{label}」未就緒：{summary}", { name, label: route.label, summary: route.summary }));
+    if (!route.renderable) return fail(t("「{name}」的路線「{label}」是剪輯工具用的（延展、重繪或控制），不能直接渲染鏡頭：在「方式」選一種生成方式", { name, label: route.label }), "shot");
+    if (route.family === "creative") {
+      const plugged = applyPromptPlugins(shot.prompt, project.prompt_plugins, { project, shot, route }, context.plugins);
+      if (plugged.problems.length > 0 || plugged.findings.length > 0) {
+        return fail(t("「{name}」不符合專案的 Prompt 插件：{blocked}", { name, blocked: pluginBlockText(plugged) }), "plugins", pluginBlockItems(plugged));
+      }
+      const driven = drivenBranch(project, shot, route, plugged.prompt, { suffix, takenSteps, takenInputs }, draw);
+      if ("problem" in driven) return fail(driven.problem, driven.kind);
+      steps.push(...driven.steps);
+      ports.push(...driven.ports);
+      Object.assign(inputs, driven.inputs);
+      const outputKey = `final${suffix}`;
+      outputs[outputKey] = driven.final;
+      finals.push(driven.final);
+      branches.push({ shotId: shot.shot_id, suffix, outputKey, seed: driven.seed, task: null, route: shot.route, references: driven.references, continuity: null });
+      continue;
+    }
     const ditComponent = route.steps.find((item) => item.step.step_id === route.ditStepId)?.slot.component;
     if (ditComponent) {
       const overrides = Object.fromEntries(Object.entries({ steps: shot.steps, video_shift: shot.video_shift, audio_shift: shot.audio_shift }).filter(([, value]) => value !== null));
@@ -168,8 +297,14 @@ export function planRender(
     const mode = continuityMode(shot);
     const continuing = mode === "previous_last";
     let task: RouteTask;
+    const limits = frameLimits([route]);
+    if (!limits.allows(shot.frames)) return fail(t("影格數超出元件宣告的參數範圍"), "shot");
+    if (limits.h3) {
+      const problem = clockProblem(undefined, project.format.fps);
+      if (problem !== null) return fail(problem, "shot");
+    }
     if (mode !== "none") {
-      if (route.capability !== "fl2va" || !route.imageInput) {
+      if (route.capability !== "fl2va" || !(route.imageInput != null && route.imageInput !== "")) {
         const [wanted, needs] = continuing ? [t("設定了從前一個鏡頭接續"), t("首幀接續")] : [t("設定了素材庫圖片當首幀"), t("首幀圖片")];
         return fail(t("「{name}」{wanted}，但元件組合「{label}」是 {capability}：{needs}需要 fl2va 元件組合", { name, wanted, label: route.label, capability: route.capability, needs }), "shot");
       }
@@ -198,22 +333,32 @@ export function planRender(
     if (plugged.problems.length > 0 || plugged.findings.length > 0) {
       return fail(t("「{name}」不符合專案的 Prompt 插件：{blocked}", { name, blocked: pluginBlockText(plugged) }), "plugins", pluginBlockItems(plugged));
     }
-    const compiled = compilePrompt(plugged.prompt, references);
-    if (compiled.problems.length > 0) return fail(t("「{name}」的 prompt：{problems}", { name, problems: compiled.problems.join(t("；")) }), "prompt", compiled.problems);
-    // 換角表：表外角色不換角、subject 的外觀要和它的圖是同一個角色（swapCast.ts）
-    const castProblems = swapCastProblems(plugged.prompt, references, library);
-    if (castProblems.length > 0) return fail(t("「{name}」的換角對照：{problems}", { name, problems: castProblems.join(t("；")) }), "prompt", castProblems);
-    if (task !== "ref2va" && compiled.mentionedAliases.length > 0) {
-      const map = formatList(compiled.mentionedAliases.map((alias) => `@${alias}`));
-      // 元件組合其實接了參考素材輸入、只是 DiT 不是 ref2va checkpoint：說出原因，不只說「不支援」
-      if (route.referenceHint) return fail(t("「{name}」的 prompt 用到參考素材（{map}），但元件組合「{label}」不支援參考素材：{hint}", { name, map, label: route.label, hint: route.referenceHint }), "shot");
-      return fail(t("「{name}」的 prompt 用到參考素材（{map}），但元件組合「{label}」不支援參考素材（需要 ref2va 元件組合）", { name, map, label: route.label }), "shot");
+    let prompt = plugged.prompt;
+    if (route.generationBinding) {
+      if (!prompt.trim()) return fail(t("「{name}」的 prompt：{problems}", { name, problems: EMPTY_PROMPT_PROBLEM }), "prompt");
+      if (references.length || H3_REFERENCE_SYNTAX.test(prompt)) {
+        return fail(t("「{name}」的元件組合未宣告 H3 參考素材或標記支援", { name }), "references");
+      }
+    } else {
+      const compiled = compilePrompt(plugged.prompt, references);
+      if (compiled.problems.length > 0) return fail(t("「{name}」的 prompt：{problems}", { name, problems: compiled.problems.join(t("；")) }), "prompt", compiled.problems);
+      // 換角表：表外角色不換角、subject 的外觀要和它的圖是同一個角色（swapCast.ts）
+      const castProblems = swapCastProblems(plugged.prompt, references, library);
+      if (castProblems.length > 0) return fail(t("「{name}」的換角對照：{problems}", { name, problems: castProblems.join(t("；")) }), "prompt", castProblems);
+      if (task !== "ref2va" && compiled.mentionedAliases.length > 0) {
+        const map = formatList(compiled.mentionedAliases.map((alias) => `@${alias}`));
+        // 元件組合其實接了參考素材輸入、只是 DiT 不是 ref2va checkpoint：說出原因，不只說「不支援」
+        if (route.referenceHint != null && route.referenceHint !== "") return fail(t("「{name}」的 prompt 用到參考素材（{map}），但元件組合「{label}」不支援參考素材：{hint}", { name, map, label: route.label, hint: route.referenceHint }), "shot");
+        return fail(t("「{name}」的 prompt 用到參考素材（{map}），但元件組合「{label}」不支援參考素材（需要 ref2va 元件組合）", { name, map, label: route.label }), "shot");
+      }
+      prompt = compiled.text;
     }
     let materials: unknown = null;
     let sent: StudioTakeReference[] = [];
     if (task === "ref2va") {
       // A reference video held after its end counts as the shot's generated length (2–15 s and the total per kind)
-      const problems = validateReferences(references, library, { generatedSeconds: shot.frames / H3_FPS });
+      const fps = h3Rules(route.steps.find((item) => item.step.step_id === route.ditStepId)?.slot.component?.facts).fps;
+      const problems = validateReferences(references, library, { generatedSeconds: shot.frames / fps });
       if (problems.length > 0) return fail(t("「{name}」的參考素材：{problems}", { name, problems: problems.join(t("；")) }), "references", problems);
       materials = materialsFor(references, library);
       sent = takeReferences(references, library);
@@ -286,12 +431,17 @@ export function planRender(
       const isImage = imageValue !== null && port.name === route.imageInput;
       if (!isPrompt && !isMaterials && !isImage && port.required) return fail(t("元件組合「{label}」的必填輸入「{name}」（{type_id}）Studio 無法提供", { label: route.label, name: port.name, type_id: port.type_id }));
       ports.push({ ...port, name: renamed, description: isPrompt ? name : isImage ? t("「{name}」的首幀圖片：{value}", { name, value: imageName ?? "" }) : port.description });
-      if (isPrompt) inputs[renamed] = { type_id: PROMPT_TYPE, value: compiled.text };
+      if (isPrompt) inputs[renamed] = { type_id: PROMPT_TYPE, value: prompt };
       else if (isMaterials) inputs[renamed] = { type_id: MATERIALS_TYPE, value: materials };
       else if (isImage && imageValue) inputs[renamed] = imageValue;
     }
 
     const seed = shot.seed === RANDOM_SEED ? draw() : shot.seed;
+    const values = generationValues(project, shot, seed);
+    if (route.generationBinding) {
+      const problem = bindingProblem(route.generationBinding, values);
+      if (problem !== null) return fail(t("「{name}」：{contract}", { name, contract: problem }), "shot");
+    }
     const rewrite = (binding: WireBinding): WireBinding => {
       if ("from_step" in binding) return { from_step: stepIds.get(binding.from_step) ?? `${binding.from_step}${suffix}`, output: binding.output };
       if ("from_input" in binding) {
@@ -306,7 +456,9 @@ export function planRender(
         ...template,
         step_id: stepIds.get(template.step_id) ?? template.step_id,
         inputs: Object.fromEntries(Object.entries(template.inputs).map(([port, binding]) => [port, rewrite(binding)])),
-        parameters: overrideParameters(item.providerId, template.parameters, { task, shot, project, seed }),
+        parameters: route.generationBinding
+          ? boundParameters(route.generationBinding, template.step_id, template.parameters, values)
+          : overrideParameters(item.providerId, template.parameters, { task, shot, project, seed }),
       });
     }
 
@@ -314,7 +466,8 @@ export function planRender(
     const final = { from_step: stepIds.get(route.final.from_step) ?? `${route.final.from_step}${suffix}`, output: route.final.output };
     outputs[outputKey] = final;
     finals.push(final);
-    branches.push({ shotId: shot.shot_id, suffix, outputKey, seed, task, route: shot.route, references: sent, continuity: record });
+    branches.push({ shotId: shot.shot_id, suffix, outputKey, seed, task, route: shot.route,
+      ...(attestsClock(route.generationBinding) ? { expectedFps: { ...project.format.fps } } : {}), references: sent, continuity: record });
   }
 
   const first = shots[0];
@@ -325,7 +478,7 @@ export function planRender(
   const ordered = placements.size > 1 ? rootsFirst(steps) : steps;
   const routeIds = [...new Set(shots.map((shot) => shot.route))];
   // 同一個元件組合時沿用它的 id（執行紀錄可以對回元件組合）；混用多個元件組合的批次另外命名
-  const pipelineId = routeIds.length === 1 && routeIds[0] ? routeIds[0] : "studio-batch-render";
+  const pipelineId = routeIds.length === 1 && (routeIds[0] != null && routeIds[0] !== "") ? routeIds[0] : "studio-batch-render";
   const plugins = takePluginFields(project.prompt_plugins, context.plugins);
   return { plan: { body: { pipeline: { pipeline_id: pipelineId, label, inputs: ports, steps: ordered, outputs }, inputs, label }, branches, plugins }, problem: null, blocked: null };
 }
@@ -346,17 +499,23 @@ export function renderTakes(
   takeIds: readonly string[],
   run: Pick<WireRun, "run_id" | "created_at">,
 ): { shotId: string; take: StudioTake }[] {
+  return renderTakeDrafts(project, branches, plan, takeIds).map(({ shot_id, take }) => ({ shotId: shot_id, take: { ...take, ...run } }));
+}
+
+/** All destination and branch information is available before the Controller allocates its run. */
+export function renderTakeDrafts(
+  project: StudioProject, branches: readonly StudioShot[], plan: RenderPlan, takeIds: readonly string[],
+): { shot_id: string; take: Omit<StudioTake, "run_id" | "created_at"> }[] {
   return plan.branches.map((branch, index) => {
     const shot = branches[index];
-    const take: StudioTake = {
+    const take: Omit<StudioTake, "run_id" | "created_at"> = {
       take_id: takeIds[index] ?? localId("t"),
-      run_id: run.run_id,
       output_key: branch.outputKey,
-      created_at: run.created_at,
       state: "rendering",
       prompt: shot?.prompt ?? "",
       ...plan.plugins,
       seed: branch.seed,
+      ...(branch.expectedFps ? { expected_fps: branch.expectedFps } : {}),
       frames: shot?.frames ?? 0,
       width: project.format.width,
       height: project.format.height,
@@ -367,9 +526,9 @@ export function renderTakes(
       error: null,
       timings_ms: {},
       continuity: branch.continuity,
-      task: branch.task,
+      ...(branch.task === null ? {} : { task: branch.task }),
       references: branch.references,
     };
-    return { shotId: branch.shotId, take };
+    return { shot_id: branch.shotId, take };
   });
 }

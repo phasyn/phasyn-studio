@@ -1,3 +1,4 @@
+import { compositionKey } from "@/lib/dom";
 // Keyboard helpers of the command palette: list navigation keys, the open/close shortcut and its labels. Pure.
 
 export type NavKey = "ArrowDown" | "ArrowUp" | "Home" | "End" | "PageDown" | "PageUp";
@@ -47,7 +48,7 @@ export interface ShortcutEventLike {
  * while an input method composes, and a non-Latin keyboard layout is matched by the physical key.
  */
 export function isPaletteShortcut(event: ShortcutEventLike, apple: boolean, plain = true): boolean {
-  if (event.isComposing || event.keyCode === 229 || event.altKey) return false;
+  if (compositionKey(event) || event.altKey) return false;
   const primary = apple ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
   if (!primary) return false;
   return event.shiftKey ? isLetter(event, "p") : plain && isLetter(event, "k");

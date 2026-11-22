@@ -1,0 +1,74 @@
+{
+  "pipeline_id": "wan-edit-edge",
+  "label": "Wan VACE · 擷取輪廓並生成",
+  "inputs": [
+    {
+      "name": "prompt",
+      "type_id": "text.prompt.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "Describe the resulting shot"
+    },
+    {
+      "name": "source",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": "Source performance or layout video"
+    },
+    {
+      "name": "reference",
+      "type_id": "media.image.v1",
+      "required": false,
+      "transport": "file",
+      "description": "Optional visual reference"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "edge_control",
+      "component_id": "edge-control",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "inputs": {
+        "video": {
+          "from_input": "source"
+        }
+      },
+      "parameters": {}
+    },
+    {
+      "step_id": "edit",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "wan-edit",
+      "inputs": {
+        "prompt": {
+          "from_input": "prompt"
+        },
+        "control": {
+          "from_step": "edge_control",
+          "output": "control"
+        },
+        "reference": {
+          "from_input": "reference"
+        }
+      },
+      "parameters": {
+        "operation": "control"
+      }
+    }
+  ],
+  "outputs": {
+    "final": {
+      "from_step": "edit",
+      "output": "asset"
+    },
+    "video_file": {
+      "from_step": "edit",
+      "output": "video_file"
+    },
+    "guide": {
+      "from_step": "edge_control",
+      "output": "control"
+    }
+  }
+}

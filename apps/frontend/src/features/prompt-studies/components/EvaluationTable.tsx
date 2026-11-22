@@ -7,6 +7,7 @@ import type { PromptStudy } from "../types";
 import { CompareChip, LossText, RenderChip, StudyImage } from "./shared";
 import { stepErrorText } from "../model/stepError";
 import { t } from "@/i18n";
+import { failureText } from "@/lib/errors";
 
 function whereText(row: ImageRow): string {
   const { split, round } = row.render;
@@ -48,7 +49,7 @@ export function EvaluationTable({
             const first = evaluation?.comparison.differences[0];
             const selected = row.id === selectedId;
             return (
-              <Tr key={row.id} selected={selected} onClick={() => onSelect(row.id)} className="cursor-pointer">
+              <Tr key={row.id} selected={selected} onClick={() => { onSelect(row.id); }} className="cursor-pointer">
                 <Td>
                   <StudyImage file={row.render.image} alt={t("seed {seed} 的生成圖", { seed: row.render.seed })} className="size-10 rounded-lg" fit="cover" />
                 </Td>
@@ -63,13 +64,13 @@ export function EvaluationTable({
                     className="grid gap-0.5 rounded-sm text-left focus-visible:outline-2 focus-visible:outline-focus"
                   >
                     <span className="text-fg">{`${versionLabel(study, row.render.version_id)} ${row.render.variant}`}</span>
-                    <span className="machine text-caption text-fg-tertiary">{`seed ${row.render.seed}${whereText(row)}${row.retried ? t(" · 已重試") : ""}`}</span>
+                    <span className="machine text-caption text-fg-tertiary">{`seed ${String(row.render.seed)}${whereText(row)}${row.retried ? t(" · 已重試") : ""}`}</span>
                   </button>
                 </Td>
                 <Td>
                   <div className="flex flex-wrap gap-1">
                     <RenderChip render={row.render} />
-                    <CompareChip status={row.compare} title={row.compareError ? t("{code}：{message}", { code: row.compareError.code, message: stepErrorText(row.compareError) }) : undefined} />
+                    <CompareChip status={row.compare} {...(row.compareError ? { title: failureText(row.compareError.code, stepErrorText(row.compareError)) } : {})} />
                   </div>
                 </Td>
                 <Td className="text-right">

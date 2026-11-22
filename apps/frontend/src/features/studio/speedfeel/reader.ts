@@ -89,9 +89,9 @@ function readPlan(target: SpeedFeelTarget): { take: Moments; original: Moments; 
 /** One analysis; null when it was cancelled. */
 async function runAnalysis(target: SpeedFeelTarget, signal: AbortSignal, progress: (clip: "take" | "original", done: number, total: number) => void): Promise<SpeedFeelStatus | null> {
   const plan = readPlan(target);
-  const take = await readVideo(target.takeUrl, signal, (reader) => readFrames(reader, plan.take, true, (done, total) => progress("take", done, total)));
+  const take = await readVideo(target.takeUrl, signal, (reader) => readFrames(reader, plan.take, true, (done, total) => { progress("take", done, total); }));
   if (!take.ok) return take.aborted ? null : { status: "failed", reason: t("讀取生成的影片失敗：{reason}", { reason: take.reason }) };
-  const original = await readVideo(target.originalUrl, signal, (reader) => readFrames(reader, plan.original, false, (done, total) => progress("original", done, total)));
+  const original = await readVideo(target.originalUrl, signal, (reader) => readFrames(reader, plan.original, false, (done, total) => { progress("original", done, total); }));
   if (!original.ok) return original.aborted ? null : { status: "failed", reason: t("讀取原片失敗：{reason}", { reason: original.reason }) };
   const analysis = analyseSpeedFeel({ take: take.value, original: original.value, lead: plan.lead, length: target.end - target.first, fps: target.fps });
   if (!analysis) return { status: "failed", reason: t("讀到的影格不夠，無法比對") };
@@ -117,8 +117,8 @@ export function startSpeedFeel(target: SpeedFeelTarget): void {
     if (!job.controller.signal.aborted) store.set(job.key, { status: "running", clip, done, total });
   };
   void runAnalysis(target, job.controller.signal, progress).then(
-    (outcome) => settle(job, outcome),
-    (error: unknown) => settle(job, { status: "failed", reason: t("比對失敗：{error}", { error: error instanceof Error ? error.message : String(error) }) }),
+    (outcome) => { settle(job, outcome); },
+    (error: unknown) => { settle(job, { status: "failed", reason: t("比對失敗：{error}", { error: error instanceof Error ? error.message : String(error) }) }); },
   );
 }
 
@@ -132,4 +132,4 @@ export function useSpeedFeelResults(): ReadonlyMap<string, SpeedFeelStatus> {
   return useSyncExternalStore(store.subscribe, store.snapshot);
 }
 
-if (import.meta.hot) import.meta.hot.dispose(() => cancelSpeedFeel());
+if (import.meta.hot) import.meta.hot.dispose(() => { cancelSpeedFeel(); });

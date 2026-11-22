@@ -16,7 +16,7 @@ export const IMAGE_PROVIDER = {
 export type ImageStepRole = keyof typeof IMAGE_PROVIDER;
 
 export const ROLE_BY_PROVIDER: Readonly<Record<string, ImageStepRole>> = Object.fromEntries(
-  Object.entries(IMAGE_PROVIDER).map(([role, provider]) => [provider, role as ImageStepRole]),
+  Object.keys(IMAGE_PROVIDER).filter((key): key is ImageStepRole => Object.hasOwn(IMAGE_PROVIDER, key)).map((role) => [IMAGE_PROVIDER[role], role]),
 );
 
 export const ROLE_LABELS: Record<ImageStepRole, string> = {
@@ -99,6 +99,6 @@ export const COMPOSE_METADATA_BUDGET = 48 * 1024;
 export const VARIANT_LABELS: Record<string, string> = { bf16: "BF16", gguf_q4km: "GGUF Q4_K_M" };
 
 export function variantLabel(variant: string | null): string {
-  if (!variant) return t("精度未知");
+  if (!(variant != null && variant !== "")) return t("精度未知");
   return VARIANT_LABELS[variant] ?? variant;
 }

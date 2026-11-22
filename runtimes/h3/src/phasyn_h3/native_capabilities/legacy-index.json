@@ -1,0 +1,508 @@
+{
+  "providers": {
+    "h3.audio_decode": {
+      "default_settings": {
+        "invoke": {},
+        "load": {
+          "device": {
+            "id": "GPU-REPLACE",
+            "kind": "cuda",
+            "resource_group": "gpu"
+          },
+          "model_path": "",
+          "model_revision": null,
+          "offload": {
+            "after_use": "device",
+            "mode": "none"
+          },
+          "part_overrides": [],
+          "precision": {
+            "compute_dtype": "native"
+          },
+          "provider_options": {
+            "mode": "exact",
+            "variant": "fl2va"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_h3.providers:AudioDecodeProvider",
+      "kind": "audio.decode",
+      "label": "MiniMax H3 audio VAE 解碼（float32 stereo 32 kHz WAV）",
+      "required_modules": [
+        "sglang",
+        "torch"
+      ],
+      "source_pins": [
+        [
+          "sglang",
+          "de487f8039e06853b5f376fd5f068ea9d7c400bb"
+        ]
+      ],
+      "synthetic": false
+    },
+    "h3.audio_encode": {
+      "default_settings": {
+        "invoke": {},
+        "load": {
+          "device": {
+            "id": "GPU-REPLACE",
+            "kind": "cuda",
+            "resource_group": "gpu"
+          },
+          "model_path": "",
+          "model_revision": null,
+          "offload": {
+            "after_use": "device",
+            "mode": "none"
+          },
+          "part_overrides": [],
+          "precision": {
+            "compute_dtype": "native"
+          },
+          "provider_options": {
+            "mode": "exact",
+            "variant": "fl2va"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_h3.providers:AudioEncodeProvider",
+      "kind": "reference.encode",
+      "label": "Audio VAE Encode（MiniMax H3：ref2va 參考聲音與參考影片原聲）",
+      "required_modules": [
+        "sglang",
+        "torch"
+      ],
+      "source_pins": [
+        [
+          "sglang",
+          "de487f8039e06853b5f376fd5f068ea9d7c400bb"
+        ]
+      ],
+      "synthetic": false
+    },
+    "h3.conditioning": {
+      "default_settings": {
+        "invoke": {
+          "frames": 124,
+          "height": 448,
+          "task": "t2va",
+          "width": 768
+        },
+        "load": {
+          "device": {
+            "id": "GPU-REPLACE",
+            "kind": "cuda",
+            "resource_group": "gpu"
+          },
+          "model_path": "",
+          "model_revision": null,
+          "offload": {
+            "after_use": "device",
+            "mode": "none"
+          },
+          "part_overrides": [],
+          "precision": {
+            "compute_dtype": "native"
+          },
+          "provider_options": {
+            "encoder_max_tokens": 32768,
+            "mode": "exact",
+            "variant": "fl2va"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_h3.providers:ConditioningProvider",
+      "kind": "conditioning.encode",
+      "label": "MiniMax H3 文字條件編碼（Qwen3-VL hidden-state tap 50；不是 chat 文字）",
+      "required_modules": [
+        "sglang",
+        "torch"
+      ],
+      "source_pins": [
+        [
+          "sglang",
+          "de487f8039e06853b5f376fd5f068ea9d7c400bb"
+        ]
+      ],
+      "synthetic": false
+    },
+    "h3.dit": {
+      "default_settings": {
+        "invoke": {
+          "audio_shift": 3.0,
+          "seed": 42,
+          "steps": 50,
+          "video_shift": 12.0
+        },
+        "load": {
+          "device": {
+            "id": "GPU-REPLACE",
+            "kind": "cuda",
+            "resource_group": "gpu"
+          },
+          "model_path": "",
+          "model_revision": null,
+          "offload": {
+            "after_use": "host",
+            "max_pinned_bytes": 25769803776,
+            "mode": "block",
+            "prefetch_depth": 1,
+            "resident_layers": 0
+          },
+          "part_overrides": [],
+          "precision": {
+            "compute_dtype": "native",
+            "quantization": {
+              "scheme": "none"
+            }
+          },
+          "provider_options": {
+            "adaln": {
+              "host_cache_bytes": 8589934592,
+              "mode": "online"
+            },
+            "attention": {
+              "provider": "auto_exact",
+              "reject_quadratic_materialization": true
+            },
+            "bounded_fp8_load": false,
+            "lora": null,
+            "mode": "exact",
+            "variant": "fl2va"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_h3.providers:DitProvider",
+      "kind": "dit.denoise",
+      "label": "MiniMax H3 音畫聯合 DiT（完整去噪迴圈在單次呼叫內）",
+      "required_modules": [
+        "sglang",
+        "torch"
+      ],
+      "source_pins": [
+        [
+          "sglang",
+          "de487f8039e06853b5f376fd5f068ea9d7c400bb"
+        ]
+      ],
+      "synthetic": false
+    },
+    "h3.reference": {
+      "default_settings": {
+        "invoke": {},
+        "load": {
+          "device": {
+            "id": "GPU-REPLACE",
+            "kind": "cuda",
+            "resource_group": "gpu"
+          },
+          "model_path": "",
+          "model_revision": null,
+          "offload": {
+            "after_use": "host",
+            "max_pinned_bytes": 11811160064,
+            "mode": "component"
+          },
+          "part_overrides": [],
+          "precision": {
+            "compute_dtype": "native"
+          },
+          "provider_options": {
+            "mode": "exact",
+            "variant": "fl2va"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_h3.providers:ReferenceProvider",
+      "kind": "reference.encode",
+      "label": "MiniMax H3 參考素材 VAE encode（fl2va 首尾幀／ref2va 參考）",
+      "required_modules": [
+        "sglang",
+        "torch"
+      ],
+      "source_pins": [
+        [
+          "sglang",
+          "de487f8039e06853b5f376fd5f068ea9d7c400bb"
+        ]
+      ],
+      "synthetic": false
+    },
+    "h3.video_decode": {
+      "default_settings": {
+        "invoke": {},
+        "load": {
+          "device": {
+            "id": "GPU-REPLACE",
+            "kind": "cuda",
+            "resource_group": "gpu"
+          },
+          "model_path": "",
+          "model_revision": null,
+          "offload": {
+            "after_use": "host",
+            "max_pinned_bytes": 11811160064,
+            "mode": "component"
+          },
+          "part_overrides": [],
+          "precision": {
+            "compute_dtype": "native"
+          },
+          "provider_options": {
+            "encode_provider": "cpu_ffmpeg",
+            "mode": "exact",
+            "pixel_format": "yuv420p",
+            "quality": 18,
+            "variant": "fl2va",
+            "video_codec": "h264"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_h3.providers:VideoDecodeProvider",
+      "kind": "decode.final",
+      "label": "MiniMax H3 video VAE 正式解碼（同一份 final latent；串流編碼 MP4）",
+      "required_modules": [
+        "sglang",
+        "torch"
+      ],
+      "source_pins": [
+        [
+          "sglang",
+          "de487f8039e06853b5f376fd5f068ea9d7c400bb"
+        ]
+      ],
+      "synthetic": false
+    },
+    "h3.video_encode": {
+      "default_settings": {
+        "invoke": {},
+        "load": {
+          "device": {
+            "id": "GPU-REPLACE",
+            "kind": "cuda",
+            "resource_group": "gpu"
+          },
+          "model_path": "",
+          "model_revision": null,
+          "offload": {
+            "after_use": "device",
+            "mode": "none"
+          },
+          "part_overrides": [],
+          "precision": {
+            "compute_dtype": "native"
+          },
+          "provider_options": {
+            "mode": "exact",
+            "variant": "fl2va",
+            "video_vae_scope": "encode_only"
+          }
+        },
+        "recording": {
+          "batch_max_bytes": 262144,
+          "batch_max_events": 256,
+          "capture_prompt": true,
+          "capture_stderr": true,
+          "cuda_pending_event_pairs": 4096,
+          "device_sample_hz": 2,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "max_detail_bytes_per_recording": 2147483648,
+          "mode": "detailed",
+          "parts": [],
+          "publish_interval_ms": 1000,
+          "queue_max_bytes": 16777216,
+          "queue_max_events": 8192,
+          "record_shapes": false,
+          "segment_bytes": 67108864,
+          "steps": [],
+          "tensor_dump": false,
+          "trace_parts": [],
+          "trace_steps": [
+            0,
+            1
+          ],
+          "with_stack": false
+        }
+      },
+      "entry_point": "phasyn_h3.providers:VideoEncodeProvider",
+      "kind": "reference.encode",
+      "label": "Video VAE Encode（MiniMax H3：fl2va 首尾幀／ref2va 參考圖片與影片）",
+      "required_modules": [
+        "sglang",
+        "torch"
+      ],
+      "source_pins": [
+        [
+          "sglang",
+          "de487f8039e06853b5f376fd5f068ea9d7c400bb"
+        ]
+      ],
+      "synthetic": false
+    }
+  },
+  "schema_version": "1.0"
+}

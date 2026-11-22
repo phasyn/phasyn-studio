@@ -40,6 +40,7 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from .store import UPLOAD_NAME, PluginStore, disk_error
 
+
 if TYPE_CHECKING:
     from ..state import Controller
 
@@ -62,7 +63,11 @@ def _digest(request: Request, *, required: bool) -> str | None:
     if raw is None and not required:
         return None
     if raw is None or not _DIGEST.fullmatch(raw):
-        raise ComponentError("INVALID_ARGUMENT", "digest 必須是 64 個十六進位字元", details={"field": "digest"})
+        raise ComponentError(
+            "INVALID_ARGUMENT",
+            "digest 必須是 64 個十六進位字元",
+            details={"field": "digest"},
+        )
     return raw
 
 
@@ -77,7 +82,9 @@ def _require_package_body(request: Request) -> None:
 
 
 def _new_upload(path: Path) -> IO[bytes]:
-    return os.fdopen(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb")
+    return os.fdopen(
+        os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), "wb"
+    )
 
 
 async def _receive(request: Request, path: Path, limit: int) -> None:
@@ -114,18 +121,28 @@ async def _receive(request: Request, path: Path, limit: int) -> None:
                 buffer.clear()
                 await asyncio.to_thread(handle.write, data)
         await asyncio.to_thread(handle.write, bytes(buffer))
-        await asyncio.to_thread(handle.flush)  # here, so that a full disk is reported as one
+        await asyncio.to_thread(
+            handle.flush
+        )  # here, so that a full disk is reported as one
     except ClientDisconnect as exc:
-        raise ComponentError("FILE_TRUNCATED", "上傳在完成前中斷；沒有安裝任何東西") from exc
+        raise ComponentError(
+            "FILE_TRUNCATED", "上傳在完成前中斷；沒有安裝任何東西"
+        ) from exc
     except OSError as exc:
         raise disk_error(exc, "無法接收插件包") from exc
     finally:
         await asyncio.to_thread(handle.close)
 
 
-def _install(store: PluginStore, staged: Path, *, replace: bool, dry_run: bool, digest: str | None) -> dict[str, Any]:
-    """The part of an installation that runs in a worker thread. It removes the staging directory itself: nothing
-    else may touch that directory while the thread works in it, whatever happens to the request meanwhile."""
+def _install(
+    store: PluginStore,
+    staged: Path,
+    *,
+    replace: bool,
+    dry_run: bool,
+    digest: str | None,
+) -> dict[str, Any]:
+    """The part of an installation that runs in a worker thread. It removes the staging directory itself: nothing else may touch that directory while the thread works in it, whatever happens to the request meanwhile."""
     try:
         return store.install(staged, replace=replace, dry_run=dry_run, digest=digest)
     finally:
@@ -141,6 +158,7 @@ def _blocks(source: IO[bytes]) -> Iterator[bytes]:
 
 
 def routes(ctl: Controller) -> APIRouter:
+    """Build the Controller routes for plugins."""
     router = APIRouter()
 
     def store() -> PluginStore:
@@ -160,11 +178,20 @@ def routes(ctl: Controller) -> APIRouter:
         with store().exclusive():
             staged = await asyncio.to_thread(store().new_staging)
             try:
-                await _receive(request, staged / UPLOAD_NAME, store().limits.package_bytes)
+                await _receive(
+                    request, staged / UPLOAD_NAME, store().limits.package_bytes
+                )
             except BaseException:
                 await asyncio.to_thread(store().discard_staging, staged)
                 raise
-            result = await asyncio.to_thread(_install, store(), staged, replace=replace, dry_run=dry_run, digest=digest)
+            result = await asyncio.to_thread(
+                _install,
+                store(),
+                staged,
+                replace=replace,
+                dry_run=dry_run,
+                digest=digest,
+            )
         return json_response(result, status_code=200 if dry_run else 201)
 
     @router.get("/api/studio/plugins/{plugin_id}")
@@ -187,36 +214,46 @@ def routes(ctl: Controller) -> APIRouter:
     async def remove_plugin(plugin_id: str, request: Request) -> JSONResponse:
         digest = _digest(request, required=True)
         with store().exclusive():
-            removed = await asyncio.to_thread(store().remove, plugin_id, digest=str(digest))
+            removed = await asyncio.to_thread(
+                store().remove, plugin_id, digest=str(digest)
+            )
         return json_response(removed)
 
     @router.get("/api/studio/plugins/{plugin_id}/removal-preview")
     async def removal_preview(plugin_id: str) -> JSONResponse:
-        return json_response(await asyncio.to_thread(store().removal_preview, plugin_id))
+        return json_response(
+            await asyncio.to_thread(store().removal_preview, plugin_id)
+        )
 
+    _register_file_routes(router, ctl)
+    return router
+
+
+def _register_file_routes(router: APIRouter, ctl: Controller) -> None:
     @router.get("/api/studio/plugins/{plugin_id}/files/{path:path}")
     async def plugin_file(plugin_id: str, path: str) -> Response:
-        item, data = await asyncio.to_thread(store().file, plugin_id, path)
+        item, data = await asyncio.to_thread(ctl.plugins.file, plugin_id, path)
         headers = {**PLUGIN_FILE_HEADERS, "ETag": f'"{item.sha256}"'}
         return Response(content=data, media_type=item.media_type, headers=headers)
 
     @router.get("/api/studio/plugins/{plugin_id}/package")
     async def export_plugin(plugin_id: str) -> Response:
-        name, source = await asyncio.to_thread(store().export, plugin_id)
+        name, source = await asyncio.to_thread(ctl.plugins.export, plugin_id)
         headers = {**PLUGIN_FILE_HEADERS, **attachment(name)}
         # Both closers are needed: the background task is skipped when the client disconnects mid-stream, and the
         # generator's finally never runs when the body is not iterated at all. close() is idempotent.
         return StreamingResponse(
-            _blocks(source), media_type=PACKAGE_MEDIA_TYPE, headers=headers, background=BackgroundTask(source.close)
+            _blocks(source),
+            media_type=PACKAGE_MEDIA_TYPE,
+            headers=headers,
+            background=BackgroundTask(source.close),
         )
 
     @router.post("/api/studio/plugins/{plugin_id}/reload")
     async def reload_plugin(plugin_id: str) -> JSONResponse:
-        with store().exclusive():
-            detail = await asyncio.to_thread(store().reload, plugin_id)
+        with ctl.plugins.exclusive():
+            detail = await asyncio.to_thread(ctl.plugins.reload, plugin_id)
         return json_response(detail)
-
-    return router
 
 
 __all__ = ["PLUGIN_FILE_HEADERS", "routes"]

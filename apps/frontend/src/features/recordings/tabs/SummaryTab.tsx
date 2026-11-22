@@ -20,7 +20,7 @@ function Section({ id, icon, title, note, children }: { id: string; icon: ReactN
         {icon}
         {title}
       </h3>
-      {note ? <p className="text-caption text-fg-tertiary">{note}</p> : null}
+      {(note != null && note !== "") ? <p className="text-caption text-fg-tertiary">{note}</p> : null}
       {children}
     </section>
   );
@@ -72,7 +72,7 @@ export function SummaryTab({
           <ul className="grid gap-1.5" aria-label="summary notes">
             {summary.notes.map((note, index) => (
               <li
-                key={`${index}-${note.slice(0, 24)}`}
+                key={`${String(index)}-${note.slice(0, 24)}`}
                 className={failed && index === 0 ? "rounded-r-md border-l-2 border-l-danger bg-sunken px-3 py-2 text-data text-fg" : "text-data text-fg-secondary"}
               >
                 <span className="whitespace-pre-wrap break-words">{tServer(note)}</span>
@@ -84,7 +84,7 @@ export function SummaryTab({
         )}
       </Section>
 
-      <Section id={`${id}-time`} icon={<Timer />} title={t("時間")} note={time.group?.note}>
+      <Section id={`${id}-time`} icon={<Timer />} title={t("時間")} {...(time.group?.note === undefined ? {} : { note: time.group.note })}>
         <MetricTable label={t("時間指標")} rows={time.rows} />
       </Section>
 
@@ -92,14 +92,14 @@ export function SummaryTab({
 
       <TransferSection recording={recording} selectedCategory={selectedCategory} onSelectCategory={onSelectCategory} />
 
-      <Section id={`${id}-steps`} icon={<Footprints />} title={t("步數／前向次數")} note={steps.group?.note}>
+      <Section id={`${id}-steps`} icon={<Footprints />} title={t("步數／前向次數")} {...(steps.group?.note === undefined ? {} : { note: steps.group.note })}>
         <MetricTable label={t("步數與前向次數")} rows={steps.rows} />
       </Section>
 
       <CostSection recording={recording} />
 
       {device.rows.length > 0 ? (
-        <Section id={`${id}-device`} icon={<Cpu />} title={t("整卡取樣")} note={device.group?.note}>
+        <Section id={`${id}-device`} icon={<Cpu />} title={t("整卡取樣")} {...(device.group?.note === undefined ? {} : { note: device.group.note })}>
           <MetricTable label={t("整卡取樣")} rows={device.rows} />
         </Section>
       ) : null}

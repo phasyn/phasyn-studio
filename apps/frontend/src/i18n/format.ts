@@ -3,13 +3,16 @@
 import { INTL_TAGS, SOURCE_LOCALE } from "./locale";
 import { getLocale } from "./store";
 
-const cache = new Map<string, Intl.NumberFormat | Intl.DateTimeFormat | Intl.RelativeTimeFormat | Intl.ListFormat>();
+const numbers = new Map<string, Intl.NumberFormat>();
+const dates = new Map<string, Intl.DateTimeFormat>();
+const relatives = new Map<string, Intl.RelativeTimeFormat>();
+const lists = new Map<string, Intl.ListFormat>();
 
-function memo<T extends Intl.NumberFormat | Intl.DateTimeFormat | Intl.RelativeTimeFormat | Intl.ListFormat>(kind: string, options: object, make: (tag: string) => T): T {
+function memo<T>(cache: Map<string, T>, options: object, make: (tag: string) => T): T {
   const tag = intlTag();
-  const key = `${kind}|${tag}|${JSON.stringify(options)}`;
-  let value = cache.get(key) as T | undefined;
-  if (!value) {
+  const key = `${tag}|${JSON.stringify(options)}`;
+  let value = cache.get(key);
+  if (value === undefined) {
     value = make(tag);
     cache.set(key, value);
   }
@@ -22,7 +25,7 @@ export function intlTag(): string {
 }
 
 export function formatNumber(value: number, options: Intl.NumberFormatOptions = {}): string {
-  return memo("number", options, (tag) => new Intl.NumberFormat(tag, options)).format(value);
+  return memo(numbers, options, (tag) => new Intl.NumberFormat(tag, options)).format(value);
 }
 
 const DATE_TIME: Intl.DateTimeFormatOptions = { year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" };
@@ -37,7 +40,7 @@ function toDate(value: string | number | Date): Date | null {
 export function formatDateTime(value: string | number | Date, options: Intl.DateTimeFormatOptions = DATE_TIME): string {
   const date = toDate(value);
   if (!date) return String(value);
-  return memo("datetime", options, (tag) => new Intl.DateTimeFormat(tag, options)).format(date);
+  return memo(dates, options, (tag) => new Intl.DateTimeFormat(tag, options)).format(date);
 }
 
 /** 本地時區的時間（24 小時制）；無法解析時原樣回傳字串。 */
@@ -45,7 +48,7 @@ export function formatTime(value: string | number | Date, options: Intl.DateTime
   return formatDateTime(value, options);
 }
 
-const RELATIVE_UNITS: ReadonlyArray<[Intl.RelativeTimeFormatUnit, number]> = [
+const RELATIVE_UNITS: readonly [Intl.RelativeTimeFormatUnit, number][] = [
   ["day", 86_400_000],
   ["hour", 3_600_000],
   ["minute", 60_000],
@@ -55,7 +58,7 @@ const RELATIVE_UNITS: ReadonlyArray<[Intl.RelativeTimeFormatUnit, number]> = [
 /** 相對時間（「3 分鐘前」「3 minutes ago」）；以最大的整數單位表示。 */
 export function formatRelativeTime(thenMs: number, nowMs: number): string {
   const diff = thenMs - nowMs;
-  const format = memo("relative", { numeric: "auto" }, (tag) => new Intl.RelativeTimeFormat(tag, { numeric: "auto" }));
+  const format = memo(relatives, { numeric: "auto" }, (tag) => new Intl.RelativeTimeFormat(tag, { numeric: "auto" }));
   for (const [unit, size] of RELATIVE_UNITS) {
     if (Math.abs(diff) >= size || unit === "second") return format.format(Math.trunc(diff / size), unit);
   }
@@ -86,7 +89,7 @@ export function formatList(items: readonly unknown[], options: ListOptions = {})
   if (locale === SOURCE_LOCALE) return texts.join(options.separator ?? "、"); // i18n-ignore（formatList 本身）
   const type = options.type ?? "conjunction";
   if (locale === "ja" && type === "unit") return texts.join("、"); // i18n-ignore（formatList 本身）
-  return memo("list", { type }, (tag) => new Intl.ListFormat(tag, { type })).format(texts);
+  return memo(lists, { type }, (tag) => new Intl.ListFormat(tag, { type })).format(texts);
 }
 
 /** 句子內的並列片段（「a・b・c」）：zh-Hant、ja 用「・」，en 用 “ · ”。 */

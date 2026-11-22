@@ -1,3 +1,4 @@
+import { fixtureValue } from "@/test/fixtures";
 import { describe, expect, it } from "vitest";
 import type { ComponentEntry, NodeView } from "@/api/catalog";
 import { descriptor, pipeline, step } from "@/test/fixtures";
@@ -23,7 +24,7 @@ describe("刪除 instance", () => {
   });
 
   it("只允許已停止或錯誤的 instance", () => {
-    const entry = ENTRIES.find((item) => item.descriptor.component_id === DIT)!;
+    const entry = fixtureValue(ENTRIES.find((item) => item.descriptor.component_id === DIT), "componentsModel.test.ts");
     expect(deleteBlockReason(entry)).toBe("先停止元件才能刪除");
     expect(deleteBlockReason({ ...entry, descriptor: { ...entry.descriptor, state: "stopped" } })).toBeNull();
     expect(deleteBlockReason({ ...entry, descriptor: { ...entry.descriptor, state: "error" } })).toBeNull();

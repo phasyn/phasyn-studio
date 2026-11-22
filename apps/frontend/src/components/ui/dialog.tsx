@@ -4,7 +4,7 @@
 // See THIRD_PARTY_NOTICES.md.
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
-import { forwardRef, type AnimationEvent, type ComponentPropsWithoutRef, type ElementRef, type HTMLAttributes } from "react";
+import type { Ref, AnimationEvent, ComponentPropsWithoutRef, ComponentRef, HTMLAttributes } from "react";
 import { cn } from "@/lib/cn";
 import { t } from "@/i18n";
 import { useFocusReturn } from "./focusReturn";
@@ -36,13 +36,12 @@ type ContentProps = ComponentPropsWithoutRef<typeof DialogPrimitive.Content>;
 function inertWhileClosing(onAnimationStart: ContentProps["onAnimationStart"]) {
   return (event: AnimationEvent<HTMLDivElement>) => {
     onAnimationStart?.(event);
-    if (event.target === event.currentTarget) event.currentTarget.inert = event.currentTarget.dataset.state === "closed";
+    if (event.target === event.currentTarget) event.currentTarget.inert = event.currentTarget.dataset["state"] === "closed";
   };
 }
 
-export const DialogContent = forwardRef<ElementRef<typeof DialogPrimitive.Content>, ContentProps & { wide?: boolean }>(function DialogContent(
-  { className, children, wide = false, onOpenAutoFocus, onCloseAutoFocus, onAnimationStart, ...props },
-  ref,
+export function DialogContent(
+  { ref, className, children, wide = false, closeDisabled = false, onOpenAutoFocus, onCloseAutoFocus, onAnimationStart, ...props }: ContentProps & { wide?: boolean; /** Greys out the corner X while the dialog must stay open (e.g. a removal in progress). */ closeDisabled?: boolean } & { ref?: Ref<ComponentRef<typeof DialogPrimitive.Content>> | undefined },
 ) {
   const focus = useFocusReturn({ onOpenAutoFocus, onCloseAutoFocus });
   return (
@@ -63,20 +62,21 @@ export const DialogContent = forwardRef<ElementRef<typeof DialogPrimitive.Conten
       >
         {children}
         <DialogPrimitive.Close
-          className="absolute top-3 right-3 inline-flex size-10 items-center justify-center rounded-md text-fg-secondary pressable hover:bg-raised hover:text-fg"
+          className="absolute top-3 right-3 inline-flex size-10 items-center justify-center rounded-md text-fg-secondary pressable hover:bg-raised hover:text-fg disabled:pointer-events-none disabled:opacity-40"
           aria-label={t("關閉")}
+          disabled={closeDisabled}
         >
           <X aria-hidden className="size-4" />
         </DialogPrimitive.Close>
       </DialogPrimitive.Content>
     </DialogPrimitive.Portal>
   );
-});
+}
 
-export const SheetContent = forwardRef<ElementRef<typeof DialogPrimitive.Content>, ContentProps & { side?: "right" | "left"; closeLabel?: string }>(function SheetContent(
-  { className, children, onOpenAutoFocus, onCloseAutoFocus, onAnimationStart, side = "right", closeLabel = t("關閉詳情"), ...props },
-  ref,
+export function SheetContent(
+  { ref, className, children, onOpenAutoFocus, onCloseAutoFocus, onAnimationStart, side = "right", closeLabel: closeLabelProp, ...props }: ContentProps & { side?: "right" | "left"; closeLabel?: string } & { ref?: Ref<ComponentRef<typeof DialogPrimitive.Content>> | undefined },
 ) {
+  const closeLabel = closeLabelProp ?? t("關閉詳情");
   const focus = useFocusReturn({ onOpenAutoFocus, onCloseAutoFocus });
   return (
     <DialogPrimitive.Portal>
@@ -106,7 +106,7 @@ export const SheetContent = forwardRef<ElementRef<typeof DialogPrimitive.Content
       </DialogPrimitive.Content>
     </DialogPrimitive.Portal>
   );
-});
+}
 
 export function DialogHeader({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
   return <div className={cn("flex flex-col gap-1 border-b border-line-subtle px-6 pt-5 pb-4 pr-14", className)} {...props} />;
@@ -125,16 +125,14 @@ export function DialogFooter({ className, ...props }: HTMLAttributes<HTMLDivElem
   );
 }
 
-export const DialogTitle = forwardRef<
-  ElementRef<typeof DialogPrimitive.Title>,
-  ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
->(function DialogTitle({ className, ...props }, ref) {
+export function DialogTitle(
+  { ref, className, ...props }: ComponentPropsWithoutRef<typeof DialogPrimitive.Title> & { ref?: Ref<ComponentRef<typeof DialogPrimitive.Title>> | undefined },
+) {
   return <DialogPrimitive.Title ref={ref} className={cn("text-section font-semibold text-fg", className)} {...props} />;
-});
+}
 
-export const DialogDescription = forwardRef<
-  ElementRef<typeof DialogPrimitive.Description>,
-  ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
->(function DialogDescription({ className, ...props }, ref) {
+export function DialogDescription(
+  { ref, className, ...props }: ComponentPropsWithoutRef<typeof DialogPrimitive.Description> & { ref?: Ref<ComponentRef<typeof DialogPrimitive.Description>> | undefined },
+) {
   return <DialogPrimitive.Description ref={ref} className={cn("text-data text-fg-secondary", className)} {...props} />;
-});
+}

@@ -116,7 +116,7 @@ export function ImpactGroup({ clip }: { clip: TimelineClip }) {
               label={t("衝擊格的樣式")}
               value={impact.style}
               options={STYLE_OPTIONS}
-              onChange={(style) => panel.perform({ ...clip, effects: { ...effects, impact: { ...impact, style } } })}
+              onChange={(style) => void panel.perform({ ...clip, effects: { ...effects, impact: { ...impact, style } } })}
               className="max-w-56 flex-1"
             />
           </Row>

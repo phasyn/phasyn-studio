@@ -13,7 +13,7 @@ import type {
   StudioPluginRemoval,
   StudioPluginRemovalPreview,
 } from "./generated/contracts";
-import { ApiError, apiFetch, apiJson } from "./http";
+import { ApiError, apiFetch, contractJson } from "./http";
 import { t } from "@/i18n";
 
 export const pluginKeys = {
@@ -35,7 +35,7 @@ export const PLUGIN_PACKAGE_EXTENSION = ".phasynplugin";
 export const PLUGIN_FILE_PREVIEW_BYTES = 256 * 1024;
 
 export function fetchPluginRegistry(signal?: AbortSignal): Promise<StudioPluginList> {
-  return apiJson<StudioPluginList>(ROOT, { signal });
+  return contractJson("StudioPluginList", ROOT, { signal });
 }
 
 /**
@@ -54,7 +54,7 @@ export function usePluginRegistryQuery() {
 }
 
 export function fetchPlugin(pluginId: StudioPluginId, signal?: AbortSignal): Promise<StudioPluginDetail> {
-  return apiJson<StudioPluginDetail>(pluginPath(pluginId), { signal });
+  return contractJson("StudioPluginDetail", pluginPath(pluginId), { signal });
 }
 
 /** One package's manifest, files and consent record; `stamp` is its digest and revision as the registry lists them. */
@@ -80,9 +80,9 @@ export interface InstallOptions {
 
 /** POST /api/studio/plugins with the package's bytes: 200 for a dry run, 201 once installed. */
 export function installPlugin(file: Blob, options: InstallOptions = {}): Promise<StudioPluginInstallResult> {
-  return apiJson<StudioPluginInstallResult>(ROOT, {
+  return contractJson("StudioPluginInstallResult", ROOT, {
     method: "POST",
-    query: { dry_run: options.dryRun ? true : null, replace: options.replace ? true : null, digest: options.digest ?? null },
+    query: { dry_run: (options.dryRun === true) ? true : null, replace: (options.replace === true) ? true : null, digest: options.digest ?? null },
     body: file,
     headers: { "Content-Type": "application/octet-stream" },
     signal: options.signal,
@@ -96,11 +96,11 @@ export function packageTooLarge(file: Blob, maxBytes: number): ApiError | null {
 }
 
 export function patchPlugin(pluginId: StudioPluginId, body: StudioPluginPatch): Promise<StudioPluginDetail> {
-  return apiJson<StudioPluginDetail>(pluginPath(pluginId), { method: "PATCH", json: body });
+  return contractJson("StudioPluginDetail", pluginPath(pluginId), { method: "PATCH", json: body });
 }
 
 export function fetchRemovalPreview(pluginId: StudioPluginId, signal?: AbortSignal): Promise<StudioPluginRemovalPreview> {
-  return apiJson<StudioPluginRemovalPreview>(`${pluginPath(pluginId)}/removal-preview`, { signal });
+  return contractJson("StudioPluginRemovalPreview", `${pluginPath(pluginId)}/removal-preview`, { signal });
 }
 
 /** Which projects still use the package (read again every time the removal dialog opens). */
@@ -117,11 +117,11 @@ export function useRemovalPreview(pluginId: StudioPluginId | null) {
 
 /** DELETE with the digest the user saw; project documents are never edited. */
 export function removePlugin(pluginId: StudioPluginId, digest: string): Promise<StudioPluginRemoval> {
-  return apiJson<StudioPluginRemoval>(pluginPath(pluginId), { method: "DELETE", query: { digest } });
+  return contractJson("StudioPluginRemoval", pluginPath(pluginId), { method: "DELETE", query: { digest } });
 }
 
 export function reloadPlugin(pluginId: StudioPluginId): Promise<StudioPluginDetail> {
-  return apiJson<StudioPluginDetail>(`${pluginPath(pluginId)}/reload`, { method: "POST" });
+  return contractJson("StudioPluginDetail", `${pluginPath(pluginId)}/reload`, { method: "POST" });
 }
 
 /** URL of one file of a package (served as data: octet-stream, or an image type for a checked bitmap). */
@@ -148,9 +148,9 @@ export function usePluginFileText(pluginId: StudioPluginId, digest: string, path
 
 /** The download name from Content-Disposition (filename*= first, then filename=); null when there is none. */
 export function dispositionFileName(header: string | null): string | null {
-  if (!header) return null;
+  if (!(header != null && header !== "")) return null;
   const extended = /filename\*\s*=\s*UTF-8''([^;]+)/i.exec(header);
-  if (extended?.[1]) {
+  if (extended?.[1] != null && extended[1] !== "") {
     try {
       return decodeURIComponent(extended[1].trim());
     } catch {
@@ -172,7 +172,7 @@ export async function exportPlugin(pluginId: StudioPluginId, fallbackName: strin
   const response = await apiFetch(`${pluginPath(pluginId)}/package`, { signal, headers: { Accept: "application/octet-stream" } });
   const named = dispositionFileName(response.headers.get("Content-Disposition"));
   // The name becomes a local file name: keep only its last path segment
-  const fileName = (named ?? fallbackName).split(/[\\/]/).pop() || fallbackName;
+  const fileName = (((named ?? fallbackName).split(/[\\/]/).pop()) ?? "") || fallbackName;
   return { fileName, blob: await response.blob() };
 }
 

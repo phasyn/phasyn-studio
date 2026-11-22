@@ -1,0 +1,22 @@
+{
+  "component_id": "character-body",
+  "label": "角色表演・全身",
+  "provider_id": "media.body_performance",
+  "runtime_id": "performance-cpu",
+  "autostart": false,
+  "folder": "製作/表演",
+  "settings": {
+    "load": {
+      "model_path": "/path/to/models/mediapipe/pose_landmarker_full.task",
+      "device": {
+        "kind": "cpu",
+        "id": "cpu",
+        "resource_group": "cpu-performance"
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "mode": "detailed"
+    }
+  }
+}

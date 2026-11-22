@@ -30,17 +30,17 @@ export function ViewerFrame({
   drag?: { title: string; onStart: (event: DragEvent<HTMLDivElement>) => void; onEnd: () => void };
   children: ReactNode;
 }) {
-  const stage = useRef<HTMLDivElement>(null);
-  const room = useElementSize(stage);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const room = useElementSize(stageRef);
   // Fit leaves a small margin, so handles on the picture's edge stay inside the stage
   const fitted = Math.min((room.width - 2 * MARGIN) / Math.max(1, width), (room.height - 2 * MARGIN) / Math.max(1, height));
   const scale = zoom === "fit" ? fitted : zoom / 100;
   const box = { width: Math.max(0, Math.floor(width * scale)), height: Math.max(0, Math.floor(height * scale)) };
   const overflows = box.width > room.width || box.height > room.height;
   return (
-    <div ref={stage} title={title} className={cn("relative min-h-0 min-w-0 flex-1 bg-stage", overflows ? "overflow-auto" : "overflow-hidden", className)}>
+    <div ref={stageRef} title={title} className={cn("relative min-h-0 min-w-0 flex-1 bg-stage", overflows ? "overflow-auto" : "overflow-hidden", className)}>
       <div className={cn("grid min-h-full min-w-full", !overflows && "place-items-center")}>
-        <div
+        <div /* eslint-disable-line jsx-a11y-x/no-static-element-interactions -- Dragging the source monitor is an optional gesture; the source monitor also has an insert command. */
           className={cn("relative shrink-0", drag && "cursor-grab active:cursor-grabbing")}
           style={box}
           draggable={drag ? true : undefined}

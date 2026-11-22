@@ -20,12 +20,12 @@ interface CaptionTextProps {
 
 function CaptionText({ text, fresh, onCommit }: CaptionTextProps) {
   const id = useId();
-  const input = useRef<HTMLTextAreaElement>(null);
-  const [field, draft] = useTextDraft<HTMLTextAreaElement>({ value: text, validate: captionTextProblem, onCommit, inputRef: input });
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const [field, draft] = useTextDraft<HTMLTextAreaElement>({ value: text, validate: captionTextProblem, onCommit, inputRef: inputRef });
   useEffect(() => {
     if (!fresh) return;
-    input.current?.focus();
-    input.current?.select();
+    inputRef.current?.focus();
+    inputRef.current?.select();
   }, [fresh]);
   return (
     <>
@@ -38,10 +38,10 @@ function CaptionText({ text, fresh, onCommit }: CaptionTextProps) {
         title={t("字幕文字：Enter 換行，Ctrl／⌘＋Enter 或離開欄位套用")}
         value={draft.text}
         className="min-h-0 resize-none border-line-strong"
-        aria-invalid={draft.error ? true : undefined}
-        aria-describedby={draft.error ? `${id}-error` : undefined}
-        onChange={(event) => draft.setText(event.target.value)}
-        onBlur={draft.commit}
+        aria-invalid={(draft.error != null && draft.error !== "") ? true : undefined}
+        aria-describedby={(draft.error != null && draft.error !== "") ? `${id}-error` : undefined}
+        onChange={(event) => { draft.setText(event.target.value); }}
+        onBlur={() => { draft.commit(); }}
         onKeyDown={(event) => {
           if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
             event.preventDefault();
@@ -52,7 +52,7 @@ function CaptionText({ text, fresh, onCommit }: CaptionTextProps) {
           }
         }}
       />
-      {draft.error ? (
+      {(draft.error != null && draft.error !== "") ? (
         <p id={`${id}-error`} role="alert" className="text-caption text-danger">
           {t("{error}（Esc 還原）", { error: draft.error })}
         </p>
@@ -83,6 +83,7 @@ export function CaptionDetail({ caption, fresh, onChange }: CaptionDetailProps) 
   return (
     // In a panel too short for it the detail area gives way and scrolls: the list above always keeps a row
     <section aria-label={t("字幕內容")} className="grid min-h-0 content-start gap-1.5 overflow-y-auto border-t border-line-subtle bg-canvas/40 p-2">
+      {caption.transcription?.needs_review === true && <p role="status" className="text-caption text-warning">{t("新轉錄與人工修改需重新檢視。")}</p>}
       <CaptionText text={caption.text} fresh={fresh} onCommit={(text) => onChange({ text })} />
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <Pair label={t("入點")}>

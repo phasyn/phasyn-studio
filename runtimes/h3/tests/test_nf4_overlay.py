@@ -7,7 +7,9 @@ from pathlib import Path
 from phasyn_h3.recipe.runtime.checkpoint_inspect import write_overlay
 
 
-def test_overlay_links_sibling_components_and_keeps_transformer_local(tmp_path: Path) -> None:
+def test_overlay_links_sibling_components_and_keeps_transformer_local(
+    tmp_path: Path,
+) -> None:
     variant_dir = tmp_path / "MiniMax-H3" / "Ref2VA"
     for name in ("audio_vae", "video_vae", "text_encoder", "tokenizer", "processor"):
         (variant_dir / name).mkdir(parents=True)
@@ -26,12 +28,24 @@ def test_overlay_links_sibling_components_and_keeps_transformer_local(tmp_path: 
     }
     overlay = tmp_path / "overlay"
     transformer_dir = write_overlay(
-        overlay, weights_file=weights, config={"a": 1}, model_index=model_index, component_root=variant_dir
+        overlay,
+        weights_file=weights,
+        config={"a": 1},
+        model_index=model_index,
+        component_root=variant_dir,
     )
     assert (transformer_dir / "config.json").is_file()
     for name in ("audio_vae", "video_vae", "text_encoder", "tokenizer", "processor"):
-        assert (overlay / name).is_symlink() and (overlay / name).resolve() == (variant_dir / name).resolve()
+        assert (overlay / name).is_symlink() and (overlay / name).resolve() == (
+            variant_dir / name
+        ).resolve()
     assert not (overlay / "transformer").is_symlink()
     # 再寫一次（重新載入）不會失敗、也不會改掉既有連結
-    write_overlay(overlay, weights_file=weights, config={"a": 1}, model_index=model_index, component_root=variant_dir)
+    write_overlay(
+        overlay,
+        weights_file=weights,
+        config={"a": 1},
+        model_index=model_index,
+        component_root=variant_dir,
+    )
     assert (overlay / "audio_vae").is_symlink()

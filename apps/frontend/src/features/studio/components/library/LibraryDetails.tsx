@@ -2,6 +2,8 @@
 // 選了幾個素材時改成選取摘要（總大小、使用中數量、移除沒有使用的）。
 // 名稱與備註都寫回專案文件（setLibrary）：名稱在素材庫內不分大小寫唯一；一鍵換角來源影片的備註帶著換角工作的設定，
 // 不能在這裡編輯；Image Studio 遮罩的固定備註也不能拿來當一般備註（否則素材會被當成遮罩藏起來）。
+import { useLayoutEffect } from "react";
+import { AssetAudio } from "@/components/common/AssetMedia";
 import { AtSign, ChevronDown, Download, ExternalLink, Film, Images, Link2, Maximize2, MousePointerClick, Pencil, Replace, SquareDashed, Trash2, type LucideIcon } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { useId, useState, type ReactNode, type RefObject } from "react";
@@ -21,12 +23,14 @@ import { KindIcon } from "../../references/KindIcon";
 import { IMAGE_MASK_NOTE, KIND_LABEL } from "../../references/materials";
 import { LibraryThumb } from "../../references/ReferenceRow";
 import { useStudio } from "../../studioContext";
+import { LibraryFixButton } from "../../fix";
 import { itemAudioTrack, itemDimensions, itemDuration, itemSize, itemSource, totalSize } from "./display";
 import { t } from "@/i18n";
 
 const USE_ICON: Record<LibraryUse["kind"], LucideIcon> = {
   reference: AtSign,
   first_frame: Link2,
+  previs: Film,
   image_reference: Images,
   image_mask: SquareDashed,
   swap_source: Replace,
@@ -37,6 +41,8 @@ function describeUse(use: LibraryUse): string {
   switch (use.kind) {
     case "reference":
       return t("參考 {aliases}", { aliases: formatList(use.aliases) });
+    case "previs":
+      return t("構圖預演");
     case "first_frame":
       return t("首幀");
     case "image_reference":
@@ -71,7 +77,7 @@ function LargePreview({ item, onExpand }: { item: StudioLibraryItem; onExpand: (
       ) : (
         <div className="grid w-full justify-items-center gap-3 px-4">
           <KindIcon kind="audio" className="size-8" />
-          <audio key={url} src={url} controls preload="metadata" className="w-full" />
+          <AssetAudio key={url} src={url} controls preload="metadata" className="w-full" />
         </div>
       )}
       <button
@@ -93,8 +99,9 @@ function NameField({ item, renaming, onRenaming, inputRef }: { item: StudioLibra
   const library = project.library ?? [];
   const problem = renaming ? libraryRenameProblem(library, item.item_id, draft) : null;
   const errorId = useId();
+  useLayoutEffect(() => { if (renaming) inputRef.current?.focus({ preventScroll: true }); }, [inputRef, renaming]);
   const commit = () => {
-    if (problem) return;
+    if (problem != null && problem !== "") return;
     if (draft.trim() !== item.name) dispatch({ type: "setLibrary", library: withLibraryItemPatch(library, item.item_id, { name: draft }) });
     onRenaming(false);
   };
@@ -123,17 +130,16 @@ function NameField({ item, renaming, onRenaming, inputRef }: { item: StudioLibra
       <Input
         ref={inputRef}
         compact
-        autoFocus
         data-library-local-escape=""
         value={draft}
         maxLength={240}
         aria-label={t("素材名稱")}
-        aria-invalid={problem ? true : undefined}
-        aria-describedby={problem ? errorId : undefined}
-        onChange={(event) => setDraft(event.target.value)}
-        onFocus={(event) => event.currentTarget.select()}
+        aria-invalid={(problem != null && problem !== "") ? true : undefined}
+        aria-describedby={(problem != null && problem !== "") ? errorId : undefined}
+        onChange={(event) => { setDraft(event.target.value); }}
+        onFocus={(event) => { event.currentTarget.select(); }}
         onBlur={() => {
-          if (problem) onRenaming(false);
+          if (problem != null && problem !== "") onRenaming(false);
           else commit();
         }}
         onKeyDown={(event) => {
@@ -147,7 +153,7 @@ function NameField({ item, renaming, onRenaming, inputRef }: { item: StudioLibra
           }
         }}
       />
-      <p id={errorId} className={cn("text-caption", problem ? "text-danger" : "text-fg-tertiary")}>
+      <p id={errorId} className={cn("text-caption", (problem != null && problem !== "") ? "text-danger" : "text-fg-tertiary")}>
         {problem ?? t("Enter 儲存、Esc 取消")}
       </p>
     </div>
@@ -162,18 +168,18 @@ function NoteField({ item, locked }: { item: StudioLibraryItem; locked: string |
   const problem = draft.length > LIBRARY_NOTE_MAX ? t("備註最多 {max} 個字元", { max: LIBRARY_NOTE_MAX }) : draft === IMAGE_MASK_NOTE ? t("這段文字是 Image Studio 遮罩的標記，不能當備註") : null;
   const dirty = draft !== saved;
   const save = () => {
-    if (!dirty || problem || locked) return;
+    if (!dirty || (problem != null && problem !== "") || (locked != null && locked !== "")) return;
     dispatch({ type: "setLibrary", library: withLibraryItemPatch(project.library ?? [], item.item_id, { note: draft }) });
   };
   return (
     <div className="grid gap-1.5">
       <label htmlFor={id} className="flex items-center justify-between text-caption font-medium text-fg-secondary">
         {t("備註")}
-        <span className={cn("machine text-[11px] font-normal", problem ? "text-danger" : "text-fg-tertiary")}>
+        <span className={cn("machine text-[11px] font-normal", (problem != null && problem !== "") ? "text-danger" : "text-fg-tertiary")}>
           {draft.length}/{LIBRARY_NOTE_MAX}
         </span>
       </label>
-      {locked ? (
+      {(locked != null && locked !== "") ? (
         <p className="rounded-md border border-line-subtle bg-sunken/60 px-2.5 py-2 text-caption text-fg-tertiary">{locked}</p>
       ) : (
         <>
@@ -183,8 +189,8 @@ function NoteField({ item, locked }: { item: StudioLibraryItem; locked: string |
             data-library-local-escape=""
             value={draft}
             placeholder={t("寫下這個素材的用途、角色或注意事項")}
-            aria-invalid={problem ? true : undefined}
-            onChange={(event) => setDraft(event.target.value)}
+            aria-invalid={(problem != null && problem !== "") ? true : undefined}
+            onChange={(event) => { setDraft(event.target.value); }}
             onBlur={save}
             onKeyDown={(event) => {
               event.stopPropagation();
@@ -198,7 +204,7 @@ function NoteField({ item, locked }: { item: StudioLibraryItem; locked: string |
             }}
             className="min-h-20"
           />
-          <p className={cn("text-caption", problem ? "text-danger" : "text-fg-tertiary")}>{problem ?? (dirty ? t("離開欄位或 Ctrl／⌘＋Enter 儲存，Esc 還原") : t("已儲存在專案"))}</p>
+          <p className={cn("text-caption", (problem != null && problem !== "") ? "text-danger" : "text-fg-tertiary")}>{problem ?? (dirty ? t("離開欄位或 Ctrl／⌘＋Enter 儲存，Esc 還原") : t("已儲存在專案"))}</p>
         </>
       )}
     </div>
@@ -216,7 +222,7 @@ function UsesSection({ uses, projectId, onJumpToShot }: { uses: readonly Library
         type="button"
         aria-expanded={open}
         aria-controls={listId}
-        onClick={() => setOpen(!open)}
+        onClick={() => { setOpen(!open); }}
         className="pressable flex items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-caption font-medium text-brand-cyan hover:bg-raised"
       >
         <Link2 aria-hidden className="size-3.5" />
@@ -240,7 +246,7 @@ function UsesSection({ uses, projectId, onJumpToShot }: { uses: readonly Library
                   <Icon aria-hidden className="size-3.5 shrink-0 text-fg-tertiary" />
                   <span className="grid min-w-0 flex-1">
                     <span className="flex min-w-0 items-baseline gap-1.5 text-caption text-fg">
-                      {use.kind === "reference" || use.kind === "first_frame" ? (
+                      {use.kind === "reference" || use.kind === "first_frame" || use.kind === "previs" ? (
                         <>
                           <span className="machine shrink-0 text-fg-tertiary">{String(use.index + 1).padStart(2, "0")}</span>
                           <span className="truncate">{use.title}</span>
@@ -255,8 +261,8 @@ function UsesSection({ uses, projectId, onJumpToShot }: { uses: readonly Library
                     </span>
                     <span className="truncate text-[11px] leading-4 text-fg-tertiary">{describeUse(use)}</span>
                   </span>
-                  {use.kind === "reference" || use.kind === "first_frame" ? (
-                    <Button size="sm" variant="quiet" className="min-h-7 shrink-0 px-2" icon={<MousePointerClick aria-hidden />} onClick={() => onJumpToShot(use.shotId)}>
+                  {use.kind === "reference" || use.kind === "first_frame" || use.kind === "previs" ? (
+                    <Button size="sm" variant="quiet" className="min-h-7 shrink-0 px-2" icon={<MousePointerClick aria-hidden />} onClick={() => { onJumpToShot(use.shotId); }}>
                       {t("選取鏡頭")}
                     </Button>
                   ) : use.kind === "image_reference" || use.kind === "image_mask" ? (
@@ -297,7 +303,7 @@ function SingleDetails({ item, uses, swapSourceId, renaming, onRenaming, renameR
   const locked = item.item_id === swapSourceId ? t("這段影片是一鍵換角的來源影片：備註存著換角工作的設定，不能在這裡編輯。") : null;
   return (
     <div className="grid content-start gap-4 p-4">
-      <LargePreview item={item} onExpand={() => onExpand(item.item_id)} />
+      <LargePreview item={item} onExpand={() => { onExpand(item.item_id); }} />
       <div className="grid gap-1.5">
         <NameField key={`${item.item_id}:${renaming ? "edit" : "view"}`} item={item} renaming={renaming} onRenaming={onRenaming} inputRef={renameRef} />
         <p className="flex items-center gap-1.5 text-caption text-fg-tertiary">
@@ -308,7 +314,7 @@ function SingleDetails({ item, uses, swapSourceId, renaming, onRenaming, renameR
       <dl className="grid grid-cols-[6rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-caption">
         {item.kind !== "audio" ? <Fact label={t("解析度")}>{itemDimensions(item)}</Fact> : null}
         {item.kind !== "image" ? <Fact label={t("長度")}>{itemDuration(item)}</Fact> : null}
-        {audio ? <Fact label={t("音軌")}>{audio}</Fact> : null}
+        {(audio != null && audio !== "") ? <Fact label={t("音軌")}>{audio}</Fact> : null}
         <Fact label={t("大小")}>
           <span title={formatBytesExact(item.file.size_bytes)}>{itemSize(item)}</span>
         </Fact>
@@ -334,6 +340,7 @@ function SingleDetails({ item, uses, swapSourceId, renaming, onRenaming, renameR
       </section>
       <NoteField key={item.item_id} item={item} locked={locked} />
       <div className="flex flex-wrap items-center gap-2 border-t border-line-subtle pt-3">
+        <LibraryFixButton key={JSON.stringify([item.item_id, item.file.sha256])} item={item} />
         <a href={url} download={item.name} className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}>
           <Download aria-hidden />
           {t("下載")}
@@ -369,7 +376,7 @@ function MultiDetails({ selected, uses, onRemove, onClearSelection }: { selected
       </div>
       <h3 className="text-data font-semibold text-fg">{t("已選取 {count} 個素材", { count: selected.length })}</h3>
       <dl className="grid grid-cols-[6rem_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-caption">
-        <Fact label={t("類型")}>{joinInline(kinds.map((entry) => `${KIND_LABEL[entry.kind]} ${entry.count}`))}</Fact>
+        <Fact label={t("類型")}>{joinInline(kinds.map((entry) => `${KIND_LABEL[entry.kind]} ${String(entry.count)}`))}</Fact>
         <Fact label={t("合計大小")}>{totalSize(selected)}</Fact>
         <Fact label={t("使用中")}>{inUse}</Fact>
       </dl>

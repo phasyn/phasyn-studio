@@ -10,4 +10,5 @@ from .adapter import H3Adapter
 from .constants import MODEL_DEFAULTS
 from .manifests import local_manifest
 
+
 __all__ = ["MODEL_DEFAULTS", "H3Adapter", "local_manifest"]

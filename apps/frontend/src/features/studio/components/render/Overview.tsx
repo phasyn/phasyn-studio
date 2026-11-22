@@ -26,7 +26,7 @@ function TimeLeft({ live }: { live: RenderActivity | null }) {
     return (
       <p className="flex min-w-0 flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="text-body text-fg-secondary" title={t("依本機成本紀錄；已完成的步驟用實際時間，進行中的步驟＝預估減去已經過的時間")}>
-          <T source={"剩 <0>{left}</0>"} values={{ left: formatLeft(seconds) }} slots={[<span className="machine text-title font-semibold text-fg" />]} />
+          <T source={"剩 <0>{left}</0>"} values={{ left: formatLeft(seconds) }} slots={[<span key="slot-0" className="machine text-title font-semibold text-fg" />]} />
         </span>
         <span className="text-body text-fg-secondary">{completionText(live.now + seconds * 1000)}</span>
         <Badge title={t("依本機成本紀錄；已完成的步驟用實際時間，進行中的步驟＝預估減去已經過的時間")}>{t("預估")}</Badge>

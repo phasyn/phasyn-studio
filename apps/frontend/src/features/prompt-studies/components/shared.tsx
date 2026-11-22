@@ -1,3 +1,4 @@
+import { hasSlotContent } from "@/lib/dom";
 // 圖片反推頁共用的小元件：階段狀態、任務狀態、判斷與誤差、圖片（載入失敗時說明原因）、元件選擇。
 import { ImageOff } from "lucide-react";
 import { useState, type ReactNode } from "react";
@@ -16,6 +17,7 @@ import { STOP_TEXT } from "../model/study";
 import type { MetricLabel, PromptStudyTask, RenderRef } from "../types";
 import { stepErrorText } from "../model/stepError";
 import { t } from "@/i18n";
+import { failureText } from "@/lib/errors";
 
 const RENDER_STATE: Record<RenderRef["state"], { tone: "success" | "info" | "danger" | "neutral" | "warning"; text: string }> = {
   succeeded: { tone: "success", text: t("完成") },
@@ -28,8 +30,8 @@ const RENDER_STATE: Record<RenderRef["state"], { tone: "success" | "info" | "dan
 /** 生成的狀態（失敗、取消、中斷也計入預算）。 */
 export function RenderChip({ render }: { render: RenderRef }) {
   const state = RENDER_STATE[render.state];
-  const title = render.error ? t("{code}：{message}{value}", { code: render.error.code, message: stepErrorText(render.error), value: render.error.remote_outcome_unknown ? t("（遠端結果未知）") : "" }) : render.state === "unknown" ? t("run 已建立；結果讀回後才會更新") : undefined;
-  return <StatusChip tone={state.tone} spinning={render.state === "unknown"} label={t("生成：{text}", { text: state.text })} title={title} />;
+  const title = render.error ? t("{message}{value}", { message: failureText(render.error.code, stepErrorText(render.error)), value: (render.error.remote_outcome_unknown === true) ? t("（遠端結果未知）") : "" }) : render.state === "unknown" ? t("run 已建立；結果讀回後才會更新") : undefined;
+  return <StatusChip tone={state.tone} spinning={render.state === "unknown"} label={t("生成：{text}", { text: state.text })} {...(title === undefined ? {} : { title })} />;
 }
 
 const COMPARE_STATE: Record<CompareStatus, { tone: "success" | "info" | "danger" | "neutral"; text: string } | null> = {
@@ -45,14 +47,14 @@ const COMPARE_STATE: Record<CompareStatus, { tone: "success" | "info" | "danger"
 export function CompareChip({ status, title }: { status: CompareStatus; title?: string }) {
   const state = COMPARE_STATE[status];
   if (!state) return null;
-  return <StatusChip tone={state.tone} spinning={status === "running"} label={t("比較：{text}", { text: state.text })} title={title} />;
+  return <StatusChip tone={state.tone} spinning={status === "running"} label={t("比較：{text}", { text: state.text })} {...(title === undefined ? {} : { title })} />;
 }
 
 export function TaskStateChip({ task }: { task: PromptStudyTask | null }) {
   if (!task) return <StatusChip tone="neutral" label={t("尚未執行")} />;
   if (task.state === "running") {
     return task.error ? (
-      <StatusChip tone="warning" label={t("已暫停（上一步失敗）")} title={t("{code}：{message}{value}", { code: task.error.code, message: stepErrorText(task.error), value: task.error.remote_outcome_unknown ? t("（遠端結果未知）") : "" })} />
+      <StatusChip tone="warning" label={t("已暫停（上一步失敗）")} title={t("{message}{value}", { message: failureText(task.error.code, stepErrorText(task.error)), value: (task.error.remote_outcome_unknown === true) ? t("（遠端結果未知）") : "" })} />
     ) : (
       <StatusChip tone="info" label={t("進行中")} />
     );
@@ -96,7 +98,7 @@ export function StudyImage({ file, alt, className, onSize, fit = "contain" }: { 
       alt={alt}
       loading="lazy"
       draggable={false}
-      onError={() => setFailedKey(key)}
+      onError={() => { setFailedKey(key); }}
       onLoad={(event) => {
         setLoadedKey(key);
         onSize?.(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight);
@@ -147,7 +149,7 @@ export function ComponentSelect({
         </p>
       ) : (
         <>
-          <Select id={id} compact value={value?.key ?? ""} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
+          <Select id={id} compact value={value?.key ?? ""} disabled={disabled} onChange={(event) => { onChange(event.target.value); }}>
             {choices.map((choice) => (
               <option key={choice.key} value={choice.key}>
                 {`${choice.place} / ${choice.descriptor.component_id}${choice.usable ? "" : t("（未就緒）")}`}
@@ -175,7 +177,7 @@ export function SectionTitle({ id, children, actions }: { id: string; children: 
       <h2 id={id} className="text-section font-semibold text-fg">
         {children}
       </h2>
-      {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
+      {hasSlotContent(actions) ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
     </div>
   );
 }

@@ -2,7 +2,8 @@
 // speed), its waveform when it is sound or its head thumbnail when it is a picture on a medium or large track, and its
 // state: selected (cyan frame, linked partners together), placeholder of an unrendered shot (hatched, planned length),
 // a newer take that is too short, switched off. A text layer is violet; an adjustment layer is rose with an 「調整」
-// badge (it has no picture of its own: its effects change everything below it).
+// badge (it has no picture of its own: its effects change everything below it). A shot's clip on the full timeline
+// hosts the 修正 menu its context menu opens (修正…) and keeps finished fix runs coming back while the Edit page is open.
 import { Hourglass, Music2, SlidersHorizontal, Sparkles, TriangleAlert, Type } from "lucide-react";
 import type { MouseEvent, PointerEvent } from "react";
 import type { TimelineClip as Clip, TimelineSource, TimelineTrack } from "@/api/generated/contracts";
@@ -11,6 +12,7 @@ import { t } from "@/i18n";
 import { cn } from "@/lib/cn";
 import { SHIMMER } from "@/components/ui/look";
 import { Waveform } from "../../components/MediaWaveform";
+import { ClipFixHost, FixRunWatcher } from "../../fix";
 import { TRANSITION_LABELS, type Transition } from "../../model/clipEffects";
 import { formatDuration, formatTimecode } from "../../model/frames";
 import { clipDuration, clipEnabled, windowBounds } from "../model";
@@ -24,7 +26,7 @@ function hasEffects(clip: Clip): boolean {
   const fx = clip.effects;
   const legacy = fx !== undefined && (fx.color !== undefined || fx.camera !== undefined || fx.impact !== undefined || fx.fade !== undefined || fx.hold !== undefined || (fx.frame_step ?? 1) !== 1);
   const motion = clip.motion;
-  const moved = motion.x !== 0 || motion.y !== 0 || motion.scale !== 1 || motion.rotation !== 0 || motion.opacity !== 1 || Object.values(motion.keyframes).some((keys) => (keys?.length ?? 0) > 0);
+  const moved = motion.x !== 0 || motion.y !== 0 || motion.scale !== 1 || motion.rotation !== 0 || motion.opacity !== 1 || Object.values(motion.keyframes).some((keys) => keys.length > 0);
   return legacy || moved || (clip.effect_stack?.length ?? 0) > 0 || clip.mask !== undefined || (clip.blend_mode ?? "normal") !== "normal";
 }
 
@@ -81,7 +83,7 @@ export function ClipBar(props: ClipBarProps) {
   const roomy = height >= 56;
   const place = { name: clip.name, start: formatTimecode(clip.start_frame, fps), duration: formatTimecode(duration, fps) };
   const label = adjustment ? t("調整圖層「{name}」，起點 {start}，長度 {duration}", place) : t("{name}，起點 {start}，長度 {duration}", place);
-  const begin = (event: PointerEvent<HTMLElement>, edge?: "in" | "out") => gestures.begin(event, clip, edge);
+  const begin = (event: PointerEvent<HTMLElement>, edge?: "in" | "out") => { gestures.begin(event, clip, edge); };
   const waveformHeight = Math.max(0, height - (roomy ? 30 : 12));
   // From the medium height up a picture shows the frame it starts with under its name (the bar's border and the name row take 32 px)
   const picture = !audio && (source?.kind === "video" || source?.kind === "image") && source.file !== null;
@@ -99,7 +101,7 @@ export function ClipBar(props: ClipBarProps) {
         aria-label={label}
         aria-pressed={selected}
         title={pending ? t("{name}：等待素材，先以計畫長度 {duration} 佔位", { name: clip.name, duration: formatDuration(duration, fps) }) : label}
-        onPointerDown={(event) => begin(event)}
+        onPointerDown={(event) => { begin(event); }}
         {...gestures.handlers}
         onKeyDown={(event) => {
           if (event.key !== "Enter") return;
@@ -172,11 +174,17 @@ export function ClipBar(props: ClipBarProps) {
                 "absolute inset-y-0 z-10 w-1.5 touch-none cursor-ew-resize rounded-[3px] bg-brand-cyan/70 transition-colors duration-(--duration-fast) hover:bg-brand-cyan",
                 edge === "in" ? "left-0" : "right-0",
               )}
-              onPointerDown={(event) => begin(event, edge)}
+              onPointerDown={(event) => { begin(event, edge); }}
               {...gestures.handlers}
             />
           ))
         : null}
+      {editable && (source?.shot_id != null || source?.candidate_origin?.shot_id != null) ? (
+        <>
+          <ClipFixHost clipId={clip.clip_id} />
+          <FixRunWatcher />
+        </>
+      ) : null}
     </div>
   );
 }
@@ -262,7 +270,7 @@ export function TransitionObject({
             <span
               key={direction}
               aria-hidden
-              onPointerDown={(event) => drag(event, direction)}
+              onPointerDown={(event) => { drag(event, direction); }}
               className={cn("absolute inset-y-0 w-1.5 touch-none cursor-ew-resize rounded-sm bg-brand-cyan/70 hover:bg-brand-cyan", direction < 0 ? "-left-0.5" : "-right-0.5")}
             />
           ))

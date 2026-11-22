@@ -1,3 +1,4 @@
+import { isListed } from "@/lib/json";
 import { ArrowDown, ArrowUp, CircleAlert, Eye, EyeOff, FileUp, Trash2 } from "lucide-react";
 import { useRef, useState } from "react";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -20,7 +21,7 @@ import {
   type MaterialDraft,
   type MaterialTag,
 } from "../model/materials";
-import { MATERIAL_ROLES, REF2VA_LIMITS, ROLE_LABEL, type MaterialRole } from "@/lib/h3Materials";
+import { MATERIAL_ROLES, REF2VA_LIMITS, ROLE_LABEL } from "@/lib/h3Materials";
 import { Expand } from "@/components/flow/Expand";
 import { RISE_IN } from "@/components/ui/look";
 import { useUploads } from "../useUploads";
@@ -83,10 +84,10 @@ function MaterialRow({
       <MediaPreview file={draft.file} title={draft.name} size="thumb" />
       <div className="grid min-w-0 gap-1.5">
         <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="machine text-caption text-fg-tertiary">{`#${ordinal}`}</span>
+          <span className="machine text-caption text-fg-tertiary">{`#${String(ordinal)}`}</span>
           <code
-            className={cn("machine rounded-full border px-1.5 text-caption", tag?.tag ? "border-entity/30 bg-entity/12 text-entity" : "border-line bg-raised text-fg-tertiary")}
-            title={tag?.tag ? t("prompt 中以 {tag} 引用這個素材", { tag: tag.tag }) : t("這個素材的編號要送出後才確定")}
+            className={cn("machine rounded-full border px-1.5 text-caption", (tag?.tag != null && tag.tag !== "") ? "border-entity/30 bg-entity/12 text-entity" : "border-line bg-raised text-fg-tertiary")}
+            title={(tag?.tag != null && tag.tag !== "") ? t("prompt 中以 {tag} 引用這個素材", { tag: tag.tag }) : t("這個素材的編號要送出後才確定")}
           >
             {tag?.tag ?? "<Audio ?>"}
           </code>
@@ -108,21 +109,21 @@ function MaterialRow({
               icon={previewOpen ? <EyeOff aria-hidden /> : <Eye aria-hidden />}
               aria-expanded={previewOpen}
               aria-controls={`${rowId}-preview`}
-              onClick={() => setPreviewOpen(!previewOpen)}
+              onClick={() => { setPreviewOpen(!previewOpen); }}
             />
             <ToolButton
               id={`${rowId}-up`}
               label={t("往前移（{role}的編號 -1）", { role: ROLE_LABEL[draft.role] })}
               icon={<ArrowUp aria-hidden />}
               disabledReason={disabled ? t("建立 run 中") : canUp ? null : t("已是同類的第一個")}
-              onClick={() => onMove(-1)}
+              onClick={() => { onMove(-1); }}
             />
             <ToolButton
               id={`${rowId}-down`}
               label={t("往後移（{role}的編號 +1）", { role: ROLE_LABEL[draft.role] })}
               icon={<ArrowDown aria-hidden />}
               disabledReason={disabled ? t("建立 run 中") : canDown ? null : t("已是同類的最後一個")}
-              onClick={() => onMove(1)}
+              onClick={() => { onMove(1); }}
             />
             <ToolButton
               id={`${rowId}-remove`}
@@ -142,7 +143,8 @@ function MaterialRow({
               value={draft.role}
               disabled={disabled}
               onChange={(event) => {
-                const role = event.target.value as MaterialRole;
+                const role = event.target.value;
+                if (!isListed(role, MATERIAL_ROLES)) return;
                 // 改成圖片時清掉時間範圍與影片設定（圖片不支援）；其他角色保留已填的值，影片設定只留給參考影片。
                 onPatch(
                   role === "reference_image"
@@ -163,11 +165,11 @@ function MaterialRow({
           </label>
           <label className="grid gap-0.5 text-caption text-fg-tertiary" htmlFor={`${rowId}-start`}>
             {t("開始（秒）")}
-            <SecondsInput id={`${rowId}-start`} label={t("{name} 的開始秒數", { name: draft.name })} value={draft.start} placeholder={t("從頭")} disabledReason={timeReason} onChange={(start) => onPatch({ start })} />
+            <SecondsInput id={`${rowId}-start`} label={t("{name} 的開始秒數", { name: draft.name })} value={draft.start} placeholder={t("從頭")} disabledReason={timeReason} onChange={(start) => { onPatch({ start }); }} />
           </label>
           <label className="grid gap-0.5 text-caption text-fg-tertiary" htmlFor={`${rowId}-end`}>
             {t("結束（秒）")}
-            <SecondsInput id={`${rowId}-end`} label={t("{name} 的結束秒數", { name: draft.name })} value={draft.end} placeholder={t("到結尾")} disabledReason={timeReason} onChange={(end) => onPatch({ end })} />
+            <SecondsInput id={`${rowId}-end`} label={t("{name} 的結束秒數", { name: draft.name })} value={draft.end} placeholder={t("到結尾")} disabledReason={timeReason} onChange={(end) => { onPatch({ end }); }} />
           </label>
           {draft.role === "reference_video" ? (
             <>
@@ -177,12 +179,12 @@ function MaterialRow({
                   className="size-4 accent-action"
                   checked={draft.useEmbeddedAudio !== false}
                   disabled={disabled}
-                  onChange={(event) => onPatch({ useEmbeddedAudio: event.target.checked ? null : false })}
+                  onChange={(event) => { onPatch({ useEmbeddedAudio: event.target.checked ? null : false }); }}
                 />
                 {t("使用影片內的聲音")}
               </label>
               <label className="inline-flex min-h-8 cursor-pointer items-center gap-2 text-data text-fg-secondary" title={t("參考影片只用到終點，之後重複最後一格、聲音補靜音，補滿生成長度；模型不會提早畫出終點之後的鏡頭。換角時建議打開。")}>
-                <input type="checkbox" className="size-4 accent-action" checked={draft.holdLastFrame} disabled={disabled} onChange={(event) => onPatch({ holdLastFrame: event.target.checked })} />
+                <input type="checkbox" className="size-4 accent-action" checked={draft.holdLastFrame} disabled={disabled} onChange={(event) => { onPatch({ holdLastFrame: event.target.checked }); }} />
                 {t("終點之後凍結最後一格")}
               </label>
             </>
@@ -202,7 +204,7 @@ export function MaterialIssueList({ issues }: { issues: readonly string[] }) {
   return (
     <ul className="grid gap-0.5 text-caption text-danger" aria-live="polite">
       {issues.map((message, index) => (
-        <li key={`${index}:${message}`} className="flex items-start gap-1.5">
+        <li key={`${String(index)}:${message}`} className="flex items-start gap-1.5">
           <CircleAlert aria-hidden className="mt-0.5 size-3.5 shrink-0" />
           {message}
         </li>
@@ -243,7 +245,7 @@ export function MaterialsBuilder({
   useFlipList(listRef, ordered.map((draft) => draft.key).join("|"));
 
   const addFiles = (files: File[]) =>
-    void uploads.upload(files, (file, ref) => update((list) => [...list, newMaterial(nextMaterialKey(ref.file_id), file.name, ref)]));
+    void uploads.upload(files, (file, ref) => { update((list) => [...list, newMaterial(nextMaterialKey(ref.file_id), file.name, ref)]); });
 
   const remove = (key: string) => {
     const index = ordered.findIndex((draft) => draft.key === key);
@@ -280,7 +282,7 @@ export function MaterialsBuilder({
         </span>
       </div>
       {uploads.failures.map((failure, index) => (
-        <ErrorCallout key={`${index}:${failure.name}`} error={failure.error} write title={t("「{name}」上傳失敗；可重新選擇檔案", { name: failure.name })} />
+        <ErrorCallout key={`${String(index)}:${failure.name}`} error={failure.error} write title={t("「{name}」上傳失敗；可重新選擇檔案", { name: failure.name })} />
       ))}
       {ordered.length === 0 ? (
         <div className="rounded-lg border border-dashed border-line-strong bg-canvas/60">
@@ -303,9 +305,9 @@ export function MaterialsBuilder({
               canUp={canMoveMaterial(materials, draft.key, -1)}
               canDown={canMoveMaterial(materials, draft.key, 1)}
               disabled={disabled}
-              onPatch={(patch) => update((list) => list.map((item) => (item.key === draft.key ? { ...item, ...patch } : item)))}
-              onMove={(direction) => move(draft.key, direction)}
-              onRemove={() => remove(draft.key)}
+              onPatch={(patch) => { update((list) => list.map((item) => (item.key === draft.key ? { ...item, ...patch } : item))); }}
+              onMove={(direction) => { move(draft.key, direction); }}
+              onRemove={() => { remove(draft.key); }}
             />
           ))}
         </ol>

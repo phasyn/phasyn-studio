@@ -28,6 +28,6 @@ export function byteTicks(maxValue: number, count = 4): ByteTicks {
   let i = 0;
   for (; i * step * divisor < maxValue; i += 1) ticks.push(i * step * divisor);
   ticks.push(i * step * divisor);
-  const format = (value: number) => `${Number((value / divisor).toPrecision(4))} ${unit}`;
+  const format = (value: number) => `${String(Number((value / divisor).toPrecision(4)))} ${unit}`;
   return { ticks, max: ticks.at(-1) ?? maxValue, format };
 }

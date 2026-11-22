@@ -85,7 +85,7 @@ function swallowNextClick(): void {
     event.stopPropagation();
   };
   window.addEventListener("click", swallow, { capture: true, once: true });
-  window.setTimeout(() => window.removeEventListener("click", swallow, { capture: true }), 0);
+  window.setTimeout(() => { window.removeEventListener("click", swallow, { capture: true }); }, 0);
 }
 
 function isMenuKey(event: KeyboardEvent): boolean {
@@ -135,34 +135,34 @@ export function TreeView<D = never>({
   const rows = visibleRows(items, expanded);
   const [focusedId, setFocusedId] = useState<string | null>(null);
   const [dragView, setDragView] = useState<DragView | null>(null);
-  const refs = useRef(new Map<string, HTMLDivElement>());
+  const refsRef = useRef(new Map<string, HTMLDivElement>());
   const treeRef = useRef<HTMLDivElement>(null);
   const ghostRef = useRef<HTMLDivElement>(null);
-  const session = useRef<DragSession<D> | null>(null);
-  const latest = useRef({ rows, drag });
+  const sessionRef = useRef<DragSession<D> | null>(null);
+  const latestRef = useRef({ rows, drag });
   const instructionsId = useId();
-  const interactive = Boolean(drag || onMoveKey || menu);
+  const interactive = (drag != null || onMoveKey != null || menu != null);
   const current =
     rows.find((row) => row.item.id === focusedId) ?? rows.find((row) => row.item.id === selectedId) ?? rows[0] ?? null;
 
   // 拖曳中的事件處理讀最新的列與設定（資料可能在拖曳中重新讀取）
   useLayoutEffect(() => {
-    latest.current = { rows, drag };
+    latestRef.current = { rows, drag };
   });
 
   // 拖曳開始時把預覽放到指標旁（之後由 pointermove 直接更新，不重新 render）
   useLayoutEffect(() => {
-    const active = session.current;
-    if (dragView && active && ghostRef.current) ghostRef.current.style.transform = `translate(${active.x + 14}px, ${active.y + 12}px)`;
+    const active = sessionRef.current;
+    if (dragView && active && ghostRef.current) ghostRef.current.style.transform = `translate(${String(active.x + 14)}px, ${String(active.y + 12)}px)`;
   }, [dragView]);
 
   // 卸載時結束進行中的拖曳（移除 window 監聽）
   useLayoutEffect(
     () => () => {
-      const active = session.current;
+      const active = sessionRef.current;
       if (!active) return;
       active.detach();
-      session.current = null;
+      sessionRef.current = null;
     },
     [],
   );
@@ -170,19 +170,19 @@ export function TreeView<D = never>({
   const focusRow = (row: TreeRow | undefined) => {
     if (!row) return;
     setFocusedId(row.item.id);
-    refs.current.get(row.item.id)?.focus();
+    refsRef.current.get(row.item.id)?.focus();
   };
 
   /** 移動後列可能換了位置（DOM 節點被移動會失去焦點）：下一個畫面再聚焦回來。 */
   const refocusLater = (id: string) => {
     requestAnimationFrame(() => {
-      const element = refs.current.get(id);
+      const element = refsRef.current.get(id);
       if (element && document.activeElement !== element) element.focus();
     });
   };
 
   const openMenu = (item: TreeItem, anchor: TreeMenuAnchor, focus: "first" | "last" = "first") => {
-    const element = refs.current.get(item.id);
+    const element = refsRef.current.get(item.id);
     if (!menu || !element || !menu.has(item)) return;
     menu.open(item, anchor, element, focus);
   };
@@ -217,7 +217,7 @@ export function TreeView<D = never>({
         break;
       case "ArrowLeft":
         if (row.hasChildren && row.expanded) onToggle(row.item.id, false);
-        else if (row.parentId) focusRow(rows.find((candidate) => candidate.item.id === row.parentId));
+        else if (row.parentId != null && row.parentId !== "") focusRow(rows.find((candidate) => candidate.item.id === row.parentId));
         break;
       case "Enter":
       case " ":
@@ -234,15 +234,15 @@ export function TreeView<D = never>({
   /** 指標下方的列與放置結果（只看樹在捲動區內可見的範圍；水平超出樹＝沒有目標）。 */
   const resolveAt = (active: DragSession<D>): TreeDropResult<D> | null => {
     const tree = treeRef.current;
-    const options = latest.current.drag;
+    const options = latestRef.current.drag;
     if (!tree || !options) return null;
     const box = tree.getBoundingClientRect();
     const view = active.scroller?.getBoundingClientRect();
     const top = Math.max(box.top, view?.top ?? box.top);
     const bottom = Math.min(box.bottom, view?.bottom ?? box.bottom);
     if (active.x < box.left || active.x > box.right || bottom <= top) return null;
-    const visible = latest.current.rows;
-    const rects: VerticalRect[] = visible.map((row) => refs.current.get(row.item.id)?.getBoundingClientRect() ?? { top: 0, bottom: 0 });
+    const visible = latestRef.current.rows;
+    const rects: VerticalRect[] = visible.map((row) => refsRef.current.get(row.item.id)?.getBoundingClientRect() ?? { top: 0, bottom: 0 });
     const at = rowAtY(rects, Math.min(Math.max(active.y, top), bottom - 1));
     const over = at ? visible[at.index] : undefined;
     if (!at || !over) return null;
@@ -258,7 +258,7 @@ export function TreeView<D = never>({
 
   const autoScroll = (active: DragSession<D>) => {
     active.frame = requestAnimationFrame(() => {
-      if (session.current !== active || !active.active || active.cancelled) return;
+      if (sessionRef.current !== active || !active.active || active.cancelled) return;
       const scroller = active.scroller;
       if (scroller) {
         const rect = scroller.getBoundingClientRect();
@@ -277,16 +277,16 @@ export function TreeView<D = never>({
     active.detach();
     cancelAnimationFrame(active.frame);
     if (active.element.hasPointerCapture(active.pointerId)) active.element.releasePointerCapture(active.pointerId);
-    if (session.current === active) session.current = null;
+    if (sessionRef.current === active) sessionRef.current = null;
     if (!active.active) return;
     swallowNextClick();
     setDragView(null);
-    const options = latest.current.drag;
+    const options = latestRef.current.drag;
     if (commit && !active.cancelled && active.result && options) options.onDrop(active.sourceId, active.result.drop);
   };
 
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>, item: TreeItem) => {
-    if (!drag || session.current || event.button !== 0 || event.pointerType === "touch") return;
+    if (!drag || sessionRef.current || event.button !== 0 || event.pointerType === "touch") return;
     if (event.ctrlKey || event.metaKey || event.altKey || event.shiftKey || !drag.canDrag(item)) return;
     const element = event.currentTarget;
     const active: DragSession<D> = {
@@ -321,7 +321,7 @@ export function TreeView<D = never>({
         setDragView({ sourceId: active.sourceId, indicator: null });
         autoScroll(active);
       }
-      if (ghostRef.current) ghostRef.current.style.transform = `translate(${active.x + 14}px, ${active.y + 12}px)`;
+      if (ghostRef.current) ghostRef.current.style.transform = `translate(${String(active.x + 14)}px, ${String(active.y + 12)}px)`;
       showResult(active);
     };
     const up = (upEvent: PointerEvent) => {
@@ -338,7 +338,7 @@ export function TreeView<D = never>({
       active.result = null;
       cancelAnimationFrame(active.frame);
       setDragView(null);
-      latest.current.drag?.onCancel?.(active.sourceId);
+      latestRef.current.drag?.onCancel?.(active.sourceId);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -350,7 +350,7 @@ export function TreeView<D = never>({
       window.removeEventListener("pointercancel", cancel);
       window.removeEventListener("keydown", escape, true);
     };
-    session.current = active;
+    sessionRef.current = active;
   };
 
   const dragged = dragView ? rows.find((row) => row.item.id === dragView.sourceId)?.item : undefined;
@@ -362,7 +362,7 @@ export function TreeView<D = never>({
         ref={treeRef}
         role="tree"
         aria-label={label}
-        aria-describedby={instructions ? instructionsId : undefined}
+        aria-describedby={(instructions != null && instructions !== "") ? instructionsId : undefined}
         className={cn("grid grid-cols-[minmax(0,1fr)] content-start py-1", className)}
       >
         {rows.map((row, index) => {
@@ -379,8 +379,8 @@ export function TreeView<D = never>({
             <div
               key={item.id}
               ref={(node) => {
-                if (node) refs.current.set(item.id, node);
-                else refs.current.delete(item.id);
+                if (node) refsRef.current.set(item.id, node);
+                else refsRef.current.delete(item.id);
               }}
               role="treeitem"
               data-tree-item={item.id}
@@ -392,13 +392,13 @@ export function TreeView<D = never>({
               aria-keyshortcuts={shortcuts || undefined}
               tabIndex={current?.item.id === item.id ? 0 : -1}
               title={item.title ?? item.label}
-              onFocus={() => setFocusedId(item.id)}
+              onFocus={() => { setFocusedId(item.id); }}
               onClick={() => {
                 onActivate(item);
                 if (row.hasChildren && !row.expanded) onToggle(item.id, true);
               }}
-              onKeyDown={(event) => onKeyDown(event, row, index)}
-              onPointerDown={drag ? (event) => onPointerDown(event, item) : undefined}
+              onKeyDown={(event) => { onKeyDown(event, row, index); }}
+              onPointerDown={drag ? (event) => { onPointerDown(event, item); } : undefined}
               onContextMenu={
                 hasMenu
                   ? (event) => {
@@ -452,15 +452,15 @@ export function TreeView<D = never>({
                 ) : null}
               </span>
               {Icon ? <Icon aria-hidden className={cn("size-4 shrink-0", item.iconTone ? TEXT_TONE[item.iconTone] : "text-fg-tertiary")} /> : null}
-              <span className={cn("min-w-0 flex-1 truncate", item.muted && "text-fg-tertiary", selected && "font-medium")}>{item.label}</span>
-              {item.detail ? <span className="machine max-w-24 shrink-0 truncate text-caption text-fg-tertiary">{item.detail}</span> : null}
+              <span className={cn("min-w-0 flex-1 truncate", (item.muted === true) && "text-fg-tertiary", selected && "font-medium")}>{item.label}</span>
+              {(item.detail != null && item.detail !== "") ? <span className="machine max-w-24 shrink-0 truncate text-caption text-fg-tertiary">{item.detail}</span> : null}
               {item.count !== undefined && item.count !== null ? (
                 <span className="machine shrink-0 rounded-sm bg-raised px-1 text-caption text-fg-tertiary">{item.count}</span>
               ) : null}
               {item.dot ? (
                 <span className="flex shrink-0 items-center" title={item.dotLabel}>
                   <span aria-hidden className={cn("size-2 rounded-full", DOT_TONE[item.dot])} />
-                  {item.dotLabel ? <span className="sr-only">{item.dotLabel}</span> : null}
+                  {(item.dotLabel != null && item.dotLabel !== "") ? <span className="sr-only">{item.dotLabel}</span> : null}
                 </span>
               ) : null}
               {menu && hasMenu ? (
@@ -472,7 +472,7 @@ export function TreeView<D = never>({
                   aria-controls={menuOpen ? menu.menuId : undefined}
                   aria-label={menu.label(item)}
                   title={t("{item}（右鍵或 Shift+F10）", { item: menu.label(item) })}
-                  onPointerDown={(event) => event.stopPropagation()}
+                  onPointerDown={(event) => { event.stopPropagation(); }}
                   onClick={(event) => {
                     event.stopPropagation();
                     if (menuOpen) menu.close();
@@ -490,7 +490,7 @@ export function TreeView<D = never>({
           );
         })}
       </div>
-      {instructions ? (
+      {(instructions != null && instructions !== "") ? (
         <p id={instructionsId} className="sr-only">
           {instructions}
         </p>

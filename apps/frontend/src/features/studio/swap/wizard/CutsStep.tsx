@@ -65,13 +65,13 @@ export function CutsStep({
             <Label htmlFor={`${id}-threshold`} hint={t("{min}–{max}；越小切得越多", { min: SCENE_LIMITS.threshold.min, max: SCENE_LIMITS.threshold.max })}>
               {t("切鏡門檻")}
             </Label>
-            <NumberField id={`${id}-threshold`} value={draft.scene.threshold} min={SCENE_LIMITS.threshold.min} max={SCENE_LIMITS.threshold.max} onCommit={(value) => update({ scene: { ...draft.scene, threshold: value ?? draft.scene.threshold } })} />
+            <NumberField id={`${id}-threshold`} value={draft.scene.threshold} min={SCENE_LIMITS.threshold.min} max={SCENE_LIMITS.threshold.max} onCommit={(value) => { update({ scene: { ...draft.scene, threshold: value ?? draft.scene.threshold } }); }} />
           </div>
           <div className="grid gap-1">
             <Label htmlFor={`${id}-gap`} hint={t("兩個切鏡之間至少相隔（秒）")}>
               {t("最短間隔")}
             </Label>
-            <NumberField id={`${id}-gap`} value={draft.scene.min_gap_seconds} min={SCENE_LIMITS.min_gap_seconds.min} max={SCENE_LIMITS.min_gap_seconds.max} onCommit={(value) => update({ scene: { ...draft.scene, min_gap_seconds: value ?? draft.scene.min_gap_seconds } })} />
+            <NumberField id={`${id}-gap`} value={draft.scene.min_gap_seconds} min={SCENE_LIMITS.min_gap_seconds.min} max={SCENE_LIMITS.min_gap_seconds.max} onCommit={(value) => { update({ scene: { ...draft.scene, min_gap_seconds: value ?? draft.scene.min_gap_seconds } }); }} />
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-1.5 text-caption text-fg-tertiary" role="group" aria-label={t("常用的切鏡設定")}>
@@ -84,7 +84,7 @@ export function CutsStep({
           ).map(([preset, label]) => {
             const active = draft.scene.threshold === preset.threshold && draft.scene.min_gap_seconds === preset.min_gap_seconds;
             return (
-              <Button key={label} size="sm" variant={active ? "secondary" : "quiet"} aria-pressed={active} disabled={running} onClick={() => update({ scene: preset })} className="min-h-7 px-2">
+              <Button key={label} size="sm" variant={active ? "secondary" : "quiet"} aria-pressed={active} disabled={running} onClick={() => { update({ scene: preset }); }} className="min-h-7 px-2">
                 {label}
               </Button>
             );
@@ -101,14 +101,14 @@ export function CutsStep({
             </Button>
           ) : null}
         </div>
-        {notice ? (
+        {(notice != null && notice !== "") ? (
           <p role="status" className="text-caption text-warning [overflow-wrap:anywhere]">
             {notice}
           </p>
         ) : null}
       </Section>
       <label className="flex items-start gap-2 text-data text-fg">
-        <input type="checkbox" checked={draft.skipDetection} onChange={(event) => update({ skipDetection: event.target.checked })} className="mt-1 size-3.5 accent-action" />
+        <input type="checkbox" checked={draft.skipDetection} onChange={(event) => { update({ skipDetection: event.target.checked }); }} className="mt-1 size-3.5 accent-action" />
         <span>
           {SKIP_DETECTION_LABEL}
           <span className="block text-caption text-fg-tertiary">{t("只用在「分段計畫」手動加的切鏡；超過每段上限的範圍會在鏡頭中間平均切開（接縫可能看得到）。偵測失敗時不會自動改成這樣，要明確勾選。")}</span>
@@ -119,7 +119,7 @@ export function CutsStep({
           <div className="grid gap-1.5">
             <p role="status" className="flex items-center gap-1.5 text-caption text-info">
               <LoaderCircle aria-hidden className="size-3.5 animate-spin" />
-              <T source={"偵測中（run <0>{runId}</0>）{value}"} values={{ runId: detection.runId.slice(0, 8), value: elapsed !== null ? t("・已 {elapsed} 秒", { elapsed }) : "" }} slots={[<code className="machine" />]} />
+              <T source={"偵測中（run <0>{runId}</0>）{value}"} values={{ runId: detection.runId.slice(0, 8), value: elapsed !== null ? t("・已 {elapsed} 秒", { elapsed }) : "" }} slots={[<code key="slot-0" className="machine" />]} />
             </p>
             {/* 只表示進行中（偵測沒有進度比例） */}
             <span aria-hidden className="relative block h-1 w-full max-w-xs overflow-hidden rounded-full bg-line-subtle">

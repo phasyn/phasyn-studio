@@ -41,14 +41,14 @@ const sameSpot = (a: Spot | null, b: Spot) => a !== null && a.trackId === b.trac
 
 export function useSourceDrop(editor: Editor, scroller: RefObject<HTMLDivElement | null>, options: SourceDropOptions) {
   const [preview, setPreview] = useState<SourceDropPreview | null>(null);
-  const shown = useRef<Spot | null>(null);
-  const live = useRef({ editor, options });
+  const shownRef = useRef<Spot | null>(null);
+  const liveRef = useRef({ editor, options });
   useLayoutEffect(() => {
-    live.current = { editor, options };
+    liveRef.current = { editor, options };
   });
 
   const clear = () => {
-    shown.current = null;
+    shownRef.current = null;
     setPreview(null);
   };
 
@@ -56,22 +56,22 @@ export function useSourceDrop(editor: Editor, scroller: RefObject<HTMLDivElement
   const spotOf = (event: DragEvent<HTMLElement>): Spot | null => {
     const node = scroller.current;
     if (!node) return null;
-    const { zoom, headerWidth } = live.current.options;
+    const { zoom, headerWidth } = liveRef.current.options;
     const frame = node.getBoundingClientRect();
     if (event.clientX < frame.left + headerWidth || event.clientY < frame.top + RULER_HEIGHT) return null;
     const left = frame.left + headerWidth - node.scrollLeft;
     let trackId: string | null = null;
     for (const row of node.querySelectorAll<HTMLElement>("[data-timeline-track]")) {
       const rect = row.getBoundingClientRect();
-      if (event.clientY >= rect.top && event.clientY < rect.bottom) trackId = row.dataset.timelineTrack ?? null;
+      if (event.clientY >= rect.top && event.clientY < rect.bottom) trackId = row.dataset["timelineTrack"] ?? null;
     }
     const insert = detectApplePlatform() ? event.metaKey : event.ctrlKey;
-    return { trackId, frame: Math.max(0, Math.round((event.clientX - left) / zoom)), mode: insert ? "insert" : "overwrite", snap: live.current.editor.snapping && !event.altKey };
+    return { trackId, frame: Math.max(0, Math.round((event.clientX - left) / zoom)), mode: insert ? "insert" : "overwrite", snap: liveRef.current.editor.snapping && !event.altKey };
   };
 
   /** Where the drag would land from a spot: the snapped start and whether the edit would be accepted. */
   const landing = (drag: SourceDrag, spot: Spot): SourceDropPreview => {
-    const { editor: current, options: view } = live.current;
+    const { editor: current, options: view } = liveRef.current;
     const rough = current.planDrop(drag, spot.trackId, spot.frame, spot.mode);
     if (!rough.ok) return { mode: spot.mode, name: "", trackIds: [], start: spot.frame, length: 0, guide: null, error: rough.error };
     const snapped = spot.snap ? snappedStart(current.timeline, spot.frame, rough.value.length, current.playhead.getFrame(), view.zoom) : { start: spot.frame, guide: null };
@@ -90,7 +90,7 @@ export function useSourceDrop(editor: Editor, scroller: RefObject<HTMLDivElement
     if (node) {
       const rect = node.getBoundingClientRect();
       if (event.clientX > rect.right - 24) node.scrollBy({ left: 18 });
-      else if (event.clientX < rect.left + live.current.options.headerWidth + 24) node.scrollBy({ left: -18 });
+      else if (event.clientX < rect.left + liveRef.current.options.headerWidth + 24) node.scrollBy({ left: -18 });
     }
     const drag = activeSourceDrag();
     const spot = spotOf(event);
@@ -100,8 +100,8 @@ export function useSourceDrop(editor: Editor, scroller: RefObject<HTMLDivElement
       return;
     }
     // A drag from another window carries no readable payload until it is dropped: nothing to preview
-    if (!drag || sameSpot(shown.current, spot)) return;
-    shown.current = spot;
+    if (!drag || sameSpot(shownRef.current, spot)) return;
+    shownRef.current = spot;
     setPreview(landing(drag, spot));
   };
 
@@ -118,7 +118,7 @@ export function useSourceDrop(editor: Editor, scroller: RefObject<HTMLDivElement
     const spot = spotOf(event);
     clear();
     if (!drag || !spot) return;
-    const { editor: current } = live.current;
+    const { editor: current } = liveRef.current;
     const target = landing(drag, spot);
     current.playhead.setPlaying(false);
     if (current.dropSource(drag, spot.trackId, target.start, spot.mode)) current.focus.setPanel("timeline");

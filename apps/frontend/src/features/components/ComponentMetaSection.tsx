@@ -52,7 +52,7 @@ export function ComponentMetaSection({
 
   const reason = meta.isPending
     ? null
-    : plan.labelError || plan.folderError || plan.limitsError
+    : (plan.labelError ?? "") || (plan.folderError != null && plan.folderError !== "") || (plan.limitsError != null && plan.limitsError !== "")
       ? t("先修正欄位錯誤")
       : !plan.patch
         ? t("沒有變更")
@@ -61,7 +61,7 @@ export function ComponentMetaSection({
           : null;
 
   const save = () => {
-    if (reason || !plan.patch || meta.isPending) return;
+    if ((reason ?? "") || !plan.patch || meta.isPending) return;
     meta.mutate(plan.patch, {
       onSuccess: () => {
         onDraftChange(null);
@@ -79,11 +79,11 @@ export function ComponentMetaSection({
             id={`${idBase}-label`}
             value={current.label}
             disabled={meta.isPending}
-            aria-invalid={plan.labelError ? true : undefined}
-            aria-describedby={plan.labelError ? `${idBase}-label-error` : undefined}
-            onChange={(event) => update({ label: event.target.value })}
+            aria-invalid={(plan.labelError != null && plan.labelError !== "") ? true : undefined}
+            aria-describedby={(plan.labelError != null && plan.labelError !== "") ? `${idBase}-label-error` : undefined}
+            onChange={(event) => { update({ label: event.target.value }); }}
           />
-          {plan.labelError ? (
+          {(plan.labelError != null && plan.labelError !== "") ? (
             <span id={`${idBase}-label-error`} className="text-caption text-danger">
               {plan.labelError}
             </span>
@@ -93,23 +93,21 @@ export function ComponentMetaSection({
           label={t("資料夾")}
           htmlFor={`${idBase}-folder`}
           hint={
-            <>
-              <T source={"目前：<0>{descriptor}</0>{value}。以「/」分層，最多 6 層；空白＝預設分類 <1>{defaultFolder}</1>。"} values={{ descriptor: folderDisplayPath(folderOf(descriptor)), value: usesDefaultFolder(descriptor) ? t("（依 provider 預設分類）") : "", defaultFolder: folderDisplayPath(defaultFolder) }} slots={[<span className="machine" />, <span className="machine" />]} />
-            </>
+            <T source={"目前：<0>{descriptor}</0>{value}。以「/」分層，最多 6 層；空白＝預設分類 <1>{defaultFolder}</1>。"} values={{ descriptor: folderDisplayPath(folderOf(descriptor)), value: usesDefaultFolder(descriptor) ? t("（依 provider 預設分類）") : "", defaultFolder: folderDisplayPath(defaultFolder) }} slots={[<span key="slot-0" className="machine" />, <span key="slot-1" className="machine" />]} />
           }
         >
           <FolderInput
             compact
             id={`${idBase}-folder`}
             value={current.folder}
-            onChange={(folder) => update({ folder })}
+            onChange={(folder) => { update({ folder }); }}
             suggestions={suggestions}
             defaultFolder={defaultFolder}
             invalid={plan.folderError !== null}
-            describedBy={plan.folderError ? `${idBase}-folder-error` : undefined}
+            {...((plan.folderError != null && plan.folderError !== "") ? { describedBy: `${idBase}-folder-error` } : {})}
             disabled={meta.isPending}
           />
-          {plan.folderError ? (
+          {(plan.folderError != null && plan.folderError !== "") ? (
             <span id={`${idBase}-folder-error`} className="text-caption text-danger">
               {plan.folderError}
             </span>
@@ -121,7 +119,7 @@ export function ComponentMetaSection({
             label={t("Node 服務啟動時自動載入這個元件")}
             checked={current.autostart}
             disabled={meta.isPending}
-            onChange={(event) => update({ autostart: event.target.checked })}
+            onChange={(event) => { update({ autostart: event.target.checked }); }}
             className="min-h-8 py-1"
           />
         </PropertyRow>
@@ -129,7 +127,7 @@ export function ComponentMetaSection({
           label={t("互斥群組")}
           hint={t("同一台 Node 上同群組的元件一次只能載入一個（例如 DiT 需要大量主記憶體），由 Node 在啟動時強制。群組在建立 instance 時設定，這裡只能檢視。")}
         >
-          {descriptor.exclusive_group ? (
+          {(descriptor.exclusive_group != null && descriptor.exclusive_group !== "") ? (
             <code className="machine text-data text-fg">{descriptor.exclusive_group}</code>
           ) : (
             <span className="text-data text-fg-tertiary">{t("無（不受互斥限制）")}</span>
@@ -149,11 +147,11 @@ export function ComponentMetaSection({
             placeholder={'{ "swap": { … } }'}
             value={current.limits}
             disabled={meta.isPending}
-            aria-invalid={plan.limitsError ? true : undefined}
+            aria-invalid={(plan.limitsError != null && plan.limitsError !== "") ? true : undefined}
             aria-describedby={`${idBase}-limits-status`}
-            onChange={(event) => update({ limits: event.target.value })}
+            onChange={(event) => { update({ limits: event.target.value }); }}
           />
-          <span id={`${idBase}-limits-status`} className={plan.limitsError ? "text-caption text-danger" : "text-caption text-fg-tertiary"}>
+          <span id={`${idBase}-limits-status`} className={(plan.limitsError != null && plan.limitsError !== "") ? "text-caption text-danger" : "text-caption text-fg-tertiary"}>
             {plan.limitsError ??
               (limits.ok && limits.value !== null ? t("{bytes}／{max} bytes", { bytes: limits.bytes, max: LIMITS_MAX_BYTES }) : t("沒有使用上限"))}
           </span>
@@ -163,7 +161,7 @@ export function ComponentMetaSection({
         <ActionButton size="sm" icon={<Save aria-hidden />} pending={meta.isPending} disabledReason={reason} onClick={save}>
           {t("儲存基本資料")}
         </ActionButton>
-        <Button size="sm" variant="quiet" icon={<Undo2 aria-hidden />} disabled={!draft || meta.isPending} onClick={() => onDraftChange(null)}>
+        <Button size="sm" variant="quiet" icon={<Undo2 aria-hidden />} disabled={!draft || meta.isPending} onClick={() => { onDraftChange(null); }}>
           {t("還原", undefined, { context: "revert" })}
         </Button>
         <span aria-live="polite" className="text-caption">

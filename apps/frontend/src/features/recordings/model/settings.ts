@@ -70,7 +70,7 @@ export function buildSettingsRows(
   requested: unknown,
   effective: unknown,
   observed: unknown,
-): { rows: SettingsRow[]; observedUnmatched: Array<[string, unknown]> } {
+): { rows: SettingsRow[]; observedUnmatched: [string, unknown][] } {
   const req = flattenSettings(requested);
   const eff = flattenSettings(effective);
   const obs = flattenSettings(observed);
@@ -83,7 +83,7 @@ export function buildSettingsRows(
     byLeaf.set(leaf, [...(byLeaf.get(leaf) ?? []), path]);
   }
   const observedFor = new Map<string, { path: string; matchedBy: "path" | "name" }>();
-  const unmatched: Array<[string, unknown]> = [];
+  const unmatched: [string, unknown][] = [];
   for (const [observedPath, value] of obs) {
     if (paths.includes(observedPath)) {
       observedFor.set(observedPath, { path: observedPath, matchedBy: "path" });
@@ -92,7 +92,7 @@ export function buildSettingsRows(
     const leaf = observedPath.split(".").at(-1) ?? observedPath;
     const candidates = byLeaf.get(leaf) ?? [];
     const target = candidates[0];
-    if (candidates.length === 1 && target && !observedFor.has(target)) {
+    if (candidates.length === 1 && (target != null && target !== "") && !observedFor.has(target)) {
       observedFor.set(target, { path: observedPath, matchedBy: "name" });
       continue;
     }
@@ -149,7 +149,7 @@ export interface InputPort {
   typeId: string | null;
   capture: InputCapture;
   /** The entry's recorded fields other than type_id (path → value), to list it as it was recorded. */
-  fields: Array<[string, unknown]>;
+  fields: [string, unknown][];
 }
 
 /**
@@ -165,12 +165,12 @@ export function inputPorts(summary: unknown, operation: string): InputPort[] {
     const { type_id: typeId, ...rest } = entry;
     const fields = [...flattenSettings(rest)];
     const type = typeof typeId === "string" ? typeId : null;
-    if ("value" in entry) return { port, typeId: type, capture: entry.value === REDACTED_VALUE ? { kind: "redacted" } : { kind: "value", value: entry.value }, fields };
-    if (typeof entry.value_digest === "string") {
-      const reason: DigestReason = entry.captured === false ? "capture_off" : operation === "controller" ? "controller" : "unstated";
-      return { port, typeId: type, capture: { kind: "digest", digest: entry.value_digest, reason }, fields };
+    if ("value" in entry) return { port, typeId: type, capture: entry["value"] === REDACTED_VALUE ? { kind: "redacted" } : { kind: "value", value: entry["value"] }, fields };
+    if (typeof entry["value_digest"] === "string") {
+      const reason: DigestReason = entry["captured"] === false ? "capture_off" : operation === "controller" ? "controller" : "unstated";
+      return { port, typeId: type, capture: { kind: "digest", digest: entry["value_digest"], reason }, fields };
     }
-    return { port, typeId: type, capture: isPlainObject(entry.file) ? { kind: "file" } : { kind: "other" }, fields };
+    return { port, typeId: type, capture: isPlainObject(entry["file"]) ? { kind: "file" } : { kind: "other" }, fields };
   });
 }
 
@@ -180,9 +180,9 @@ export function capturedPrompt(port: InputPort): string | null {
 }
 
 /** 從物件中挑出與冷暖、compile、cache、常駐相關的鍵（context 沒有固定欄位，只呈現實際存在者）。 */
-export function pickConditionFacts(...sources: Array<Record<string, unknown> | null | undefined>): Array<[string, unknown]> {
+export function pickConditionFacts(...sources: (Record<string, unknown> | null | undefined)[]): [string, unknown][] {
   const pattern = /cold|warm|compile|cache|resident|capture|warmup|graph|profil/i;
-  const facts: Array<[string, unknown]> = [];
+  const facts: [string, unknown][] = [];
   for (const source of sources) {
     if (!source) continue;
     for (const [path, value] of flattenSettings(source)) if (pattern.test(path)) facts.push([path, value]);

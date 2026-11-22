@@ -1,0 +1,131 @@
+{
+  "schema_version": "1.0",
+  "providers": {
+    "wan.speech": {
+      "default_settings": {
+        "load": {
+          "model_path": "/path/to/models/Wan2.2-S2V-14B",
+          "model_revision": "dab4e9c55bbe4c8c4d03db1c2c98c7f0ac9c454b",
+          "device": {
+            "kind": "cuda",
+            "id": "GPU-REPLACE-0",
+            "resource_group": "gpu-0"
+          },
+          "provider_options": {
+            "engine_path": "/path/to/engines/Wan2.2-1ea34ff"
+          }
+        },
+        "invoke": {},
+        "recording": {
+          "device_sample_hz": 2,
+          "publish_interval_ms": 1000,
+          "batch_max_events": 256,
+          "batch_max_bytes": 262144,
+          "queue_max_events": 8192,
+          "queue_max_bytes": 16777216,
+          "segment_bytes": 67108864,
+          "max_detail_bytes_per_recording": 2147483648,
+          "cuda_pending_event_pairs": 4096,
+          "trace_steps": [
+            0,
+            1
+          ],
+          "trace_parts": [],
+          "record_shapes": false,
+          "with_stack": false,
+          "capture_prompt": true,
+          "tensor_dump": false,
+          "capture_stderr": true,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "parts": [],
+          "steps": [],
+          "mode": "detailed"
+        }
+      },
+      "entry_point": "phasyn_wan_native.provider:SpeechProvider",
+      "kind": "wan.speech",
+      "label": "Wan2.2 音訊驅動角色生成",
+      "required_modules": [
+        "torch",
+        "torchvision",
+        "diffusers",
+        "transformers",
+        "flash_attn",
+        "decord",
+        "librosa",
+        "cv2",
+        "imageio",
+        "imageio_ffmpeg"
+      ],
+      "source_pins": [],
+      "synthetic": false
+    },
+    "wan.performance": {
+      "default_settings": {
+        "load": {
+          "model_path": "/path/to/models/Wan2.2-Animate-14B",
+          "model_revision": "cb93a225fbaf1ca100f54e79da8f994995b689b3",
+          "device": {
+            "kind": "cuda",
+            "id": "GPU-REPLACE-0",
+            "resource_group": "gpu-0"
+          },
+          "provider_options": {
+            "engine_path": "/path/to/engines/Wan2.2-1ea34ff"
+          }
+        },
+        "invoke": {},
+        "recording": {
+          "device_sample_hz": 2,
+          "publish_interval_ms": 1000,
+          "batch_max_events": 256,
+          "batch_max_bytes": 262144,
+          "queue_max_events": 8192,
+          "queue_max_bytes": 16777216,
+          "segment_bytes": 67108864,
+          "max_detail_bytes_per_recording": 2147483648,
+          "cuda_pending_event_pairs": 4096,
+          "trace_steps": [
+            0,
+            1
+          ],
+          "trace_parts": [],
+          "record_shapes": false,
+          "with_stack": false,
+          "capture_prompt": true,
+          "tensor_dump": false,
+          "capture_stderr": true,
+          "finite_scan": false,
+          "gpu_event_timing": true,
+          "log_level": "info",
+          "parts": [],
+          "steps": [],
+          "mode": "detailed"
+        }
+      },
+      "entry_point": "phasyn_wan_native.provider:PerformanceProvider",
+      "kind": "wan.performance",
+      "label": "Wan2.2 表演影片驅動角色生成",
+      "required_modules": [
+        "torch",
+        "torchvision",
+        "diffusers",
+        "transformers",
+        "flash_attn",
+        "decord",
+        "librosa",
+        "cv2",
+        "imageio",
+        "imageio_ffmpeg",
+        "sam2",
+        "onnxruntime",
+        "moviepy",
+        "loguru"
+      ],
+      "source_pins": [],
+      "synthetic": false
+    }
+  }
+}

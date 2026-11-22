@@ -9,7 +9,8 @@ import { cancelRun, useCreateRun, useRun } from "@/api/runs";
 import { errorText } from "./errors";
 import type { SavedDetection } from "./draftStore";
 import { probeOutcome, probeRunRequest, type ProbeSceneInfo, type SceneParameters } from "./probe";
-import { t, tServer } from "@/i18n";
+import { t } from "@/i18n";
+import { failureText } from "@/lib/errors";
 
 export type DetectionView =
   | { status: "idle" }
@@ -32,7 +33,7 @@ export function useCutDetection(sourceKey: string | null, saved: SavedDetection 
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<{ sourceKey: string; message: string } | null>(null);
   const [cancelling, setCancelling] = useState(false);
-  const current = request && request.sourceKey === sourceKey ? request : null;
+  const current = request?.sourceKey === sourceKey ? request : null;
   const run = useRun(current?.runId ?? null);
 
   let view: DetectionView = { status: "idle" };
@@ -46,13 +47,13 @@ export function useCutDetection(sourceKey: string | null, saved: SavedDetection 
       else if (outcome.state === "succeeded") view = { status: "succeeded", runId: current.runId, info: outcome.info };
       else {
         const label = outcome.state === "cancelled" ? t("已取消") : outcome.state === "interrupted" ? t("已中斷") : t("失敗");
-        view = { status: "failed", runId: current.runId, message: t("偵測{label}{value}", { label, value: outcome.error ? t("：{code}：{message}", { code: outcome.error.code, message: tServer(outcome.error.message) }) : "" }) };
+        view = { status: "failed", runId: current.runId, message: t("偵測{label}{value}", { label, value: outcome.error ? t("：{message}", { message: failureText(outcome.error.code, outcome.error.message) }) : "" }) };
       }
     }
-  } else if (submitError && submitError.sourceKey === sourceKey) view = { status: "failed", runId: null, message: submitError.message };
+  } else if (submitError?.sourceKey === sourceKey) view = { status: "failed", runId: null, message: submitError.message };
 
   const start = async (component: Pick<ComponentDescriptor, "node_id" | "component_id">, file: FileRef, parameters: SceneParameters, name: string) => {
-    if (!sourceKey || submitting !== null) return;
+    if (!(sourceKey != null && sourceKey !== "") || submitting !== null) return;
     setSubmitting(sourceKey);
     setSubmitError(null);
     try {

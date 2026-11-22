@@ -82,12 +82,12 @@ export const TimelineChart = memo(function TimelineChart({
   maxItems?: number;
 }) {
   const tooltipId = useId();
-  const [plotRef, width] = useElementWidth<HTMLDivElement>();
+  const [plotRef, width] = useElementWidth();
   const [hovered, setHovered] = useState<string | null>(null);
   const [focused, setFocused] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [tabKey, setTabKey] = useState<string | null>(null);
-  const itemRefs = useRef(new Map<string, SVGGElement>());
+  const itemRefsRef = useRef(new Map<string, SVGGElement>());
 
   const view = useMemo(() => windowLanes(group, maxItems), [group, maxItems]);
   const layout = useMemo(() => {
@@ -102,12 +102,12 @@ export const TimelineChart = memo(function TimelineChart({
   }, [view]);
   const positions = useMemo(() => {
     const map = new Map<string, { lane: number; index: number }>();
-    view.lanes.forEach((lane, laneIndex) => lane.items.forEach((item, index) => map.set(item.key, { lane: laneIndex, index })));
+    view.lanes.forEach((lane, laneIndex) => { lane.items.forEach((item, index) => void map.set(item.key, { lane: laneIndex, index })); });
     return map;
   }, [view]);
   const categories = useMemo(() => {
     const present = new Set(view.lanes.flatMap((lane) => lane.items.map((item) => item.category)));
-    return (Object.keys(PAINT) as ChartCategory[]).filter((category) => present.has(category));
+    return Object.keys(PAINT).filter((category): category is ChartCategory => Object.hasOwn(PAINT, category)).filter((category) => present.has(category));
   }, [view]);
 
   const height = (layout.at(-1)?.y ?? AXIS_H) + (layout.at(-1)?.height ?? 0);
@@ -131,7 +131,7 @@ export const TimelineChart = memo(function TimelineChart({
     const item = lane?.items[Math.min(lane.items.length - 1, Math.max(0, index))];
     if (!item) return;
     setTabKey(item.key);
-    itemRefs.current.get(item.key)?.focus();
+    itemRefsRef.current.get(item.key)?.focus();
   };
 
   const moveLane = (fromLane: number, direction: 1 | -1, atMs: number) => {
@@ -216,7 +216,7 @@ export const TimelineChart = memo(function TimelineChart({
               <span className="truncate text-data text-fg" title={lane.label}>
                 {lane.label}
               </span>
-              {lane.caption ? <span className="truncate text-caption text-fg-tertiary">{lane.caption}</span> : null}
+              {(lane.caption != null && lane.caption !== "") ? <span className="truncate text-caption text-fg-tertiary">{lane.caption}</span> : null}
             </div>
           ))}
         </div>
@@ -255,8 +255,8 @@ export const TimelineChart = memo(function TimelineChart({
                     <g
                       key={item.key}
                       ref={(node) => {
-                        if (node) itemRefs.current.set(item.key, node);
-                        else itemRefs.current.delete(item.key);
+                        if (node) itemRefsRef.current.set(item.key, node);
+                        else itemRefsRef.current.delete(item.key);
                       }}
                       role="button"
                       tabIndex={item.key === tabStop ? 0 : -1}
@@ -265,19 +265,19 @@ export const TimelineChart = memo(function TimelineChart({
                       aria-describedby={tipKey === item.key ? tooltipId : undefined}
                       className="cursor-pointer outline-none"
                       onClick={() => onSelect?.(item)}
-                      onKeyDown={(event) => onKeyDown(event, item)}
-                      onFocus={(event) => onFocus(event, item)}
-                      onBlur={() => setFocused((current) => (current === item.key ? null : current))}
+                      onKeyDown={(event) => { onKeyDown(event, item); }}
+                      onFocus={(event) => { onFocus(event, item); }}
+                      onBlur={() => { setFocused((current) => (current === item.key ? null : current)); }}
                       onPointerEnter={() => {
                         setHovered(item.key);
                         setDismissed(null);
                       }}
-                      onPointerLeave={() => setHovered((current) => (current === item.key ? null : current))}
+                      onPointerLeave={() => { setHovered((current) => (current === item.key ? null : current)); }}
                     >
                       <rect x={px(x0 - 5)} y={y - 3} width={px(Math.max(x1 - x0 + 10, 12))} height={BAR_H + 6} fill="transparent" />
                       {marker ? (
                         <path
-                          d={`M ${px(x0)} ${px(cy - 5)} L ${px(x0 + 5)} ${px(cy)} L ${px(x0)} ${px(cy + 5)} L ${px(x0 - 5)} ${px(cy)} Z`}
+                          d={`M ${String(px(x0))} ${String(px(cy - 5))} L ${String(px(x0 + 5))} ${String(px(cy))} L ${String(px(x0))} ${String(px(cy + 5))} L ${String(px(x0 - 5))} ${String(px(cy))} Z`}
                           className={paint.fill}
                         />
                       ) : (

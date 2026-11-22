@@ -42,7 +42,9 @@ def track_states(frames: int, spans: Sequence[Span]) -> list[State]:
         starting.setdefault(span.start, []).append(index)
         ending.setdefault(span.end, []).append(index)
     cuts = sorted({0, frames, *starting, *ending})
-    active: list[int] = []  # indices of the events on screen, ascending (the stacking order)
+    active: list[
+        int
+    ] = []  # indices of the events on screen, ascending (the stacking order)
     states: list[State] = []
     for start, end in pairwise(cuts):
         for index in ending.get(start, ()):

@@ -1,3 +1,4 @@
+import { takeLabel } from "../model/takeLabel";
 // The first frame of a shot (MiniMax H3 fl2va), shown in the 方式 popover of the generation row for 接續上一鏡 and
 // 首幀圖片. Continuing: which frame of which previous shot it starts from (a browser preview) or why it cannot continue
 // yet. Library image: the chosen image with 換一張, and the picker of library images (images only, no Image Studio masks;
@@ -68,7 +69,7 @@ function SourcePreview({ source }: { source: ContinuitySource }) {
       </div>
       <figcaption className="grid min-w-0 gap-0.5 text-caption text-fg-secondary">
         <span className="[overflow-wrap:anywhere]">{t("接續「{name}」", { name })}</span>
-        <span className="machine text-fg-tertiary">{t("take {take}・seed {seed}", { take: shot.takes.indexOf(take) + 1, seed: take.seed })}</span>
+        <span className="machine text-fg-tertiary">{takeLabel(shot.takes.indexOf(take) + 1, take.seed)}</span>
         <span className="machine text-fg-tertiary">{frame.position === "index" ? t("第 {index} 影格（出點前一個影格）", { index }) : t("第 {index} 影格（最後一個影格）", { index })}</span>
         <span className="text-fg-tertiary">{t("瀏覽器預覽，可能差一個影格；渲染時從原檔取出原解析度的影格。")}</span>
       </figcaption>
@@ -78,10 +79,10 @@ function SourcePreview({ source }: { source: ContinuitySource }) {
 
 function UsedFrame({ file, label }: { file: FileRef; label: string }) {
   const meta = file.metadata;
-  const width = typeof meta.width === "number" ? meta.width : null;
-  const height = typeof meta.height === "number" ? meta.height : null;
-  const index = typeof meta.frame_index === "number" ? meta.frame_index : null;
-  const shownHeight = width && height ? thumbHeight(width, height) : Math.round((THUMB_WIDTH * 9) / 16);
+  const width = typeof meta["width"] === "number" ? meta["width"] : null;
+  const height = typeof meta["height"] === "number" ? meta["height"] : null;
+  const index = typeof meta["frame_index"] === "number" ? meta["frame_index"] : null;
+  const shownHeight = (width != null && Boolean(width)) && (height != null && Boolean(height)) ? thumbHeight(width, height) : Math.round((THUMB_WIDTH * 9) / 16);
   return (
     <figure className={cn(CARD, "flex items-start gap-2 p-2")}>
       <img
@@ -98,7 +99,7 @@ function UsedFrame({ file, label }: { file: FileRef; label: string }) {
         <span className="machine text-fg-tertiary">
           {label}
           {index !== null ? t("・來源第 {index} 影格", { index }) : ""}
-          {width && height ? t("・{width}×{height} PNG", { width, height }) : ""}
+          {(width != null && Boolean(width)) && (height != null && Boolean(height)) ? t("・{width}×{height} PNG", { width, height }) : ""}
         </span>
       </figcaption>
     </figure>
@@ -106,7 +107,7 @@ function UsedFrame({ file, label }: { file: FileRef; label: string }) {
 }
 
 function itemSize(item: Pick<StudioLibraryItem, "width" | "height">): string {
-  return item.width !== null && item.height !== null ? `${item.width}×${item.height}` : t("尺寸未知");
+  return item.width !== null && item.height !== null ? `${String(item.width)}×${String(item.height)}` : t("尺寸未知");
 }
 
 function itemOrigin(item: StudioLibraryItem): string {
@@ -115,7 +116,7 @@ function itemOrigin(item: StudioLibraryItem): string {
 
 /** The chosen first-frame image (or that it left the library) with 換一張. */
 function ImageFrameCard({ item, onChange }: { item: StudioLibraryItem | null; onChange: () => void }) {
-  const height = item && item.width !== null && item.height !== null ? thumbHeight(item.width, item.height) : Math.round((THUMB_WIDTH * 9) / 16);
+  const height = item?.width != null && item.height !== null ? thumbHeight(item.width, item.height) : Math.round((THUMB_WIDTH * 9) / 16);
   return (
     <figure className={cn(CARD, "flex items-start gap-2 p-2")}>
       <div className="grid shrink-0 place-items-center overflow-hidden rounded-md border border-line-subtle bg-stage" style={{ width: THUMB_WIDTH, height }}>
@@ -130,7 +131,7 @@ function ImageFrameCard({ item, onChange }: { item: StudioLibraryItem | null; on
           <>
             <span className="[overflow-wrap:anywhere]">{item.name}</span>
             <span className="text-fg-tertiary">
-              <T source={"<0>{item}</0>・{item2}"} values={{ item: itemSize(item), item2: itemOrigin(item) }} slots={[<span className="machine" />]} />
+              <T source={"<0>{item}</0>・{item2}"} values={{ item: itemSize(item), item2: itemOrigin(item) }} slots={[<span key="slot-0" className="machine" />]} />
             </span>
           </>
         ) : (
@@ -160,14 +161,14 @@ export function FirstFrameImagePicker({ shot, onPick, onBack }: { shot: StudioSh
     onBack();
   };
   return (
-    <div className="flex min-h-0 flex-col" onKeyDown={onKeyDown}>
+    <div /* eslint-disable-line jsx-a11y-x/no-static-element-interactions -- Keyboard events from this panel’s focusable controls bubble here so navigation and dismissal share one handler. */  className="flex min-h-0 flex-col" onKeyDown={onKeyDown}>
       <div className="flex h-11 shrink-0 items-center gap-1 border-b border-white/8 px-1.5">
         <Button size="icon-sm" variant="quiet" icon={<ArrowLeft aria-hidden />} aria-label={t("回到生成方式")} title={t("回到生成方式")} onClick={onBack} />
         <p className="text-data font-semibold text-fg">{t("選一張首幀圖片")}</p>
       </div>
       <div className="relative m-2 mb-1 shrink-0">
         <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-fg-tertiary" />
-        <Input compact data-autofocus="" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("搜尋檔名")} aria-label={t("搜尋素材庫圖片")} autoComplete="off" className="pl-8" />
+        <Input compact data-autofocus="" type="search" value={query} onChange={(event) => { setQuery(event.target.value); }} placeholder={t("搜尋檔名")} aria-label={t("搜尋素材庫圖片")} autoComplete="off" className="pl-8" />
       </div>
       {items.length === 0 ? (
         <p className="px-3 pt-1 pb-3 text-caption text-fg-tertiary">{t("專案素材庫沒有可用的圖片。")}</p>
@@ -183,29 +184,29 @@ export function FirstFrameImagePicker({ shot, onPick, onBack }: { shot: StudioSh
               <li key={item.item_id} ref={reveal(index)}>
                 <button
                   type="button"
-                  aria-disabled={problem ? true : undefined}
+                  aria-disabled={(problem != null && problem !== "") ? true : undefined}
                   aria-current={current ? "true" : undefined}
                   onClick={() => {
-                    if (!problem) onPick(item);
+                    if (!(problem != null && problem !== "")) onPick(item);
                   }}
                   title={problem ?? note ?? item.name}
                   className={cn(
                     "group/tile grid w-full min-w-0 grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-2 rounded-lg border p-1.5 text-left transition-colors duration-(--duration-fast) focus-visible:outline-2 focus-visible:outline-focus",
                     current ? OPTION_SELECTED : "border-line-subtle bg-surface/60",
-                    problem ? "cursor-not-allowed" : !current && "pressable hover:border-line-strong active:bg-sunken",
+                    (problem != null && problem !== "") ? "cursor-not-allowed" : !current && "pressable hover:border-line-strong active:bg-sunken",
                   )}
                 >
-                  <span className={cn("grid size-14 place-items-center overflow-hidden rounded-md border border-line-subtle bg-stage", problem && "opacity-60")}>
-                    <LibraryThumb item={item} className={problem ? undefined : THUMB_ZOOM} />
+                  <span className={cn("grid size-14 place-items-center overflow-hidden rounded-md border border-line-subtle bg-stage", ((problem != null && problem !== "") ? "opacity-60" : problem))}>
+                    <LibraryThumb item={item} {...((problem != null && problem !== "") ? {} : { className: THUMB_ZOOM })} />
                   </span>
                   <span className="grid min-w-0 gap-0.5">
-                    <span className={cn("truncate text-caption", problem ? "text-fg-tertiary" : "text-fg")}>{item.name}</span>
+                    <span className={cn("truncate text-caption", (problem != null && problem !== "") ? "text-fg-tertiary" : "text-fg")}>{item.name}</span>
                     <span className="truncate text-[11px] text-fg-tertiary">
-                      <T source={"<0>{item}</0>・{item2}{value}"} values={{ item: itemSize(item), item2: itemOrigin(item), value: current ? t("・目前的首幀") : "" }} slots={[<span className="machine" />]} />
+                      <T source={"<0>{item}</0>・{item2}{value}"} values={{ item: itemSize(item), item2: itemOrigin(item), value: current ? t("・目前的首幀") : "" }} slots={[<span key="slot-0" className="machine" />]} />
                     </span>
-                    {problem ? (
+                    {(problem != null && problem !== "") ? (
                       <span className="text-[11px] text-warning">{t("比例與專案畫面（{width}×{height}）不同：會被拉伸變形，不能當首幀", { width: project.format.width, height: project.format.height })}</span>
-                    ) : note ? (
+                    ) : (note != null && note !== "") ? (
                       <span className="line-clamp-2 text-[11px] text-fg-tertiary">{note}</span>
                     ) : null}
                   </span>
@@ -236,7 +237,7 @@ export function FirstFrameDetail({ shot, onChangeImage }: { shot: StudioShot; on
       {stale ? (
         <Note tone="warning">{mode === "image" ? t("使用中的 take 用的是另一張首幀圖片；重新渲染這個鏡頭才會套用。") : t("使用中的 take 接的是舊的來源（已變更：{change}）；重新渲染這個鏡頭才會套用。", { change })}</Note>
       ) : null}
-      {showUsed && used?.first_frame ? <UsedFrame file={used.first_frame} label={used.mode === "image" ? t("素材庫圖片") : t("取自前一個鏡頭")} /> : null}
+      {showUsed === true && used.first_frame ? <UsedFrame file={used.first_frame} label={used.mode === "image" ? t("素材庫圖片") : t("取自前一個鏡頭")} /> : null}
     </div>
   );
 }
@@ -246,7 +247,7 @@ function PreviousFrame({ shot }: { shot: StudioShot }) {
   const { source, problem } = continuitySource(project, shot);
   return (
     <>
-      {problem ? <Note tone="warning">{t("目前不能接續：{problem}", { problem })}</Note> : null}
+      {(problem != null && problem !== "") ? <Note tone="warning">{t("目前不能接續：{problem}", { problem })}</Note> : null}
       {source ? <SourcePreview source={source} /> : null}
       <Note tone="muted">{t("首幀只是條件、會被重新生成，接點接近但不逐像素相同；接點看起來重複時可把入點設為 1。")}</Note>
     </>
@@ -261,8 +262,8 @@ function LibraryFrame({ shot, onChange }: { shot: StudioShot; onChange: () => vo
   return (
     <>
       <ImageFrameCard item={item} onChange={onChange} />
-      {image.problem ? <Note tone="warning">{t("目前不能用這張圖片：{problem}", { problem: image.problem })}</Note> : null}
-      {image.source?.note ? <Note tone="muted">{image.source.note}</Note> : null}
+      {(image.problem != null && image.problem !== "") ? <Note tone="warning">{t("目前不能用這張圖片：{problem}", { problem: image.problem })}</Note> : null}
+      {(image.source?.note != null && image.source.note !== "") ? <Note tone="muted">{image.source.note}</Note> : null}
     </>
   );
 }

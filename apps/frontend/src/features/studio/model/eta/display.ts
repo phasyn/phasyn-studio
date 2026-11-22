@@ -14,7 +14,7 @@ export function formatEtaClock(totalSeconds: number): string {
   const hours = Math.floor(s / 3600);
   const minutes = Math.floor((s % 3600) / 60);
   const seconds = String(s % 60).padStart(2, "0");
-  return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${seconds}` : `${minutes}:${seconds}`;
+  return hours > 0 ? `${String(hours)}:${String(minutes).padStart(2, "0")}:${seconds}` : `${String(minutes)}:${seconds}`;
 }
 
 /** 「預估 2 分 45 秒（2:35–3:10）・依本機 37 次紀錄」（approx：加「僅供參考」）. */

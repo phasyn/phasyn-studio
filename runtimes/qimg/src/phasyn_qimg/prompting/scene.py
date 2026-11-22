@@ -1,4 +1,4 @@
-"""八區段場景的語意規則（JSON Schema 之外的語意檢查與轉換）。
+"""八區段場景的語意規則（JSON Schema 之外的語意檢查與轉換）.
 
 wire 形狀（PromptScene、PromptComparison…）由 ``phasyn_components.contracts`` 以 JSON Schema 驗證；這裡補上
 JSON Schema 表達不了的規則：observation 只能被同區段引用、subject 非空、自動產生的區段要有 observed 證據且
@@ -20,6 +20,7 @@ from phasyn_components import contracts
 from phasyn_components.canonical import canonical_json, digest
 from phasyn_components.errors import ComponentError
 
+
 SECTION_KEYS: tuple[str, ...] = (
     "subject",
     "action",
@@ -36,7 +37,7 @@ Origin = Literal["analysis", "manual", "refinement"]
 
 
 class SceneError(ValueError):
-    """場景語意不合法。"""
+    """場景語意不合法."""
 
 
 def canonical_text(value: Any) -> str:
@@ -45,6 +46,7 @@ def canonical_text(value: Any) -> str:
 
 
 def scene_sha256(scene: Mapping[str, Any]) -> str:
+    """Hash the canonical scene document."""
     return digest(scene)
 
 
@@ -62,16 +64,22 @@ def strict_json(raw: str | bytes) -> Any:
             result[key] = value
         return result
 
-    return json.loads(raw, parse_constant=invalid_constant, object_pairs_hook=unique_object)
+    return json.loads(
+        raw, parse_constant=invalid_constant, object_pairs_hook=unique_object
+    )
 
 
 def section_text(section: Mapping[str, Any], language: str) -> str:
-    """只回傳該語言的生成欄位；不以 explanation 或另一種語言代替。"""
-    return str(section.get("text_zh_tw", "") if language == "zh-TW" else section.get("text_en", ""))
+    """只回傳該語言的生成欄位；不以 explanation 或另一種語言代替."""
+    return str(
+        section.get("text_zh_tw", "")
+        if language == "zh-TW"
+        else section.get("text_en", "")
+    )
 
 
 def is_document(scene: Mapping[str, Any]) -> bool:
-    """完整場景（PromptScene）有 prompt_language；模型輸出的 SceneDraft 沒有。"""
+    """完整場景（PromptScene）有 prompt_language；模型輸出的 SceneDraft 沒有."""
     return "prompt_language" in scene
 
 
@@ -92,7 +100,10 @@ def validate_structure(scene: Mapping[str, Any]) -> None:
     if is_document(scene):
         nonempty = section_text(subject, str(scene["prompt_language"])).strip()
     else:
-        nonempty = str(subject.get("text_en", "")).strip() or str(subject.get("text_zh_tw", "")).strip()
+        nonempty = (
+            str(subject.get("text_en", "")).strip()
+            or str(subject.get("text_zh_tw", "")).strip()
+        )
     if not nonempty:
         raise SceneError("subject 不可空白")
     observations = {item["id"]: item for item in scene["observations"]}
@@ -106,7 +117,9 @@ def validate_structure(scene: Mapping[str, Any]) -> None:
         for observation_id in ids:
             observation = observations.get(observation_id)
             if observation is None:
-                invalid.append(f"{key}.observation_ids references missing {observation_id}")
+                invalid.append(
+                    f"{key}.observation_ids references missing {observation_id}"
+                )
             elif observation["section"] != key:
                 invalid.append(
                     f"{key}.observation_ids references {observation_id} "
@@ -133,8 +146,13 @@ def validate_scene(
     document = is_document(scene)
     language = prompt_language or (str(scene["prompt_language"]) if document else "en")
     if document and scene["prompt_language"] != language:
-        raise SceneError("scene.prompt_language must match the requested prompt_language")
-    if origin != "manual" and not section_text(scene["sections"]["subject"], language).strip():
+        raise SceneError(
+            "scene.prompt_language must match the requested prompt_language"
+        )
+    if (
+        origin != "manual"
+        and not section_text(scene["sections"]["subject"], language).strip()
+    ):
         field = "text_zh_tw" if language == "zh-TW" else "text_en"
         raise SceneError(f"sections.subject.{field} must be nonempty for {language}")
     allowed = set(view_ids) if view_ids is not None else None
@@ -144,17 +162,31 @@ def validate_scene(
             raise SceneError(f"observation {item['id']} 引用了未提交的 view")
     if origin == "manual":
         return
+    _check_section_evidence(scene, origin, language, observations)
+
+
+def _check_section_evidence(
+    scene: Mapping[str, Any],
+    origin: Origin,
+    language: str,
+    observations: Mapping[str, Any],
+) -> None:
     for key in SECTION_KEYS:
         section = scene["sections"][key]
         if origin == "refinement" and section.get("locked", False):
             continue
-        nonempty = bool(str(section["text_en"]).strip() or section_text(section, language).strip())
+        nonempty = bool(
+            str(section["text_en"]).strip() or section_text(section, language).strip()
+        )
         if not nonempty:
             continue
         if language == "zh-TW" and (
-            not str(section.get("text_zh_tw", "")).strip() or not str(section["text_en"]).strip()
+            not str(section.get("text_zh_tw", "")).strip()
+            or not str(section["text_en"]).strip()
         ):
-            raise SceneError(f"sections.{key} must provide both text_en and text_zh_tw for zh-TW output")
+            raise SceneError(
+                f"sections.{key} must provide both text_en and text_zh_tw for zh-TW output"
+            )
         evidence = [observations[item] for item in section["observation_ids"]]
         if not any(item["certainty"] == "observed" for item in evidence):
             raise SceneError(f"自動產生的 {key} 必須具有 observed 證據")
@@ -162,8 +194,10 @@ def validate_scene(
             raise SceneError(f"{key} 不可將 uncertain 證據編成肯定句")
 
 
-def validate_intentional_changes(scene: Mapping[str, Any], changes: Iterable[str]) -> list[str]:
-    """有意修改必須是鎖定區段、不可重複；回傳依原順序的清單。"""
+def validate_intentional_changes(
+    scene: Mapping[str, Any], changes: Iterable[str]
+) -> list[str]:
+    """有意修改必須是鎖定區段、不可重複；回傳依原順序的清單."""
     values = list(changes)
     for key in values:
         if key not in SECTION_KEYS:
@@ -205,15 +239,27 @@ def _document(
     return scene
 
 
-def draft_to_scene(draft: Mapping[str, Any], *, view_ids: Iterable[str] | None, prompt_language: str) -> dict[str, Any]:
+def draft_to_scene(
+    draft: Mapping[str, Any], *, view_ids: Iterable[str] | None, prompt_language: str
+) -> dict[str, Any]:
     """Analysis output (SceneDraft) → an unlocked PromptScene."""
-    validate_scene(draft, origin="analysis", view_ids=view_ids, prompt_language=prompt_language)
-    sections = {key: {**normalized_draft_section(draft["sections"][key]), "locked": False} for key in SECTION_KEYS}
-    return _document(prompt_language, sections, draft["observations"], draft["uncertainty_notes"])
+    validate_scene(
+        draft, origin="analysis", view_ids=view_ids, prompt_language=prompt_language
+    )
+    sections = {
+        key: {**normalized_draft_section(draft["sections"][key]), "locked": False}
+        for key in SECTION_KEYS
+    }
+    return _document(
+        prompt_language, sections, draft["observations"], draft["uncertainty_notes"]
+    )
 
 
 def merge_revision(
-    previous: Mapping[str, Any], draft: Mapping[str, Any], *, view_ids: Iterable[str] | None = None
+    previous: Mapping[str, Any],
+    draft: Mapping[str, Any],
+    *,
+    view_ids: Iterable[str] | None = None,
 ) -> dict[str, Any]:
     """Automatic revision: locked sections (with their observations) must be identical, else rejected; the rest is taken."""
     old = {item["id"]: item for item in previous["observations"]}
@@ -223,21 +269,30 @@ def merge_revision(
         before = previous["sections"][key]
         after = normalized_draft_section(draft["sections"][key])
         if before["locked"]:
-            if {name: value for name, value in before.items() if name != "locked"} != after:
+            if {
+                name: value for name, value in before.items() if name != "locked"
+            } != after:
                 raise SceneError(f"自動修訂不可修改鎖定的 {key}")
             for observation_id in before["observation_ids"]:
                 if new.get(observation_id) != old[observation_id]:
-                    raise SceneError(f"自動修訂不可修改鎖定的 observation {observation_id}")
+                    raise SceneError(
+                        f"自動修訂不可修改鎖定的 observation {observation_id}"
+                    )
             sections[key] = copy.deepcopy(dict(before))
         else:
             sections[key] = {**after, "locked": False}
-    scene = _document(str(previous["prompt_language"]), sections, draft["observations"], draft["uncertainty_notes"])
+    scene = _document(
+        str(previous["prompt_language"]),
+        sections,
+        draft["observations"],
+        draft["uncertainty_notes"],
+    )
     validate_scene(scene, origin="refinement", view_ids=view_ids)
     return scene
 
 
 def require_scene(value: Any, *, what: str = "場景") -> dict[str, Any]:
-    """輸入的 PromptScene：契約＋結構檢查；不合格 → 422 INVALID_ARGUMENT。"""
+    """輸入的 PromptScene：契約+結構檢查；不合格 → 422 INVALID_ARGUMENT."""
     contracts.validate("PromptScene", value, what=what)
     try:
         validate_structure(value)

@@ -15,10 +15,15 @@ import platform
 import sys
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from importlib import import_module
 from pathlib import Path
 from typing import Any, Protocol
 
 from phasyn_components.upstream import library_versions
+
+from . import PROVIDER_ID, PROVIDER_VERSION, SGLANG_SOURCE_REVISION
+from ._observations import RuntimeObservation
+
 
 KERNEL_PACKAGES = (
     "torch",
@@ -62,6 +67,8 @@ H3_DIT_BF16_DEVICE_BYTES = 40 * 10**9
 
 @dataclass(frozen=True)
 class RuntimeFacts:
+    """Identify the actual device and runtime used for this execution."""
+
     arch: str | None = None  # "x86_64" | "aarch64"
     sm: tuple[int, int] | None = None
     torch: str | None = None
@@ -72,27 +79,42 @@ class RuntimeFacts:
 
     @property
     def sm_major(self) -> int | None:
+        """Return the major CUDA compute capability."""
         return None if self.sm is None else self.sm[0]
 
 
 class DeviceBackend(Protocol):
-    def facts(self) -> RuntimeFacts: ...
+    """Define how the runtime observes and synchronizes its device."""
 
-    def environment(self) -> dict[str, Any]: ...
+    def facts(self) -> RuntimeFacts:
+        """Return the observed runtime facts for reporting."""
+        ...
 
-    def memory_snapshot(self) -> dict[str, int | None]: ...
+    def environment(self) -> dict[str, Any]:
+        """Describe the environment that executes this component."""
+        ...
 
-    def reset_peak(self) -> None: ...
+    def memory_snapshot(self) -> dict[str, int | None]:
+        """Read the current device memory counters."""
+        ...
 
-    def synchronize(self) -> bool: ...
+    def reset_peak(self) -> None:
+        """Reset peak device memory counters before measuring the next phase."""
+        ...
 
-    def empty_cache(self) -> None: ...
+    def synchronize(self) -> bool:
+        """Wait for previously submitted device work."""
+        ...
+
+    def empty_cache(self) -> None:
+        """Release cached allocations that are no longer in use."""
+        ...
 
 
 def _status_bytes(key: str) -> int | None:
     """A ``kB`` field of /proc/self/status (VmRSS, VmHWM) in bytes; None when unknown."""
     try:
-        with open("/proc/self/status", encoding="ascii") as fh:
+        with Path("/proc/self/status").open(encoding="ascii") as fh:
             for line in fh:
                 if line.startswith(key + ":"):
                     return int(line.split()[1]) * 1024
@@ -107,7 +129,7 @@ def host_memory_snapshot(*, peak_scope: str) -> dict[str, Any]:
     ``peak_host_bytes`` is VmHWM, the process lifetime peak (``peak_scope`` says so); the recipe never
     resets it — the component host measures the call; ``max_rss_bytes`` is the lifetime peak (getrusage).
     """
-    import resource
+    resource = import_module("resource")
 
     snap: dict[str, Any] = {
         "rss_bytes": _status_bytes("VmRSS"),
@@ -115,7 +137,9 @@ def host_memory_snapshot(*, peak_scope: str) -> dict[str, Any]:
         "host_peak_scope": peak_scope,
     }
     try:
-        snap["max_rss_bytes"] = int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) * 1024  # KiB on Linux
+        snap["max_rss_bytes"] = (
+            int(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss) * 1024
+        )  # KiB on Linux
     except (OSError, ValueError):
         snap["max_rss_bytes"] = None
     return snap
@@ -134,6 +158,7 @@ class TorchCudaBackend:
     """CUDA backend for one device; ``device_index`` is the *visible* ordinal."""
 
     def __init__(self, device: Mapping[str, Any], *, visible_index: int | None) -> None:
+        """Select the CUDA device observed by this backend."""
         self.device_uuid = device.get("device_uuid")
         self.physical_index = device.get("device_index")
         self.visible_index = visible_index
@@ -151,6 +176,7 @@ class TorchCudaBackend:
         return self.visible_index is not None and torch.cuda.is_available()
 
     def torch_device(self) -> Any:
+        """Return the torch device selected for this runtime."""
         torch = self._torch()
         if not self._has_device():
             return torch.device("cpu")
@@ -158,13 +184,16 @@ class TorchCudaBackend:
 
     # -- facts -----------------------------------------------------------
     def facts(self) -> RuntimeFacts:
+        """Return the observed runtime facts for reporting."""
         if self._facts is None:
             torch = self._torch()
             sm = None
             total = None
             integrated = None
             if self._has_device():
-                sm = tuple(torch.cuda.get_device_capability(int(self.visible_index or 0)))
+                sm = tuple(
+                    torch.cuda.get_device_capability(int(self.visible_index or 0))
+                )
                 props = torch.cuda.get_device_properties(int(self.visible_index or 0))
                 total = int(props.total_memory)
                 integrated = bool(getattr(props, "is_integrated", False))
@@ -188,49 +217,29 @@ class TorchCudaBackend:
         queries are listed in ``nvml_errors`` (query -> message).
         """
         try:
-            import pynvml  # nvidia-ml-py
+            import pynvml  # type: ignore[import-untyped]  # nvidia-ml-py
         except ImportError:
             return {}
-        try:
+        with RuntimeObservation() as initialization:
             pynvml.nvmlInit()
-        except Exception as exc:  # NVML is best-effort telemetry
+        if (exc := initialization.error) is not None:
             return {"nvml_error": str(exc)[:200]}
         out: dict[str, Any] = {}
         errors: dict[str, str] = {}
 
         def query(key: str, call: Any) -> Any:
-            try:
+            with RuntimeObservation() as field_query:
                 return call()
-            except Exception as exc:
-                errors[key] = str(exc)[:200] or type(exc).__name__
-                return None
+            exc = field_query.failure()
+            errors[key] = str(exc)[:200] or type(exc).__name__
+            return None
 
         def text(value: Any) -> str:
             return value.decode() if isinstance(value, bytes) else str(value)
 
         try:
-            driver = query("driver_version", pynvml.nvmlSystemGetDriverVersion)
-            if driver is not None:
-                out["driver_version"] = text(driver)
-            cuda_driver = query("cuda_driver_api", pynvml.nvmlSystemGetCudaDriverVersion_v2)
-            if cuda_driver is not None:
-                out["cuda_driver_api"] = f"{int(cuda_driver) // 1000}.{(int(cuda_driver) % 1000) // 10}"
-            handle = query(
-                "device_handle",
-                lambda: (
-                    pynvml.nvmlDeviceGetHandleByUUID(self.device_uuid)
-                    if self.device_uuid and str(self.device_uuid).startswith("GPU-")
-                    else pynvml.nvmlDeviceGetHandleByIndex(int(self.physical_index or 0))
-                ),
-            )
-            if handle is not None:
-                name = query("name", lambda: pynvml.nvmlDeviceGetName(handle))
-                if name is not None:
-                    out["name"] = text(name)
-                mem = query("memory", lambda: pynvml.nvmlDeviceGetMemoryInfo(handle))
-                if mem is not None:
-                    out["total_bytes"] = int(mem.total)
-                    out["used_bytes"] = int(mem.used)
+            _driver_versions(query, pynvml, out, text)
+            _device_memory(query, pynvml, self, out, text)
         finally:
             with contextlib.suppress(Exception):
                 pynvml.nvmlShutdown()
@@ -240,8 +249,6 @@ class TorchCudaBackend:
 
     def environment(self) -> dict[str, Any]:
         """Deterministic facts for environment_fingerprint (no volatile numbers)."""
-        from . import PROVIDER_ID, PROVIDER_VERSION, SGLANG_SOURCE_REVISION
-
         torch = self._torch()
         facts = self.facts()
         nvml = self._nvml()
@@ -262,9 +269,9 @@ class TorchCudaBackend:
                 }
             )
         cudnn = None
-        try:
+        with RuntimeObservation() as cudnn_query:
             cudnn = torch.backends.cudnn.version()
-        except Exception:
+        if cudnn_query.error is not None:
             cudnn = None
         return {
             "provider_id": PROVIDER_ID,
@@ -274,7 +281,9 @@ class TorchCudaBackend:
             "machine": platform.machine(),
             "os": platform.system(),
             "torch": torch.__version__,
-            "torch_cuda_arch_list": list(torch.cuda.get_arch_list()) if torch.cuda.is_available() else [],
+            "torch_cuda_arch_list": list(torch.cuda.get_arch_list())
+            if torch.cuda.is_available()
+            else [],
             "cuda_runtime": torch.version.cuda,
             "cudnn": cudnn,
             "driver_version": nvml.get("driver_version"),
@@ -287,6 +296,7 @@ class TorchCudaBackend:
 
     # -- memory ----------------------------------------------------------
     def memory_snapshot(self) -> dict[str, int | None]:
+        """Read the current device memory counters."""
         torch = self._torch()
         snap: dict[str, int | None] = {
             "allocated_bytes": None,
@@ -318,12 +328,14 @@ class TorchCudaBackend:
             self._torch().cuda.reset_peak_memory_stats(int(self.visible_index or 0))
 
     def synchronize(self) -> bool:
+        """Wait for previously submitted device work."""
         if not self._has_device():
             return False
         self._torch().cuda.synchronize(int(self.visible_index or 0))
         return True
 
     def empty_cache(self) -> None:
+        """Release cached allocations that are no longer in use."""
         gc.collect()
         self.empty_cache_after_collection()
 
@@ -346,3 +358,35 @@ __all__ = [
     "host_memory_snapshot",
     "runtime_lock_digest",
 ]
+
+
+def _driver_versions(query: Any, pynvml: Any, out: dict[str, Any], text: Any) -> None:
+    driver = query("driver_version", pynvml.nvmlSystemGetDriverVersion)
+    if driver is not None:
+        out["driver_version"] = text(driver)
+    cuda_driver = query("cuda_driver_api", pynvml.nvmlSystemGetCudaDriverVersion_v2)
+    if cuda_driver is not None:
+        out["cuda_driver_api"] = (
+            f"{int(cuda_driver) // 1000}.{(int(cuda_driver) % 1000) // 10}"
+        )
+
+
+def _device_memory(
+    query: Any, pynvml: Any, self: TorchCudaBackend, out: dict[str, Any], text: Any
+) -> None:
+    handle = query(
+        "device_handle",
+        lambda: (
+            pynvml.nvmlDeviceGetHandleByUUID(self.device_uuid)
+            if self.device_uuid and str(self.device_uuid).startswith("GPU-")
+            else pynvml.nvmlDeviceGetHandleByIndex(int(self.physical_index or 0))
+        ),
+    )
+    if handle is not None:
+        name = query("name", lambda: pynvml.nvmlDeviceGetName(handle))
+        if name is not None:
+            out["name"] = text(name)
+        mem = query("memory", lambda: pynvml.nvmlDeviceGetMemoryInfo(handle))
+        if mem is not None:
+            out["total_bytes"] = int(mem.total)
+            out["used_bytes"] = int(mem.used)

@@ -47,6 +47,9 @@ export function describeBlock(block: PromptBlock): BlockDescription {
               : t("未標切鏡時間"),
         excerpt: body,
       };
+    case "heading":
+    case "section":
+    case "time":
     default:
       return { kind: KIND_LABELS[block.kind], title: block.title, detail: null, excerpt: body };
   }

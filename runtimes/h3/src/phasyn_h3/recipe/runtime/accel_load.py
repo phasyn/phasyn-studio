@@ -30,9 +30,18 @@ from .acceleration import (
     effective_summary,
     quant_plan,
 )
+from .attention_runtime import preflight_attention
 from .backend import H3_DIT_BF16_DEVICE_BYTES, RuntimeFacts
 from .errors import UnsupportedCombination
+from .fp8_linear import KERNEL_ID, VALIDATED_CAPABILITIES
 from .policy import StagePolicy
+from .toolchain import require_jit_toolchain
+from .upstream_patches import (
+    UPSTREAM_FP8_GEMM,
+    armed_adaln_online_quant,
+    armed_fp8_layerwise_quant,
+    patch_state,
+)
 
 
 def _transformer_profile(policy: StagePolicy) -> Mapping[str, Any]:
@@ -46,7 +55,9 @@ def load_signature(policy: StagePolicy) -> str:
         {
             "quantization": None if plan is None else plan.as_dict(),
             "adaln_mode": policy.adaln_mode,
-            "adaln_cache_ref": (policy.effective_profile.get("adaln") or {}).get("cache_ref")
+            "adaln_cache_ref": (policy.effective_profile.get("adaln") or {}).get(
+                "cache_ref"
+            )
             if policy.adaln_mode == "fixed"
             else None,
         }
@@ -54,10 +65,13 @@ def load_signature(policy: StagePolicy) -> str:
 
 
 def summary(policy: StagePolicy) -> dict[str, Any]:
+    """Describe how the loaded model applies the acceleration settings."""
     return effective_summary(
         transformer_component=_transformer_profile(policy),
         attention=attention_plan(
-            policy.attention_provider_effective, policy.sglang_attention_backend, policy.effective_profile
+            policy.attention_provider_effective,
+            policy.sglang_attention_backend,
+            policy.effective_profile,
         ),
         adaln_mode=policy.adaln_mode,
     )
@@ -69,7 +83,7 @@ def _check_fp8_device(policy: StagePolicy, facts: RuntimeFacts) -> None:
         raise UnsupportedCombination(
             "FP8_W8A8_CAPABILITY_UNSUPPORTED",
             f"E4M3 張量核心從 compute capability {FP8_W8A8_MIN_CAPABILITY[0]}.{FP8_W8A8_MIN_CAPABILITY[1]} 起才有；"
-            f"此裝置 {facts.sm}。釘版 Fp8LinearMethod 在 8.0–8.8 會改走 Marlin weight-only FP8（W8A16，"
+            f"此裝置 {facts.sm}。釘版 Fp8LinearMethod 在 8.0\N{EN DASH}8.8 會改走 Marlin weight-only FP8（W8A16，"
             "fp8_utils.py can_auto_enable_marlin_fp8），不是 profile 要求的 W8A8，shim 不接受",
             field_path="components.transformer.quantization",
             expected=">= 8.9",
@@ -94,7 +108,6 @@ def _check_fp8_device(policy: StagePolicy, facts: RuntimeFacts) -> None:
 
 
 def _prepare_convrot(facts: RuntimeFacts) -> dict[str, Any]:
-    from .toolchain import require_jit_toolchain
 
     if facts.sm is None or tuple(facts.sm) not in CONVROT_JIT_CAPABILITIES:
         raise UnsupportedCombination(
@@ -103,8 +116,12 @@ def _prepare_convrot(facts: RuntimeFacts) -> dict[str, Any]:
             field_path="components.transformer.quantization",
         )
     toolchain = require_jit_toolchain("int8_convrot（SGLang convrot_int8 JIT）")
-    jit = importlib.import_module("sglang.multimodal_gen.runtime.layers.quantization.convrot_int8_jit")
-    reason = jit.jit_convrot_unavailable_reason()  # builds/loads the cached module once per process
+    jit = importlib.import_module(
+        "sglang.multimodal_gen.runtime.layers.quantization.convrot_int8_jit"
+    )
+    reason = (
+        jit.jit_convrot_unavailable_reason()
+    )  # builds/loads the cached module once per process
     if reason is not None:
         raise UnsupportedCombination(
             "CONVROT_JIT_UNAVAILABLE",
@@ -116,25 +133,34 @@ def _prepare_convrot(facts: RuntimeFacts) -> dict[str, Any]:
 
 def fp8_gemm_for(facts: RuntimeFacts) -> str | None:
     """The shim's FP8 GEMM on capabilities it was measured on; None keeps upstream ``apply_fp8_linear``."""
-    from .fp8_linear import KERNEL_ID, VALIDATED_CAPABILITIES
-
-    return KERNEL_ID if facts.sm is not None and tuple(facts.sm) in VALIDATED_CAPABILITIES else None
+    return (
+        KERNEL_ID
+        if facts.sm is not None and tuple(facts.sm) in VALIDATED_CAPABILITIES
+        else None
+    )
 
 
 @contextlib.contextmanager
-def dit_load_context(policy: StagePolicy, facts: RuntimeFacts, device: Any = None) -> Iterator[dict[str, Any]]:
+def dit_load_context(
+    policy: StagePolicy, facts: RuntimeFacts, device: Any = None
+) -> Iterator[dict[str, Any]]:
     """Gate/prepare the DiT load; yields the facts dict the loader records.
 
     ``device`` (torch.device) is where an online-FP8 load stages each layer for quantization.
     """
-    out: dict[str, Any] = {"effective": summary(policy), "signature": load_signature(policy)}
+    out: dict[str, Any] = {
+        "effective": summary(policy),
+        "signature": load_signature(policy),
+    }
     attention = attention_plan(
-        policy.attention_provider_effective, policy.sglang_attention_backend, policy.effective_profile
+        policy.attention_provider_effective,
+        policy.sglang_attention_backend,
+        policy.effective_profile,
     )
     if attention.approximate and facts.sm is not None:
-        from .attention_runtime import preflight_attention
-
-        out["attention_preflight"] = preflight_attention(attention)  # before ServerArgs resolve it
+        out["attention_preflight"] = preflight_attention(
+            attention
+        )  # before ServerArgs resolve it
     plan = quant_plan(_transformer_profile(policy))
     if plan is None:
         yield out
@@ -143,18 +169,22 @@ def dit_load_context(policy: StagePolicy, facts: RuntimeFacts, device: Any = Non
         _check_fp8_device(policy, facts)
         if device is None or getattr(device, "type", "cpu") != "cuda":
             raise UnsupportedCombination(
-                "FP8_NEEDS_CUDA_DEVICE", "線上 FP8 逐層量化需要 CUDA 裝置（每層在裝置上量化後回到 host）"
+                "FP8_NEEDS_CUDA_DEVICE",
+                "線上 FP8 逐層量化需要 CUDA 裝置（每層在裝置上量化後回到 host）",
             )
     if plan.requires_jit_toolchain:
         out.update(_prepare_convrot(facts))
-    from .upstream_patches import armed_adaln_online_quant, armed_fp8_layerwise_quant, patch_state
 
     with contextlib.ExitStack() as stack:
         arming = None
         if plan.sglang_method == "fp8":
-            arming = stack.enter_context(armed_fp8_layerwise_quant(device, gemm=fp8_gemm_for(facts)))
+            arming = stack.enter_context(
+                armed_fp8_layerwise_quant(device, gemm=fp8_gemm_for(facts))
+            )
         if policy.adaln_mode != "off":
-            admitted = stack.enter_context(armed_adaln_online_quant({plan.sglang_method}))
+            admitted = stack.enter_context(
+                armed_adaln_online_quant({plan.sglang_method})
+            )
             out["adaln_relaxation"] = {"admitted": admitted, "patches": patch_state()}
         try:
             yield out
@@ -177,10 +207,10 @@ def _method_name(module: Any) -> str | None:
     return None if method is None else type(method).__name__
 
 
-def _fp8_facts(module: Any, layerwise: Mapping[str, Any] | None, expected_layers: int) -> dict[str, Any]:
+def _fp8_facts(
+    module: Any, layerwise: Mapping[str, Any] | None, expected_layers: int
+) -> dict[str, Any]:
     """Every ``Fp8LinearMethod`` layer went through the per-layer path and holds E4M3 weights."""
-    from .upstream_patches import UPSTREAM_FP8_GEMM
-
     done = int((layerwise or {}).get("quantized_layers", 0))
     if done != expected_layers:
         raise UnsupportedCombination(
@@ -198,7 +228,10 @@ def _fp8_facts(module: Any, layerwise: Mapping[str, Any] | None, expected_layers
         dtypes[str(getattr(getattr(sub, "weight", None), "dtype", None))] += 1
         gemms[str(getattr(sub, "_phasyn_fp8_gemm", None) or UPSTREAM_FP8_GEMM)] += 1
     if set(dtypes) != {"torch.float8_e4m3fn"}:
-        raise UnsupportedCombination("FP8_WEIGHTS_NOT_E4M3", f"FP8 層的權重 dtype 不是 float8_e4m3fn：{dict(dtypes)}")
+        raise UnsupportedCombination(
+            "FP8_WEIGHTS_NOT_E4M3",
+            f"FP8 層的權重 dtype 不是 float8_e4m3fn：{dict(dtypes)}",
+        )
     return {
         **dict(layerwise or {}),
         "weight_scale": "per_output_channel_fp32",
@@ -208,23 +241,12 @@ def _fp8_facts(module: Any, layerwise: Mapping[str, Any] | None, expected_layers
     }
 
 
-def finalize_dit_facts(module: Any, policy: StagePolicy, facts: dict[str, Any]) -> dict[str, Any]:
+def finalize_dit_facts(
+    module: Any, policy: StagePolicy, facts: dict[str, Any]
+) -> dict[str, Any]:
     """What SGLang actually built; fails if the requested quantization did not apply."""
     plan = quant_plan(_transformer_profile(policy))
-    methods: Counter[str] = Counter()
-    adaln_quantized: list[str] = []
-    configs: dict[int, Any] = {}
-    for name, sub in module.named_modules():
-        method = getattr(sub, "quant_method", None)
-        if method is None:
-            continue
-        kind = type(method).__name__
-        methods[kind] += 1
-        config = getattr(method, "quant_config", None)
-        if config is not None:
-            configs[id(config)] = config
-        if ".adaln_proj" in f".{name}" and kind != "UnquantizedLinearMethod":
-            adaln_quantized.append(name)
+    methods, adaln_quantized, configs = _linear_methods(module)
     built: dict[str, Any] = {
         "linear_methods": dict(sorted(methods.items())),
         "adaln_precomputed": bool(getattr(module, "_adaln_precomputed", False)),
@@ -235,36 +257,47 @@ def finalize_dit_facts(module: Any, policy: StagePolicy, facts: dict[str, Any]) 
             f"adaln_proj 被量化（{adaln_quantized[:3]}…）；shim 要求 AdaLN 投影保持 BF16",
         )
     if plan is not None:
-        expected_method = {"convrot_int8": "ConvRotInt8JitLinearMethod", "fp8": "Fp8LinearMethod"}[plan.sglang_method]
+        expected_method = {
+            "convrot_int8": "ConvRotInt8JitLinearMethod",
+            "fp8": "Fp8LinearMethod",
+        }[plan.sglang_method]
         if methods.get(expected_method, 0) == 0:
             raise UnsupportedCombination(
                 "ONLINE_QUANT_NOT_APPLIED",
                 f"要求 {plan.sglang_method}，但 DiT 沒有任何 {expected_method} 層（實際 {dict(methods)}）；不交付未量化結果",
             )
         if plan.sglang_method == "fp8":
-            built["fp8"] = _fp8_facts(module, facts.get("fp8_layerwise"), methods.get(expected_method, 0))
+            built["fp8"] = _fp8_facts(
+                module, facts.get("fp8_layerwise"), methods.get(expected_method, 0)
+            )
         for config in configs.values():
             by_backend = getattr(config, "selected_by_backend", None)
             if by_backend is not None:
                 built["backend_split"] = {k: len(v) for k, v in by_backend.items()}
                 built["group_size"] = getattr(config, "group_size", None)
                 built["backend"] = getattr(config, "backend", None)
-                built["kept_bf16"] = [str(s) for s in getattr(config, "skipped", [])][:32]
+                built["kept_bf16"] = [str(s) for s in getattr(config, "skipped", [])][
+                    :32
+                ]
                 if by_backend.get("comfy_kitchen"):
                     raise UnsupportedCombination(
-                        "CONVROT_BACKEND_MISMATCH", "convrot_int8 有層走 comfy_kitchen；shim 只允許 JIT backend"
+                        "CONVROT_BACKEND_MISMATCH",
+                        "convrot_int8 有層走 comfy_kitchen；shim 只允許 JIT backend",
                     )
             ignored = getattr(config, "ignored_layers", None)
             if ignored is not None:
                 built["ignored_layers"] = list(ignored)
     if policy.adaln_mode != "off" and not built["adaln_precomputed"]:
         raise UnsupportedCombination(
-            "ADALN_MODE_NOT_APPLIED", f"adaln.mode={policy.adaln_mode}，但 DiT 不是 AdaLN precomputed 版本"
+            "ADALN_MODE_NOT_APPLIED",
+            f"adaln.mode={policy.adaln_mode}，但 DiT 不是 AdaLN precomputed 版本",
         )
     return {**facts, "built": built}
 
 
-def check_resident_dit(handle_facts: Mapping[str, Any] | None, policy: StagePolicy) -> None:
+def check_resident_dit(
+    handle_facts: Mapping[str, Any] | None, policy: StagePolicy
+) -> None:
     """A resident DiT reused by another job must have been built for the same quant/AdaLN choice."""
     recorded = ((handle_facts or {}).get("acceleration") or {}).get("signature")
     expected = load_signature(policy)
@@ -286,3 +319,21 @@ __all__ = [
     "load_signature",
     "summary",
 ]
+
+
+def _linear_methods(module: Any) -> tuple[Counter[str], list[str], dict[int, Any]]:
+    methods: Counter[str] = Counter()
+    adaln_quantized: list[str] = []
+    configs: dict[int, Any] = {}
+    for name, sub in module.named_modules():
+        method = getattr(sub, "quant_method", None)
+        if method is None:
+            continue
+        kind = type(method).__name__
+        methods[kind] += 1
+        config = getattr(method, "quant_config", None)
+        if config is not None:
+            configs[id(config)] = config
+        if ".adaln_proj" in f".{name}" and kind != "UnquantizedLinearMethod":
+            adaln_quantized.append(name)
+    return methods, adaln_quantized, configs

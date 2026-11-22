@@ -566,7 +566,7 @@
     "master_gain_db": 0,
     "placed_shot_ids": []
    },
-   "command": {"op": "set_clip", "clip_id": "v1", "effects": {"speed_percent": 500}},
+   "command": {"op": "set_clip", "clip_id": "v1", "effects": {"speed_percent": 1500}},
    "reject_reason": "invalid_command"
   },
   {

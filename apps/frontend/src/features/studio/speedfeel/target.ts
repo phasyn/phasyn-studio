@@ -1,3 +1,4 @@
+import { isListed } from "@/lib/json";
 // What the speed-feel tool reads for one timeline clip (pure): the take the clip shows (its source's file, at the
 // sequence's frame rate) and the original the take was made from (the @Video1 reference the take recorded, else the
 // shot's; compareTarget.originalOf). Clip frame j shows source frame first + j, generated from the original at
@@ -7,7 +8,7 @@ import type { StudioProject, StudioShot, StudioTake, StudioTimeline, TimelineCli
 import { mediaUrl } from "@/api/http";
 import { t } from "@/i18n";
 import { clipDuration, windowBounds } from "../editor/model";
-import { FRAME_STEP_LABELS } from "../model/clipEffects";
+import { FRAME_STEPS, FRAME_STEP_LABELS } from "../model/clipEffects";
 import { originalOf } from "../swap/compareTarget";
 
 /** Clips shorter than this are not analysed (the rules look at peaks at least 4 frames apart and 10 frames between hits). */
@@ -45,7 +46,7 @@ interface ClipShot {
 function clipShot(project: StudioProject, timeline: StudioTimeline, clip: TimelineClip): ClipShot | string {
   if (timeline.tracks.find((track) => track.track_id === clip.track_id)?.kind !== "video") return t("速度感只用在視訊軌上的片段");
   const source = timeline.sources.find((item) => item.source_id === clip.source_id);
-  if (!source?.shot_id) return t("這個片段不是鏡頭的 take：速度感要和鏡頭的 @Video1 參考影片比對");
+  if (!(source?.shot_id != null && source.shot_id !== "")) return t("這個片段不是鏡頭的 take：速度感要和鏡頭的 @Video1 參考影片比對");
   const shot = project.shots.find((item) => item.shot_id === source.shot_id);
   if (!shot) return t("找不到這個片段的鏡頭");
   const take = shot.takes.find((item) => item.take_id === source.take_id);
@@ -65,7 +66,7 @@ export function retimingReason(clip: TimelineClip): string | null {
   const speed = effects?.speed_percent ?? 100;
   if (speed !== 100) return t("這個片段有變速（{speed}%）：請先把速度改回 100% 再用速度感", { speed });
   const step = effects?.frame_step ?? 1;
-  if (step !== 1) return t("這個片段用了「{label}」：請先改回一拍一再用速度感", { label: FRAME_STEP_LABELS[step as keyof typeof FRAME_STEP_LABELS] ?? String(step) });
+  if (step !== 1) return t("這個片段用了「{label}」：請先改回一拍一再用速度感", { label: isListed(step, FRAME_STEPS) ? FRAME_STEP_LABELS[step] : String(step) });
   if ((effects?.hold?.start ?? 0) > 0 || (effects?.hold?.end ?? 0) > 0) return t("這個片段有停格：請先移除停格再用速度感");
   return null;
 }
@@ -79,7 +80,7 @@ export function speedFeelTarget(project: StudioProject, timeline: StudioTimeline
   if (typeof original === "string") return { ok: false, reason: original };
   if (!Number.isFinite(original.start) || original.start < 0) return { ok: false, reason: t("@Video1 的起點不正確（{start} 秒）", { start: original.start }) };
   const retimed = retimingReason(clip);
-  if (retimed) return { ok: false, reason: retimed };
+  if (retimed != null && retimed !== "") return { ok: false, reason: retimed };
   const fps = timeline.fps.den > 0 ? timeline.fps.num / timeline.fps.den : 0;
   if (!(fps > 0)) return { ok: false, reason: t("時間軸的影格率不正確") };
   const length = clipDuration(clip);

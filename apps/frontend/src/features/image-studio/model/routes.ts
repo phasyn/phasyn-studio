@@ -1,3 +1,4 @@
+import { downstreamOf } from "@/api/pipelineGraph";
 // Image Studio 的運算路由＝使用者保存的元件組合（pipeline）中含 Qwen-Image DiT（qimg.dit）的那些。由 GET /api/pipelines
 // 與元件目錄推導：每個步驟的角色（依 provider）、文生圖或圖生圖（有沒有接到前處理的參考圖輸入）、DiT 的精度（BF16／GGUF）、
 // 哪些步驟所有圖片共用（前處理、文字條件、參考編碼）、哪些每張圖各一份（DiT 與它下游：解碼、合成），以及就緒狀態。
@@ -14,9 +15,11 @@ import type { WirePipeline, WireStep } from "@/api/types";
 import { isRecord } from "@/lib/json";
 import { indexCatalog, type CatalogIndex } from "@/api/catalog";
 import { componentSlot, type ComponentSlot } from "@/features/studio";
+import { namesExperiment } from "@/lib/experimental";
 import type { ImageMode } from "../types";
 import { IMAGE_ASSET_TYPE, LIMITS, OUTPUT_IMAGE, OUTPUT_WHITE, PROMPT_TYPE, ROLE_BY_PROVIDER, ROLE_LABELS, variantLabel, type ImageStepRole } from "./constants";
 import { t } from "@/i18n";
+import { declaredImage, type DeclaredImage } from "./declaredImage";
 
 export interface ImageRouteStep {
   step: WireStep;
@@ -36,12 +39,15 @@ export interface RouteOutput {
 }
 
 export interface ImageRoute {
+  declared?: DeclaredImage;
   /** pipeline_id（StudioImageShot.route 存的就是它）。 */
   id: string;
   label: string;
   pipeline: WirePipeline;
   steps: ImageRouteStep[];
   capability: ImageMode;
+  /** 實驗或研究用的路由（名稱或任一步驟的元件寫明 research／實驗）：排在最後，也不會被選為新圖片的預設。 */
+  experimental: boolean;
   /** DiT 元件的精度設定（provider_options.variant：bf16／gguf_q4km）；元件不在目錄或沒寫時 null。 */
   variant: string | null;
   /** DiT 元件的權重放置（load.offload.mode：phase／group_stream／none／gguf_phase）；未知時 null。 */
@@ -79,8 +85,8 @@ function loadSection(component: ComponentDescriptor | null, key: "provider_optio
   const settings: unknown = component.settings;
   if (!isRecord(settings)) return null;
   const pick = (load: unknown) => (isRecord(load) && isRecord(load[key]) ? load[key] : null);
-  const stored = isRecord(settings.stored) ? settings.stored.load : null;
-  return pick(settings.loaded) ?? pick(stored);
+  const stored = isRecord(settings["stored"]) ? settings["stored"]["load"] : null;
+  return pick(settings["loaded"]) ?? pick(stored);
 }
 
 function providerOptions(component: ComponentDescriptor | null): Record<string, unknown> | null {
@@ -89,15 +95,15 @@ function providerOptions(component: ComponentDescriptor | null): Record<string, 
 
 /** DiT 的權重放置：load.offload.mode；沒有時 null。 */
 export function componentPlacement(component: ComponentDescriptor | null): string | null {
-  const mode = loadSection(component, "offload")?.mode;
+  const mode = loadSection(component, "offload")?.["mode"];
   return typeof mode === "string" && mode ? mode : null;
 }
 
 export function componentAdapters(component: ComponentDescriptor | null): { name: string; scale: number; kind: string | null }[] {
-  const raw = providerOptions(component)?.adapters;
+  const raw = providerOptions(component)?.["adapters"];
   if (!Array.isArray(raw)) return [];
   return raw.flatMap((item) =>
-    isRecord(item) && typeof item.name === "string" && typeof item.scale === "number" ? [{ name: item.name, scale: item.scale, kind: typeof item.kind === "string" ? item.kind : null }] : [],
+    isRecord(item) && typeof item["name"] === "string" && typeof item["scale"] === "number" ? [{ name: item["name"], scale: item["scale"], kind: typeof item["kind"] === "string" ? item["kind"] : null }] : [],
   );
 }
 
@@ -113,31 +119,14 @@ const stringOption = (component: ComponentDescriptor | null, key: string) => {
 /** 參數 schema 對某個參數的支援：true＝宣告了；false＝schema 有列出參數但沒有它且不收額外參數；null＝不知道。 */
 export function parameterSupport(component: ComponentDescriptor | null, name: string): boolean | null {
   const schema: unknown = component?.settings.parameters_schema;
-  if (!isRecord(schema) || !isRecord(schema.properties)) return null;
-  if (Object.hasOwn(schema.properties, name)) return true;
-  return schema.additionalProperties === false ? false : null;
+  if (!isRecord(schema) || !isRecord(schema["properties"])) return null;
+  if (Object.hasOwn(schema["properties"], name)) return true;
+  return schema["additionalProperties"] === false ? false : null;
 }
 
 function inputBinding(step: WireStep, port: string): string | null {
   const binding = step.inputs[port];
   return binding && "from_input" in binding ? binding.from_input : null;
-}
-
-/** DiT 與它（經 from_step）下游的所有步驟。 */
-function downstreamOf(pipeline: WirePipeline, rootId: string): Set<string> {
-  const out = new Set([rootId]);
-  let grew = true;
-  while (grew) {
-    grew = false;
-    for (const step of pipeline.steps) {
-      if (out.has(step.step_id)) continue;
-      if (Object.values(step.inputs).some((binding) => "from_step" in binding && out.has(binding.from_step))) {
-        out.add(step.step_id);
-        grew = true;
-      }
-    }
-  }
-  return out;
 }
 
 function findOutput(pipeline: WirePipeline, steps: readonly ImageRouteStep[], white: boolean): RouteOutput | null {
@@ -160,15 +149,38 @@ function summarize(problems: readonly string[], componentCount: number): string 
   return componentCount === problems.length ? t("{problemsCount} 個元件未就緒", { problemsCount: problems.length }) : t("{problemsCount} 個問題", { problemsCount: problems.length });
 }
 
+/** 元件組合或它的任一個元件是實驗／研究用（看名稱與元件 id，與 Video Studio 的「實驗」分組相同的判斷）。 */
+function experimentalRoute(pipeline: WirePipeline, steps: readonly ImageRouteStep[]): boolean {
+  return namesExperiment(pipeline.label, pipeline.pipeline_id, ...steps.flatMap((item) => [item.step.component_id, item.slot.component?.label]));
+}
+
 /** 單一元件組合 → 圖片路由；不是 Qwen-Image 的元件組合時為 null。 */
 export function deriveImageRoute(pipeline: WirePipeline, index: CatalogIndex): ImageRoute | null {
   const steps: ImageRouteStep[] = pipeline.steps.map((step) => {
     const component = index.component(step.node_id, step.component_id);
     const providerId = component?.provider_id ?? null;
-    const role = providerId ? (ROLE_BY_PROVIDER[providerId] ?? null) : null;
+    const role = (providerId != null && providerId !== "") ? (ROLE_BY_PROVIDER[providerId] ?? null) : null;
     const name = role ? ROLE_LABELS[role] : step.step_id;
     return { step, providerId, role, name, slot: componentSlot(index, step.node_id, step.component_id, name) };
   });
+  const declared = declaredImage(pipeline, steps);
+  if (declared) {
+    const unavailable = steps.flatMap((item) => item.slot.usable ? [] : [item.slot.reason ?? t("{name} 無法使用", { name: item.name })]);
+    const problems = [...unavailable, ...declared.problems];
+    const branch = downstreamOf(pipeline, declared.seedStep);
+    const root = steps.find((item) => item.step.step_id === declared.seedStep);
+    return {
+      id: pipeline.pipeline_id, label: pipeline.label.trim() || pipeline.pipeline_id, pipeline, steps, capability: declared.referenceInputs.length ? "i2i" : "t2i", experimental: experimentalRoute(pipeline, steps),
+      declared, variant: null, placement: null, adapters: [], previewVae: null, promptInput: declared.prompt,
+      negativeInput: declared.negative, referenceListInput: null, referenceCapacity: declared.referenceInputs.length, maskInput: null,
+      image: declared.image ?? { name: "", from_step: "", output: "" }, white: declared.white,
+      sharedStepIds: steps.filter(({ step }) => !branch.has(step.step_id)).map(({ step }) => step.step_id),
+      branchStepIds: steps.filter(({ step }) => branch.has(step.step_id)).map(({ step }) => step.step_id),
+      roleSteps: {}, ditNodeId: root?.step.node_id ?? null, ditComponent: null,
+      ready: problems.length === 0, problems, summary: summarize(problems, unavailable.length),
+      notes: [t("只會送出此路由宣告的圖片控制項，其餘沿用元件組合的設定")],
+    };
+  }
   const hasDit = steps.some((item) => item.role === "dit");
   const unknown = steps.some((item) => item.providerId === null);
   // 元件不在目錄（Node 離線、元件已刪除）時無法確認 provider：同時有 image 與 image_white 輸出就當成圖片元件組合列出（顯示找不到元件）
@@ -180,12 +192,12 @@ export function deriveImageRoute(pipeline: WirePipeline, index: CatalogIndex): I
   const prepare = byRole("prepare") ?? steps.find((item) => item.providerId === null && "mask" in item.step.inputs);
 
   const promptInput = te ? inputBinding(te.step, "prompt") : null;
-  if (!promptInput || !pipeline.inputs.some((port) => port.name === promptInput && port.type_id === PROMPT_TYPE)) return null;
+  if (!(promptInput != null && promptInput !== "") || !pipeline.inputs.some((port) => port.name === promptInput && port.type_id === PROMPT_TYPE)) return null;
   const negativeInput = te ? inputBinding(te.step, "negative_prompt") : null;
   const listBinding = prepare ? inputBinding(prepare.step, "references") : null;
-  const listPort = listBinding ? pipeline.inputs.find((port) => port.name === listBinding) : undefined;
+  const listPort = (listBinding != null && listBinding !== "") ? pipeline.inputs.find((port) => port.name === listBinding) : undefined;
   const referenceListInput = listPort && listPort.transport !== "file" ? listPort.name : null;
-  const referenceCapacity = referenceListInput ? LIMITS.references : 0;
+  const referenceCapacity = (referenceListInput != null && referenceListInput !== "") ? LIMITS.references : 0;
   const maskInput = prepare ? inputBinding(prepare.step, "mask") : null;
   const capability: ImageMode = referenceCapacity > 0 ? "i2i" : "t2i";
 
@@ -213,9 +225,9 @@ export function deriveImageRoute(pipeline: WirePipeline, index: CatalogIndex): I
   if (previewVae === false) notes.push(t("DiT 沒有載入預覽 VAE（preview_vae: false）：VAE 縮圖預覽不可用"));
 
   const roleSteps: Partial<Record<ImageStepRole, string>> = {};
-  for (const item of steps) if (item.role && !roleSteps[item.role]) roleSteps[item.role] = item.step.step_id;
-  if (dit && !roleSteps.dit) roleSteps.dit = dit.step.step_id;
-  if (te && !roleSteps.te) roleSteps.te = te.step.step_id;
+  for (const item of steps) if (item.role && !(roleSteps[item.role] != null && roleSteps[item.role] !== "")) roleSteps[item.role] = item.step.step_id;
+  if (dit && !(roleSteps.dit != null && roleSteps.dit !== "")) roleSteps.dit = dit.step.step_id;
+  if (te && !(roleSteps.te != null && roleSteps.te !== "")) roleSteps.te = te.step.step_id;
 
   return {
     id: pipeline.pipeline_id,
@@ -223,6 +235,7 @@ export function deriveImageRoute(pipeline: WirePipeline, index: CatalogIndex): I
     pipeline,
     steps,
     capability,
+    experimental: experimentalRoute(pipeline, steps),
     variant,
     placement,
     adapters,
@@ -246,13 +259,14 @@ export function deriveImageRoute(pipeline: WirePipeline, index: CatalogIndex): I
   };
 }
 
-/** 所有圖片路由，順序與 GET /api/pipelines 相同。 */
+/** 所有圖片路由，順序與 GET /api/pipelines 相同，實驗／研究用的路由排在最後。 */
 export function deriveImageRoutes(pipelines: readonly WirePipeline[] | undefined, catalog: Catalog | undefined): ImageRoute[] {
   const index = indexCatalog(catalog);
-  return (pipelines ?? []).flatMap((pipeline) => {
+  const routes = (pipelines ?? []).flatMap((pipeline) => {
     const route = deriveImageRoute(pipeline, index);
     return route ? [route] : [];
   });
+  return routes.sort((a, b) => Number(a.experimental) - Number(b.experimental));
 }
 
 export function findImageRoute(routes: readonly ImageRoute[], id: string): ImageRoute | null {
@@ -260,11 +274,14 @@ export function findImageRoute(routes: readonly ImageRoute[], id: string): Image
 }
 
 /**
- * 新圖片的預設路由：同模式中第一個就緒的元件組合，沒有就緒的時用同模式的第一個（依使用者設定的順序；在「生成引擎」啟動
- * 元件後就能用，與 Video Studio 的預設相同）；這個模式沒有任何元件組合時 undefined（「基本」分頁提供範本）。
+ * 新圖片的預設路由：同模式中第一個就緒的正式（非實驗）元件組合，沒有就緒的時用同模式的第一個正式元件組合（依使用者設定的
+ * 順序；在「生成引擎」啟動元件後就能用，與 Video Studio 的預設相同）；只有實驗路由時才用實驗路由；這個模式沒有任何元件
+ * 組合時 undefined（「基本」分頁提供範本）。
  */
 export function pickImageRoute(routes: readonly ImageRoute[], mode: ImageMode): ImageRoute | undefined {
-  return routes.find((route) => route.capability === mode && route.ready) ?? routes.find((route) => route.capability === mode);
+  const fitting = routes.filter((route) => supportsImageMode(route, mode));
+  const main = fitting.filter((route) => !route.experimental);
+  return main.find((route) => route.ready) ?? main[0] ?? fitting.find((route) => route.ready) ?? fitting[0];
 }
 
 /**
@@ -272,20 +289,24 @@ export function pickImageRoute(routes: readonly ImageRoute[], mode: ImageMode): 
  * 否則 null（由使用者自己選，不替使用者換模型）。
  */
 export function counterpartRoute(routes: readonly ImageRoute[], current: ImageRoute | null, mode: ImageMode): ImageRoute | null {
-  if (!current || current.capability === mode) return null;
-  const ditStep = current.roleSteps.dit ? current.pipeline.steps.find((step) => step.step_id === current.roleSteps.dit) : undefined;
+  if (!current || supportsImageMode(current, mode)) return null;
+  const ditStep = (current.roleSteps.dit != null && current.roleSteps.dit !== "") ? current.pipeline.steps.find((step) => step.step_id === current.roleSteps.dit) : undefined;
   if (!ditStep) return null;
   const candidates = routes.filter((route) => {
-    if (route.capability !== mode) return false;
-    const other = route.roleSteps.dit ? route.pipeline.steps.find((step) => step.step_id === route.roleSteps.dit) : undefined;
+    if (!supportsImageMode(route, mode)) return false;
+    const other = (route.roleSteps.dit != null && route.roleSteps.dit !== "") ? route.pipeline.steps.find((step) => step.step_id === route.roleSteps.dit) : undefined;
     return other?.node_id === ditStep.node_id && other.component_id === ditStep.component_id;
   });
   return candidates.length === 1 ? (candidates[0] ?? null) : null;
 }
 
+export function supportsImageMode(route: ImageRoute, mode: ImageMode): boolean {
+  return route.capability === mode || (mode === "t2i" && route.declared?.requiredReferences === 0);
+}
+
 /** 路由與圖片模式不符時的說明；相符時 null。 */
 export function modeMismatch(route: ImageRoute, mode: ImageMode): string | null {
-  if (route.capability === mode) return null;
+  if (supportsImageMode(route, mode)) return null;
   return mode === "i2i"
     ? t("元件組合「{label}」是文生圖（沒有參考圖輸入）：圖生圖需要 i2i 元件組合", { label: route.label })
     : t("元件組合「{label}」是圖生圖（需要參考圖）：文生圖請改選 t2i 元件組合", { label: route.label });
@@ -304,7 +325,8 @@ export function shotRouteProblem(routes: readonly ImageRoute[], routeId: string,
 
 /** 路由的一行特徵：「t2i・BF16・phase・LoRA 2」。 */
 export function routeFacts(route: ImageRoute): string {
-  return [route.capability, variantLabel(route.variant), route.placement, route.adapters.length > 0 ? `LoRA ${route.adapters.length}` : null].filter(Boolean).join(t("・"));
+  if (route.declared) return route.referenceCapacity && !route.declared.requiredReferences ? "t2i / i2i" : route.capability;
+  return [route.capability, variantLabel(route.variant), route.placement, route.adapters.length > 0 ? `LoRA ${String(route.adapters.length)}` : null].filter(Boolean).join(t("・"));
 }
 
 /**

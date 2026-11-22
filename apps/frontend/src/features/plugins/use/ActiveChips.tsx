@@ -60,7 +60,7 @@ export function ActiveChips({
     <ul aria-label={t("套用中的插件項目")} className={cn("flex min-w-0 flex-wrap gap-1.5", className)}>
       <AnimatePresence mode="popLayout">
         {items.map((item, index) => (
-          <Chip key={item.ref} item={item} index={index} onOpen={() => onOpen(item.ref)} onRemove={() => onRemove(item.ref)} />
+          <Chip key={item.ref} item={item} index={index} onOpen={() => { onOpen(item.ref); }} onRemove={() => { onRemove(item.ref); }} />
         ))}
       </AnimatePresence>
     </ul>

@@ -37,33 +37,33 @@ export function useTransport({ playhead, totalFrames, fps, setMonitorMode, onAud
   const [audio] = useState(createMonitorAudio);
   const [rate, setRate] = useState(1);
   const playing = usePlaying(playhead);
-  const intent = useRef(0);
-  const viewers = useRef(0);
-  const live = useRef({ totalFrames, rate, onAudioBlocked });
+  const intentRef = useRef(0);
+  const viewersRef = useRef(0);
+  const liveRef = useRef({ totalFrames, rate, onAudioBlocked });
   useEffect(() => {
-    live.current = { totalFrames, rate, onAudioBlocked };
+    liveRef.current = { totalFrames, rate, onAudioBlocked };
   });
 
   const stop = useCallback(() => {
-    intent.current += 1;
+    intentRef.current += 1;
     playhead.setPlaying(false);
   }, [playhead]);
 
   const play = useCallback(
     (speed = 1) => {
-      const total = live.current.totalFrames;
+      const total = liveRef.current.totalFrames;
       if (total === 0) return;
       const frame = playhead.getFrame();
       if ((speed > 0 && frame >= total - 1) || (speed < 0 && frame === 0)) playhead.setFrame(speed > 0 ? 0 : total - 1);
       setRate(speed);
       setMonitorMode("program");
-      const attempt = ++intent.current;
+      const attempt = ++intentRef.current;
       audio
         .start()
         .then(() => {
-          if (intent.current === attempt) playhead.setPlaying(true);
+          if (intentRef.current === attempt) playhead.setPlaying(true);
         })
-        .catch(() => live.current.onAudioBlocked());
+        .catch(() => { liveRef.current.onAudioBlocked(); });
     },
     [audio, playhead, setMonitorMode],
   );
@@ -73,7 +73,7 @@ export function useTransport({ playhead, totalFrames, fps, setMonitorMode, onAud
       stop();
       setMonitorMode("program");
       // The playhead may park on the end of the sequence (one past the last frame), where an edit appends
-      playhead.setFrame(Math.max(0, Math.min(live.current.totalFrames, Math.round(frame))));
+      playhead.setFrame(Math.max(0, Math.min(liveRef.current.totalFrames, Math.round(frame))));
     },
     [playhead, setMonitorMode, stop],
   );
@@ -83,11 +83,11 @@ export function useTransport({ playhead, totalFrames, fps, setMonitorMode, onAud
     else play();
   }, [play, playhead, stop]);
 
-  const step = useCallback((frames: number) => seek(playhead.getFrame() + frames), [playhead, seek]);
+  const step = useCallback((frames: number) => { seek(playhead.getFrame() + frames); }, [playhead, seek]);
 
   const shuttle = useCallback(
     (direction: -1 | 1, slow = false) => {
-      const current = live.current.rate;
+      const current = liveRef.current.rate;
       const same = playhead.isPlaying() && Math.sign(current) === direction;
       if (slow) play(direction * (same && Math.abs(current) < 1 ? Math.max(0.25, Math.abs(current) / 2) : 0.5));
       else play(direction * (same && Math.abs(current) >= 1 ? Math.min(4, Math.abs(current) * 2) : 1));
@@ -96,10 +96,10 @@ export function useTransport({ playhead, totalFrames, fps, setMonitorMode, onAud
   );
 
   const attach = useCallback(() => {
-    viewers.current += 1;
+    viewersRef.current += 1;
     return () => {
-      viewers.current -= 1;
-      if (viewers.current === 0) stop();
+      viewersRef.current -= 1;
+      if (viewersRef.current === 0) stop();
     };
   }, [stop]);
 
@@ -127,12 +127,12 @@ export function useTransport({ playhead, totalFrames, fps, setMonitorMode, onAud
       handle = requestAnimationFrame(tick);
     };
     handle = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(handle);
+    return () => { cancelAnimationFrame(handle); };
   }, [fps, playing, playhead, rate, totalFrames]);
 
   useEffect(
     () => () => {
-      intent.current += 1;
+      intentRef.current += 1;
       playhead.setPlaying(false);
       void audio.close();
     },

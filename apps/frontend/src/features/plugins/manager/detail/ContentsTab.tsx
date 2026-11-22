@@ -47,7 +47,7 @@ function SectionSwitch({ items, value, onChange }: { items: readonly SectionSpec
           key={item.id}
           type="button"
           aria-pressed={value === item.id}
-          onClick={() => onChange(item.id)}
+          onClick={() => { onChange(item.id); }}
           className={cn(
             "pressable inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-data [&_svg]:size-3.5",
             value === item.id ? "bg-brand-gradient-soft font-semibold text-fg ring-1 ring-brand-blue/45 ring-inset [&_svg]:text-brand-cyan" : "text-fg-secondary hover:bg-raised hover:text-fg",
@@ -70,9 +70,9 @@ function ProjectSwitch({ registry, project, contribution, label }: { registry: P
   return (
     <ToggleSwitch
       checked={on}
-      label={check.replaces ? `${name}\n${replaceNote(registry, check.replaces)}` : name}
+      label={(check.replaces != null && check.replaces !== "") ? `${name}\n${replaceNote(registry, check.replaces)}` : name}
       disabledReason={check.reason}
-      onChange={(next) => project.onRefsChange(next ? withRef(registry, project.refs, contribution) : withoutRef(project.refs, contribution))}
+      onChange={(next) => { project.onRefsChange(next ? withRef(registry, project.refs, contribution) : withoutRef(project.refs, contribution)); }}
     />
   );
 }
@@ -136,7 +136,7 @@ function PresetRow({ index, entry, registry, project }: { index: number; entry: 
             aria-pressed={active}
             aria-disabled={plan.reason !== null || undefined}
             title={plan.reason ?? (active ? t("這個專案正在使用這個組合") : t("把這個專案的規則換成這個組合"))}
-            onClick={() => (plan.reason === null ? project.onRefsChange(plan.refs) : undefined)}
+            onClick={() => { if (plan.reason === null) { project.onRefsChange(plan.refs); } }}
             className={cn(plan.reason !== null && "cursor-not-allowed text-fg-disabled")}
           >
             {active ? t("套用中") : t("套用")}
@@ -170,7 +170,7 @@ export function ContentsTab({ plugin, preview }: { plugin: StudioPlugin; preview
   const section = available.some((item) => item.id === picked) ? picked : (available[0]?.id ?? "rules");
   // 預覽中的包還沒安裝：只看內容，不能在專案選用
   const binding = preview ? null : project;
-  const toggle = (ref: StudioPluginRef) => setExpanded((current) => (current === ref ? null : ref));
+  const toggle = (ref: StudioPluginRef) => { setExpanded((current) => (current === ref ? null : ref)); };
   if (available.length === 0) {
     return <EmptyState size="compact" icon={<ListChecks />} title={t("這個包沒有可以列出的內容")} />;
   }
@@ -187,7 +187,7 @@ export function ContentsTab({ plugin, preview }: { plugin: StudioPlugin; preview
                 key={entry.ref}
                 index={index}
                 open={expanded === entry.ref}
-                onToggle={() => toggle(entry.ref)}
+                onToggle={() => { toggle(entry.ref); }}
                 icon={<ContributionIcon kind={entry.rule.kind} />}
                 label={label}
                 aside={contributionKindLabel(entry.rule.kind)}
@@ -221,7 +221,7 @@ export function ContentsTab({ plugin, preview }: { plugin: StudioPlugin; preview
                 key={entry.ref}
                 index={index}
                 open={expanded === entry.ref}
-                onToggle={() => toggle(entry.ref)}
+                onToggle={() => { toggle(entry.ref); }}
                 icon={<ContributionIcon kind="generation" />}
                 label={label}
                 aside={contributionKindLabel("generation")}

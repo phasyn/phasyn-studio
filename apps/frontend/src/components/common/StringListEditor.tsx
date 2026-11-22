@@ -23,8 +23,8 @@ export function StringListEditor({
 }) {
   const external = value.join("\n");
   const [draft, setDraft] = useState<{ base: string; text: string } | null>(null);
-  const text = draft && draft.base === external ? draft.text : external;
-  const helpId = help ? `${id}-help` : undefined;
+  const text = draft?.base === external ? draft.text : external;
+  const helpId = (help != null && help !== "") ? `${id}-help` : undefined;
   return (
     <div className="grid min-w-0 gap-1">
       <label htmlFor={id} className="text-data font-medium text-fg-secondary">
@@ -47,7 +47,7 @@ export function StringListEditor({
           onChange(next);
         }}
       />
-      {help ? (
+      {(help != null && help !== "") ? (
         <p id={helpId} className="text-caption text-fg-tertiary">
           {help}
         </p>

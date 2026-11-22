@@ -60,7 +60,7 @@ export function lanesProblem(routes: readonly StudioRoute[], laneIds: readonly s
 export function readyLanes(routes: readonly StudioRoute[], laneIds: readonly string[]): StudioRoute[] {
   return laneIds.flatMap((id) => {
     const route = findRoute(routes, id);
-    return route?.ready ? [route] : [];
+    return (route?.ready === true) ? [route] : [];
   });
 }
 
@@ -69,7 +69,7 @@ export function readyLanes(routes: readonly StudioRoute[], laneIds: readonly str
  * lane when its route is a lane that is not ready. The render itself may still pick a faster lane.
  */
 export function laneRouteFor(routes: readonly StudioRoute[], laneIds: readonly string[], shot: StudioShot): string {
-  if (laneIds.length < MIN_LANES || !laneIds.includes(shot.route) || findRoute(routes, shot.route)?.ready) return shot.route;
+  if (laneIds.length < MIN_LANES || !laneIds.includes(shot.route) || (findRoute(routes, shot.route)?.ready === true)) return shot.route;
   return readyLanes(routes, laneIds)[0]?.id ?? shot.route;
 }
 
@@ -131,7 +131,7 @@ async function laneTimes(
   const etas = asked.length > 0 ? await estimator.estimate(asked.map((item) => item.input), signal) : [];
   asked.forEach((item, index) => {
     const step = lanes[item.lane]?.ditStepId;
-    const value = step ? etas[index]?.steps?.[step] : undefined;
+    const value = (step != null && step !== "") ? etas[index]?.steps?.[step] : undefined;
     const row = seconds[item.row];
     if (row && typeof value === "number" && Number.isFinite(value) && value > 0) row[item.lane] = value;
   });
@@ -199,7 +199,7 @@ export async function splitLanes(
 ): Promise<LaneSplit> {
   const fail = (problem: string): LaneSplit => ({ problem, shots: null, lanes: null, moves: null, skipped: null });
   const problem = lanesProblem(routes, laneIds);
-  if (problem) return fail(problem);
+  if (problem != null && problem !== "") return fail(problem);
   const lanes = readyLanes(routes, laneIds);
   const skipped = laneIds.flatMap((id) => {
     const route = findRoute(routes, id);

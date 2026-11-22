@@ -1,3 +1,4 @@
+import { firstFrameCount } from "@/lib/json";
 // Project media as timeline sources, and the readers of the project's one timeline document. The Controller is the
 // authority of StudioProject.timeline: it builds the timeline of a project saved before the timeline existed, gives
 // every new shot its place and keeps the sources on their shots' active takes on each read and save. Nothing is
@@ -24,7 +25,7 @@ function sourceId(value: string): string {
 }
 
 function takeSource(project: StudioProject, shot: StudioShot, take: StudioTake | null): TimelineSource {
-  const asset = take?.state === "succeeded" && take.asset?.complete ? take.asset : null;
+  const asset = take?.state === "succeeded" && (take.asset?.complete === true) ? take.asset : null;
   const sourceFps = asset?.fps ? asset.fps.num / asset.fps.den : H3_FPS;
   const fps = project.format.fps.num / project.format.fps.den;
   return {
@@ -32,7 +33,7 @@ function takeSource(project: StudioProject, shot: StudioShot, take: StudioTake |
     name: shot.title,
     kind: "video",
     file: asset?.file ?? null,
-    duration_frames: Math.max(1, Math.round(((asset?.frame_count || take?.frames || shot.frames) * fps) / sourceFps)),
+    duration_frames: Math.max(1, Math.round((firstFrameCount([asset?.frame_count, take?.frames], shot.frames) * fps) / sourceFps)),
     width: asset?.width ?? take?.width ?? project.format.width,
     height: asset?.height ?? take?.height ?? project.format.height,
     has_audio: true,
@@ -70,7 +71,7 @@ export function shotSource(project: StudioProject, shot: StudioShot, fps: Studio
 /** The take a shot's clips should show: its active take once that is finished and complete. */
 function boundTake(shot: StudioShot): StudioTake | null {
   const take = activeTake(shot);
-  return take?.state === "succeeded" && take.asset?.complete ? take : null;
+  return take?.state === "succeeded" && (take.asset?.complete === true) ? take : null;
 }
 
 /** A shot's active take that waits to replace the bound media: it is shorter than what the clips use (TimelineSource.pending_take_id). */
@@ -88,9 +89,9 @@ export interface ShorterTake {
  */
 export function shorterTakes(project: StudioProject, timeline: StudioTimeline): ShorterTake[] {
   return timeline.sources.flatMap((source): ShorterTake[] => {
-    const shot = source.pending_take_id && source.shot_id ? project.shots.find((item) => item.shot_id === source.shot_id) : undefined;
+    const shot = (source.pending_take_id != null && source.pending_take_id !== "") && (source.shot_id != null && source.shot_id !== "") ? project.shots.find((item) => item.shot_id === source.shot_id) : undefined;
     const take = shot?.takes.find((item) => item.take_id === source.pending_take_id);
-    if (!shot || !take || !source.pending_take_id) return [];
+    if (!shot || !take || !(source.pending_take_id != null && source.pending_take_id !== "")) return [];
     const durationFrames = takeSource({ ...project, format: { ...project.format, fps: timeline.fps } }, shot, take).duration_frames;
     return [{ sourceId: source.source_id, shotId: shot.shot_id, takeId: source.pending_take_id, durationFrames }];
   });
@@ -119,7 +120,7 @@ export function projectTimeline(project: StudioProject): TimelineResult<StudioTi
   if (cached) return cached;
   const timeline = project.timeline ?? emptyTimeline(project.format.fps);
   const error = timelineProblem(timeline);
-  const result: TimelineResult<StudioTimeline> = error ? { ok: false, error } : { ok: true, value: timeline };
+  const result: TimelineResult<StudioTimeline> = (error != null && error !== "") ? { ok: false, error } : { ok: true, value: timeline };
   checked.set(project, result);
   return result;
 }

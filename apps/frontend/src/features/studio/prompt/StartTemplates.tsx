@@ -27,7 +27,7 @@ export function StartTemplates({ templates, disabled, onPick }: { templates: rea
             type="button"
             disabled={disabled}
             title={templateHint(template)}
-            onClick={() => onPick(template)}
+            onClick={() => { onPick(template); }}
             className={cn(
               CHOICE_BASE,
               CHOICE_IDLE,

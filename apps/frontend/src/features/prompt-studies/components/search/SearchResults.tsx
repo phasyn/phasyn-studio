@@ -26,12 +26,12 @@ export function Meter({ label, used, max, cap, unit }: { label: string; used: nu
       <div className="flex items-baseline justify-between gap-2 text-caption">
         <span className="text-fg-secondary">{label}</span>
         <span className="machine flex items-baseline gap-1">
-          <span className="text-fg">{`${used}/${max} ${unit}`}</span>
+          <span className="text-fg">{`${String(used)}/${String(max)} ${unit}`}</span>
           <span className="text-fg-tertiary">{t("（上限 {cap}）", { cap })}</span>
         </span>
       </div>
       <div role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={max} aria-valuenow={used} className="h-1.5 overflow-hidden rounded-full bg-sunken shadow-[inset_0_0_0_1px_var(--color-line-subtle)]">
-        <div className={cn("h-full w-full origin-left rounded-full transition-transform duration-(--duration-base) ease-standard", tone)} style={{ transform: `scaleX(${ratio})` }} />
+        <div className={cn("h-full w-full origin-left rounded-full transition-transform duration-(--duration-base) ease-standard", tone)} style={{ transform: `scaleX(${String(ratio)})` }} />
       </div>
     </div>
   );
@@ -112,7 +112,7 @@ export function RoundGrid({ ws, rows, seeds, selectedId, onSelect, label }: { ws
                       <button
                         type="button"
                         aria-pressed={cell.id === selectedId}
-                        onClick={() => onSelect(cell.id)}
+                        onClick={() => { onSelect(cell.id); }}
                         className="pressable rounded-md px-1.5 hover:bg-raised aria-pressed:bg-brand-gradient-soft aria-pressed:shadow-[inset_0_0_0_1px_rgb(79_123_255/0.45)] focus-visible:outline-2 focus-visible:outline-focus"
                         title={t("看比較細節")}
                       >
@@ -174,7 +174,7 @@ export function RankingTable({ ws, ranked, seeds, incumbent }: { ws: Workspace; 
 }
 
 export function RoundChip({ ws, view, round }: { ws: Workspace; view: RoundView | undefined; round: number }) {
-  if (!view || !view.decided) return <StatusChip tone="neutral" label={view?.note ?? t("未開始")} />;
+  if (!(view?.decided === true)) return <StatusChip tone="neutral" label={view?.note ?? t("未開始")} />;
   if (round === 0) return <StatusChip tone="info" label={t("初始最佳：{value}", { value: view.incumbent ? candidateLabel(ws.study, view.incumbent) : "—" })} />;
   return view.improved && view.incumbent ? <StatusChip tone="success" label={t("改善：{candidateLabel}", { candidateLabel: candidateLabel(ws.study, view.incumbent) })} /> : <StatusChip tone="neutral" label={t("沒有改善")} />;
 }

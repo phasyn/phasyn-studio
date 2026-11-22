@@ -23,7 +23,7 @@ export function component(node_id: string, component_id: string, provider_id: st
   return descriptor(node_id, component_id, provider_id, {
     state: options.state ?? "ready",
     resourceGroup: options.resourceGroup ?? RESOURCE_GROUP.gpu0,
-    providerOptions: options.variant ? { variant: options.variant } : {},
+    providerOptions: (options.variant != null && options.variant !== "") ? { variant: options.variant } : {},
     invoke: options.invoke ?? {},
     limits: options.limits ?? null,
     exclusive_group: options.exclusiveGroup ?? (provider_id === "h3.dit" ? "dit" : null),

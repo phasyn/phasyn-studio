@@ -52,7 +52,7 @@ export function originalOf(project: StudioProject, shot: StudioShot, take: Studi
 
 export function compareTarget(project: StudioProject, shot: StudioShot, timeline: StudioTimeline): CompareTarget {
   const take = activeTake(shot);
-  const asset = take?.state === "succeeded" && take.asset?.complete ? take.asset : null;
+  const asset = take?.state === "succeeded" && (take.asset?.complete === true) ? take.asset : null;
   if (!take || !asset) return { ok: false, reason: t("這段還沒有完成的 take") };
   const original = originalOf(project, shot, take);
   if (typeof original === "string") return { ok: false, reason: original };

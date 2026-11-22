@@ -44,7 +44,7 @@ export function applyToClips(
     const plan: EffectPlan = clip ? item.plan({ timeline: current, clip, transitionClip: null, linked }, allocate) : { ok: false, reason: t("找不到選取的片段"), applied: false };
     if (plan.ok && clips.some((done) => done.clip_id === plan.clip.clip_id)) continue;
     const result = plan.ok ? executeEdit(current, plan.command, allocate) : null;
-    if (plan.ok && result?.ok) {
+    if (plan.ok && (result?.ok === true)) {
       current = result.value;
       clips.push(plan.clip);
       continue;

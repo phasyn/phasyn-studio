@@ -13,7 +13,7 @@ export interface SegmentedOption<T extends string | number> {
 
 /** The thumb: cells are equal, so it is placed by index alone (its own width plus the 2 px gap per step). */
 function thumbStyle(index: number, count: number): CSSProperties {
-  return { width: `calc((100% - ${4 + (count - 1) * 2}px) / ${count})`, transform: `translateX(calc(${index} * (100% + 2px)))` };
+  return { width: `calc((100% - ${String(4 + (count - 1) * 2)}px) / ${String(count)})`, transform: `translateX(calc(${String(index)} * (100% + 2px)))` };
 }
 
 export function Segmented<T extends string | number>({
@@ -39,7 +39,7 @@ export function Segmented<T extends string | number>({
       role="radiogroup"
       aria-label={label}
       className={cn("relative grid gap-0.5 rounded-lg border border-line-control bg-sunken p-0.5", className)}
-      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+      style={{ gridTemplateColumns: `repeat(${String(options.length)}, minmax(0, 1fr))` }}
     >
       <span
         aria-hidden
@@ -63,7 +63,7 @@ export function Segmented<T extends string | number>({
             name={name}
             value={String(option.value)}
             checked={option.value === value}
-            onChange={() => onChange(option.value)}
+            onChange={() => { onChange(option.value); }}
             data-autofocus={autofocus && option.value === value ? "" : undefined}
             className="sr-only"
           />

@@ -66,5 +66,5 @@ export function transitionAt(clip: TimelineClip, clips: readonly TimelineClip[],
 /** The filter of a layer's dip: a wash to black, or to white by inverting around it (CSS and canvas filter syntax). */
 export function washFilter(mix: Pick<TransitionMix, "wash" | "white">): string {
   const invert = mix.white ? "invert(1) " : "";
-  return `${invert}brightness(${1 - mix.wash})${mix.white ? " invert(1)" : ""}`;
+  return `${invert}brightness(${String(1 - mix.wash)})${mix.white ? " invert(1)" : ""}`;
 }

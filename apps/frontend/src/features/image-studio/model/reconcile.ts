@@ -23,7 +23,7 @@ export function reconcileImageActions(project: ImageStudioProject, run: WireRun,
       const outcome = imageTakeOutcome(run, take);
       if (outcome.state === "rendering") continue;
       actions.push({ type: "updateImageTake", runId: run.run_id, takeId: take.take_id, patch: outcome, activateOnSuccess: true });
-      if (outcome.state !== "succeeded" || !takeSnapshot(take)?.auto_library) continue;
+      if (outcome.state !== "succeeded" || !(takeSnapshot(take)?.auto_library === true)) continue;
       const updated: StudioImageTake = { ...take, ...outcome };
       const result = whiteLibraryItem({ library }, shot, updated, whiteItemId(take), now);
       if (result.item && !result.existing) {

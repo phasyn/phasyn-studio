@@ -9,6 +9,8 @@ from typing import Any
 
 @dataclass(frozen=True)
 class ComponentLoadSpec:
+    """Identify the weights and settings for one resident component."""
+
     model_id: str
     model_revision: str
     component_id: str
@@ -28,6 +30,7 @@ class ComponentLoadSpec:
 
     @property
     def single_flight_key(self) -> str:
+        """Build the key used to coalesce identical loading requests."""
         q = self.quantization or {}
         parts = [
             self.model_id,
@@ -47,6 +50,8 @@ class ComponentLoadSpec:
 
 @dataclass
 class ComponentLease:
+    """Identify the loaded instance held by a stage."""
+
     component_key: str
     spec: ComponentLoadSpec
     actor_instance_id: str

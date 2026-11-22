@@ -26,7 +26,7 @@ export function foldLegacyVolume(clip: TimelineClip): FoldedVolume {
   const gain = round(clip.motion.gain_db + legacy);
   const keys = clip.motion.keyframes.gain_db?.map((key) => ({ ...key, value: round(key.value + legacy) }));
   const fits = (value: number) => value >= GAIN_MIN && value <= GAIN_MAX;
-  if (!fits(gain) || keys?.some((key) => !fits(key.value))) return { clip, legacy };
+  if (!fits(gain) || Boolean(keys?.some((key) => !fits(key.value)))) return { clip, legacy };
   const { volume_db: _volume, ...effects } = clip.effects ?? {};
   const keyframes = keys ? { ...clip.motion.keyframes, gain_db: keys } : clip.motion.keyframes;
   return { clip: { ...clip, effects, motion: { ...clip.motion, gain_db: gain, keyframes } }, legacy: 0 };

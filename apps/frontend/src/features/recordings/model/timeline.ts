@@ -30,7 +30,7 @@ export interface ChartItem {
   label: string;
   row: number;
   part: string | null;
-  details: ReadonlyArray<readonly [string, string]>;
+  details: readonly (readonly [string, string])[];
   ref: ChartItemRef;
 }
 
@@ -77,7 +77,7 @@ interface Draft {
   end: bigint | null;
   label: string;
   part: string | null;
-  details: (startMs: number, durationMs: number | null) => Array<readonly [string, string]>;
+  details: (startMs: number, durationMs: number | null) => (readonly [string, string])[];
   ref: ChartItemRef;
   key: string;
 }
@@ -89,7 +89,7 @@ function text(value: string | number | null | undefined): string {
 
 function gpuEventText(ms: number | null, streamId: string | null): string {
   if (ms === null) return t("未量測");
-  return t("{ms}{value}（event 區間，可能含等待；不是 kernel 時間，未對齊 host 軸）", { ms: formatMs(ms), value: streamId ? ` · stream ${streamId}` : "" });
+  return t("{ms}{value}（event 區間，可能含等待；不是 kernel 時間，未對齊 host 軸）", { ms: formatMs(ms), value: (streamId != null && streamId !== "") ? ` · stream ${streamId}` : "" });
 }
 
 function laneOrder(key: string): number {
@@ -112,8 +112,8 @@ function laneMeta(key: string): Pick<ChartLane, "label" | "caption" | "marker"> 
 
 function draftFor(event: RecordingEvent, streamId: string): Draft | "invalid" | "reversed" | null {
   const ref: ChartItemRef = { kind: "event", streamId, seq: event.seq };
-  const key = `${streamId}:${event.seq}`;
-  const seqText = `${streamId} #${event.seq}`;
+  const key = `${streamId}:${String(event.seq)}`;
+  const seqText = `${streamId} #${String(event.seq)}`;
   switch (event.kind) {
     case "span": {
       const data = event.data;
@@ -127,7 +127,7 @@ function draftFor(event: RecordingEvent, streamId: string): Draft | "invalid" | 
         category,
         start,
         end,
-        label: data.part ? `${data.name} · ${data.part}` : data.name,
+        label: (data.part != null && data.part !== "") ? `${data.name} · ${data.part}` : data.name,
         part: data.part,
         ref,
         key,
@@ -141,7 +141,7 @@ function draftFor(event: RecordingEvent, streamId: string): Draft | "invalid" | 
           [t("host_ms（回報值）"), formatMs(data.host_ms)],
           ["GPU event", gpuEventText(data.gpu_event_ms, data.gpu_stream_id)],
           [t("品質"), QUALITY_LABELS[data.quality]],
-          ["coverage", data.reason ? t("{coverage}（{reason}）", { coverage: data.coverage, reason: tServer(data.reason) }) : data.coverage],
+          ["coverage", (data.reason != null && data.reason !== "") ? t("{coverage}（{reason}）", { coverage: data.coverage, reason: tServer(data.reason) }) : data.coverage],
           [t("事件"), seqText],
         ],
       };
@@ -188,13 +188,13 @@ function draftFor(event: RecordingEvent, streamId: string): Draft | "invalid" | 
         category: "step_event",
         start: at,
         end: null,
-        label: `step ${data.step_index}`,
+        label: `step ${String(data.step_index)}`,
         part: null,
         ref,
         key,
         details: (startMs) => [
           [t("類型"), t("step 事件（記錄時刻）")],
-          [t("step／scheduler update"), `${data.step_index} · ${text(data.scheduler_update_index)}`],
+          [t("step／scheduler update"), `${String(data.step_index)} · ${text(data.scheduler_update_index)}`],
           ["forward index", text(data.forward_index)],
           [t("CFG 分支"), text(data.cfg_branch)],
           ["sigma", text(data.sigma)],
@@ -228,6 +228,7 @@ function draftFor(event: RecordingEvent, streamId: string): Draft | "invalid" | 
         ],
       };
     }
+    case "sample":
     default:
       return null;
   }

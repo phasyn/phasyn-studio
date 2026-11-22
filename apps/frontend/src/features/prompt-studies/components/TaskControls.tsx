@@ -25,7 +25,7 @@ export function EndTaskDialog({ task, open, onOpenChange, onConfirm }: { task: P
           <p>{t("已完成的圖片、比較、評分與新版本都保留；不會取消任何 run，也不會刪除檔案。")}</p>
         </DialogBody>
         <DialogFooter>
-          <Button variant="quiet" onClick={() => onOpenChange(false)}>
+          <Button variant="quiet" onClick={() => { onOpenChange(false); }}>
             {t("不要結束")}
           </Button>
           <Button
@@ -65,7 +65,7 @@ export function TaskControls({ study, task, runner, allowRounds = false }: { stu
       </p>
       {retry && isRunStep(step) && step.error ? (
         <p className="text-caption text-danger">
-          {t("上一次失敗：{code}{value}{value2}", { code: step.error.code, value: failure ? t("：{message}", { message: failure }) : "", value2: step.error.remote_outcome_unknown ? t("（遠端結果未知：請先到執行紀錄確認，系統不會自動重送）") : "" })}
+          {t("上一次失敗：{code}{value}{value2}", { code: step.error.code, value: failure ? t("：{message}", { message: failure }) : "", value2: (step.error.remote_outcome_unknown === true) ? t("（遠端結果未知：請先到執行紀錄確認，系統不會自動重送）") : "" })}
         </p>
       ) : null}
       <div className="flex flex-wrap items-center gap-2">
@@ -82,7 +82,7 @@ export function TaskControls({ study, task, runner, allowRounds = false }: { stu
               <label htmlFor={`${id}-rounds`} className="text-caption text-fg-secondary">
                 {t("連續")}
               </label>
-              <Select id={`${id}-rounds`} compact className="w-auto min-w-28" value={rounds} onChange={(event) => setRounds(event.target.value)} disabled={busy}>
+              <Select id={`${id}-rounds`} compact className="w-auto min-w-28" value={rounds} onChange={(event) => { setRounds(event.target.value); }} disabled={busy}>
                 {Array.from({ length: Math.max(1, remaining) }, (_, index) => (
                   <option key={index + 1} value={String(index + 1)}>
                     {t("{index} 輪", { index: index + 1 })}
@@ -105,7 +105,7 @@ export function TaskControls({ study, task, runner, allowRounds = false }: { stu
             {t("繼續執行")}
           </ActionButton>
         )}
-        <Button size="sm" variant="quiet" icon={<CircleStop aria-hidden />} disabled={busy} title={busy ? t("執行中不能結束任務：先停止") : t("結束這個任務（結果保留）")} onClick={() => setEnding(true)}>
+        <Button size="sm" variant="quiet" icon={<CircleStop aria-hidden />} disabled={busy} title={busy ? t("執行中不能結束任務：先停止") : t("結束這個任務（結果保留）")} onClick={() => { setEnding(true); }}>
           {t("結束任務")}
         </Button>
       </div>

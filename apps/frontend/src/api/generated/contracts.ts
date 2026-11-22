@@ -17,12 +17,23 @@ export type ComponentState = "stopped" | "loading" | "ready" | "busy" | "stoppin
  */
 export type Endpoint = string;
 /**
+ * x-phasyn-extension：元件的載入方式。resident（預設，沒有設定時也是）＝只由人或 autostart 啟停，主控不自動載入、不自動卸載、不為了互斥群組替換它；on_demand＝用到才載入：run 的步驟要用它而它已停止時，主控先自動啟動、等到 ready 再送出呼叫，閒置超過 idle_unload_seconds 後主控自動停止它（忙碌或有排隊中的步驟要用時不停止）。
+ */
+export type LoadPolicy = "resident" | "on_demand";
+/**
  * x-phasyn-extension：元件 instance 在介面上的分類資料夾（以 / 分層，最多 6 層）；只影響顯示，不影響執行。
  *
  * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
  * via the `definition` "ComponentFolder".
  */
 export type ComponentFolder = string;
+/**
+ * x-phasyn-extension：元件的載入方式。resident（預設，沒有設定時也是）＝只由人或 autostart 啟停，主控不自動載入、不自動卸載、不為了互斥群組替換它；on_demand＝用到才載入：run 的步驟要用它而它已停止時，主控先自動啟動、等到 ready 再送出呼叫，閒置超過 idle_unload_seconds 後主控自動停止它（忙碌或有排隊中的步驟要用時不停止）。
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "LoadPolicy".
+ */
+export type LoadPolicy1 = "resident" | "on_demand";
 /**
  * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
  * via the `definition` "TypedValue".
@@ -61,6 +72,11 @@ export type Binding =
  * via the `definition` "Quality".
  */
 export type Quality = "instrumented" | "sampled" | "trace" | "derived" | "unavailable" | "not_applicable" | "synthetic";
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "Run".
+ */
+export type Run = Run1;
 /**
  * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
  * via the `definition` "RecordingEvent".
@@ -609,6 +625,13 @@ export type PromptTaskResult =
       confirmed: boolean;
     };
 /**
+ * add needs text and start_frame (three seconds unless end_frame is given); update and remove need caption_id; import_srt appends the captions of an SRT text; clear removes every caption. import_transcript maps a verified speech.transcript.v1 output to one clip and preserves manual revisions.
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "TimelineCommandCaption".
+ */
+export type TimelineCommandCaption = TimelineCommandCaption1;
+/**
  * One edit of POST /api/studio/projects/{project_id}/timeline/commands, selected by op. Frames are integers in sequence time unless stated; clip ranges are [in_frame,out_frame) in source frames.
  *
  * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
@@ -635,7 +658,16 @@ export type StudioTimelineCommand =
   | TimelineCommandJoin
   | TimelineCommandRearrange
   | TimelineCommandReconcile
-  | TimelineCommandSetEnabled;
+  | TimelineCommandSetEnabled
+  | TimelineCommandRangeCandidate
+  | TimelineCommandCollectOutput;
+/**
+ * x-phasyn-extension：可回收空間的類別。runs＝沒有任何專案（take、素材庫、時間軸、匯出）、草稿計畫、反推研究或 inference preset 引用的已結束 run（連同它產生的檔案與主控紀錄副本）；files＝主控與 Node 上沒有任何引用的已發布檔；remote_cache＝Node 為執行而下載的 files/remote 副本，來源 Node 仍有同一份檔案（可重新下載）且沒有執行中的 run 需要；latents＝已解碼完成的 take 的中間 latent（刪除後無法從 latent 重新解碼或細修）；recordings＝超過指定天數的效能紀錄（主控副本與 Node 本機）。
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StorageCategory".
+ */
+export type StorageCategory = "runs" | "files" | "remote_cache" | "latents" | "recordings";
 
 export interface PhasynStudioContracts {
   ApiErrorBody?: ApiErrorBody;
@@ -872,6 +904,108 @@ export interface PhasynStudioContracts {
   StudioTakeReviews?: StudioTakeReviews;
   StudioTakeReviewsWrite?: StudioTakeReviewsWrite;
   StudioTakeReviewsWriteResult?: StudioTakeReviewsWriteResult;
+  CallReceipt?: CallReceipt;
+  StudioCreativeEntryWrite?: StudioCreativeEntryWrite;
+  StudioCreativeBindingWrite?: StudioCreativeBindingWrite;
+  StudioCreativeReference?: StudioCreativeReference;
+  StudioCreativeEntrySummary?: StudioCreativeEntrySummary;
+  StudioCreativeEntryList?: StudioCreativeEntryList;
+  StudioCreativeEntryVersion?: StudioCreativeEntryVersion;
+  StudioCreativeBindingVersion?: StudioCreativeBindingVersion;
+  StudioCreativeEntryRead?: StudioCreativeEntryRead;
+  StudioCreativeBindingRead?: StudioCreativeBindingRead;
+  InferenceRecipeExport?: InferenceRecipeExport;
+  RecipeComparisonRun?: RecipeComparisonRun;
+  RecipeSettingPair?: RecipeSettingPair;
+  RecipeMetricPair?: RecipeMetricPair;
+  RecipeComparisonStep?: RecipeComparisonStep;
+  RecipeComparison?: RecipeComparison;
+  StudioCreativeRunPlan?: StudioCreativeRunPlan;
+  StudioTakeAttachRequest?: StudioTakeAttachRequest;
+  StudioTakeAttachResult?: StudioTakeAttachResult;
+  StudioPrevisPose?: StudioPrevisPose;
+  StudioPrevisLayer?: StudioPrevisLayer;
+  StudioPrevis?: StudioPrevis;
+  StudioDraftPlanRequest?: StudioDraftPlanRequest;
+  StudioDraftApproval?: StudioDraftApproval;
+  StudioDraftSelection?: StudioDraftSelection;
+  StudioDraftPlan?: StudioDraftPlan;
+  StudioFrozenDraft?: StudioFrozenDraft;
+  StudioDraftRunReceipt?: StudioDraftRunReceipt;
+  StudioDraftTechnicalReview?: StudioDraftTechnicalReview;
+  StudioDraftCandidateResult?: StudioDraftCandidateResult;
+  StudioFrozenDraftPlan?: StudioFrozenDraftPlan;
+  StudioPrevisCamera3D?: StudioPrevisCamera3D;
+  StudioPrevisRig?: StudioPrevisRig;
+  StudioDraftPlanList?: StudioDraftPlanList;
+  PlacementEnvelope?: PlacementEnvelope;
+  PlacementGuard?: PlacementGuard;
+  PlacementRequest?: PlacementRequest;
+  PlacementNodeResources?: PlacementNodeResources;
+  PlacementAlternative?: PlacementAlternative;
+  PlacementPreview?: PlacementPreview;
+  InferencePresetCapture?: InferencePresetCapture;
+  InferencePresetResolve?: InferencePresetResolve;
+  InferencePresetSubmit?: InferencePresetSubmit;
+  InferencePresetOrigin?: InferencePresetOrigin;
+  InferencePresetPolicy?: InferencePresetPolicy;
+  InferencePresetList?: InferencePresetList;
+  InferencePresetRevision?: InferencePresetRevision;
+  InferencePresetPreflight?: InferencePresetPreflight;
+  InferencePresetReceipt?: InferencePresetReceipt;
+  NativeProviderManifest?: NativeProviderManifest;
+  NativeProviderCatalog?: NativeProviderCatalog;
+  NativeProviderInfo?: NativeProviderInfo;
+  StudioWriteReceipt?: StudioWriteReceipt;
+  TimelineCommandRangeCandidate?: TimelineCommandRangeCandidate;
+  StudioGapPlanRequest?: StudioGapPlanRequest;
+  StudioMediaAdoption?: StudioMediaAdoption;
+  StudioMediaTakeAdoptRequest?: StudioMediaTakeAdoptRequest;
+  LoraCompatibilityReceipt?: LoraCompatibilityReceipt;
+  StudioRetakePlanRequest?: StudioRetakePlanRequest;
+  TimelineCommandCollectOutput?: TimelineCommandCollectOutput;
+  StudioCreativeMediaBindings?: StudioCreativeMediaBindings;
+  StudioRenderSubmissionRequest?: StudioRenderSubmissionRequest;
+  StudioDraftBranchPlanRequest?: StudioDraftBranchPlanRequest;
+  StudioSeamPlanRequest?: StudioSeamPlanRequest;
+  StudioOtioEditsRequest?: StudioOtioEditsRequest;
+  StudioOtioReferencePlanRequest?: StudioOtioReferencePlanRequest;
+  StudioWorkOrigin?: StudioWorkOrigin;
+  StudioPortableReport?: StudioPortableReport;
+  StudioPortableImport?: StudioPortableImport;
+  StudioPortableHistory?: StudioPortableHistory;
+  LoadPolicy?: LoadPolicy1;
+  RunStepComponentLoad?: RunStepComponentLoad;
+  StorageCategory?: StorageCategory;
+  StorageFileKey?: StorageFileKey;
+  StorageTotal?: StorageTotal;
+  StorageTotals?: StorageTotals;
+  StorageCleanOptions?: StorageCleanOptions;
+  StorageScope?: StorageScope;
+  StorageCleanRequest?: StorageCleanRequest;
+  StorageItem?: StorageItem;
+  StorageNodeState?: StorageNodeState;
+  StorageCleanResult?: StorageCleanResult;
+  StorageUsage?: StorageUsage;
+  StoragePin?: StoragePin;
+  StoragePins?: StoragePins;
+  StoragePinsRequest?: StoragePinsRequest;
+  NodeStorageInventory?: NodeStorageInventory;
+  NodeStorageCleanRequest?: NodeStorageCleanRequest;
+  NodeStorageCleanResult?: NodeStorageCleanResult;
+  StorageWork?: StorageWork;
+  LoraTrainingSource?: LoraTrainingSource;
+  LoraTrainingRoute?: LoraTrainingRoute;
+  LoraTrainingEvalPrompt?: LoraTrainingEvalPrompt;
+  LoraTrainingOptions?: LoraTrainingOptions;
+  LoraTrainingRequest?: LoraTrainingRequest;
+  LoraTrainingAction?: LoraTrainingAction;
+  LoraTrainingClipEdit?: LoraTrainingClipEdit;
+  LoraTrainingSummary?: LoraTrainingSummary;
+  LoraTraining?: LoraTraining;
+  LoraTrainingList?: LoraTrainingList;
+  LocalImportRequest?: LocalImportRequest;
+  LocalImportListing?: LocalImportListing;
 }
 /**
  * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
@@ -1093,6 +1227,11 @@ export interface InstanceDefinition {
   settings: InstanceSettings;
   runtime_id: string;
   autostart?: boolean;
+  load_policy?: LoadPolicy;
+  /**
+   * x-phasyn-extension：load_policy=on_demand 時，閒置多少秒後自動卸載；沒有設定＝600 秒。resident 元件忽略此值。
+   */
+  idle_unload_seconds?: number;
   folder?: ComponentFolder | null;
   /**
    * x-phasyn-extension：互斥群組。同一 Node 上同群組的元件一次只能有一個處於 loading 或已載入（例如 DiT 需要大量主記憶體）；由 Node 在 start／restart 時強制（409 EXCLUSIVE_GROUP_BUSY／EXCLUSIVE_GROUP_CONFLICT）。
@@ -1104,6 +1243,10 @@ export interface InstanceDefinition {
   limits?: {
     [k: string]: unknown | undefined;
   };
+  /**
+   * The owner declares that replacing a verified stopped attempt is safe for this component. Absent means no replacement.
+   */
+  retry_after_verified_stop?: boolean;
 }
 /**
  * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
@@ -1185,6 +1328,11 @@ export interface ComponentDescriptor {
    * x-phasyn-extension：Node 服務啟動時是否自動啟動
    */
   autostart: boolean;
+  load_policy?: LoadPolicy1;
+  /**
+   * x-phasyn-extension：元件定義的閒置卸載秒數；沒有設定＝null（on_demand 時主控用 600 秒）
+   */
+  idle_unload_seconds?: number | null;
   /**
    * x-phasyn-extension：元件定義的互斥群組；沒有設定＝null（Node 一律輸出）
    */
@@ -1201,6 +1349,10 @@ export interface ComponentDescriptor {
   facts: {
     [k: string]: unknown | undefined;
   } | null;
+  /**
+   * The owner declares that replacing a verified stopped attempt is safe for this component. Absent means no replacement.
+   */
+  retry_after_verified_stop?: boolean;
 }
 /**
  * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
@@ -1314,6 +1466,11 @@ export interface ComponentDescriptorLite {
    * x-phasyn-extension：Node 服務啟動時是否自動啟動
    */
   autostart: boolean;
+  load_policy?: LoadPolicy1;
+  /**
+   * x-phasyn-extension：元件定義的閒置卸載秒數；沒有設定＝null（on_demand 時主控用 600 秒）
+   */
+  idle_unload_seconds?: number | null;
   /**
    * x-phasyn-extension：元件定義的互斥群組；沒有設定＝null（Node 一律輸出）
    */
@@ -1324,6 +1481,10 @@ export interface ComponentDescriptorLite {
   limits: {
     [k: string]: unknown | undefined;
   } | null;
+  /**
+   * The owner declares that replacing a verified stopped attempt is safe for this component. Absent means no replacement.
+   */
+  retry_after_verified_stop?: boolean;
 }
 /**
  * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
@@ -1387,6 +1548,38 @@ export interface Origin {
   source_run_id?: string;
   preview_asset_id?: string;
   note?: string;
+  inference_preset?: InferencePresetOrigin;
+  studio_work?: StudioWorkOrigin;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "InferencePresetOrigin".
+ */
+export interface InferencePresetOrigin {
+  preset_id: string;
+  revision: number;
+  definition_sha256: string;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioWorkOrigin".
+ */
+export interface StudioWorkOrigin {
+  project_id: string;
+  operation_kind:
+    | "draft_branch"
+    | "mask"
+    | "audio_mix"
+    | "animatic"
+    | "seam"
+    | "export"
+    | "reference"
+    | "render"
+    | "retake"
+    | "draft";
+  shot_id?: string;
+  source_digest?: string;
+  recipe_digest?: string;
 }
 /**
  * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
@@ -1403,6 +1596,61 @@ export interface RunRequest {
    * x-phasyn-extension: proxy = a small CPU rendition of a timeline source (one media.concat step); it does not take one of the Controller's max_active_runs slots.
    */
   purpose?: "proxy";
+  /**
+   * A retry_verified step permits one replacement after a durable receipt proves the previous attempt stopped with missing outputs or was rejected before starting.
+   */
+  recovery_policy?: "retry_verified" | "observe_only";
+  placement?: PlacementGuard;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "PlacementGuard".
+ */
+export interface PlacementGuard {
+  signature: string;
+  envelope: PlacementEnvelope;
+  claims: {
+    [k: string]: number | undefined;
+  };
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "PlacementEnvelope".
+ */
+export interface PlacementEnvelope {
+  signature: string;
+  basis: string;
+  nodes: {
+    [k: string]:
+      | {
+          host_bytes: number;
+          device_bytes: {
+            [k: string]: number | undefined;
+          };
+        }
+      | undefined;
+  };
+  stage_risks?: {
+    [k: string]:
+      | {
+          [k: string]:
+            | {
+                unit: string;
+                value: number;
+              }
+            | undefined;
+        }
+      | undefined;
+  };
+  evidence?: {
+    run_id: string;
+    /**
+     * @minItems 1
+     * @maxItems 32
+     */
+    recording_ids: string[];
+    padding_percent: number;
+  };
 }
 /**
  * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
@@ -1421,6 +1669,10 @@ export interface InvokeRequest {
   required_loaded_revision: number | null;
   recording: RecorderConfig;
   timeout_seconds: number;
+  retry_of?: {
+    call_id: string;
+    request_digest: string;
+  };
 }
 /**
  * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
@@ -1561,11 +1813,8 @@ export interface RecordingCostStage {
     [k: string]: number | string | boolean | null | undefined;
   };
 }
-/**
- * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
- * via the `definition` "Run".
- */
-export interface Run {
+export interface Run1 {
+  studio_work?: StudioWorkOrigin;
   run_id: string;
   state: "running" | "succeeded" | "failed" | "cancelled" | "interrupted";
   request: RunRequest;
@@ -1586,6 +1835,13 @@ export interface Run {
    * x-phasyn-extension：封存時間（POST /api/runs/{run_id}/archive）。沒有此欄位或 null＝未封存；封存只影響 GET /api/runs 的預設篩選，不刪除任何東西。
    */
   archived_at?: string | null;
+  recovery_version?: 1;
+  stop_reason?: "user" | "cancelled" | "failure";
+  stop_step?: string | null;
+  /**
+   * Controller-owned UTC epoch deadline. A draft plan may not start additional Node calls after this time.
+   */
+  dispatch_deadline?: number;
 }
 /**
  * Run.steps[step_id]：一個步驟的狀態物件（runner 寫入 state、node_id、component_id、call_id、recording_id、started_at、finished_at、outputs、error、remote_outcome_unknown、settings、load_revision、invoke_snapshot、recording_snapshot）。x-phasyn-extension：running 的步驟可另帶 preview（RunStepPreview）；preview 只在主控記憶體，不寫進 run.json，步驟結束即消失。
@@ -1595,6 +1851,26 @@ export interface Run {
  */
 export interface RunStepState {
   preview?: RunStepPreview;
+  resource_group?: string;
+  /**
+   * @maxItems 2
+   */
+  attempts?: {
+    call_id: string;
+    request_digest: string;
+    cancel_sent: boolean;
+    superseded?: boolean;
+  }[];
+  /**
+   * The owner declares that replacing a verified stopped attempt is safe for this component. Absent means no replacement.
+   */
+  retry_after_verified_stop?: boolean;
+  /**
+   * The Controller is querying the recorded attempt on its original Node.
+   */
+  awaiting_receipt?: boolean;
+  lora_compatibility?: LoraCompatibilityReceipt;
+  component_load?: RunStepComponentLoad;
   [k: string]: unknown | undefined;
 }
 /**
@@ -1641,6 +1917,50 @@ export interface RunStepPreview {
    * 主控相對路徑（GET /api/runs/{run_id}/steps/{step_id}/preview?seq=）：回影像 bytes，Content-Type＝media_type、Cache-Control: no-store；seq 只用來避開瀏覽器快取，回的永遠是 Node 當下最新的一張；步驟已結束 → 404 PREVIEW_NOT_FOUND。
    */
   url: string;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "LoraCompatibilityReceipt".
+ */
+export interface LoraCompatibilityReceipt {
+  version: 1;
+  revision: string;
+  definition_sha256: string;
+  load_source: "loaded" | "stored";
+  load_revision: number;
+  adapters: {
+    rule_id: string | null;
+    role?: "style" | "control" | "acceleration";
+    declared_weight_revision?: string;
+    declared_weight_sha256?: string;
+    configured_weight_sha256_matched?: true;
+  }[];
+}
+/**
+ * x-phasyn-extension：步驟要用的 on_demand 元件尚未載入時，主控正在為它做什麼。phase=loading（步驟 state=running）＝主控已送出 start、正在等元件 ready；phase=waiting（步驟 state=waiting）＝暫時不能載入（reason 說明原因），主控每隔幾秒重新檢查，不是失敗。呼叫送出後此欄位消失。
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "RunStepComponentLoad".
+ */
+export interface RunStepComponentLoad {
+  phase: "loading" | "waiting";
+  /**
+   * loading＝模型載入中；exclusive_busy＝互斥群組的其他成員正在載入、停止或執行呼叫；exclusive_resident＝互斥群組已由 resident 元件載入（主控不會替換它，需要人停止它）；exclusive_reserved＝互斥群組的已載入成員還有排隊中的步驟要用；device_busy＝同一 resource_group 正被其他工作使用；stopping＝元件正在停止（例如閒置卸載），停好後會重新載入。
+   */
+  reason: "loading" | "exclusive_busy" | "exclusive_resident" | "exclusive_reserved" | "device_busy" | "stopping";
+  message: string;
+  component_id: string;
+  /**
+   * 擋住載入的互斥群組成員（component_id）；沒有＝空陣列
+   *
+   * @maxItems 64
+   */
+  holders: string[];
+  since: string;
+  /**
+   * 依這個元件過去的載入紀錄估計的載入時間（成本模型 load_ms 中位數）；沒有紀錄＝null
+   */
+  estimated_load_ms: number | null;
 }
 /**
  * x-phasyn-extension：Node → 主控「步驟有新的中間預覽」（POST /api/runs/{run_id}/steps/{step_id}/preview）。只有中繼資料、不含影像；best-effort：每個呼叫同時最多一個通知、永遠送最新一張，失敗不重送。
@@ -2004,6 +2324,12 @@ export interface ControllerConfig {
   allowed_hosts?: string[];
   plugins?: ControllerPluginsConfig;
   recording: RecorderConfig;
+  /**
+   * x-phasyn-extension：Controller 本機上可以挑選影片匯入的資料夾（LoRA 訓練的「從伺服器選擇」）；沒有設定＝不開放
+   *
+   * @maxItems 16
+   */
+  import_roots?: string[];
 }
 /**
  * x-phasyn-extension：主控設定檔的插件區塊（只能在設定檔修改，API 無法變更）。
@@ -2080,6 +2406,20 @@ export interface NodeConfig {
   runtimes: RuntimeEntry[];
   components: InstanceDefinition[];
   recording: RecorderConfig;
+  /**
+   * Configured CUDA device IDs which allocate from host RAM. Placement counts these allocations once in the shared pool.
+   *
+   * @maxItems 64
+   */
+  unified_memory_devices?: string[];
+  /**
+   * x-phasyn-extension：自動清理已結束元件程序的工作目錄（data_dir/work/<component_id>/<process_instance_id>）。只刪除不是目前執行中程序、而且 ttl_hours 內整棵目錄都沒有變動的目錄；已發布檔、紀錄、日誌與 work/_describe 不動。每 interval_minutes 檢查一次，每次都記錄在 Node 日誌。不設＝開啟、24 小時、每 60 分鐘。
+   */
+  work_cleanup?: {
+    enabled?: boolean;
+    ttl_hours?: number;
+    interval_minutes?: number;
+  };
 }
 /**
  * x-phasyn-extension：主機保護（選用，給統一記憶體 GPU 主機）。受保護的呼叫在輸入就緒後、元件執行前，主機太熱或主記憶體不足時等待（呼叫期限照算，可以取消）；執行中超過緊急門檻時經 Node 自己的取消路徑停止（cooperative，逾時才終止自有 process group），結果為 failed／HOST_PROTECTION。其他呼叫不受影響。不設＝不取樣、不等待。
@@ -2196,6 +2536,10 @@ export interface Asset {
   actual_settings: {
     [k: string]: unknown | undefined;
   };
+  /**
+   * Whether the final published container has an audio stream, when known by the writer.
+   */
+  has_audio?: boolean;
 }
 /**
  * x-phasyn-extension：image.asset.v1 的值（圖片元件的輸出；file 是 PNG）。mode＝PNG 色彩模式；has_alpha＝實際有透明像素；white_matte＝alpha 已鋪在白底上（RGB，H3 ref2va 參考圖／fl2va 首幀用這一張）；source_take＝Studio 專案中的來源（元件輸出時為 null，由前端記錄）；actual_settings＝產生它的元件實際使用的設定（含上游 latent 的 seed／steps／sigmas 與模型身分）。
@@ -2396,8 +2740,8 @@ export interface StudioTake {
   output_key: string;
   created_at: string;
   state: "rendering" | "succeeded" | "failed" | "cancelled" | "interrupted";
-  prompt: string;
-  seed: number;
+  prompt: string | null;
+  seed: number | null;
   frames: number;
   width: number;
   height: number;
@@ -2449,6 +2793,16 @@ export interface StudioTake {
   prompt_plugin_revs?: {
     [k: string]: string | undefined;
   };
+  /**
+   * Original generation that published the staged video latent.
+   */
+  generation_run_id?: string;
+  /**
+   * Verified producing run of the parent draft used by this refinement.
+   */
+  parent_generation_run_id?: string;
+  media_adoption?: StudioMediaAdoption;
+  expected_fps?: Rational;
 }
 /**
  * x-phasyn-extension：take 生成時實際送出的參考素材（重現用）。
@@ -2469,6 +2823,30 @@ export interface StudioTakeReference {
    * 生成時這個參考影片在終點之後凍結最後一格（StudioReference.hold_last_frame）；只在為 true 時記錄。
    */
   hold_last_frame?: boolean;
+}
+/**
+ * A deliberate editorial adoption of a published video with its immutable file inputs. The optional parent identifies a version in this shot.
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioMediaAdoption".
+ */
+export interface StudioMediaAdoption {
+  method: "adopt_published_media";
+  run_id: string;
+  step_id: string;
+  output_port: string;
+  node_id: string;
+  component_id: string;
+  /**
+   * @maxItems 128
+   */
+  source_inputs: {
+    step_id: string;
+    port: string;
+    type_id: string;
+    file: FileRef;
+  }[];
+  parent_take_id: string | null;
 }
 /**
  * x-phasyn-extension：時間軸上的一個鏡頭（prompt 與生成參數，以及它的 takes）。
@@ -2524,6 +2902,7 @@ export interface StudioShot {
    */
   references?: StudioReference[];
   effects?: MediaClipEffects;
+  previs?: StudioPrevis;
 }
 /**
  * x-phasyn-extension：鏡頭使用的參考素材（H3 ref2va：圖片 ≤ 9、影片 ≤ 3、聲音 ≤ 3、合計 1–12，不能只有聲音）。送出時依 alias 序號排列成 materials。
@@ -2754,6 +3133,98 @@ export interface MediaClipTransitionSide {
   freeze: number;
 }
 /**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioPrevis".
+ */
+export interface StudioPrevis {
+  version: 1;
+  background: string;
+  projection: "orthographic" | "perspective" | "stage3d";
+  /**
+   * @minItems 1
+   * @maxItems 24
+   */
+  camera: StudioPrevisPose[];
+  /**
+   * @minItems 0
+   * @maxItems 12
+   */
+  layers: StudioPrevisLayer[];
+  /**
+   * @minItems 1
+   * @maxItems 24
+   */
+  lens_keys?: StudioPrevisCamera3D[];
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioPrevisPose".
+ */
+export interface StudioPrevisPose {
+  frame: number;
+  x: number;
+  y: number;
+  scale: number;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioPrevisLayer".
+ */
+export interface StudioPrevisLayer {
+  id: string;
+  name: string;
+  kind: "figure" | "rectangle" | "image" | "puppet";
+  item_id: string | null;
+  color: string;
+  /**
+   * @minItems 1
+   * @maxItems 24
+   */
+  keys: StudioPrevisPose[];
+  z_m?: number;
+  /**
+   * @minItems 1
+   * @maxItems 24
+   */
+  rig_keys?: StudioPrevisRig[];
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioPrevisRig".
+ */
+export interface StudioPrevisRig {
+  frame: number;
+  body_yaw: number;
+  body_pitch: number;
+  head_yaw: number;
+  left_arm_raise: number;
+  left_arm_spread: number;
+  left_elbow: number;
+  left_hip: number;
+  left_leg_spread: number;
+  left_knee: number;
+  right_arm_raise: number;
+  right_arm_spread: number;
+  right_elbow: number;
+  right_hip: number;
+  right_leg_spread: number;
+  right_knee: number;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioPrevisCamera3D".
+ */
+export interface StudioPrevisCamera3D {
+  frame: number;
+  x: number;
+  y: number;
+  z: number;
+  target_x: number;
+  target_y: number;
+  target_z: number;
+  focal_mm: number;
+}
+/**
  * x-phasyn-extension：一次序列匯出（media.concat 的 run 參照）。
  *
  * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
@@ -2856,6 +3327,11 @@ export interface StudioLibraryItem {
       }
     | {
         kind: "upload";
+      }
+    | {
+        kind: "run_output";
+        run_id: string;
+        output_key: string;
       };
 }
 /**
@@ -3011,6 +3487,17 @@ export interface TimelineSource {
    * The shot's active take when it cannot replace the bound media by itself: it is shorter than a clip of this source uses. Cleared when the take is applied (reconcile) or no longer applies.
    */
   pending_take_id?: string;
+  /**
+   * Identity of a version-pinned candidate. Its file and range remain fixed when the active shot take changes.
+   */
+  candidate_origin?: {
+    source_id: string;
+    shot_id?: string;
+    take_id?: string;
+    library_id?: string;
+    run_id?: string;
+    output_key?: string;
+  };
 }
 /**
  * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
@@ -3187,6 +3674,21 @@ export interface TimelineCaption {
   size: "small" | "medium" | "large";
   image?: FileRef;
   image_key?: string;
+  transcription?: {
+    start_frame: number;
+    end_frame: number;
+    text: string;
+    size: "small" | "medium" | "large";
+    position: "top" | "center" | "bottom" | "lower_third";
+    clip_id: string;
+    run_id: string;
+    output_key: string;
+    start_ms: number;
+    end_ms: number;
+    source_sha256: string;
+    file: FileRef;
+    needs_review: boolean;
+  };
 }
 /**
  * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
@@ -3305,6 +3807,25 @@ export interface MediaInfo {
    * 偵測實際使用的參數（invoke 參數 scenes 補上預設值後的結果）
    */
   scene_detection?: MediaSceneDetection | null;
+  frame_clock?: {
+    kind: "cfr";
+    fps: {
+      num: number;
+      den: number;
+    };
+    frame_count: number;
+    source_sha256: string;
+    source_size_bytes: number;
+    first_pts: number;
+    time_base: {
+      num: number;
+      den: number;
+    };
+  };
+  clip_origin_offset?: {
+    num: number;
+    den: number;
+  };
 }
 /**
  * x-phasyn-extension：media.probe 鏡頭切換偵測實際使用的參數（MediaInfo.scene_detection）。invoke 參數 scenes 是同一個形狀，但兩個欄位都可省略（threshold 預設 0.3、min_gap_seconds 預設 0.5）；scenes 為 null 或省略＝不偵測。FFmpeg select filter 的 scene 分數（0–1）大於 threshold 的影格算一個切換點；相距小於 min_gap_seconds 的切換點只保留分數最高的一個（同分保留較早的）。
@@ -3516,6 +4037,10 @@ export interface StudioPluginGeneration {
    * @maxItems 16
    */
   require?: StudioPluginGenerationRequirement[];
+  /**
+   * Applies legacy H3 lattice and duration validation to this generation preset.
+   */
+  frame_model?: "h3";
 }
 /**
  * x-phasyn-extension：插件的指令（程式碼貢獻，需要 main）。這個版本只保存與顯示宣告，不執行。
@@ -3898,7 +4423,7 @@ export interface StudioPluginRemoval {
   projects: StudioPluginProjectUse[];
 }
 /**
- * x-phasyn-extension：只改 instance 的顯示名稱、分類資料夾、自動啟動與使用上限；任何狀態都可改，不影響已載入的模型。
+ * x-phasyn-extension：只改 instance 的顯示名稱、分類資料夾、自動啟動、載入方式（load_policy／idle_unload_seconds）與使用上限；任何狀態都可改，不影響已載入的模型。
  *
  * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
  * via the `definition` "ComponentMetaPatch".
@@ -3907,6 +4432,11 @@ export interface ComponentMetaPatch {
   label?: string;
   folder?: ComponentFolder | null;
   autostart?: boolean;
+  load_policy?: LoadPolicy1;
+  /**
+   * 閒置卸載秒數；null＝從元件定義移除（回到預設 600 秒）
+   */
+  idle_unload_seconds?: number | null;
   /**
    * 使用上限（object，序列化後 ≤ 16 KiB）；null＝從元件定義移除
    */
@@ -4728,6 +5258,13 @@ export interface TimelineCommandPlace {
   track_audio?: string;
   in_frame?: number;
   out_frame?: number;
+  expected_source_sha256?: string;
+  run_id?: string;
+  output_key?: string;
+  /**
+   * Reject placement if any target track overlaps an existing clip.
+   */
+  only_if_empty?: boolean;
 }
 /**
  * Move a selection; the first clip is the one to_frame and track_id refer to. Exactly one of to_frame and delta. overwrite trims or splits what lies underneath at the destination; insert opens the destination on every sync-locked track. The place the clips left stays empty.
@@ -4994,15 +5531,9 @@ export interface TimelineCommandMarker {
   name?: string;
   color?: "blue" | "green" | "amber" | "rose" | "violet";
 }
-/**
- * add needs text and start_frame (three seconds unless end_frame is given); update and remove need caption_id; import_srt appends the captions of an SRT text; clear removes every caption.
- *
- * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
- * via the `definition` "TimelineCommandCaption".
- */
-export interface TimelineCommandCaption {
+export interface TimelineCommandCaption1 {
   op: "caption";
-  action: "add" | "update" | "remove" | "import_srt" | "clear";
+  action: "add" | "update" | "remove" | "import_srt" | "clear" | "import_transcript";
   caption_id?: string;
   text?: string;
   start_frame?: number;
@@ -5020,6 +5551,9 @@ export interface TimelineCommandCaption {
     position?: "top" | "center" | "bottom" | "lower_third";
     size?: "small" | "medium" | "large";
   };
+  clip_id?: string;
+  run_id?: string;
+  output_key?: string;
 }
 /**
  * Set the sequence In and Out (end exclusive), or clear them with clear: true.
@@ -5105,6 +5639,39 @@ export interface TimelineCommandSetEnabled {
    * Edit linked partners together (default true).
    */
   linked?: boolean;
+}
+/**
+ * Apply a pinned media candidate to exactly one track over a half-open interval. fill_gap requires both bordering clips; replace_range requires continuous existing coverage. Other tracks keep their positions.
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "TimelineCommandRangeCandidate".
+ */
+export interface TimelineCommandRangeCandidate {
+  op: "range_candidate";
+  mode: "fill_gap" | "replace_range";
+  track_id: string;
+  start_frame: number;
+  end_frame: number;
+  candidate_in_frame?: number;
+  expected_source_sha256: string;
+  source_id?: string;
+  library_id?: string;
+  shot_id?: string;
+  take_id?: string;
+  run_id?: string;
+  output_key?: string;
+  inherit_static_visuals?: boolean;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "TimelineCommandCollectOutput".
+ */
+export interface TimelineCommandCollectOutput {
+  op: "collect_output";
+  name: string;
+  run_id: string;
+  output_key: string;
+  expected_source_sha256: string;
 }
 /**
  * Edits applied in order to the project's timeline, all or nothing. revision is the project revision the caller read.
@@ -5244,6 +5811,10 @@ export interface StudioTimelineExportRequest {
   quality?: "high" | "standard" | "small";
   speed?: "medium" | "veryfast";
   audio_kbps?: 128 | 192 | 256;
+  /**
+   * Integrated loudness target of the exported sound in LUFS (two-pass EBU R128 loudnorm, linear gain, true peak -1.5 dBTP, LRA 11). Absent: the mix is exported as it is, without normalisation. The measured loudness before and after is in the asset's actual_settings.concat.loudness.
+   */
+  loudness?: -18 | -16 | -14;
 }
 /**
  * The export run that was started and the project with its new StudioExport record.
@@ -5357,4 +5928,1642 @@ export interface StudioTakeReviewsWriteResult {
   reviews: StudioTakeReviews;
   written: number;
   replaced: number;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "CallReceipt".
+ */
+export interface CallReceipt {
+  node_id: string;
+  component_id: string;
+  call_id: string;
+  run_id: string | null;
+  step_id: string | null;
+  request_digest: string;
+  phase: "running" | "finished" | "not_started" | "output_missing" | "unknown" | "stopped";
+  result: InvokeResult | null;
+  error: ApiErrorBody | null;
+  /**
+   * The owner declares that replacing a verified stopped attempt is safe for this component. Absent means no replacement.
+   */
+  retry_after_verified_stop?: boolean;
+  provider_id?: string;
+  operation_digest?: string;
+  superseded_by?: string;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioCreativeEntryWrite".
+ */
+export interface StudioCreativeEntryWrite {
+  expected_revision: number;
+  project_revision: number;
+  kind: "character" | "scene";
+  name: string;
+  fields: {
+    [k: string]: string | undefined;
+  };
+  /**
+   * @maxItems 9
+   */
+  reference_items: string[];
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioCreativeBindingWrite".
+ */
+export interface StudioCreativeBindingWrite {
+  project_revision: number;
+  expected_revision: number;
+  model: "h3.t2va" | "h3.ref2va" | "qimg.t2i" | "qimg.i2i" | "portable.video" | "portable.image";
+  /**
+   * @maxItems 24
+   */
+  entries: {
+    entry_id: string;
+    revision: number;
+    overrides?: {
+      [k: string]: string | undefined;
+    };
+  }[];
+  state?: {
+    [k: string]: string | undefined;
+  };
+  media_bindings?: StudioCreativeMediaBindings;
+  /**
+   * Include compiled text in the run. A portable video binding with driving media can explicitly omit it.
+   */
+  include_prompt?: boolean;
+}
+/**
+ * Project library item IDs pinned to semantic inputs of a creative video plugin.
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioCreativeMediaBindings".
+ */
+export interface StudioCreativeMediaBindings {
+  character_image?: string;
+  source_audio?: string;
+  performance_video?: string;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioCreativeReference".
+ */
+export interface StudioCreativeReference {
+  item_id: string;
+  name: string;
+  file: FileRef;
+  source?: "entry" | "shot";
+  entry_id?: string;
+  revision?: number;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioCreativeEntrySummary".
+ */
+export interface StudioCreativeEntrySummary {
+  entry_id: string;
+  revision: number;
+  kind: "character" | "scene";
+  name: string;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioCreativeEntryList".
+ */
+export interface StudioCreativeEntryList {
+  /**
+   * @maxItems 500
+   */
+  items: StudioCreativeEntrySummary[];
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioCreativeEntryVersion".
+ */
+export interface StudioCreativeEntryVersion {
+  project_id: string;
+  project_revision: number;
+  revision: number;
+  digest: string;
+  entry_id: string;
+  kind: "character" | "scene";
+  name: string;
+  fields: {
+    [k: string]: string | undefined;
+  };
+  /**
+   * @maxItems 9
+   */
+  references: StudioCreativeReference[];
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioCreativeBindingVersion".
+ */
+export interface StudioCreativeBindingVersion {
+  project_id: string;
+  project_revision: number;
+  revision: number;
+  digest: string;
+  model: "h3.t2va" | "h3.ref2va" | "qimg.t2i" | "qimg.i2i" | "portable.video" | "portable.image";
+  medium: "video" | "image";
+  shot_id: string;
+  source_digest: string;
+  /**
+   * @maxItems 24
+   */
+  entries: {
+    entry_id: string;
+    revision: number;
+    overrides?: {
+      [k: string]: string | undefined;
+    };
+  }[];
+  state: {
+    [k: string]: string | undefined;
+  };
+  inputs: {
+    [k: string]: TypedValue | undefined;
+  };
+  /**
+   * @maxItems 9
+   */
+  references: StudioCreativeReference[];
+  /**
+   * @maxItems 1000
+   */
+  fragments: {
+    text: string;
+    source: "shot" | "entry" | "override" | "reference" | "shot_state";
+    field?: string;
+    entry_id?: string;
+    revision?: number;
+    item_id?: string;
+    original?: string;
+    start: number;
+    end: number;
+  }[];
+  mask: StudioCreativeReference | null;
+  reference_settings: {
+    base_index?: number | null;
+    mask_invert?: boolean;
+    reference_resolution?: number;
+    cfg?: boolean;
+  };
+  media_bindings?: StudioCreativeMediaBindings;
+  /**
+   * Include compiled text in the run. A portable video binding with driving media can explicitly omit it.
+   */
+  include_prompt?: boolean;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioCreativeEntryRead".
+ */
+export interface StudioCreativeEntryRead {
+  version: StudioCreativeEntryVersion;
+  latest_revision: number;
+  /**
+   * @maxItems 64
+   */
+  review: {
+    source: "shot_missing" | "shot" | "entry" | "reference" | "mask";
+    entry_id?: string;
+    revision?: number;
+    latest_revision?: number;
+    item_id?: string;
+  }[];
+  shot_uses?: {
+    medium: "video" | "image";
+    shot_id: string;
+    title: string;
+    binding_revision: number;
+    entry_revision: number;
+    active_take_id: string | null;
+    affected_fields: string[];
+    overridden_fields: string[];
+    name_changed: boolean;
+    references_changed: boolean;
+  }[];
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioCreativeBindingRead".
+ */
+export interface StudioCreativeBindingRead {
+  version: StudioCreativeBindingVersion;
+  latest_revision: number;
+  /**
+   * @maxItems 64
+   */
+  review: {
+    source: "shot_missing" | "shot" | "entry" | "reference" | "mask";
+    entry_id?: string;
+    revision?: number;
+    latest_revision?: number;
+    item_id?: string;
+  }[];
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "InferenceRecipeExport".
+ */
+export interface InferenceRecipeExport {
+  schema_version: "phasyn.inference-recipe.v1";
+  recipe_sha256: string;
+  recipe: {
+    schema_version: "phasyn.inference-recipe.v1";
+    pipeline_id: string | null;
+    inputs: {
+      [k: string]: {} | undefined;
+    };
+    steps: {
+      [k: string]: {} | undefined;
+    };
+  };
+  execution: {
+    run_id: string;
+    state: string;
+    steps: {
+      [k: string]: {} | undefined;
+    };
+    inference_preset?: InferencePresetOrigin;
+  };
+  document_sha256: string;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "RecipeComparisonRun".
+ */
+export interface RecipeComparisonRun {
+  run_id: string;
+  state: string | null;
+  pipeline_id: string | null;
+  recipe_sha256: string;
+  document_sha256: string;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "RecipeSettingPair".
+ */
+export interface RecipeSettingPair {
+  name: string;
+  left: unknown;
+  right: unknown;
+  status: "equal" | "different" | "unknown" | "left_only" | "right_only";
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "RecipeMetricPair".
+ */
+export interface RecipeMetricPair {
+  name: string;
+  left: unknown;
+  right: unknown;
+  delta: number | null;
+  reason: null | "unmeasured" | "unit" | "scope" | "method" | "provider" | "nonfinite" | "categorical";
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "RecipeComparisonStep".
+ */
+export interface RecipeComparisonStep {
+  step_id: string;
+  left_present: boolean;
+  right_present: boolean;
+  left_recording: string | null;
+  right_recording: string | null;
+  settings: RecipeSettingPair[];
+  metrics: RecipeMetricPair[];
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "RecipeComparison".
+ */
+export interface RecipeComparison {
+  schema_version: "phasyn.recipe-comparison.v1";
+  left: RecipeComparisonRun;
+  right: RecipeComparisonRun;
+  inputs: RecipeSettingPair[];
+  steps: RecipeComparisonStep[];
+  attribution: "not_established";
+  perceptual_quality: "not_measured";
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioCreativeRunPlan".
+ */
+export interface StudioCreativeRunPlan {
+  request: RunRequest;
+  creative_binding: {
+    project_id: string;
+    medium: "video" | "image";
+    shot_id: string;
+    revision: number;
+    digest: string;
+    model: "h3.t2va" | "h3.ref2va" | "qimg.t2i" | "qimg.i2i" | "portable.video" | "portable.image";
+  };
+  request_digest: string;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioTakeAttachRequest".
+ */
+export interface StudioTakeAttachRequest {
+  run_id: string;
+  output_key: string;
+  expected_revision: number;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioTakeAttachResult".
+ */
+export interface StudioTakeAttachResult {
+  project_id: string;
+  shot_id: string;
+  revision: number;
+  created: boolean;
+  take: StudioTake;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioDraftPlanRequest".
+ */
+export interface StudioDraftPlanRequest {
+  project_revision: number;
+  pipeline_id: string;
+  prompt_input: string;
+  seed_step: string;
+  output_key: string;
+  qc_pipeline_id: string;
+  qc_input: string;
+  qc_output: string;
+  /**
+   * @minItems 1
+   * @maxItems 16
+   */
+  shots: {
+    shot_id: string;
+    library_inputs?: {
+      [k: string]: string | undefined;
+    };
+  }[];
+  variants: number;
+  seed: number;
+  budget: {
+    max_runs: number;
+    max_step_attempts: number;
+    timeout_seconds: number;
+    max_gpu_seconds?: number;
+    max_external_cost_usd_micros?: number;
+  };
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioDraftApproval".
+ */
+export interface StudioDraftApproval {
+  digest: string;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioDraftSelection".
+ */
+export interface StudioDraftSelection {
+  digest: string;
+  candidate_id: string;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioDraftPlan".
+ */
+export interface StudioDraftPlan {
+  project_id: string;
+  plan_id: string;
+  digest: string;
+  spec_digest: string;
+  status: "planned" | "running" | "stopping" | "completed" | "cancelled" | "expired" | "uncertain" | "budget_exhausted";
+  plan: StudioFrozenDraftPlan;
+  deadline: number | null;
+  reserved_runs: number;
+  reserved_step_attempts: number;
+  stop_reason: string | null;
+  selected: {
+    [k: string]: string | undefined;
+  };
+  /**
+   * @maxItems 32
+   */
+  results: StudioDraftCandidateResult[];
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioFrozenDraftPlan".
+ */
+export interface StudioFrozenDraftPlan {
+  project_id: string;
+  plan_id: string;
+  project_revision: number;
+  project_created_at: string;
+  budget: {
+    max_runs: number;
+    max_step_attempts: number;
+    timeout_seconds: number;
+    max_gpu_seconds?: number;
+    max_external_cost_usd_micros?: number;
+  };
+  planned_runs: number;
+  planned_step_attempts: number;
+  components: {
+    draft: {
+      [k: string]: string | undefined;
+    };
+    qc: {
+      [k: string]: string | undefined;
+    };
+  };
+  draft_output: string;
+  qc_pipeline: Pipeline;
+  qc_input: string;
+  qc_output: string;
+  /**
+   * @maxItems 32
+   */
+  candidates: StudioFrozenDraft[];
+  reserved_gpu_seconds?: number;
+  reserved_external_cost_usd_micros?: number;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioFrozenDraft".
+ */
+export interface StudioFrozenDraft {
+  candidate_id: string;
+  shot_id: string;
+  variant: number;
+  seed: number;
+  draft: RunRequest;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioDraftCandidateResult".
+ */
+export interface StudioDraftCandidateResult {
+  candidate_id: string;
+  stage: "draft" | "qc";
+  state: "queued" | "dispatched" | "ready" | "review" | "failed" | "skipped";
+  runs: {
+    draft?: StudioDraftRunReceipt;
+    qc?: StudioDraftRunReceipt;
+  };
+  asset?: Asset;
+  quality?: StudioDraftTechnicalReview;
+  error?: {
+    [k: string]: unknown | undefined;
+  };
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioDraftRunReceipt".
+ */
+export interface StudioDraftRunReceipt {
+  run_id: string;
+  request_digest: string;
+  state?: "running" | "succeeded" | "cancelled" | "interrupted" | "failed";
+  cancel_requested?: boolean;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioDraftTechnicalReview".
+ */
+export interface StudioDraftTechnicalReview {
+  /**
+   * @maxItems 16
+   */
+  issues: string[];
+  evidence: {
+    [k: string]: unknown | undefined;
+  };
+  output_files?: {
+    [k: string]: FileRef | undefined;
+  };
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioDraftPlanList".
+ */
+export interface StudioDraftPlanList {
+  /**
+   * @maxItems 100
+   */
+  items: {
+    plan_id: string;
+    status:
+      "planned" | "running" | "stopping" | "completed" | "cancelled" | "expired" | "uncertain" | "budget_exhausted";
+  }[];
+  next_cursor: string | null;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "PlacementRequest".
+ */
+export interface PlacementRequest {
+  /**
+   * @minItems 1
+   * @maxItems 4
+   */
+  alternatives: {
+    pipeline_id: string;
+    envelope?: PlacementEnvelope;
+    source_run_id?: string;
+    padding_percent?: number;
+  }[];
+  inputs: {
+    [k: string]: TypedValue | undefined;
+  };
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "PlacementNodeResources".
+ */
+export interface PlacementNodeResources {
+  node_id: string;
+  sampled_at: string;
+  source_revision: string;
+  host: {
+    total_bytes: number | null;
+    available_bytes: number | null;
+    cgroup_state: "unavailable" | "not_applicable" | "no_visible_limit" | "limited";
+    cgroup_limit_bytes: number | null;
+    cgroup_available_bytes: number | null;
+  };
+  devices: {
+    [k: string]:
+      | {
+          kind: "cpu" | "cuda";
+          pool: "dedicated" | "unified" | "unknown" | "host";
+          total_bytes: number | null;
+          available_bytes: number | null;
+          utilization_pct: number | null;
+          pool_id: string | null;
+        }
+      | undefined;
+  };
+  components: {
+    [k: string]:
+      | {
+          provider_id: string;
+          runtime_id: string;
+          state: string;
+          device_id: string;
+          resource_group: string;
+          busy: boolean;
+          /**
+           * @maxItems 16
+           */
+          holds: string[];
+          loaded_revision: number | null;
+          effective_load_digest: string | null;
+        }
+      | undefined;
+  };
+  host_pool_id: string;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "PlacementAlternative".
+ */
+export interface PlacementAlternative {
+  pipeline_id: string;
+  state: "ready" | "waiting" | "rejected";
+  signature: string | null;
+  /**
+   * @maxItems 300
+   */
+  reasons: string[];
+  steps: {
+    [k: string]: {} | undefined;
+  };
+  nodes: {
+    [k: string]: {} | undefined;
+  };
+  envelope_basis: string | null;
+  physical_pools: {
+    [k: string]: {} | undefined;
+  };
+  input_shapes: {
+    [k: string]: {} | undefined;
+  };
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "PlacementPreview".
+ */
+export interface PlacementPreview {
+  /**
+   * @maxItems 4
+   */
+  alternatives: PlacementAlternative[];
+  selected: string | null;
+  run_request: RunRequest | null;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "InferencePresetCapture".
+ */
+export interface InferencePresetCapture {
+  expected_revision: number;
+  label: string;
+  source_run_id: string;
+  task: "t2va" | "fl2va" | "ref2va" | "t2i" | "i2i";
+  parameters?: {
+    steps?: number;
+    seed?: number;
+    guidance?: number;
+    video_shift?: number;
+    audio_shift?: number;
+    sigma_schedule?: "native" | "karras" | "exponential";
+    flow_shift_mu?: number | null;
+  };
+  /**
+   * @maxItems 8
+   */
+  adapter_roles?: ("style" | "control" | "acceleration" | "unspecified")[];
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "InferencePresetResolve".
+ */
+export interface InferencePresetResolve {
+  revision: number;
+  inputs: {
+    [k: string]: TypedValue | undefined;
+  };
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "InferencePresetSubmit".
+ */
+export interface InferencePresetSubmit {
+  revision: number;
+  inputs: {
+    [k: string]: TypedValue | undefined;
+  };
+  request_id: string;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "InferencePresetPolicy".
+ */
+export interface InferencePresetPolicy {
+  provider: "h3.dit" | "qimg.dit";
+  step_id: string;
+  task: "t2va" | "fl2va" | "ref2va" | "t2i" | "i2i";
+  variant: string;
+  parameters: {
+    [k: string]: unknown | undefined;
+  };
+  scheduler: string;
+  adapters: {
+    [k: string]: unknown | undefined;
+  }[];
+  precision: {} | null;
+  part_overrides: {
+    [k: string]: unknown | undefined;
+  }[];
+  requested_attention: unknown;
+  recorded_attention: {
+    [k: string]: unknown | undefined;
+  };
+  model_identity: {
+    [k: string]: unknown | undefined;
+  };
+  runtime: {
+    [k: string]: unknown | undefined;
+  };
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "InferencePresetList".
+ */
+export interface InferencePresetList {
+  items: {
+    id: string;
+    revision: number;
+    label: string;
+    stamp: string;
+  }[];
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "InferencePresetRevision".
+ */
+export interface InferencePresetRevision {
+  preset_id: string;
+  revision: number;
+  created_at: string;
+  definition_sha256: string;
+  source_recipe_sha256: string;
+  source_run_id: string;
+  schema_version: "phasyn.inference-preset.v1";
+  label: string;
+  pipeline: Pipeline;
+  inputs: {
+    [k: string]: TypedValue | undefined;
+  };
+  policy: InferencePresetPolicy;
+  pins: {
+    [k: string]:
+      | {
+          provider: string;
+          load_revision: number;
+          load_sha256: string;
+          effective_load_sha256: string;
+          recorded_model: {
+            [k: string]: unknown | undefined;
+          };
+        }
+      | undefined;
+  };
+  submissions?: {
+    run_id: string;
+    state: "reserved" | "accepted" | "rejected";
+    request_id: string;
+  }[];
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "InferencePresetPreflight".
+ */
+export interface InferencePresetPreflight {
+  request: RunRequest;
+  definition_sha256: string;
+  revision: number;
+  policy: InferencePresetPolicy;
+  files_checked: number;
+  source_recipe_sha256: string;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "InferencePresetReceipt".
+ */
+export interface InferencePresetReceipt {
+  run_id: string;
+  state: string;
+  origin: Origin;
+  actual_recipe: string;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "NativeProviderManifest".
+ */
+export interface NativeProviderManifest {
+  schema_version: "1.0";
+  provider_id: string;
+  entry_point: string;
+  label: string;
+  kind: string;
+  /**
+   * @maxItems 128
+   */
+  inputs: {
+    name: string;
+    type_id: string;
+    required: boolean;
+    transport: "file" | "inline" | "either";
+    description: string;
+  }[];
+  /**
+   * @maxItems 128
+   */
+  outputs: {
+    name: string;
+    type_id: string;
+    required: boolean;
+    transport: "file" | "inline" | "either";
+    description: string;
+  }[];
+  /**
+   * @maxItems 64
+   */
+  operations: string[];
+  settings_schema: {};
+  parameters_schema: {};
+  default_settings: {} | null;
+  resources: {
+    /**
+     * @maxItems 8
+     */
+    devices: ("cpu" | "cuda" | "mps")[];
+    /**
+     * @maxItems 32
+     */
+    required_modules: string[];
+    /**
+     * @maxItems 16
+     */
+    executables: string[];
+    vram_bytes: number | null;
+    memory_basis: string;
+  };
+  /**
+   * @maxItems 16
+   */
+  models: {
+    id: string;
+    revision: string;
+    license: string;
+    /**
+     * @maxItems 64
+     */
+    variants: string[];
+    /**
+     * @maxItems 1024
+     */
+    files: {
+      path: string;
+      size_bytes: number;
+      sha256: string | null;
+    }[];
+    file_scope: string;
+  }[];
+  execution: {
+    cache: "none" | "per_request" | "content_addressed" | "conditional";
+    retry: "never_automatic" | "verify_stopped_first" | "idempotent";
+    cancellation: "cooperative" | "process_termination" | "unsupported";
+    /**
+     * @maxItems 8
+     */
+    progress: ("stage" | "updates" | "frames" | "bytes")[];
+    error_contract: "ComponentError";
+    retry_condition: string;
+  };
+  license: string;
+  capability_version: string;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "NativeProviderCatalog".
+ */
+export interface NativeProviderCatalog {
+  schema_version: "1.0";
+  node_id: string;
+  items: NativeProviderInfo[];
+  issues: {
+    runtime_id: string;
+    code: string;
+  }[];
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "NativeProviderInfo".
+ */
+export interface NativeProviderInfo {
+  runtime_id: string;
+  provider_id: string;
+  kind: string;
+  label: string;
+  available: boolean;
+  reason: string | null;
+  synthetic: boolean;
+  default_settings: InstanceSettings | null;
+  status: "declared" | "legacy" | "invalid";
+  sha256: string | null;
+  issue: string | null;
+  manifest: NativeProviderManifest | null;
+  distribution: {
+    name?: string | null;
+    version?: string | null;
+  };
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioWriteReceipt".
+ */
+export interface StudioWriteReceipt {
+  project_id: string;
+  operation: string;
+  request_sha256: string;
+  state: "committed" | "reserved" | "retired" | "rejected";
+  http_status: number | null;
+  project_revision: number | null;
+  current_project_revision: number | null;
+  result_sha256: string | null;
+  result:
+    | StudioProject
+    | StudioTimelineCommandsResult
+    | StudioTakeAttachResult
+    | StudioCreativeEntryVersion
+    | StudioCreativeBindingVersion
+    | ApiErrorBody
+    | null;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioGapPlanRequest".
+ */
+export interface StudioGapPlanRequest {
+  revision: number;
+  pipeline_id: string;
+  track_id: string;
+  start_frame: number;
+  end_frame: number;
+  prompt: string;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioMediaTakeAdoptRequest".
+ */
+export interface StudioMediaTakeAdoptRequest {
+  run_id: string;
+  output_key: string;
+  expected_revision: number;
+  parent_take_id?: string | null;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioRetakePlanRequest".
+ */
+export interface StudioRetakePlanRequest {
+  revision: number;
+  pipeline_id: string;
+  track_id: string;
+  start_frame: number;
+  end_frame: number;
+  prompt: string;
+  mask_item_id?: string;
+  probe_run_id?: string;
+  probe_output_key?: string;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioRenderSubmissionRequest".
+ */
+export interface StudioRenderSubmissionRequest {
+  expected_revision: number;
+  medium: "image" | "video";
+  run: RunRequest;
+  /**
+   * @minItems 1
+   * @maxItems 256
+   */
+  takes: {
+    shot_id: string;
+    take: {
+      [k: string]: unknown | undefined;
+    };
+  }[];
+  /**
+   * @minItems 0
+   * @maxItems 256
+   */
+  route_moves?: {
+    shot_id: string;
+    from_route: string;
+    to_route: string;
+  }[];
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioDraftBranchPlanRequest".
+ */
+export interface StudioDraftBranchPlanRequest {
+  digest: string;
+  candidate_id: string;
+  pipeline_id: string;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioSeamPlanRequest".
+ */
+export interface StudioSeamPlanRequest {
+  revision: number;
+  command: TimelineCommandRangeCandidate;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioOtioEditsRequest".
+ */
+export interface StudioOtioEditsRequest {
+  revision: number;
+  document: {
+    [k: string]: unknown | undefined;
+  };
+  relinks: {
+    [k: string]: string | undefined;
+  };
+  /**
+   * @minItems 1
+   * @maxItems 16
+   */
+  track_ids?: string[];
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioOtioReferencePlanRequest".
+ */
+export interface StudioOtioReferencePlanRequest {
+  revision: number;
+  reference_run?: string;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioPortableReport".
+ */
+export interface StudioPortableReport {
+  source_project_id: string;
+  source_revision: number;
+  title: string;
+  take_count: number;
+  file_count: number;
+  run_count: number;
+  creative_version_count: number;
+  requirements: {
+    node_id: string;
+    component_id: string;
+    provider_id?: string;
+    runtime_id?: string;
+    component_available?: boolean;
+    model_identity?: {};
+    runtime_identity?: {};
+  }[];
+  missing: {
+    kind: string;
+    id: string;
+  }[];
+  importable: boolean;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioPortableImport".
+ */
+export interface StudioPortableImport {
+  project: StudioProject;
+  report: StudioPortableReport;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StudioPortableHistory".
+ */
+export interface StudioPortableHistory {
+  runs: Run[];
+  drafts: StudioDraftPlan[];
+  requirements: {
+    node_id: string;
+    component_id: string;
+    provider_id?: string;
+    runtime_id?: string;
+    component_available?: boolean;
+    model_identity?: {};
+    runtime_identity?: {};
+  }[];
+}
+/**
+ * x-phasyn-extension：一個已發布檔的身分（FileRef 的 node_id 與 file_id）。
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StorageFileKey".
+ */
+export interface StorageFileKey {
+  node_id: string;
+  file_id: string;
+}
+/**
+ * x-phasyn-extension：數量與位元組數；size_bytes＝已知大小的總和（大小未知的項目只計入 count）。
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StorageTotal".
+ */
+export interface StorageTotal {
+  count: number;
+  size_bytes: number;
+}
+/**
+ * x-phasyn-extension：每個類別的數量與大小。
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StorageTotals".
+ */
+export interface StorageTotals {
+  runs: StorageTotal;
+  files: StorageTotal;
+  remote_cache: StorageTotal;
+  latents: StorageTotal;
+  recordings: StorageTotal;
+}
+/**
+ * x-phasyn-extension：回收規則。min_age_hours＝檔案與 run 至少要這麼舊才列入（保護剛上傳、尚未存進專案的檔案；沒有 scope 時至少 1）；recordings_older_than_days＝recordings 類別只列出早於這個天數的紀錄；include_standalone_runs＝runs 類別也列出不屬於任何專案的 run（phasynctl 或實驗直接建立的 run；預設不列）。
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StorageCleanOptions".
+ */
+export interface StorageCleanOptions {
+  min_age_hours?: number;
+  recordings_older_than_days?: number;
+  include_standalone_runs?: boolean;
+}
+/**
+ * x-phasyn-extension：只在這些對象中找可回收的項目（刪除專案時一併清除它專屬的媒體）。project_ids＝origin 指名這些專案的 run；run_ids、files＝明確列出的 run 與檔案。仍被任何引用的項目一律不列入。
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StorageScope".
+ */
+export interface StorageScope {
+  /**
+   * @maxItems 200
+   */
+  project_ids?: string[];
+  /**
+   * @maxItems 5000
+   */
+  run_ids?: string[];
+  /**
+   * @maxItems 20000
+   */
+  files?: StorageFileKey[];
+}
+/**
+ * x-phasyn-extension：dry_run=true 只回計畫；dry_run=false 只處理 items 列出、而且在這次重新計算時仍符合條件的項目（其他一律不動）。
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StorageCleanRequest".
+ */
+export interface StorageCleanRequest {
+  /**
+   * @minItems 1
+   * @maxItems 5
+   */
+  categories: StorageCategory[];
+  dry_run: boolean;
+  options?: StorageCleanOptions;
+  scope?: StorageScope;
+  /**
+   * @maxItems 20000
+   */
+  items?: string[];
+}
+/**
+ * x-phasyn-extension：計畫或結果中的一個項目。item_id：run:<run_id>、file:<node_id>/<file_id>、remote:<持有的 node_id>/<來源 node_id>/<file_id>、latent:<project_id>/<shot_id>/<take_id>、recording:<持有者 id>/<recording_id>。status：planned＝試算；deleted＝已刪除；missing＝本來就不存在（視為完成）；kept＝保留（例如被固定或仍被引用）；skipped＝這次重新計算時已不符合條件，沒有動；failed＝刪除失敗（code、message 說明原因）。
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StorageItem".
+ */
+export interface StorageItem {
+  item_id: string;
+  category: StorageCategory;
+  status: "planned" | "deleted" | "missing" | "kept" | "skipped" | "failed";
+  label: string;
+  node_id: string | null;
+  size_bytes: number | null;
+  created_at: string | null;
+  run_id?: string;
+  project_id?: string;
+  reason?: string;
+  code?: string;
+  message?: string;
+}
+/**
+ * x-phasyn-extension：一個 Node 的檔案清單是否讀得到。ok；unsupported＝Node 版本沒有儲存清單 API（只回收主控端與 run 的項目）；unreachable＝離線或連不上；failed＝回覆無法使用。
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StorageNodeState".
+ */
+export interface StorageNodeState {
+  node_id: string;
+  label: string;
+  state: "ok" | "unsupported" | "unreachable" | "failed";
+  message?: string;
+}
+/**
+ * x-phasyn-extension：清理計畫（dry_run）或結果。items 每個類別最多列 2000 項（truncated=true 時 totals 仍是全部的總和）。
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StorageCleanResult".
+ */
+export interface StorageCleanResult {
+  dry_run: boolean;
+  categories: StorageCategory[];
+  options: {
+    min_age_hours: number;
+    recordings_older_than_days: number;
+    include_standalone_runs: boolean;
+  };
+  scope: StorageScope | null;
+  items: StorageItem[];
+  totals: StorageTotals;
+  truncated: boolean;
+  nodes: StorageNodeState[];
+  started_at: string;
+  finished_at: string;
+}
+/**
+ * x-phasyn-extension：儲存空間用量。controller 與 nodes 是磁碟上實際的檔案、run、紀錄大小；reclaimable 是用預設規則（不含獨立 run）各類別可回收的量；projects 是每個專案引用的媒體（exclusive_bytes＝只有這個專案引用的部分，刪除專案時可一併清除）。
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StorageUsage".
+ */
+export interface StorageUsage {
+  generated_at: string;
+  controller: {
+    files: StorageTotal;
+    runs: StorageTotal;
+    recordings: StorageTotal;
+  };
+  nodes: {
+    node_id: string;
+    label: string;
+    state: "ok" | "unsupported" | "unreachable" | "failed";
+    message?: string;
+    files: StorageTotal | null;
+    remote_cache: StorageTotal | null;
+    recordings: StorageTotal | null;
+    work?: StorageWork | null;
+  }[];
+  reclaimable: StorageTotals;
+  standalone_runs: StorageTotal;
+  projects: {
+    project_id: string;
+    title: string;
+    runs: number;
+    files: number;
+    size_bytes: number;
+    exclusive_bytes: number;
+  }[];
+  pins: number;
+}
+/**
+ * x-phasyn-extension：元件程序的工作目錄（data_dir/work）。count／size_bytes＝目前所有程序目錄；enabled、ttl_hours＝自動清理設定；last_sweep＝這次 Node 啟動後最後一次清理（還沒跑過是 null）。
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StorageWork".
+ */
+export interface StorageWork {
+  count: number;
+  size_bytes: number;
+  enabled: boolean;
+  ttl_hours: number;
+  last_sweep: {
+    at: string;
+    removed: number;
+    freed_bytes: number;
+    failed: number;
+  } | null;
+}
+/**
+ * x-phasyn-extension：固定的 run 或檔案：儲存清理永遠不回收它們（固定的 run 連同它產生的檔案與紀錄）。實驗把要保留的證據固定在這裡。
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StoragePin".
+ */
+export interface StoragePin {
+  kind: "run" | "file";
+  run_id?: string;
+  node_id?: string;
+  file_id?: string;
+  note?: string;
+  pinned_at?: string;
+}
+/**
+ * x-phasyn-extension：所有固定的 run 與檔案（固定時間由舊到新）。
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StoragePins".
+ */
+export interface StoragePins {
+  /**
+   * @maxItems 20000
+   */
+  items: StoragePin[];
+}
+/**
+ * x-phasyn-extension：新增與移除固定（pinned_at 由主控填寫；已固定的再固定只更新 note；移除不存在的固定不算錯誤）。
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "StoragePinsRequest".
+ */
+export interface StoragePinsRequest {
+  /**
+   * @maxItems 5000
+   */
+  add?: StoragePin[];
+  /**
+   * @maxItems 5000
+   */
+  remove?: StoragePin[];
+}
+/**
+ * x-phasyn-extension：Node 的檔案、遠端副本與本機紀錄清單（主控的儲存清理讀取）。files＝本機已發布檔（links＝metadata.links 指到的檔案）；remote＝files/remote 下已驗證的副本；recordings＝本機紀錄（open＝仍在寫入或屬於執行中的呼叫）。
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "NodeStorageInventory".
+ */
+export interface NodeStorageInventory {
+  node_id: string;
+  files: {
+    file_id: string;
+    size_bytes: number;
+    sha256: string;
+    created_at: string | null;
+    links: StorageFileKey[];
+  }[];
+  remote: {
+    node_id: string;
+    file_id: string;
+    size_bytes: number;
+    sha256: string;
+    created_at: string | null;
+  }[];
+  recordings: {
+    recording_id: string;
+    created_at: string | null;
+    run_id: string | null;
+    size_bytes: number;
+    open: boolean;
+  }[];
+  busy_files: StorageFileKey[];
+  work?: StorageWork;
+}
+/**
+ * x-phasyn-extension：主控要 Node 刪除的本機檔、遠端副本與本機紀錄（每項只送一次，不自動重送）。
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "NodeStorageCleanRequest".
+ */
+export interface NodeStorageCleanRequest {
+  /**
+   * @maxItems 5000
+   */
+  files?: string[];
+  /**
+   * @maxItems 5000
+   */
+  remote?: StorageFileKey[];
+  /**
+   * @maxItems 5000
+   */
+  recordings?: string[];
+}
+/**
+ * x-phasyn-extension：每一項的結果。kept＝正被執行中的呼叫使用或紀錄仍在寫入，沒有刪除。
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "NodeStorageCleanResult".
+ */
+export interface NodeStorageCleanResult {
+  items: {
+    kind: "file" | "remote" | "recording";
+    node_id: string;
+    id: string;
+    status: "deleted" | "missing" | "kept" | "failed";
+    size_bytes: number | null;
+    code?: string;
+    message?: string;
+  }[];
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "LoraTrainingSource".
+ */
+export interface LoraTrainingSource {
+  file: FileRef;
+  label?: string;
+  role?: "train" | "heldout" | "eval_only";
+}
+/**
+ * x-phasyn-extension：比較路線：一個已存的元件組合（含一個 H3 DiT 步驟）；各強度只換掉那個 DiT
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "LoraTrainingRoute".
+ */
+export interface LoraTrainingRoute {
+  route_id: string;
+  label?: string;
+  pipeline_id: string;
+  dit_parameters?: {
+    steps?: number;
+    video_shift?: number;
+    audio_shift?: number;
+  };
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "LoraTrainingEvalPrompt".
+ */
+export interface LoraTrainingEvalPrompt {
+  prompt: string;
+  /**
+   * @minItems 1
+   * @maxItems 4
+   */
+  references: FileRef[];
+}
+/**
+ * x-phasyn-extension：LoRA 訓練的選項；全部可省略（使用預設）
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "LoraTrainingOptions".
+ */
+export interface LoraTrainingOptions {
+  review_before_training?: boolean;
+  /**
+   * @minItems 1
+   * @maxItems 7
+   */
+  strengths?: number[];
+  early_compare_step?: number | null;
+  eval_count?: number;
+  /**
+   * @maxItems 6
+   */
+  eval_prompts?: LoraTrainingEvalPrompt[];
+  /**
+   * @maxItems 3
+   */
+  eval_routes?: LoraTrainingRoute[];
+  eval_width?: number;
+  eval_height?: number;
+  eval_frames?: number;
+  seed?: number;
+  steps?: number | null;
+  rank?: number;
+  alpha?: number;
+  learning_rate?: number;
+  sigma_min?: number;
+  chunk_steps?: number;
+  max_clips?: number;
+  max_source_share?: number;
+  caption_prefix?: string;
+  allow_replace_idle_dit?: boolean;
+  train_node_id?: string | null;
+  max_auto_resumes?: number;
+}
+/**
+ * x-phasyn-extension：建立 LoRA 訓練工作：影片、訓練方向與選用設定
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "LoraTrainingRequest".
+ */
+export interface LoraTrainingRequest {
+  name?: string;
+  direction: string;
+  /**
+   * @minItems 1
+   * @maxItems 64
+   */
+  sources: LoraTrainingSource[];
+  options?: LoraTrainingOptions;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "LoraTrainingAction".
+ */
+export interface LoraTrainingAction {
+  action: "start_training" | "cancel" | "resume" | "stop_training" | "decide";
+  choice?: "keep" | "discard";
+  strength?: number;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "LoraTrainingClipEdit".
+ */
+export interface LoraTrainingClipEdit {
+  /**
+   * @maxItems 4000
+   */
+  drop?: string[];
+  /**
+   * @maxItems 4000
+   */
+  restore?: string[];
+  captions?: {
+    [k: string]: string | undefined;
+  };
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "LoraTrainingSummary".
+ */
+export interface LoraTrainingSummary {
+  training_id: string;
+  name: string;
+  direction: string;
+  status: "running" | "stopping" | "review" | "paused" | "completed" | "failed" | "cancelled";
+  phase:
+    "clips" | "review" | "select" | "encode" | "train" | "compare" | "decide" | "register" | "registered" | "discarded";
+  created_at: string;
+  updated_at: string;
+  progress?: {
+    [k: string]: unknown | undefined;
+  } | null;
+  error?: {
+    [k: string]: unknown | undefined;
+  } | null;
+  decision?: {
+    [k: string]: unknown | undefined;
+  } | null;
+  registered?: {
+    [k: string]: unknown | undefined;
+  } | null;
+}
+/**
+ * x-phasyn-extension：一個 LoRA 訓練工作的完整文件（每個階段的 run、資料、訓練與比較結果）
+ *
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "LoraTraining".
+ */
+export interface LoraTraining {
+  training_id: string;
+  job_key?: string;
+  name: string;
+  direction: string;
+  status: "running" | "stopping" | "review" | "paused" | "completed" | "failed" | "cancelled";
+  phase:
+    "clips" | "review" | "select" | "encode" | "train" | "compare" | "decide" | "register" | "registered" | "discarded";
+  created_at: string;
+  updated_at: string;
+  progress?: {
+    [k: string]: unknown | undefined;
+  } | null;
+  options: {
+    [k: string]: unknown | undefined;
+  };
+  sources: {
+    [k: string]: unknown | undefined;
+  }[];
+  placement?: {
+    [k: string]: unknown | undefined;
+  };
+  runs: {
+    [k: string]: unknown | undefined;
+  }[];
+  artifacts: {
+    [k: string]: unknown | undefined;
+  };
+  selection?: {
+    [k: string]: unknown | undefined;
+  } | null;
+  dataset_summary?: {
+    [k: string]: unknown | undefined;
+  };
+  clips?: {
+    [k: string]: unknown | undefined;
+  }[];
+  eval_items?: {
+    [k: string]: unknown | undefined;
+  }[];
+  training?: {
+    [k: string]: unknown | undefined;
+  } | null;
+  comparison: {
+    [k: string]: unknown | undefined;
+  };
+  decision?: {
+    [k: string]: unknown | undefined;
+  } | null;
+  registered?: {
+    [k: string]: unknown | undefined;
+  } | null;
+  error?: {
+    [k: string]: unknown | undefined;
+  } | null;
+  events: {
+    [k: string]: unknown | undefined;
+  }[];
+  [k: string]: unknown | undefined;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "LoraTrainingList".
+ */
+export interface LoraTrainingList {
+  items: LoraTrainingSummary[];
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "LocalImportRequest".
+ */
+export interface LocalImportRequest {
+  root: number;
+  path: string;
+}
+/**
+ * This interface was referenced by `PhasynStudioContracts`'s JSON-Schema
+ * via the `definition` "LocalImportListing".
+ */
+export interface LocalImportListing {
+  roots?: {
+    root: number;
+    name: string;
+  }[];
+  root?: number;
+  path?: string;
+  truncated?: boolean;
+  entries?: {
+    name: string;
+    kind: "folder" | "video";
+    size_bytes?: number;
+    modified?: number;
+  }[];
 }

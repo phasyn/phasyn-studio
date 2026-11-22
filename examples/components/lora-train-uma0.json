@@ -1,0 +1,31 @@
+{
+  "component_id": "lora-train-uma0",
+  "label": "LoRA 訓練（H3 Ref2VA，統一記憶體 GPU，用到才載入）",
+  "provider_id": "h3.lora_train",
+  "runtime_id": "aarch64-sm121",
+  "autostart": false,
+  "folder": "訓練",
+  "load_policy": "on_demand",
+  "idle_unload_seconds": 600,
+  "exclusive_group": "dit",
+  "retry_after_verified_stop": true,
+  "settings": {
+    "load": {
+      "model_path": "/path/to/models",
+      "device": {
+        "kind": "cuda",
+        "id": "GPU-REPLACE-UMA",
+        "resource_group": "gpu-uma"
+      },
+      "provider_options": {
+        "cuda_cap_gib": 40,
+        "self_stop_gib": 12,
+        "required_units": []
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "mode": "summary"
+    }
+  }
+}

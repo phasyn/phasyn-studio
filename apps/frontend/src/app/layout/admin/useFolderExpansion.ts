@@ -9,12 +9,12 @@ import { usePersistentSet } from "@/lib/usePersistentSize";
 export function useFolderExpansion(storageKey: string, items: readonly TreeItem[], selectedId: string | null, searchExpand: ReadonlySet<string>) {
   const [collapsed, setCollapsed] = usePersistentSet(storageKey, []);
   const [lastSelected, setLastSelected] = useState(selectedId);
-  const [closed, setClosed] = useState<ReadonlySet<string>>(new Set());
+  const [closed, setClosed] = useState<ReadonlySet<string>>(() => new Set());
   if (selectedId !== lastSelected) {
     setLastSelected(selectedId);
     setClosed(new Set());
   }
-  const ancestors = selectedId ? ancestorsOf(items, selectedId) : [];
+  const ancestors = (selectedId != null && selectedId !== "") ? ancestorsOf(items, selectedId) : [];
   const expanded = new Set<string>([
     ...branchIds(items).filter((id) => !collapsed.has(id)),
     ...ancestors.filter((id) => !closed.has(id)),

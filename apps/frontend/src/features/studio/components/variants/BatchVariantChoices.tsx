@@ -58,7 +58,7 @@ export function BatchFileChoices({ choices, onChange, groups, library }: BatchAx
       </Select>
       {pick && group ? (
         <div role="group" aria-label={t("@{alias} 要試的檔案", { alias: group.alias })} className="grid gap-1 animate-reveal">
-          <ChoiceRow index={0} checked={pick.own} onChange={(own) => onChange({ ...choices, files: { ...pick, own } })} title={ownText(group)}>
+          <ChoiceRow index={0} checked={pick.own} onChange={(own) => { onChange({ ...choices, files: { ...pick, own } }); }} title={ownText(group)}>
             <span className="truncate text-data text-fg">{t("每個鏡頭目前的檔案")}</span>
             <span className="truncate text-caption text-fg-tertiary">{ownText(group)}</span>
           </ChoiceRow>
@@ -67,7 +67,7 @@ export function BatchFileChoices({ choices, onChange, groups, library }: BatchAx
             .map((item, index) => {
               const using = group.files.find((file) => file.itemId === item.item_id)?.shots ?? 0;
               return (
-                <ChoiceRow key={item.item_id} index={index + 1} checked={pick.itemIds.includes(item.item_id)} onChange={(checked) => toggle(item.item_id, checked)} title={item.name}>
+                <ChoiceRow key={item.item_id} index={index + 1} checked={pick.itemIds.includes(item.item_id)} onChange={(checked) => { toggle(item.item_id, checked); }} title={item.name}>
                   <span className="flex min-w-0 items-center gap-1.5">
                     <span className="min-w-0 truncate text-data text-fg">{item.name}</span>
                     {using > 0 ? <span className={OWN_CHIP}>{t("{count} 個鏡頭在用", { count: using })}</span> : null}
@@ -101,7 +101,7 @@ export function BatchRouteChoices({ choices, onChange, options, catalog }: Batch
         {t("路線")}
       </h3>
       <div role="group" aria-labelledby={`${id}-title`} className="grid gap-1">
-        <ChoiceRow index={0} checked={chosen.own} onChange={(own) => onChange({ ...choices, routes: { ...chosen, own } })}>
+        <ChoiceRow index={0} checked={chosen.own} onChange={(own) => { onChange({ ...choices, routes: { ...chosen, own } }); }}>
           <span className="truncate text-data text-fg">{t("每個鏡頭目前的路線")}</span>
         </ChoiceRow>
         {options.map(({ route, shots }, index) => {
@@ -111,7 +111,7 @@ export function BatchRouteChoices({ choices, onChange, options, catalog }: Batch
               key={route.id}
               index={index + 1}
               checked={chosen.others.includes(route.id)}
-              onChange={(checked) => toggle(route.id, checked)}
+              onChange={(checked) => { toggle(route.id, checked); }}
               title={route.ready ? face.title : `${face.title}\n${route.summary}`}
             >
               <span className="min-w-0 truncate text-data text-fg">{face.name}</span>

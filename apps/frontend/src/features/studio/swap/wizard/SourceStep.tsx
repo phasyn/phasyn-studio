@@ -1,4 +1,5 @@
 // Wizard step 1: source video (library or upload), range, facts and route-independent tips.
+import { AssetVideo } from "@/components/common/AssetMedia";
 import { FileVideo, Film, Info, LoaderCircle, Scissors, TriangleAlert, Upload } from "lucide-react";
 import { useId, useRef } from "react";
 import type { StudioLibraryItem } from "@/api/generated/contracts";
@@ -21,8 +22,8 @@ import { t } from "@/i18n";
 export function SourceStep({ api, derived, library }: { api: SwapDraftApi; derived: WizardDerived; library: readonly StudioLibraryItem[] }) {
   const { draft, update, chooseLibraryVideo, uploadSource } = api;
   const id = useId();
-  const fileInput = useRef<HTMLInputElement>(null);
-  const video = useRef<HTMLVideoElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const videos = library.filter((item) => item.kind === "video");
   const source = draft.source;
   const inLibrary = source ? videos.some((item) => item.file.file_id === source.file.file_id) : false;
@@ -31,7 +32,7 @@ export function SourceStep({ api, derived, library }: { api: SwapDraftApi; deriv
   const end = draft.endSeconds ?? duration;
   const uploading = draft.sourceUpload !== null && draft.sourceUpload.state !== "failed";
   const fromVideo = (field: "startSeconds" | "endSeconds") => {
-    const time = video.current?.currentTime;
+    const time = videoRef.current?.currentTime;
     if (time !== undefined && Number.isFinite(time)) update({ [field]: round3(time) });
   };
   return (
@@ -41,13 +42,13 @@ export function SourceStep({ api, derived, library }: { api: SwapDraftApi; deriv
         title={t("來源影片")}
         icon={<FileVideo />}
         actions={
-          <Button size="sm" variant="secondary" icon={<Upload aria-hidden />} pending={uploading} onClick={() => fileInput.current?.click()}>
+          <Button size="sm" variant="secondary" icon={<Upload aria-hidden />} pending={uploading} onClick={() => fileInputRef.current?.click()}>
             {t("上傳影片")}
           </Button>
         }
       >
         <input
-          ref={fileInput}
+          ref={fileInputRef}
           type="file"
           accept="video/*"
           tabIndex={-1}
@@ -73,7 +74,7 @@ export function SourceStep({ api, derived, library }: { api: SwapDraftApi; deriv
               title={t("這個專案的素材庫沒有影片")}
               description={t("按「上傳影片」選一支；上傳後只加到新的換角專案，不會改動目前的專案。")}
               action={
-                <Button size="sm" variant="secondary" icon={<Upload aria-hidden />} pending={uploading} onClick={() => fileInput.current?.click()}>
+                <Button size="sm" variant="secondary" icon={<Upload aria-hidden />} pending={uploading} onClick={() => fileInputRef.current?.click()}>
                   {t("上傳影片")}
                 </Button>
               }
@@ -91,7 +92,7 @@ export function SourceStep({ api, derived, library }: { api: SwapDraftApi; deriv
                 name={item.name}
                 facts={itemFacts(item)}
                 checked={source?.file.file_id === item.file.file_id}
-                onSelect={() => chooseLibraryVideo(item)}
+                onSelect={() => { chooseLibraryVideo(item); }}
               />
             ))}
           </fieldset>
@@ -101,13 +102,13 @@ export function SourceStep({ api, derived, library }: { api: SwapDraftApi; deriv
       {source ? (
         <Section title={t("範圍")} icon={<Scissors />}>
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_17rem]">
-            <video ref={video} controls preload="metadata" src={mediaUrl(source.file.node_id, source.file.file_id)} aria-label={t("來源影片預覽：{name}", { name: source.name })} className="aspect-video w-full rounded-lg border border-line-subtle bg-stage object-contain" />
+            <AssetVideo ref={videoRef} controls preload="metadata" src={mediaUrl(source.file.node_id, source.file.file_id)} aria-label={t("來源影片預覽：{name}", { name: source.name })} className="aspect-video w-full rounded-lg border border-line-subtle bg-stage object-contain" />
             <div className="grid content-start gap-3">
               <div className="grid gap-1">
                 <Label htmlFor={`${id}-start`}>{t("起點（秒）")}</Label>
                 <div className="flex items-start gap-1.5">
-                  <NumberField id={`${id}-start`} value={draft.startSeconds} min={0} max={duration ?? 86_400} onCommit={(value) => update({ startSeconds: round3(value ?? 0) })} className="flex-1" />
-                  <Button size="sm" variant="quiet" onClick={() => fromVideo("startSeconds")} title={t("用預覽播放器目前的時間當起點")}>
+                  <NumberField id={`${id}-start`} value={draft.startSeconds} min={0} max={duration ?? 86_400} onCommit={(value) => { update({ startSeconds: round3(value ?? 0) }); }} className="flex-1" />
+                  <Button size="sm" variant="quiet" onClick={() => { fromVideo("startSeconds"); }} title={t("用預覽播放器目前的時間當起點")}>
                     {t("設為目前時間")}
                   </Button>
                 </div>
@@ -115,8 +116,8 @@ export function SourceStep({ api, derived, library }: { api: SwapDraftApi; deriv
               <div className="grid gap-1">
                 <Label htmlFor={`${id}-end`}>{t("終點（秒；空白＝到結尾）")}</Label>
                 <div className="flex items-start gap-1.5">
-                  <NumberField id={`${id}-end`} value={draft.endSeconds} allowEmpty placeholder={duration !== null ? duration.toFixed(3) : t("到結尾")} min={0} max={duration ?? 86_400} onCommit={(value) => update({ endSeconds: value === null ? null : round3(value) })} className="flex-1" />
-                  <Button size="sm" variant="quiet" onClick={() => fromVideo("endSeconds")} title={t("用預覽播放器目前的時間當終點")}>
+                  <NumberField id={`${id}-end`} value={draft.endSeconds} allowEmpty placeholder={duration !== null ? duration.toFixed(3) : t("到結尾")} min={0} max={duration ?? 86_400} onCommit={(value) => { update({ endSeconds: value === null ? null : round3(value) }); }} className="flex-1" />
+                  <Button size="sm" variant="quiet" onClick={() => { fromVideo("endSeconds"); }} title={t("用預覽播放器目前的時間當終點")}>
                     {t("設為目前時間")}
                   </Button>
                 </div>
@@ -146,7 +147,7 @@ export function SourceStep({ api, derived, library }: { api: SwapDraftApi; deriv
 
 function describeFacts(facts: NonNullable<WizardDerived["facts"]>): string {
   const parts = [facts.duration_seconds !== null ? t("{duration_seconds} 秒", { duration_seconds: facts.duration_seconds.toFixed(1) }) : t("長度未知")];
-  if (facts.width && facts.height) parts.push(`${facts.width}×${facts.height}`);
+  if (Boolean(facts.width) && Boolean(facts.height)) parts.push(`${String(facts.width)}×${String(facts.height)}`);
   parts.push(facts.has_audio === null ? t("音軌未知") : facts.has_audio ? t("有音軌") : t("無音軌"));
   return parts.join(" · ");
 }

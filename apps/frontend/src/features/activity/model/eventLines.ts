@@ -19,7 +19,7 @@ const EVENT_LEVELS = new Set<string>(["debug", "info", "warning", "error"]);
 function eventSource(event: RecordingEvent, options: EventLineOptions): LogSource {
   if (event.stream_id === "node") return { kind: "node", label: options.nodeLabels?.get(event.node_id) ?? shortId(event.node_id) };
   if (event.stream_id === "controller") return { kind: "controller", label: t("主控") };
-  return { kind: "component", label: event.component_id, ...(options.providerId ? { providerId: options.providerId } : {}) };
+  return { kind: "component", label: event.component_id, ...((options.providerId != null && options.providerId !== "") ? { providerId: options.providerId } : {}) };
 }
 
 function stringField(data: Record<string, unknown>, key: string): string | null {
@@ -31,16 +31,21 @@ function stringField(data: Record<string, unknown>, key: string): string | null 
 function otherKindMessage(kind: string, data: unknown): string {
   if (!isRecord(data)) return `${kind} ${previewValue(data, 160)}`;
   const name = stringField(data, "name");
-  if (name && "value" in data) {
-    const value = data.value;
+  if ((name != null && name !== "") && "value" in data) {
+    const value = data["value"];
     const unit = stringField(data, "unit");
-    const shown = typeof value === "number" ? `${value}${unit ? ` ${unit}` : ""}` : value === null ? t("未量測") : previewValue(value, 60);
+    const shown = typeof value === "number" ? `${String(value)}${(unit != null && unit !== "") ? ` ${unit}` : ""}` : value === null ? t("未量測") : previewValue(value, 60);
     return `${kind} ${name}=${shown}`;
   }
   const code = stringField(data, "code");
   const message = stringField(data, "message");
-  if (code || message) return `${kind} ${joinParts([code, message], t("："))}`;
+  if ((code ?? "") || (message != null && message !== "")) return `${kind} ${joinParts([code, message], t("："))}`;
   return `${kind} ${previewValue(data, 160)}`;
+}
+
+function futureEvent(value: unknown): { kind: string; data: unknown } {
+  if (!isRecord(value)) return { kind: "event", data: undefined };
+  return { kind: typeof value["kind"] === "string" ? value["kind"] : "event", data: value["data"] };
 }
 
 function eventMessage(event: RecordingEvent): string {
@@ -49,7 +54,7 @@ function eventMessage(event: RecordingEvent): string {
       return event.data.truncated ? t("{message}（已截斷）", { message: event.data.message }) : event.data.message;
     case "span": {
       const data = event.data;
-      const gpuUnmeasured = data.gpu_event_ms === null && data.gpu_device_id ? t("・GPU event 未量測") : "";
+      const gpuUnmeasured = data.gpu_event_ms === null && (data.gpu_device_id != null && data.gpu_device_id !== "") ? t("・GPU event 未量測") : "";
       return t("span {event}{gpuUnmeasured}（{quality}）", { event: eventSummary(event), gpuUnmeasured, quality: data.quality });
     }
     case "step":
@@ -59,14 +64,14 @@ function eventMessage(event: RecordingEvent): string {
     case "notice":
       return `${event.kind} ${eventSummary(event)}`;
     default: {
-      const raw = event as unknown as { kind: unknown; data: unknown };
-      return otherKindMessage(typeof raw.kind === "string" ? raw.kind : "event", raw.data);
+      const raw = futureEvent(event);
+      return otherKindMessage(raw.kind, raw.data);
     }
   }
 }
 
 function eventDetail(event: RecordingEvent): string {
-  const head = `${event.stream_id}#${event.seq}`;
+  const head = `${event.stream_id}#${String(event.seq)}`;
   switch (event.kind) {
     case "log": {
       const fields = event.data.fields;
@@ -85,7 +90,7 @@ function eventDetail(event: RecordingEvent): string {
     case "step":
       return head;
     default: {
-      const raw = event as unknown as { data: unknown };
+      const raw = futureEvent(event);
       return joinParts([head, clip(previewValue(raw.data, 800), 800)]);
     }
   }
@@ -94,7 +99,7 @@ function eventDetail(event: RecordingEvent): string {
 export function lineFromEvent(event: RecordingEvent, options: EventLineOptions = {}): LogLine {
   const level: LogLevel = EVENT_LEVELS.has(event.level) ? event.level : "info";
   return {
-    id: `ev:${event.recording_id}:${event.stream_id}:${event.seq}`,
+    id: `ev:${event.recording_id}:${event.stream_id}:${String(event.seq)}`,
     at: event.occurred_at,
     level,
     source: eventSource(event, options),

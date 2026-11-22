@@ -11,6 +11,7 @@ import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+
 POLL_S = 0.02
 
 
@@ -21,7 +22,9 @@ def free_port(host: str = "127.0.0.1") -> int:
         return int(sock.getsockname()[1])
 
 
-def wait_until[T](predicate: Callable[[], T], *, timeout: float = 10.0, what: str = "condition") -> T:
+def wait_until[T](
+    predicate: Callable[[], T], *, timeout: float = 10.0, what: str = "condition"
+) -> T:
     """Poll ``predicate`` until it returns something truthy (returned); ``AssertionError`` on timeout.
 
     Use it for conditions the code under test reaches on its own; the timeout is a generous upper
@@ -38,7 +41,10 @@ def wait_until[T](predicate: Callable[[], T], *, timeout: float = 10.0, what: st
 
 
 async def wait_until_async(
-    predicate: Callable[[], Any | Awaitable[Any]], *, timeout: float = 10.0, what: str = "condition"
+    predicate: Callable[[], Any | Awaitable[Any]],
+    *,
+    timeout: float = 10.0,  # noqa: ASYNC109 - The polling deadline is part of the public test SDK.
+    what: str = "condition",
 ) -> Any:
     """:func:`wait_until` for asyncio tests; ``predicate`` may return an awaitable."""
     deadline = time.monotonic() + timeout

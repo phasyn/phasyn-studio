@@ -175,7 +175,7 @@ export function planAnalyze(task: PromptStudyTask): PlannedStep {
 
 export function planRefine(study: PromptStudy, task: PromptStudyTask): PlannedStep {
   if (task.state !== "running") return { kind: "done" };
-  if (task.request.kind !== "refine" || !task.base_version_id) return { kind: "blocked", reason: t("任務設定無法解讀（缺少修訂指示或起點版本）") };
+  if (task.request.kind !== "refine" || !(task.base_version_id != null && task.base_version_id !== "")) return { kind: "blocked", reason: t("任務設定無法解讀（缺少修訂指示或起點版本）") };
   if (!findVersion(study, task.base_version_id)) return { kind: "blocked", reason: t("找不到修訂的起點版本") };
   if (versionRefsOf(task).length > 0) return finish("succeeded", "completed", null, "analysis_only", { reason: "revision_done" });
   return { kind: "revise", round: null, fromVersionId: task.base_version_id, instruction: task.request.instruction, comparison: null, ...pendingAction(task) };

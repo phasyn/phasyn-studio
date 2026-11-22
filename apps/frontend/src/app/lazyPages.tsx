@@ -12,9 +12,11 @@ export const ComponentsPage = lazy(() => import("@/features/components/Component
 export const PipelinesPage = lazy(() => import("@/features/pipelines/PipelinesPage").then((m) => ({ default: m.PipelinesPage })));
 export const RunsPage = lazy(() => import("@/features/runs/RunsPage").then((m) => ({ default: m.RunsPage })));
 export const RunDetailPage = lazy(() => import("@/features/runs/RunDetailPage").then((m) => ({ default: m.RunDetailPage })));
+export const StoragePage = lazy(() => import("@/features/storage/StoragePage").then((m) => ({ default: m.StoragePage })));
 export const TrackingPage = lazy(() => import("@/features/tracking/TrackingPage").then((m) => ({ default: m.TrackingPage })));
 export const SemanticsPage = lazy(() => import("@/features/semantics/SemanticsPage").then((m) => ({ default: m.SemanticsPage })));
 export const RecordingsPage = lazy(() => import("@/features/recordings/RecordingsPage").then((m) => ({ default: m.RecordingsPage })));
 export const ComparisonsPage = lazy(() => import("@/features/recordings/comparisons/ComparisonsPage").then((m) => ({ default: m.ComparisonsPage })));
 export const InferencePage = lazy(() => import("@/features/inference/InferencePage").then((m) => ({ default: m.InferencePage })));
+export const TrainingPage = lazy(() => import("@/features/lora-training").then((m) => ({ default: m.TrainingPage })));
 export const PromptStudiesPage = lazy(() => import("@/features/prompt-studies/PromptStudiesPage").then((m) => ({ default: m.PromptStudiesPage })));

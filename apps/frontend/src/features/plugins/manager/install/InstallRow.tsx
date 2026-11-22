@@ -22,6 +22,7 @@ function stepStates(state: InstallState): [StepState, StepState, StepState] {
       return ["done", "done", "done"];
     case "failed":
       return state.stage === "check" ? ["error", "pending", "pending"] : ["done", "done", "error"];
+    case "idle":
     default:
       return ["pending", "pending", "pending"];
   }
@@ -52,7 +53,7 @@ export function InstallRow() {
       <button
         type="button"
         aria-pressed={shown}
-        onClick={() => setInstalled({ pane: "install" })}
+        onClick={() => { setInstalled({ pane: "install" }); }}
         title={state.fileName}
         className="pressable flex min-w-0 flex-1 items-center gap-2.5 rounded-md py-1 text-left"
       >
@@ -60,7 +61,7 @@ export function InstallRow() {
           <FileArchive />
         </span>
         <span className="truncate text-body text-fg">{state.fileName}</span>
-        {size ? <span className="machine shrink-0 text-caption text-fg-tertiary">{size}</span> : null}
+        {(size != null && size !== "") ? <span className="machine shrink-0 text-caption text-fg-tertiary">{size}</span> : null}
       </button>
       <Stepper size="sm" label={t("安裝步驟")} steps={installSteps(state)} />
       {closable ? (

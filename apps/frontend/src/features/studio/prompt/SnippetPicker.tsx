@@ -1,5 +1,6 @@
 // 屬性面板內的固定 Prompt 挑選器（工具列「固定 Prompt ▾」的浮層內容）：搜尋、分類、點一下插入。管理（新增／編輯／刪除）
 // 在專業編輯器。外觀：群組卡（放進浮層時由 className 去掉邊框與底色），展開時 reveal；清單逐項進場；分類是膠囊小籤。
+import { focusOpenedControl } from "@/lib/dom";
 import { BookMarked, LoaderCircle, Settings2 } from "lucide-react";
 import { useState, type KeyboardEvent } from "react";
 import type { StudioPromptSnippet } from "@/api/generated/contracts";
@@ -44,10 +45,10 @@ export function SnippetPicker({
     onClose();
   };
   return (
-    <div id={id} role="region" aria-label={t("插入固定 Prompt")} onKeyDown={onKeyDown} className={cn(CARD, "grid min-w-0 gap-2 p-2 animate-reveal", className)}>
+    <div /* eslint-disable-line jsx-a11y-x/no-noninteractive-element-interactions -- Keyboard events from this panel’s focusable controls bubble here so navigation and dismissal share one handler. */  id={id} role="region" aria-label={t("插入固定 Prompt")} onKeyDown={onKeyDown} className={cn(CARD, "grid min-w-0 gap-2 p-2 animate-reveal", className)}>
       <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)] gap-1.5">
-        <Input compact autoFocus value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t("搜尋名稱或內容")} aria-label={t("搜尋固定 Prompt")} />
-        <Select compact value={category} onChange={(event) => setCategory(event.target.value)} aria-label={t("分類")}>
+        <Input compact ref={focusOpenedControl} value={search} onChange={(event) => { setSearch(event.target.value); }} placeholder={t("搜尋名稱或內容")} aria-label={t("搜尋固定 Prompt")} />
+        <Select compact value={category} onChange={(event) => { setCategory(event.target.value); }} aria-label={t("分類")}>
           <option value={ALL_CATEGORIES}>{t("全部分類")}</option>
           {categories.map((name) => (
             <option key={name} value={categoryFilterValue(name)}>
@@ -74,14 +75,14 @@ export function SnippetPicker({
             <li key={snippet.snippet_id} className={"min-w-0"} ref={reveal(index)}>
               <button
                 type="button"
-                onClick={() => onPick(snippet)}
+                onClick={() => { onPick(snippet); }}
                 className="grid w-full min-w-0 grid-cols-[1rem_minmax(0,1fr)] gap-x-2 rounded-lg px-2 py-1.5 text-left transition-colors duration-(--duration-fast) hover:bg-raised/70 active:bg-sunken"
               >
                 <BookMarked aria-hidden className="mt-0.5 size-3.5 text-fg-tertiary" />
                 <span className="grid min-w-0">
                   <span className="flex min-w-0 items-baseline gap-2">
                     <span className="truncate text-data text-fg">{snippet.title}</span>
-                    {snippet.category ? (
+                    {(snippet.category != null && snippet.category !== "") ? (
                       <span className="max-w-[45%] shrink-0 truncate rounded-full border border-line-subtle px-1.5 text-[11px] leading-4 text-fg-tertiary" title={snippet.category}>
                         {snippet.category}
                       </span>

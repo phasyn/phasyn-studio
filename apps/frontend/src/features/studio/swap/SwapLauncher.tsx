@@ -118,7 +118,7 @@ export function SwapLauncher({ iconOnly = false, bare = false }: { iconOnly?: bo
         <Button
           size="sm"
           variant="secondary"
-          icon={summary?.busy ? <LoaderCircle aria-hidden className="animate-spin" /> : <Replace aria-hidden />}
+          icon={(summary?.busy === true) ? <LoaderCircle aria-hidden className="animate-spin" /> : <Replace aria-hidden />}
           title={summary?.title ?? t("一鍵換角：依切鏡自動分段、批次渲染並接成一支影片（建立新專案）")}
           aria-label={label}
           className="shrink-0"
@@ -142,8 +142,8 @@ export function SwapLauncher({ iconOnly = false, bare = false }: { iconOnly?: bo
                     job={job}
                     progress={job.progress}
                     focusTitle={switched}
-                    onNewSwap={() => switchTo("wizard")}
-                    onNavigate={() => setOpen(false)}
+                    onNewSwap={() => { switchTo("wizard"); }}
+                    onNavigate={() => { setOpen(false); }}
                     onOpenEngine={() => {
                       setOpen(false);
                       setEngineOpen(true);
@@ -159,7 +159,7 @@ export function SwapLauncher({ iconOnly = false, bare = false }: { iconOnly?: bo
                 detection={detection}
                 creation={creation}
                 focusTitle={switched}
-                onShowJob={info ? () => switchTo("job") : null}
+                onShowJob={info ? () => { switchTo("job"); } : null}
                 restored={restored}
                 onStartOver={startOver}
               />
@@ -288,7 +288,7 @@ function WizardHost({
         plugins: pluginRefs,
       },
       characters: draft.characters,
-      startRender: draft.startRender && !renderBlockedReason,
+      startRender: draft.startRender && !(renderBlockedReason != null && renderBlockedReason !== ""),
       firstBatch: nextBatch(derived.plan.segments.map((_, index) => String(index)), derived.perRun, batchSize).length,
       routes: engine.routes,
       catalog,

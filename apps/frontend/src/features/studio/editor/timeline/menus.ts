@@ -30,6 +30,7 @@ import {
   Trash2,
   Type,
   Unlink2,
+  Wand2,
   X,
   Zap,
   ZoomIn,
@@ -59,6 +60,7 @@ import { hasMotionReference } from "../../speedfeel/target";
 import { ADJUSTMENT_TRANSITION, isAdjustment } from "../adjustment";
 import type { Editor } from "../editorContext";
 import { clipEnabled, clipEnd, sourceFrameAtTimeline, trackClips } from "../model";
+import { requestClipFix } from "../../fix/fixStore";
 import { restoreTakeProblem } from "../restoreTake";
 import { cutOf } from "../transitionCut";
 
@@ -72,10 +74,10 @@ const modAlt = (key: string) => mod(`${modifierLabel("Alt", detectApplePlatform(
 function pasteItems(editor: Editor, attributes: boolean): MenuItem[] {
   const copied = editor.clipboard ? null : t("請先複製時間軸片段");
   return [
-    { id: "paste", label: t("貼上（在播放頭覆寫）"), icon: ClipboardPaste, shortcut: mod("V"), disabledReason: editor.pasteBlocked, onSelect: () => editor.paste("overwrite") },
-    { id: "paste-insert", label: t("貼上插入"), icon: ClipboardPaste, shortcut: mod("Shift+V"), disabledReason: editor.pasteBlocked, onSelect: () => editor.paste("insert") },
+    { id: "paste", label: t("貼上（在播放頭覆寫）"), icon: ClipboardPaste, shortcut: mod("V"), disabledReason: editor.pasteBlocked, onSelect: () => { editor.paste("overwrite"); } },
+    { id: "paste-insert", label: t("貼上插入"), icon: ClipboardPaste, shortcut: mod("Shift+V"), disabledReason: editor.pasteBlocked, onSelect: () => { editor.paste("insert"); } },
     ...(attributes
-      ? [{ id: "paste-attributes", label: t("貼上屬性…"), icon: ClipboardPaste, shortcut: modAlt("V"), disabledReason: copied, onSelect: () => editor.ui.setPastingAttributes(true) }]
+      ? [{ id: "paste-attributes", label: t("貼上屬性…"), icon: ClipboardPaste, shortcut: modAlt("V"), disabledReason: copied, onSelect: () => { editor.ui.setPastingAttributes(true); } }]
       : []),
   ];
 }
@@ -88,11 +90,11 @@ function cutAfter(editor: Editor, clip: TimelineClip): TimelineClip | null {
   const ordered = trackClips(editor.timeline, clip.track_id);
   const next = ordered[ordered.findIndex((item) => item.clip_id === clip.clip_id) + 1];
   const overlap = activeTransition(clip.effects)?.frames ?? 0;
-  return next && next.start_frame === clipEnd(clip) - overlap ? next : null;
+  return next?.start_frame === clipEnd(clip) - overlap ? next : null;
 }
 
 export function clipMenu(editor: Editor, clip: TimelineClip): MenuItem[] {
-  const locked = editor.trackOf(clip)?.locked ? t("軌道已鎖定；請先解鎖再編輯") : null;
+  const locked = (editor.trackOf(clip)?.locked === true) ? t("軌道已鎖定；請先解鎖再編輯") : null;
   const transition = activeTransition(clip.effects);
   const shorter = editor.shorterTakes.find((item) => item.sourceId === clip.source_id);
   const next = cutAfter(editor, clip);
@@ -115,7 +117,7 @@ export function clipMenu(editor: Editor, clip: TimelineClip): MenuItem[] {
     ...(editor.selected.length > 1
       ? [{ id: "link", label: t("連結"), icon: Link2, shortcut: mod("L"), separatorBefore: true, onSelect: () => void editor.command({ type: "link", clipIds: editor.selected }) }]
       : []),
-    ...(clip.linked_id
+    ...((clip.linked_id != null && clip.linked_id !== "")
       ? [{ id: "unlink", label: t("取消連結"), icon: Unlink2, shortcut: mod("L"), separatorBefore: editor.selected.length <= 1, onSelect: () => void editor.command({ type: "unlink", clipIds: editor.selected }) }]
       : []),
     ...(transition
@@ -130,15 +132,26 @@ export function clipMenu(editor: Editor, clip: TimelineClip): MenuItem[] {
             onSelect: () => void editor.command({ type: "transition", clipId: clip.clip_id, kind, frames: DEFAULT_TRANSITION_FRAMES, linked: editor.linked }),
           }),
         )),
-    ...(shorter ? [{ id: "shorter", label: t("套用較短的新 take 並裁短片段…"), icon: Scissors, separatorBefore: true, onSelect: () => editor.requestShorter(shorter) }] : []),
-    ...restoreTakeItems(editor, clip, locked, !shorter),
+    ...(shorter ? [{ id: "shorter", label: t("套用較短的新 take 並裁短片段…"), icon: Scissors, separatorBefore: true, onSelect: () => { editor.requestShorter(shorter); } }] : []),
+    fixItem(editor, clip, !shorter),
+    ...restoreTakeItems(editor, clip, locked, false),
     { id: "enable", label: clipEnabled(clip) ? t("停用片段") : t("啟用片段"), icon: clipEnabled(clip) ? EyeOff : Eye, shortcut: "Shift+E", separatorBefore: true, disabledReason: locked, onSelect: () => void editor.toggleEnabled() },
-    { id: "speed", label: t("速度與持續時間…"), icon: Gauge, disabledReason: adjustment ? t("調整圖層沒有自己的時間：不能變速或停格") : null, onSelect: () => editor.ui.request({ panel: "controls", field: "speed" }) },
+    { id: "speed", label: t("速度與持續時間…"), icon: Gauge, disabledReason: adjustment ? t("調整圖層沒有自己的時間：不能變速或停格") : null, onSelect: () => { editor.ui.request({ panel: "controls", field: "speed" }); } },
     ...speedFeelItems(editor, clip),
-    { id: "rename", label: t("重新命名…"), icon: PencilLine, onSelect: () => editor.ui.request({ panel: "controls", field: "name" }) },
-    { id: "reveal", label: t("在專案中顯示"), icon: FolderSearch, separatorBefore: true, disabledReason: noMedia, onSelect: () => revealInProject(editor, clip) },
-    { id: "match", label: t("符合影格"), icon: Crosshair, disabledReason: noFrames ?? (inside ? null : t("播放頭不在這個片段上")), onSelect: () => matchFrame(editor, clip, frame) },
+    { id: "rename", label: t("重新命名…"), icon: PencilLine, onSelect: () => { editor.ui.request({ panel: "controls", field: "name" }); } },
+    { id: "reveal", label: t("在專案中顯示"), icon: FolderSearch, separatorBefore: true, disabledReason: noMedia, onSelect: () => { revealInProject(editor, clip); } },
+    { id: "match", label: t("符合影格"), icon: Crosshair, disabledReason: noFrames ?? (inside ? null : t("播放頭不在這個片段上")), onSelect: () => { matchFrame(editor, clip, frame); } },
   ];
+}
+
+/**
+ * 修正…: the 修正 menu of the clip's take (fix/), shown next to the clip; a clip that is no shot's take says why not.
+ */
+function fixItem(editor: Editor, clip: TimelineClip, separatorBefore: boolean): MenuItem {
+  const source = editor.sourceOf(clip);
+  const origin = source?.candidate_origin ?? source;
+  const reason = origin?.shot_id != null && origin.shot_id !== "" && origin.take_id != null && origin.take_id !== "" ? null : t("這個片段不是鏡頭的 take");
+  return { id: "fix", label: t("修正…"), icon: Wand2, separatorBefore, disabledReason: reason, onSelect: () => { requestClipFix(clip.clip_id); } };
 }
 
 /**
@@ -147,7 +160,7 @@ export function clipMenu(editor: Editor, clip: TimelineClip): MenuItem[] {
  */
 function restoreTakeItems(editor: Editor, clip: TimelineClip, locked: string | null, separatorBefore: boolean): MenuItem[] {
   const shotId = editor.sourceOf(clip)?.shot_id;
-  if (!shotId) return [];
+  if (!(shotId != null && shotId !== "")) return [];
   const inFrame = editor.project.shots.find((shot) => shot.shot_id === shotId)?.in_frame ?? 0;
   return [
     {
@@ -164,7 +177,7 @@ function restoreTakeItems(editor: Editor, clip: TimelineClip, locked: string | n
 /** 速度感…: on a video clip whose shot has a @Video1 reference (the dialog says why a clip cannot be analysed). */
 function speedFeelItems(editor: Editor, clip: TimelineClip): MenuItem[] {
   if (!hasMotionReference(editor.project, editor.timeline, clip)) return [];
-  return [{ id: "speedfeel", label: t("速度感…"), icon: Zap, onSelect: () => editor.ui.setSpeedFeelClip(clip.clip_id) }];
+  return [{ id: "speedfeel", label: t("速度感…"), icon: Zap, onSelect: () => { editor.ui.setSpeedFeelClip(clip.clip_id); } }];
 }
 
 /** Show the clip's media in the Project panel (it becomes the loaded source). */
@@ -187,13 +200,13 @@ export function transitionMenu(editor: Editor, clip: TimelineClip): MenuItem[] {
   const transition = activeTransition(clip.effects);
   if (!transition) return [];
   const command = (kind: TransitionKind, frames: number, options?: TransitionOptions, alignment?: TransitionAlignment) =>
-    editor.command({ type: "transition", clipId: clip.clip_id, kind, frames, options, alignment, linked: editor.linked });
+    editor.command({ type: "transition", clipId: clip.clip_id, kind, frames, ...(options === undefined ? {} : { options }), ...(alignment === undefined ? {} : { alignment }), linked: editor.linked });
   const set = (frames: number) => command(transition.kind, frames);
   const moving = isMoving(transition) ? transition : null;
   const current = cutOf(transition).alignment;
   return [
     ...[6, 12, 24].map(
-      (frames): MenuItem => ({ id: `frames-${frames}`, label: t("長度 {frames} 影格", { frames }), icon: Hourglass, disabledReason: transition.frames === frames ? t("已是這個長度") : null, onSelect: () => void set(frames) }),
+      (frames): MenuItem => ({ id: `frames-${String(frames)}`, label: t("長度 {frames} 影格", { frames }), icon: Hourglass, disabledReason: transition.frames === frames ? t("已是這個長度") : null, onSelect: () => void set(frames) }),
     ),
     ...TRANSITION_ALIGNMENTS.map(
       (alignment, index): MenuItem => ({
@@ -232,7 +245,7 @@ export function transitionMenu(editor: Editor, clip: TimelineClip): MenuItem[] {
 
 export function gapMenu(editor: Editor, frame: number): MenuItem[] {
   return [
-    { id: "seek", label: t("把播放頭移到這裡"), onSelect: () => editor.transport.seek(frame) },
+    { id: "seek", label: t("把播放頭移到這裡"), onSelect: () => { editor.transport.seek(frame); } },
     ...pasteItems(editor, false),
     { id: "marker", label: t("新增標記"), icon: Flag, shortcut: "M", separatorBefore: true, onSelect: () => void editor.addMarker() },
     { id: "text", label: t("新增文字圖層"), icon: Type, shortcut: "T", onSelect: editor.addTextLayer },
@@ -280,11 +293,11 @@ export function rulerMenu(editor: Editor): MenuItem[] {
   const area = editor.timeline.work_area;
   const none = area ? null : t("還沒有標記序列入出點");
   return [
-    { id: "mark-in", label: t("標記入點"), icon: CornerDownLeft, shortcut: "I", onSelect: () => editor.markRange("in") },
-    { id: "mark-out", label: t("標記出點"), icon: CornerDownRight, shortcut: "O", onSelect: () => editor.markRange("out") },
+    { id: "mark-in", label: t("標記入點"), icon: CornerDownLeft, shortcut: "I", onSelect: () => { editor.markRange("in"); } },
+    { id: "mark-out", label: t("標記出點"), icon: CornerDownRight, shortcut: "O", onSelect: () => { editor.markRange("out"); } },
     { id: "clear", label: t("清除入點和出點"), icon: X, disabledReason: none, onSelect: editor.clearWorkArea },
-    { id: "lift", label: t("提升"), shortcut: ";", separatorBefore: true, disabledReason: none, onSelect: () => editor.removeRange(false) },
-    { id: "extract", label: t("擷取"), shortcut: "'", disabledReason: none, onSelect: () => editor.removeRange(true) },
+    { id: "lift", label: t("提升"), shortcut: ";", separatorBefore: true, disabledReason: none, onSelect: () => { editor.removeRange(false); } },
+    { id: "extract", label: t("擷取"), shortcut: "'", disabledReason: none, onSelect: () => { editor.removeRange(true); } },
     { id: "marker", label: t("新增標記"), icon: Flag, shortcut: "M", separatorBefore: true, onSelect: () => void editor.addMarker() },
   ];
 }

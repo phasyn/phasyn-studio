@@ -17,6 +17,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, BinaryIO
 
+
 # Filesystems that cannot fsync a directory report one of these; the rename is still atomic there.
 _DIR_FSYNC_UNSUPPORTED = frozenset({errno.EINVAL, errno.ENOTSUP, errno.EOPNOTSUPP})
 
@@ -41,28 +42,33 @@ def atomic_writer(path: Path) -> Iterator[BinaryIO]:
     """
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=f".{target.name}.", suffix=".tmp", dir=target.parent)
+    fd, tmp = tempfile.mkstemp(
+        prefix=f".{target.name}.", suffix=".tmp", dir=target.parent
+    )
     try:
         with os.fdopen(fd, "wb") as fh:
             yield fh
             fh.flush()
             os.fsync(fh.fileno())
-        os.replace(tmp, target)
+        Path(tmp).replace(target)
     except BaseException:
         with contextlib.suppress(FileNotFoundError):
-            os.unlink(tmp)
+            Path(tmp).unlink()
         raise
     fsync_dir(target.parent)
 
 
 def atomic_write_bytes(path: Path, data: bytes) -> None:
+    """Atomically replace the destination with the supplied bytes."""
     with atomic_writer(path) as fh:
         fh.write(data)
 
 
 def atomic_write_json(path: Path, obj: Any, *, indent: int | None = 2) -> None:
     """Atomically write ``obj`` as UTF-8 JSON (NaN and Infinity are rejected with ``ValueError``)."""
-    data = json.dumps(obj, ensure_ascii=False, allow_nan=False, indent=indent).encode("utf-8")
+    data = json.dumps(obj, ensure_ascii=False, allow_nan=False, indent=indent).encode(
+        "utf-8"
+    )
     atomic_write_bytes(path, data)
 
 

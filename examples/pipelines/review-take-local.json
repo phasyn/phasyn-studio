@@ -1,0 +1,73 @@
+{
+  "pipeline_id": "review-take-local",
+  "label": "候選影片檢查（CPU）：媒體資訊、切鏡時間、首尾影格",
+  "inputs": [
+    {
+      "name": "video",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": "要檢查的候選影片原檔"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "probe",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "probe",
+      "inputs": {
+        "media": {
+          "from_input": "video"
+        }
+      },
+      "parameters": {
+        "scenes": {
+          "threshold": 0.3,
+          "min_gap_seconds": 0.5
+        }
+      }
+    },
+    {
+      "step_id": "first",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "frame",
+      "inputs": {
+        "video_file": {
+          "from_input": "video"
+        }
+      },
+      "parameters": {
+        "position": "first",
+        "frame_index": null
+      }
+    },
+    {
+      "step_id": "last",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "frame",
+      "inputs": {
+        "video_file": {
+          "from_input": "video"
+        }
+      },
+      "parameters": {
+        "position": "last",
+        "frame_index": null
+      }
+    }
+  ],
+  "outputs": {
+    "report": {
+      "from_step": "probe",
+      "output": "info"
+    },
+    "first_frame": {
+      "from_step": "first",
+      "output": "image"
+    },
+    "last_frame": {
+      "from_step": "last",
+      "output": "image"
+    }
+  }
+}

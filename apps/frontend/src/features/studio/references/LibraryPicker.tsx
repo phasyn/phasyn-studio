@@ -58,7 +58,7 @@ export function LibraryPicker({
     .filter((item) => (kind === "all" || item.kind === kind) && (q.length === 0 || item.name.toLowerCase().includes(q)))
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
   const active = Math.min(cursor, Math.max(0, items.length - 1));
-  const optionId = (at: number) => `${id}-option-${at}`;
+  const optionId = (at: number) => `${id}-option-${String(at)}`;
 
   const reasonOf = (item: StudioLibraryItem): string | null => {
     if (used.has(item.item_id) || chosen.includes(item.item_id)) return null;
@@ -67,7 +67,7 @@ export function LibraryPicker({
   const toggle = (item: StudioLibraryItem | undefined) => {
     if (!item || used.has(item.item_id)) return;
     if (chosen.includes(item.item_id)) setChosen(chosen.filter((itemId) => itemId !== item.item_id));
-    else if (!reasonOf(item)) setChosen([...chosen, item.item_id]);
+    else if (!((reasonOf(item) ?? "") !== "")) setChosen([...chosen, item.item_id]);
   };
   const moveTo = (at: number) => {
     const next = Math.max(0, Math.min(items.length - 1, at));
@@ -88,9 +88,9 @@ export function LibraryPicker({
   };
 
   return (
-    <div className="flex min-h-0 flex-col" onKeyDown={onKeyDown}>
+    <div /* eslint-disable-line jsx-a11y-x/no-static-element-interactions -- Keyboard events from this panel’s focusable controls bubble here so navigation and dismissal share one handler. */  className="flex min-h-0 flex-col" onKeyDown={onKeyDown}>
       <div className="grid shrink-0 grid-cols-[minmax(0,1fr)_minmax(7rem,auto)] gap-1.5 border-b border-white/8 p-2">
-        <label className="relative block">
+        <div className="relative block">
           <Search aria-hidden className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-fg-tertiary" />
           <Input
             compact
@@ -110,8 +110,8 @@ export function LibraryPicker({
             autoComplete="off"
             className="pl-8"
           />
-        </label>
-        <Select compact value={kind} onChange={(event) => setKind(event.target.value as ReferenceKind | "all")} aria-label={t("類型")}>
+        </div>
+        <Select compact value={kind} onChange={(event) => { const value = event.target.value; if (value === "all" || value === "image" || value === "video" || value === "audio") setKind(value); }} aria-label={t("類型")}>
           <option value="all">{t("全部類型")}</option>
           <option value="image">{t("圖片")}</option>
           <option value="video">{t("影片")}</option>
@@ -143,16 +143,16 @@ export function LibraryPicker({
             const reason = reasonOf(item);
             const facts = itemFacts(item);
             return (
-              <div
+              <div /* eslint-disable-line jsx-a11y-x/click-events-have-key-events, jsx-a11y-x/interactive-supports-focus -- The owning composite keeps keyboard focus and exposes the active option with aria-activedescendant. */
                 key={item.item_id}
                 ref={reveal(index)}
                 id={optionId(index)}
                 role="option"
                 aria-selected={order >= 0}
                 aria-disabled={alias !== undefined || reason !== null || undefined}
-                title={reason ?? (alias ? t("已加入 @{alias}", { alias }) : item.name)}
-                onClick={() => toggle(item)}
-                onPointerMove={() => setCursor(index)}
+                title={reason ?? ((alias != null && alias !== "") ? t("已加入 @{alias}", { alias }) : item.name)}
+                onClick={() => { toggle(item); }}
+                onPointerMove={() => { setCursor(index); }}
                 className={cn(
                   TILE,
                   "relative grid min-w-0 transition-[border-color,background-color,opacity] duration-(--duration-fast)",
@@ -183,9 +183,9 @@ export function LibraryPicker({
                     {KIND_LABEL[item.kind]}
                     {facts ? ` · ${facts}` : ""}
                   </span>
-                  {alias ? (
+                  {(alias != null && alias !== "") ? (
                     <span className="machine justify-self-start rounded-full border border-line bg-raised px-1.5 text-[11px] leading-4 text-fg-secondary">{t("已加入 @{alias}", { alias })}</span>
-                  ) : reason ? (
+                  ) : (reason != null && reason !== "") ? (
                     <span className="line-clamp-2 text-[11px] leading-4 text-warning">{reason}</span>
                   ) : null}
                 </span>
@@ -201,7 +201,7 @@ export function LibraryPicker({
         <Button size="sm" variant="quiet" onClick={onCancel}>
           {t("取消")}
         </Button>
-        <Button size="sm" variant="primary" icon={<Plus aria-hidden />} disabled={picked.length === 0} onClick={() => onAdd(picked)} aria-keyshortcuts="Control+Enter">
+        <Button size="sm" variant="primary" icon={<Plus aria-hidden />} disabled={picked.length === 0} onClick={() => { onAdd(picked); }} aria-keyshortcuts="Control+Enter">
           {picked.length > 0 ? t("加入 {count} 個", { count: picked.length }) : t("加入")}
         </Button>
       </div>

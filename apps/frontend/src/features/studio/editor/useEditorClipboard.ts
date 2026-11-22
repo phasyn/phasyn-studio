@@ -49,12 +49,12 @@ export function useEditorClipboard(input: ClipboardInput) {
 
   // Where a paste would land, and why it cannot (reported by the keys and shown in the menus)
   const landing = clipboard ? pasteTracks(timeline, clipboard, targets) : null;
-  const destinations = landing?.ok ? [...landing.value.values()] : [];
+  const destinations = (landing?.ok === true) ? [...landing.value.values()] : [];
   const pasteBlocked = !clipboard
     ? t("請先複製時間軸片段")
     : landing && !landing.ok
       ? landing.error
-      : destinations.some((trackId) => timeline.tracks.find((track) => track.track_id === trackId)?.locked)
+      : destinations.some((trackId) => Boolean(timeline.tracks.find((track) => track.track_id === trackId)?.locked))
         ? t("軌道已鎖定；請先解鎖再編輯")
         : null;
 

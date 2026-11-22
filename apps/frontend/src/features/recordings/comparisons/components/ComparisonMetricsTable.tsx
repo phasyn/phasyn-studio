@@ -12,7 +12,7 @@ import { BASELINE_CELL, BASELINE_HEAD, CORNER_CELL, HEAD_CELL, ROW_HEAD_CELL } f
 import { t } from "@/i18n";
 import { formatList } from "@/i18n/format";
 
-function MismatchNote({ cells }: { cells: ReadonlyArray<Metric | undefined> }) {
+function MismatchNote({ cells }: { cells: readonly (Metric | undefined)[] }) {
   const mismatch = basisMismatch(cells);
   const parts = [mismatch.unit ? "unit" : null, mismatch.method ? "method" : null, mismatch.scope ? "scope" : null].filter(Boolean);
   if (parts.length === 0 && !mismatch.quality) return null;
@@ -64,11 +64,14 @@ export function ComparisonMetricsTable({
                   <MetricName name={name} />
                   <MismatchNote cells={cells} />
                 </Th>
-                {cells.map((metric, index) => (
-                  <Td key={columns[index]?.id ?? index} className={cn("min-w-[10rem]", index === 0 && BASELINE_CELL)}>
-                    {metric ? <MetricInline metric={metric} /> : <span className="text-caption text-fg-tertiary">{t("未回報")}</span>}
-                  </Td>
-                ))}
+                {columns.map((column, index) => {
+                  const metric = cells[index];
+                  return (
+                    <Td key={column.id} className={cn("min-w-[10rem]", index === 0 && BASELINE_CELL)}>
+                      {metric ? <MetricInline metric={metric} /> : <span className="text-caption text-fg-tertiary">{t("未回報")}</span>}
+                    </Td>
+                  );
+                })}
               </Tr>
             );
           })}

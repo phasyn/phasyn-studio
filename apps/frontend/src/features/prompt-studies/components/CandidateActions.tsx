@@ -1,3 +1,4 @@
+import { isListed } from "@/lib/json";
 // 候選的兩個人工動作（都要確認，都不會自動生成）：
 //   接受＝記錄人工選擇（不改機器評分、不覆寫搜尋的最佳候選）；
 //   套用到 Image Studio＝在選定的 Studio 專案新增一個圖片鏡頭（prompt＋生成設定），之後在 Image Studio 確認再生成。
@@ -111,12 +112,12 @@ export function AcceptDialog({
             <label htmlFor={`${id}-note`} className="text-caption text-fg-secondary">
               {t("人工接受備註")}
             </label>
-            <Textarea id={`${id}-note`} compact rows={2} maxLength={LIMITS.acceptNote} value={note} onChange={(event) => setNote(event.target.value)} />
+            <Textarea id={`${id}-note`} compact rows={2} maxLength={LIMITS.acceptNote} value={note} onChange={(event) => { setNote(event.target.value); }} />
           </div>
-          {error ? <ErrorCallout error={error} write title={t("接受紀錄沒有保存")} /> : null}
+          {(error != null) ? <ErrorCallout error={error} write title={t("接受紀錄沒有保存")} /> : null}
         </DialogBody>
         <DialogFooter>
-          <Button variant="quiet" onClick={() => close(false)} disabled={pending}>
+          <Button variant="quiet" onClick={() => { close(false); }} disabled={pending}>
             {t("取消")}
           </Button>
           <ActionButton variant="primary" icon={<BadgeCheck aria-hidden />} pending={pending} disabledReason={pending ? null : source ? null : (blockReason ?? t("還不能接受"))} onClick={() => void accept()}>
@@ -168,7 +169,7 @@ export function ApplyDialog({
   const seedValue = Number((seedText ?? defaultSeed).trim());
   const seedValid = Number.isSafeInteger(seedValue) && seedValue >= -1 && seedValue <= MAX_SEED;
   const project = (projects.data?.items ?? []).find((item) => item.project_id === projectId) ?? null;
-  const label = candidate ? `${versionLabel(study, candidate.version_id)}` : "";
+  const label = candidate ? versionLabel(study, candidate.version_id) : "";
   const shot =
     candidate && prompt
       ? imageShotFromCandidate({ studyTitle: study.title || t("未命名研究"), versionLabel: label, variant: candidate.variant, candidate: prompt, settings, seed: seedValid ? seedValue : -1, seedMode, title })
@@ -176,8 +177,8 @@ export function ApplyDialog({
   // Image Studio's own check before generating, for the shot as written: a pipeline that is not one of its image
   // pipelines, or is for image-to-image, can never generate it. Components that are not ready are started in Image
   // Studio, so readiness is not checked. Nothing is judged before the pipelines are read.
-  const routeUnjudged = !shot?.route ? null : routesLoading ? t("還在讀取元件組合與元件目錄") : pipelines ? null : t("無法讀取元件組合");
-  const routeProblem = shot?.route && !routeUnjudged ? shotRouteProblem(imageRoutes, shot.route, shot.mode) : null;
+  const routeUnjudged = !(shot?.route != null && shot.route !== "") ? null : routesLoading ? t("還在讀取元件組合與元件目錄") : pipelines ? null : t("無法讀取元件組合");
+  const routeProblem = (shot?.route != null && shot.route !== "") && !(routeUnjudged != null && routeUnjudged !== "") ? shotRouteProblem(imageRoutes, shot.route, shot.mode) : null;
   const blockReason = !shot
     ? t("這個版本沒有這個候選")
     : !seedValid
@@ -195,7 +196,7 @@ export function ApplyDialog({
     onOpenChange(next);
   };
   const apply = async () => {
-    if (!shot || blockReason || pending || !projectId) return;
+    if (!shot || (blockReason != null && blockReason !== "") || pending || !projectId) return;
     setPending(true);
     setError(null);
     try {
@@ -233,8 +234,8 @@ export function ApplyDialog({
                   {projects.isError ? (
                     <ErrorCallout error={projects.error} title={t("無法讀取 Studio 專案列表")} onRetry={() => void projects.refetch()} retrying={projects.isFetching} />
                   ) : (
-                    <Select id={`${id}-project`} compact value={projectId} disabled={projects.isPending} onChange={(event) => setProjectId(event.target.value)}>
-                      <option value="">{projects.isPending ? t("讀取中…") : (projects.data?.items.length ?? 0) === 0 ? t("沒有專案：先在 Studio 建立") : t("選擇專案")}</option>
+                    <Select id={`${id}-project`} compact value={projectId} disabled={projects.isPending} onChange={(event) => { setProjectId(event.target.value); }}>
+                      <option value="">{projects.isPending ? t("讀取中…") : projects.data.items.length === 0 ? t("沒有專案：先在 Studio 建立") : t("選擇專案")}</option>
                       {(projects.data?.items ?? []).map((item) => (
                         <option key={item.project_id} value={item.project_id}>
                           {item.title}
@@ -247,27 +248,27 @@ export function ApplyDialog({
                   <label htmlFor={`${id}-title`} className="text-caption text-fg-secondary">
                     {t("圖片鏡頭名稱")}
                   </label>
-                  <Input id={`${id}-title`} compact value={title} maxLength={120} placeholder={t("{value}・{label} {value2}", { value: study.title || t("未命名研究"), label, value2: candidate?.variant ?? "" })} onChange={(event) => setTitle(event.target.value)} />
+                  <Input id={`${id}-title`} compact value={title} maxLength={120} placeholder={t("{value}・{label} {value2}", { value: study.title || t("未命名研究"), label, value2: candidate?.variant ?? "" })} onChange={(event) => { setTitle(event.target.value); }} />
                 </div>
                 <div className="grid gap-1">
                   <label htmlFor={`${id}-seed`} className="text-caption text-fg-secondary">
                     {t("seed（-1＝每次隨機）")}
                   </label>
-                  <Input id={`${id}-seed`} compact className="machine" inputMode="numeric" value={seedText ?? defaultSeed} aria-invalid={!seedValid || undefined} onChange={(event) => setSeedText(event.target.value)} />
+                  <Input id={`${id}-seed`} compact className="machine" inputMode="numeric" value={seedText ?? defaultSeed} aria-invalid={!seedValid || undefined} onChange={(event) => { setSeedText(event.target.value); }} />
                   <span className="text-caption text-fg-tertiary">{best ? t("預設為誤差最低的那張（seed {seed}，誤差 {best}）", { seed: best.seed, best: formatLoss(evaluationLoss(best)) }) : t("這個候選沒有已評分的圖，預設隨機")}</span>
                 </div>
                 <div className="grid gap-1">
                   <label htmlFor={`${id}-seed-mode`} className="text-caption text-fg-secondary">
                     {t("seed 模式")}
                   </label>
-                  <Select id={`${id}-seed-mode`} compact value={seedMode} onChange={(event) => setSeedMode(event.target.value as ImageSeedMode)}>
+                  <Select id={`${id}-seed-mode`} compact value={seedMode} onChange={(event) => { const value = event.target.value; if (isListed(value, ["fixed", "increment", "random"] as const)) setSeedMode(value); }}>
                     <option value="fixed">{t("固定")}</option>
                     <option value="increment">{t("遞增")}</option>
                     <option value="random">{t("每次隨機")}</option>
                   </Select>
                 </div>
               </div>
-              {routeProblem ? (
+              {(routeProblem != null && routeProblem !== "") ? (
                 <Callout tone="warning" title={t("Image Studio 不能用這個元件組合生成")}>
                   <p>{routeProblem}</p>
                 </Callout>
@@ -283,7 +284,7 @@ export function ApplyDialog({
                 </section>
               ) : null}
               <p className="text-caption text-fg-tertiary">{t("Image Studio 若正開著這個專案，它下一次保存會出現版本衝突並要求重新載入（與刪除 run 後的行為相同）。")}</p>
-              {error ? (
+              {(error != null) ? (
                 <ErrorCallout error={error} write title={hasErrorCode(error, "REVISION_CONFLICT") ? t("專案剛被其他地方更新：這次沒有寫入（再按一次會以最新版本寫入）") : t("沒有寫入專案")} />
               ) : null}
             </>
@@ -291,12 +292,12 @@ export function ApplyDialog({
         </DialogBody>
         <DialogFooter>
           {done ? (
-            <Button variant="secondary" onClick={() => close(false)}>
+            <Button variant="secondary" onClick={() => { close(false); }}>
               {t("關閉")}
             </Button>
           ) : (
             <>
-              <Button variant="quiet" onClick={() => close(false)} disabled={pending}>
+              <Button variant="quiet" onClick={() => { close(false); }} disabled={pending}>
                 {t("取消")}
               </Button>
               <ActionButton variant="primary" icon={<Send aria-hidden />} pending={pending} disabledReason={pending ? null : blockReason} onClick={() => void apply()}>

@@ -28,14 +28,14 @@ const SCOPE_OPTIONS: readonly { value: Scope; label: string }[] = [
 export function ActivityLog({ paused = false, className, runId }: ActivityLogProps) {
   const [live, setLive] = useState(true);
   const [scope, setScope] = useState<Scope>("run");
-  const scopedRun = runId && scope === "run" ? runId : null;
+  const scopedRun = (runId != null && runId !== "") && scope === "run" ? runId : null;
   const feed = useActivityFeed({ live: live && !paused, runId: scopedRun });
   const view = useLogView(feed.lines);
   const { runs, recordings } = feed.status;
 
   const noData = !runs.hasData && !recordings.hasData;
   const loading = noData && (runs.loading || recordings.loading);
-  const allFailed = noData && !loading && Boolean(runs.error || recordings.error);
+  const allFailed = noData && !loading && (runs.error != null || recordings.error != null);
 
   let empty: ReactNode = null;
   if (view.visible.length === 0) {
@@ -46,7 +46,7 @@ export function ActivityLog({ paused = false, className, runId }: ActivityLogPro
     } else if (feed.lines.length === 0) {
       empty = (
         <LogMessage icon={<Activity />}>
-          {scopedRun ? t("這個 run 還沒有活動紀錄。") : t("尚無活動：建立 run、啟動或呼叫元件後，紀錄會出現在這裡。")}
+          {(scopedRun != null && scopedRun !== "") ? t("這個 run 還沒有活動紀錄。") : t("尚無活動：建立 run、啟動或呼叫元件後，紀錄會出現在這裡。")}
         </LogMessage>
       );
     } else if (view.filtersActive) {
@@ -98,7 +98,7 @@ export function ActivityLog({ paused = false, className, runId }: ActivityLogPro
         onRestore={view.restore}
         onRefresh={feed.refetch}
         refreshing={!live && feed.fetching}
-        scope={runId ? { value: scope, options: SCOPE_OPTIONS, onChange: (value) => setScope(value === "all" ? "all" : "run") } : undefined}
+        {...((runId != null && runId !== "") ? { scope: { value: scope, options: SCOPE_OPTIONS, onChange: (value) => { setScope(value === "all" ? "all" : "run"); } } } : {})}
       />
       {allFailed ? null : (
         <>
@@ -106,7 +106,7 @@ export function ActivityLog({ paused = false, className, runId }: ActivityLogPro
           <SourceErrorRow status={recordings} onRetry={feed.refetch} retrying={recordings.fetching} />
         </>
       )}
-      <LogTable lines={view.visible} label={scopedRun ? t("這個 run 的活動紀錄") : t("活動紀錄")} wrap={view.wrap} onWrapChange={view.setWrap} empty={empty} />
+      <LogTable lines={view.visible} label={(scopedRun != null && scopedRun !== "") ? t("這個 run 的活動紀錄") : t("活動紀錄")} wrap={view.wrap} onWrapChange={view.setWrap} empty={empty} />
     </div>
   );
 }

@@ -17,13 +17,13 @@ import { t } from "@/i18n";
 export function useSwapDraft(saved: SavedDraft | null = null) {
   const [initial] = useState<SwapDraft>(() => (saved ? draftFromSaved(saved) : initialDraft()));
   const [draft, setDraft] = useState<SwapDraft>(initial);
-  const urls = useRef(new Set<string>());
-  const controllers = useRef(new Set<AbortController>());
+  const urlsRef = useRef(new Set<string>());
+  const controllersRef = useRef(new Set<AbortController>());
 
   // 卸載（切換專案、離開 Studio）：中止進行中的上傳、釋放 object URL
   useEffect(() => {
-    const owned = urls.current;
-    const pending = controllers.current;
+    const owned = urlsRef.current;
+    const pending = controllersRef.current;
     return () => {
       for (const controller of pending) controller.abort();
       for (const url of owned) URL.revokeObjectURL(url);
@@ -33,14 +33,14 @@ export function useSwapDraft(saved: SavedDraft | null = null) {
 
   const objectUrl = useCallback((blob: Blob) => {
     const url = URL.createObjectURL(blob);
-    urls.current.add(url);
+    urlsRef.current.add(url);
     return url;
   }, []);
   const release = (image: DraftImage | null | undefined) => {
     for (const url of [image?.previewUrl, image?.matteUrl]) {
-      if (url && urls.current.has(url)) {
+      if ((url != null && url !== "") && urlsRef.current.has(url)) {
         URL.revokeObjectURL(url);
-        urls.current.delete(url);
+        urlsRef.current.delete(url);
       }
     }
   };
@@ -49,8 +49,7 @@ export function useSwapDraft(saved: SavedDraft | null = null) {
     setDraft((current) => ({ ...current, ...(typeof patch === "function" ? patch(current) : patch) }));
   }, []);
 
-  const setSource = (source: DraftSource) =>
-    setDraft((current) => ({
+  const setSource = (source: DraftSource) => { setDraft((current) => ({
       ...current,
       source,
       sourceUpload: null,
@@ -62,10 +61,9 @@ export function useSwapDraft(saved: SavedDraft | null = null) {
       notes: {},
       absent: {},
       title: current.titleEdited ? current.title : defaultTitle(source.name),
-    }));
+    })); };
 
-  const chooseLibraryVideo = (item: StudioLibraryItem) =>
-    setSource({ key: newLocalId("src"), name: item.name, file: item.file, duration_seconds: item.duration_seconds, width: item.width, height: item.height, has_audio: item.has_audio });
+  const chooseLibraryVideo = (item: StudioLibraryItem) => { setSource({ key: newLocalId("src"), name: item.name, file: item.file, duration_seconds: item.duration_seconds, width: item.width, height: item.height, has_audio: item.has_audio }); };
 
   /** 上傳本機影片（一次一個；失敗不自動重送，使用者重新選檔）。 */
   const uploadSource = async (file: File) => {
@@ -74,26 +72,25 @@ export function useSwapDraft(saved: SavedDraft | null = null) {
       return;
     }
     const controller = new AbortController();
-    controllers.current.add(controller);
+    controllersRef.current.add(controller);
     update({ sourceUpload: { name: file.name, state: "reading", error: null } });
     try {
       const facts = await readMediaFacts(file, "video");
       if (controller.signal.aborted) return;
       update({ sourceUpload: { name: file.name, state: "uploading", error: null } });
       const ref = await uploadFile(file, controller.signal);
-      if (controller.signal.aborted) return;
+      controller.signal.throwIfAborted();
       setSource({ key: newLocalId("src"), name: libraryName(file.name), file: ref, ...facts });
     } catch (error) {
       if (!controller.signal.aborted) update({ sourceUpload: { name: file.name, state: "failed", error: errorText(error) } });
     } finally {
-      controllers.current.delete(controller);
+      controllersRef.current.delete(controller);
     }
   };
 
-  const updateCharacter = (id: string, patch: Partial<Omit<DraftCharacter, "id" | "image">>) =>
-    setDraft((current) => ({ ...current, characters: current.characters.map((item) => (item.id === id ? { ...item, ...patch } : item)) }));
+  const updateCharacter = (id: string, patch: Partial<Omit<DraftCharacter, "id" | "image">>) => { setDraft((current) => ({ ...current, characters: current.characters.map((item) => (item.id === id ? { ...item, ...patch } : item)) })); };
 
-  const addCharacter = () => setDraft((current) => ({ ...current, characters: [...current.characters, newCharacter()] }));
+  const addCharacter = () => { setDraft((current) => ({ ...current, characters: [...current.characters, newCharacter()] })); };
 
   // 釋放 object URL 是副作用：在事件處理器裡做（用這次 render 的草稿），不放進 setDraft 的 updater（StrictMode 會執行兩次）
   const removeCharacter = (id: string) => {
@@ -123,7 +120,7 @@ export function useSwapDraft(saved: SavedDraft | null = null) {
   useEffect(() => {
     for (const character of initial.characters) {
       const image = character.image;
-      if (image?.check === "checking") void checked(image).then((patch) => setDraft(patchImage(character.id, image.key, patch)));
+      if (image?.check === "checking") void checked(image).then((patch) => { setDraft(patchImage(character.id, image.key, patch)); });
     }
   }, [initial, checked]);
 
@@ -173,6 +170,6 @@ function patchImage(id: string, key: string, patch: Partial<DraftImage>) {
 /** A library image's bytes; an HTTP failure (for example the Node is offline) is an error, not undecodable bytes. */
 async function fetchImage(url: string): Promise<Blob> {
   const response = await fetch(url, { credentials: "same-origin" });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  if (!response.ok) throw new Error(`HTTP ${String(response.status)}`);
   return response.blob();
 }

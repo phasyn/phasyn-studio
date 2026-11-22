@@ -87,16 +87,16 @@ function rejectUnknown(value: Record<string, unknown>, path: string, allowed: Re
 }
 
 function capacity(value: Record<string, unknown>, path: string): SwapCapacity {
-  const beyond = value.beyond_limit;
+  const beyond = value["beyond_limit"];
   if (beyond !== undefined && beyond !== "fails" && beyond !== "untested") throw new SpecProblem(t("{path} 只能是 fails 或 untested", { path: `${path}.beyond_limit` }));
-  const note = value.note;
+  const note = value["note"];
   if (note !== undefined && note !== null && (typeof note !== "string" || note.length > NOTE_MAX)) throw new SpecProblem(t("{path} 必須是 {max} 字以內的文字", { path: `${path}.note`, max: NOTE_MAX }));
   return {
-    maxCharacters: integer(value.max_characters, `${path}.max_characters`, 1, MAX_SWAP_CHARACTERS),
-    maxFrames: frames(value.max_frames, `${path}.max_frames`),
-    maxFramesByCharacters: byCharacters(value.max_frames_by_characters, `${path}.max_frames_by_characters`, frames),
-    referenceAreaByCharacters: byCharacters(value.reference_area_px_by_characters, `${path}.reference_area_px_by_characters`, (item, itemPath) => integer(item, itemPath, 1, MAX_AREA_PX)),
-    maxOutputPixels: value.max_output_pixels === undefined || value.max_output_pixels === null ? null : integer(value.max_output_pixels, `${path}.max_output_pixels`, 1, MAX_AREA_PX),
+    maxCharacters: integer(value["max_characters"], `${path}.max_characters`, 1, MAX_SWAP_CHARACTERS),
+    maxFrames: frames(value["max_frames"], `${path}.max_frames`),
+    maxFramesByCharacters: byCharacters(value["max_frames_by_characters"], `${path}.max_frames_by_characters`, frames),
+    referenceAreaByCharacters: byCharacters(value["reference_area_px_by_characters"], `${path}.reference_area_px_by_characters`, (item, itemPath) => integer(item, itemPath, 1, MAX_AREA_PX)),
+    maxOutputPixels: value["max_output_pixels"] === undefined || value["max_output_pixels"] === null ? null : integer(value["max_output_pixels"], `${path}.max_output_pixels`, 1, MAX_AREA_PX),
     beyondLimit: beyond === "fails" ? "fails" : "untested",
     note: typeof note === "string" && note.trim() ? note.trim() : null,
   };
@@ -108,11 +108,11 @@ export function parseSwapLimits(limits: unknown): SwapLimitsParse {
   const path = "limits.swap";
   try {
     const root = record(limits, "limits");
-    if (root.swap === undefined || root.swap === null) return { kind: "absent" };
-    const swap = record(root.swap, path);
+    if (root["swap"] === undefined || root["swap"] === null) return { kind: "absent" };
+    const swap = record(root["swap"], path);
     rejectUnknown(swap, path, TOP_KEYS);
     const byEdge: Record<number, SwapCapacity> = {};
-    const edges = swap.by_reference_short_edge;
+    const edges = swap["by_reference_short_edge"];
     if (edges !== undefined && edges !== null) {
       const edgesPath = `${path}.by_reference_short_edge`;
       for (const [key, entry] of Object.entries(record(edges, edgesPath))) {

@@ -42,8 +42,8 @@ export interface ClipGroupProps {
 
 export function ClipGroup({ clip, kind, focusName }: ClipGroupProps) {
   const editor = useEditor();
-  const name = useRef<HTMLInputElement>(null);
-  useFocusRequest(name, focusName);
+  const nameRef = useRef<HTMLInputElement>(null);
+  useFocusRequest(nameRef, focusName);
   const [mode, setMode] = usePersistentChoice<TrimMode>("studio.nle.controls.trim", "normal", TRIM_MODES);
   const { linked } = editor;
   const duration = clipDuration(clip);
@@ -61,7 +61,7 @@ export function ClipGroup({ clip, kind, focusName }: ClipGroupProps) {
         <TextField
           label={t("片段名稱")}
           value={clip.name}
-          inputRef={name}
+          inputRef={nameRef}
           validate={(text) => (!text.trim() || text.length > MAX_NAME_CHARS ? t("片段名稱需為 1–200 個字元") : null)}
           onCommit={(text) => applyClip(editor, { ...clip, name: text.trim() })}
         />

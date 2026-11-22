@@ -11,7 +11,7 @@ import { t } from "@/i18n";
 
 export function UploadTaskRow<TInfo>({ task, icon, onRetry, onDismiss }: { task: UploadTask<TInfo>; icon: ReactNode; onRetry: () => void; onDismiss: () => void }) {
   const working = task.state === "waiting" || task.state === "reading" || task.state === "uploading";
-  const info = task.error ? toErrorInfo(task.error) : null;
+  const info = (task.error != null) ? toErrorInfo(task.error) : null;
   const status = { waiting: t("等待中"), reading: t("讀取媒體資訊…"), uploading: t("上傳中…"), done: t("完成"), failed: t("失敗") }[task.state];
   return (
     <li className="grid min-w-0 grid-cols-[1rem_minmax(0,1fr)_auto] items-start gap-x-2 rounded-md px-1.5 py-1 text-caption animate-rise-in">
@@ -22,10 +22,10 @@ export function UploadTaskRow<TInfo>({ task, icon, onRetry, onDismiss }: { task:
         </span>
         <span className={cn(task.state === "failed" ? "text-danger" : task.state === "done" ? "text-success" : "text-fg-tertiary")}>
           {status}
-          {task.message ? t("：{message}", { message: task.message }) : ""}
+          {(task.message != null && task.message !== "") ? t("：{message}", { message: task.message }) : ""}
           {info ? t("：{message}（{code}）", { message: info.message, code: info.code }) : ""}
         </span>
-        {task.error && writeOutcomeUnknown(task.error) ? <span className="text-warning">{t("遠端結果未知：檔案可能已存到主控，但沒有加入素材庫；重新上傳會產生新的檔案。")}</span> : null}
+        {(task.error != null) && writeOutcomeUnknown(task.error) ? <span className="text-warning">{t("遠端結果未知：檔案可能已存到主控，但沒有加入素材庫；重新上傳會產生新的檔案。")}</span> : null}
       </span>
       <span className="flex items-center gap-0.5">
         {task.state === "failed" && task.retryable ? (

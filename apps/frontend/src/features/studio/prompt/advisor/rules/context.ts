@@ -3,6 +3,7 @@ import type { StudioLibraryItem, StudioReference } from "@/api/generated/contrac
 import { RULES, type RuleId } from "../catalog";
 import type { LabelPlan } from "../labels";
 import type { LabelHit, PromptScan, Section } from "../parse";
+import type { PromptRules } from "../../../model/providerTraits";
 import type { ClipTiming } from "../timing";
 import type { Finding, FindingFix, PromptMode, TextRange } from "../types";
 import { t } from "@/i18n";
@@ -20,6 +21,8 @@ export interface RuleContext {
   plan: LabelPlan;
   references: readonly StudioReference[];
   library: readonly StudioLibraryItem[];
+  /** 路線的 prompt 規則（H3 路線才會跑到規則模組）。 */
+  rules: PromptRules;
 }
 
 export function finding(
@@ -49,7 +52,7 @@ export function excerpt(text: string, max = 24): string {
 
 /** H3 標籤的寫法：<Picture 1>。 */
 export function labelText(label: LabelHit): string {
-  return `<${label.tag} ${label.ordinal}>`;
+  return `<${label.tag} ${String(label.ordinal)}>`;
 }
 
 /** offset 在這個欄位的內容裡。 */

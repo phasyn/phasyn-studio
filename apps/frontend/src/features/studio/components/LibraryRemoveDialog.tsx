@@ -22,6 +22,7 @@ import { t } from "@/i18n";
 const USE_ICON: Record<LibraryUse["kind"], LucideIcon> = {
   reference: AtSign,
   first_frame: Link2,
+  previs: Film,
   image_reference: Images,
   image_mask: SquareDashed,
   swap_source: Replace,
@@ -33,6 +34,8 @@ function describeUse(use: LibraryUse): { what: string; how: string } {
   switch (use.kind) {
     case "reference":
       return { what: t("參考 {aliases}", { aliases: formatList(use.aliases) }), how: t("在屬性面板的「參考」分頁移除") };
+    case "previs":
+      return { what: t("構圖預演"), how: t("在鏡頭備註的構圖預演移除使用此圖的圖層") };
     case "first_frame":
       return { what: t("首幀"), how: t("在屬性面板的「生成」分頁換一張圖片，或改成「不使用首幀」") };
     case "image_reference":
@@ -54,7 +57,7 @@ function UseRow({ use, projectId, onSelectShot }: { use: LibraryUse; projectId: 
       <Icon aria-hidden className="mt-0.5 size-3.5 shrink-0 text-fg-tertiary" />
       <div className="grid min-w-0 flex-1 gap-0.5">
         <p className="flex min-w-0 items-baseline gap-1.5 text-data text-fg">
-          {use.kind === "reference" || use.kind === "first_frame" ? (
+          {use.kind === "reference" || use.kind === "first_frame" || use.kind === "previs" ? (
             <>
               {/* 和鏡頭清單一樣的兩位數編號 */}
               <span className="machine shrink-0 text-caption text-fg-tertiary">{String(use.index + 1).padStart(2, "0")}</span>
@@ -71,8 +74,8 @@ function UseRow({ use, projectId, onSelectShot }: { use: LibraryUse; projectId: 
         <p className="text-caption text-fg-secondary">{what}</p>
         <p className="text-caption text-fg-tertiary">{how}</p>
       </div>
-      {use.kind === "reference" || use.kind === "first_frame" ? (
-        <Button size="sm" variant="quiet" className="min-h-7 shrink-0 px-2" icon={<MousePointerClick aria-hidden />} onClick={() => onSelectShot(use.shotId)}>
+      {use.kind === "reference" || use.kind === "first_frame" || use.kind === "previs" ? (
+        <Button size="sm" variant="quiet" className="min-h-7 shrink-0 px-2" icon={<MousePointerClick aria-hidden />} onClick={() => { onSelectShot(use.shotId); }}>
           {t("選取鏡頭")}
         </Button>
       ) : use.kind === "image_reference" || use.kind === "image_mask" ? (
@@ -101,14 +104,14 @@ export function LibraryRemoveDialog({
 }) {
   const { project, dispatch, notify } = useStudio();
   const actions = useShotActions();
-  const removed = useRef<StudioLibraryItem | null>(null);
-  const item = itemId ? (project.library ?? []).find((entry) => entry.item_id === itemId) : undefined;
+  const removedRef = useRef<StudioLibraryItem | null>(null);
+  const item = (itemId != null && itemId !== "") ? (project.library ?? []).find((entry) => entry.item_id === itemId) : undefined;
   const blocked = uses.length > 0 ? t("還在使用中，不能移除") : null;
   const facts = item ? itemFacts(item) : "";
   const remove = () => {
     // 與 reducer 同一個判斷：不會移除時（例如剛好有鏡頭開始使用它）不送出、也不說已移除
-    if (!item || blocked || withoutLibraryItem(project, item.item_id) === project) return;
-    removed.current = item;
+    if (!item || (blocked != null && blocked !== "") || withoutLibraryItem(project, item.item_id) === project) return;
+    removedRef.current = item;
     dispatch({ type: "removeLibraryItem", itemId: item.item_id });
     notify({ tone: "success", title: t("已從專案素材庫移除「{name}」", { name: item.name }), detail: t("檔案沒有刪除，已渲染的 take 不受影響。") });
     onClose();
@@ -126,11 +129,11 @@ export function LibraryRemoveDialog({
     >
       {item ? (
         <DialogContent
-          onKeyDown={(event) => event.stopPropagation()}
+          onKeyDown={(event) => { event.stopPropagation(); }}
           onCloseAutoFocus={(event) => {
-            const done = removed.current;
+            const done = removedRef.current;
             if (!done) return;
-            removed.current = null;
+            removedRef.current = null;
             event.preventDefault();
             onRemoved(done);
           }}
@@ -140,7 +143,7 @@ export function LibraryRemoveDialog({
             <DialogDescription>
               {uses.some((use) => use.kind === "swap_source")
                 ? t("這段影片是一鍵換角的來源影片，不能從素材庫移除。")
-                : blocked
+                : (blocked != null && blocked !== "")
                   ? t("這個素材還在使用中：先在下面的地方拿掉它，才能從素材庫移除。")
                   : t("只從這個專案的素材庫拿掉，不會刪除檔案，已渲染的 take 也不受影響。Image Studio 共用同一份素材庫，那邊也會看不到它。")}
             </DialogDescription>
@@ -167,7 +170,7 @@ export function LibraryRemoveDialog({
           </DialogBody>
           <DialogFooter>
             <DialogClose asChild>
-              <Button>{blocked ? t("關閉") : t("取消")}</Button>
+              <Button>{(blocked != null && blocked !== "") ? t("關閉") : t("取消")}</Button>
             </DialogClose>
             <Button variant="danger-confirm" icon={<Trash2 aria-hidden />} disabled={Boolean(blocked)} title={blocked ?? undefined} onClick={remove}>
               {t("移除")}

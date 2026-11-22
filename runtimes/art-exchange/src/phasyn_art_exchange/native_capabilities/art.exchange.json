@@ -1,0 +1,362 @@
+{
+  "label": "美術素材往返",
+  "kind": "art.exchange",
+  "inputs": [
+    {
+      "name": "image_file",
+      "type_id": "media.image.v1",
+      "required": false,
+      "transport": "file",
+      "description": "參考圖或繪製完成的修改稿"
+    },
+    {
+      "name": "video_file",
+      "type_id": "media.video.v1",
+      "required": false,
+      "transport": "file",
+      "description": "參考影片或繪製完成的修改稿"
+    },
+    {
+      "name": "mask_image",
+      "type_id": "media.image.v1",
+      "required": false,
+      "transport": "file",
+      "description": "mask image"
+    },
+    {
+      "name": "mask_video",
+      "type_id": "media.video.v1",
+      "required": false,
+      "transport": "file",
+      "description": "mask video"
+    },
+    {
+      "name": "depth_image",
+      "type_id": "media.image.v1",
+      "required": false,
+      "transport": "file",
+      "description": "depth image"
+    },
+    {
+      "name": "depth_video",
+      "type_id": "media.video.v1",
+      "required": false,
+      "transport": "file",
+      "description": "depth video"
+    },
+    {
+      "name": "pose_image",
+      "type_id": "media.image.v1",
+      "required": false,
+      "transport": "file",
+      "description": "pose image"
+    },
+    {
+      "name": "pose_video",
+      "type_id": "media.video.v1",
+      "required": false,
+      "transport": "file",
+      "description": "pose video"
+    },
+    {
+      "name": "manifest_file",
+      "type_id": "art.exchange-manifest.v1",
+      "required": false,
+      "transport": "file",
+      "description": "原工作包獨立發布的 manifest"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "delivery_file",
+      "type_id": "file.attachment.v1",
+      "required": true,
+      "transport": "file",
+      "description": "匯出工作包或修改後的獨立媒體"
+    },
+    {
+      "name": "manifest_file",
+      "type_id": "art.exchange-manifest.v1",
+      "required": true,
+      "transport": "file",
+      "description": "原工作包獨立發布的 manifest"
+    },
+    {
+      "name": "report",
+      "type_id": "art.exchange-report.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "交接與差異報告"
+    }
+  ],
+  "parameters_schema": {
+    "type": "object",
+    "properties": {
+      "operation": {
+        "enum": [
+          "export",
+          "return"
+        ],
+        "default": "export"
+      },
+      "role": {
+        "enum": [
+          "source",
+          "mask",
+          "depth",
+          "pose"
+        ],
+        "default": "source"
+      },
+      "crop_matrix": {
+        "type": "array",
+        "items": {
+          "type": "number",
+          "minimum": -1000000,
+          "maximum": 1000000
+        },
+        "minItems": 9,
+        "maxItems": 9,
+        "default": [
+          1,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          1
+        ],
+        "description": "Row-major 3x3 source-to-canvas transform, documented without applying it."
+      },
+      "camera_note": {
+        "type": "string",
+        "maxLength": 1024,
+        "default": ""
+      },
+      "color_note": {
+        "type": "string",
+        "maxLength": 512,
+        "default": ""
+      },
+      "alpha_interpretation": {
+        "enum": [
+          "unspecified",
+          "straight",
+          "premultiplied"
+        ],
+        "default": "unspecified"
+      }
+    },
+    "additionalProperties": false
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "load": {
+        "type": "object",
+        "properties": {
+          "model_path": {
+            "type": "string",
+            "description": "Node 本機模型路徑（使用者提供，不由主控下載）"
+          },
+          "model_revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "device": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "cpu"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "maxLength": 16384,
+                "pattern": "^[^\\x00-\\x1f\\x7f]*$"
+              },
+              "resource_group": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id",
+              "resource_group"
+            ],
+            "additionalProperties": false
+          },
+          "precision": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          },
+          "offload": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          },
+          "part_overrides": {
+            "type": "array"
+          },
+          "provider_options": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "device"
+        ],
+        "additionalProperties": false
+      },
+      "invoke": {
+        "type": "object",
+        "properties": {
+          "operation": {
+            "enum": [
+              "export",
+              "return"
+            ],
+            "default": "export"
+          },
+          "role": {
+            "enum": [
+              "source",
+              "mask",
+              "depth",
+              "pose"
+            ],
+            "default": "source"
+          },
+          "crop_matrix": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": -1000000,
+              "maximum": 1000000
+            },
+            "minItems": 9,
+            "maxItems": 9,
+            "default": [
+              1,
+              0,
+              0,
+              0,
+              1,
+              0,
+              0,
+              0,
+              1
+            ],
+            "description": "Row-major 3x3 source-to-canvas transform, documented without applying it."
+          },
+          "camera_note": {
+            "type": "string",
+            "maxLength": 1024,
+            "default": ""
+          },
+          "color_note": {
+            "type": "string",
+            "maxLength": 512,
+            "default": ""
+          },
+          "alpha_interpretation": {
+            "enum": [
+              "unspecified",
+              "straight",
+              "premultiplied"
+            ],
+            "default": "unspecified"
+          }
+        },
+        "additionalProperties": false
+      },
+      "recording": {
+        "type": "object"
+      }
+    },
+    "required": [
+      "load",
+      "invoke",
+      "recording"
+    ],
+    "additionalProperties": false
+  },
+  "default_settings": {
+    "invoke": {},
+    "load": {
+      "device": {
+        "kind": "cpu",
+        "id": "cpu",
+        "resource_group": "cpu-art"
+      }
+    },
+    "recording": {
+      "batch_max_bytes": 262144,
+      "batch_max_events": 256,
+      "capture_prompt": true,
+      "capture_stderr": true,
+      "cuda_pending_event_pairs": 4096,
+      "device_sample_hz": 2,
+      "finite_scan": false,
+      "gpu_event_timing": true,
+      "log_level": "info",
+      "max_detail_bytes_per_recording": 2147483648,
+      "mode": "detailed",
+      "parts": [],
+      "publish_interval_ms": 1000,
+      "queue_max_bytes": 16777216,
+      "queue_max_events": 8192,
+      "record_shapes": false,
+      "segment_bytes": 67108864,
+      "steps": [],
+      "tensor_dump": false,
+      "trace_parts": [],
+      "trace_steps": [
+        0,
+        1
+      ],
+      "with_stack": false
+    }
+  },
+  "schema_version": "1.0",
+  "provider_id": "art.exchange",
+  "entry_point": "phasyn_art_exchange.provider:ArtExchangeProvider",
+  "operations": [
+    "export",
+    "return"
+  ],
+  "capability_version": "1.0.0",
+  "license": "Apache-2.0",
+  "models": [],
+  "resources": {
+    "devices": [
+      "cpu"
+    ],
+    "required_modules": [
+      "phasyn_media"
+    ],
+    "executables": [
+      "ffmpeg",
+      "ffprobe"
+    ],
+    "vram_bytes": 0,
+    "memory_basis": "Streams assets through bounded blocks. Frame clocks follow media limits."
+  },
+  "execution": {
+    "cache": "none",
+    "retry": "verify_stopped_first",
+    "cancellation": "cooperative",
+    "progress": [
+      "stage"
+    ],
+    "error_contract": "ComponentError",
+    "retry_condition": "Confirm the prior attempt stopped and inspect any published output before requesting another run."
+  }
+}

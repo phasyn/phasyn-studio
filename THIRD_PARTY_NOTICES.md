@@ -12,10 +12,12 @@ If you redistribute Phasyn Studio, model weights or generated media, check the o
 | shadcn/ui | Web UI components, `apps/frontend/src/components/ui/`, `apps/frontend/src/lib/cn.ts` | MIT | Adapted portions only |
 | Anime4K v4.0 (`Upscale_CNN_x2_VL`, `Restore_CNN_Soft_VL`, `Clamp_Highlights` shaders) | Video super-resolution `media.upscale`, `runtimes/captioner/src/phasyn_captioner/upscale/third_party/anime4k/` | MIT | Yes, unchanged shader files |
 | CPython `fnmatch` | Web UI selector matching, `apps/frontend/src/lib/fnmatch.ts` | PSF-2.0 | Ported algorithm |
+| SeedVR2-3B and standalone video upscaler | Offline video restoration, `runtimes/seedvr2/` | [Official weights](https://huggingface.co/ByteDance-Seed/SeedVR2-3B), [Apache-2.0 engine](https://github.com/numz/ComfyUI-SeedVR2_VideoUpscaler/blob/4490bd1f482e026674543386bb2a4d176da245b9/LICENSE) | The checkpoint and pinned engine archive are supplied separately. |
+| Practical-RIFE 4.26 | Selective frame interpolation, `runtimes/rife/` | [MIT, copyright 2021 hzwer](runtimes/rife/RIFE-LICENSE) | Adapted inference architecture. Weights are supplied separately. |
 | npm packages bundled into the web UI build | `apps/frontend` production build | MIT, ISC, Apache-2.0, 0BSD | Installed at build time |
 | Python, GPU and system dependencies | Control plane and GPU runtime environments | Various | No |
 | Model weights and LoRA files | Loaded from the user's model directory | Model licences (see below) | No |
-| AI-generated images | `apps/frontend/public/brand/`, `apps/frontend/src/assets/icons/` | Brand policy, see [] | Yes |
+| AI-generated images | `apps/frontend/public/brand/`, `apps/frontend/src/assets/icons/` | Brand policy, see [NOTICE](NOTICE) | Yes |
 
 ## 1. Code adapted into this repository
 
@@ -270,6 +272,24 @@ snapshot and checks them against pinned SHA-256 values.
 | [lightx2v Minimax-h3-Turbo](https://huggingface.co/lightx2v/Minimax-h3-Turbo) LoRAs | H3 DiT acceleration | Apache-2.0 in the publisher's [source repository](https://github.com/ModelTC/Minimax-H3-Turbo); the model card names no licence of its own and refers to the repository licence (checked 2026-11-10) | As Model Derivatives of MiniMax-H3 they also come under the MiniMax H3 Community License (territory, §V.3, Acceptable Use Policy; see 3.1) |
 | [alibaba-pai MiniMax-H3-Acc-LoRAs](https://huggingface.co/alibaba-pai/MiniMax-H3-Acc-LoRAs) | H3 DiT acceleration | MiniMax H3 Community License Agreement | Same terms as MiniMax-H3 |
 
+Optional components (each in its own runtime environment; weights and engines are obtained separately, none is
+distributed in this repository). The licences below are the ones the publishers state on the linked pages; none of
+them forbids commercial use (the MiniMax-H3 and Qwen-Image 2.1 licences above have their own restrictions).
+
+| Model or engine | Used by | Licence | Key terms to check |
+|---|---|---|---|
+| [Wan2.1-VACE-1.3B](https://huggingface.co/Wan-AI/Wan2.1-VACE-1.3B-diffusers) | `wan.vace`, `wan.generate` (`runtimes/wan-edit/`) | Apache-2.0 | The model card asks users not to create unlawful or harmful content; the publisher claims no rights over outputs |
+| [Wan2.2-S2V-14B](https://huggingface.co/Wan-AI/Wan2.2-S2V-14B), [Wan2.2-Animate-14B](https://huggingface.co/Wan-AI/Wan2.2-Animate-14B) | `wan.speech`, `wan.performance` (`runtimes/wan-native/`) | Apache-2.0 | As above |
+| [Wan2.2 source code](https://github.com/Wan-Video/Wan2.2) (pinned revision, installed into the runtime) | `runtimes/wan-native/` | Apache-2.0 | — |
+| [SAM 2.1 hiera-tiny](https://huggingface.co/facebook/sam2.1-hiera-tiny) and the [SAM 2 predictor](https://github.com/facebookresearch/sam2) | `media.segment_video` (`runtimes/segmentation/`) | Apache-2.0 | — |
+| [Qwen3-TTS-12Hz-1.7B-CustomVoice](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice) and [qwen-tts](https://github.com/QwenLM/Qwen3-TTS) | `speech.custom_voice` (`runtimes/speech/`) | Apache-2.0 | Only dub voices you have the right to use |
+| [faster-whisper-small](https://huggingface.co/Systran/faster-whisper-small) (a CTranslate2 conversion of [Whisper small](https://huggingface.co/openai/whisper-small)) and [faster-whisper](https://github.com/SYSTRAN/faster-whisper) | `media.transcribe` (`runtimes/transcription/`) | MIT (conversion and engine); Apache-2.0 (original Whisper small weights) | — |
+| [Practical-RIFE 4.26](https://github.com/hzwer/Practical-RIFE) weights | `runtimes/rife/` | MIT | — |
+| [SeedVR2-3B](https://huggingface.co/ByteDance-Seed/SeedVR2-3B) and its [source code](https://github.com/ByteDance-Seed/SeedVR) | `runtimes/seedvr2/` | Apache-2.0 | — |
+| MediaPipe [Pose Landmarker](https://huggingface.co/litert-community/MediaPipe-PoseLandmarker-Full) and [Face Landmarker](https://huggingface.co/litert-community/MediaPipe-FaceLandmarker) models, [MediaPipe](https://github.com/google-ai-edge/mediapipe) | `runtimes/performance/` | Apache-2.0 | — |
+| [MiDaS v2.1 small](https://github.com/isl-org/MiDaS) | Depth control (`runtimes/performance/`) | MIT | — |
+| [Anime4K v4.0](https://github.com/bloc97/Anime4K) shaders | `media.upscale` (`runtimes/captioner/`) | MIT | Shader files are included (see section 1) |
+
 ### 3.1 MiniMax H3 Community License — points to know
 
 - **No training of other models (§V.3).** The MiniMax H3 Works (weights, Model Derivatives such as LoRAs) and their
@@ -309,7 +329,7 @@ snapshot and checks them against pinned SHA-256 values.
 The following 24 image files were generated with OpenAI Codex image generation (the Codex CLI image route; the tool
 did not report the model version). Each image was generated once and then only resized and converted (for example
 to 256 × 256 RGBA PNG or to WebP). They are brand assets: they are covered by the brand policy in
-[], not by the Apache License.
+[NOTICE](NOTICE), not by the Apache License.
 
 - Component-type icons (5): `apps/frontend/src/assets/icons/kind-{text-condition,dit-denoise,video-decode,audio-decode,media-mux}-v1.png`
 - Workspace area icons (10): `apps/frontend/public/brand/areas/{components,image,inference,records,video}.webp` and
@@ -319,8 +339,14 @@ to 256 × 256 RGBA PNG or to WebP). They are brand assets: they are covered by t
 - Background (1): `apps/frontend/public/brand/backgrounds/aurora.webp`
 
 The Phasyn logo files (`apps/frontend/public/brand/mark-*`, `icon-*`, `og-1200x630.jpg`) and the SVG wordmark are not
-AI-generated; they are brand assets covered by [].
+AI-generated; they are brand assets covered by [NOTICE](NOTICE).
 
 ## 5. Fonts
 
 No font files are bundled. The web UI uses the operating system's font stacks.
+
+## CPU performance capture
+
+The optional `performance-cpu` runtime uses Google MediaPipe for landmark inference and OpenCV for rendering. The model files are obtained separately from Google. The pinned versions and hashes are in the component's capability manifest. See the official [Pose Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker) and [Face Landmarker](https://ai.google.dev/edge/mediapipe/solutions/vision/face_landmarker) documentation.
+
+The depth control component uses optional [MiDaS v2.1](https://github.com/isl-org/MiDaS), distributed under the MIT license. The model is downloaded separately. The pinned release and digest are in the component's capability manifest.

@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
-def diagnostic(
+def diagnostic(  # noqa: PLR0913 - Preserve the existing provider or recipe ABI.
     code: str,
     message: str,
     *,
@@ -45,13 +45,17 @@ class ApiError(Exception):
     details: list[dict[str, Any]] = field(default_factory=list)
 
     def __post_init__(self) -> None:
+        """Initialize the exception with the recorded error message."""
         Exception.__init__(self, f"{self.code}: {self.message}")
 
 
 class SemanticError(ApiError):
     """Raised by the adapter rules when a request is schema-valid but illegal."""
 
-    def __init__(self, diagnostics: list[dict[str, Any]], message: str = "設定組合不合法") -> None:
+    def __init__(
+        self, diagnostics: list[dict[str, Any]], message: str = "設定組合不合法"
+    ) -> None:
+        """Record the validation error and its location."""
         first = diagnostics[0] if diagnostics else {}
         field_paths = first.get("field_paths") or [None]
         code = (
@@ -59,7 +63,9 @@ class SemanticError(ApiError):
             if any(d.get("code") == "UNSUPPORTED_COMBINATION" for d in diagnostics)
             else "INVALID_ARGUMENT"
         )
-        super().__init__(code=code, message=message, field_path=field_paths[0], details=diagnostics)
+        super().__init__(
+            code=code, message=message, field_path=field_paths[0], details=diagnostics
+        )
 
 
 __all__ = ["ApiError", "SemanticError", "diagnostic"]

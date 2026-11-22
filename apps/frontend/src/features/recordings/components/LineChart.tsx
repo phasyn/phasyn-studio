@@ -23,7 +23,7 @@ export interface LineSeries {
   label: string;
   tone: SeriesTone;
   segments: MemoryPoint[][];
-  samples: ReadonlyArray<{ t: number; v: number | null }>;
+  samples: readonly { t: number; v: number | null }[];
 }
 
 const MARGIN = { top: 10, right: 16, bottom: 26, left: 72 };
@@ -62,7 +62,7 @@ export const LineChart = memo(function LineChart({
   height?: number;
 }) {
   const liveId = useId();
-  const [plotRef, width] = useElementWidth<HTMLDivElement>();
+  const [plotRef, width] = useElementWidth();
   const [cursor, setCursor] = useState<number | null>(null);
 
   const maxValue = useMemo(() => {
@@ -142,19 +142,19 @@ export const LineChart = memo(function LineChart({
           ) : null}
         </ul>
       ) : null}
-      <div
+      <div /* eslint-disable-line jsx-a11y-x/no-noninteractive-element-interactions -- Keyboard focus moves the chart cursor across measured samples. */
         ref={plotRef}
-        tabIndex={0}
+         /* eslint-disable-line jsx-a11y-x/no-noninteractive-tabindex -- Keyboard focus moves the chart cursor across measured samples. */ tabIndex={0}
         role="group"
         aria-label={tr("{label}。方向鍵在取樣時刻間移動游標，Esc 清除", { label })}
         aria-describedby={liveId}
         onKeyDown={onKeyDown}
-        onBlur={() => setCursor(null)}
+        onBlur={() => { setCursor(null); }}
         className="relative min-w-0 rounded-md"
         style={{ height }}
       >
         {width > 0 ? (
-          <svg width={width} height={height} aria-hidden="true" className="block" onPointerMove={onPointerMove} onPointerLeave={() => setCursor(null)}>
+          <svg width={width} height={height} aria-hidden="true" className="block" onPointerMove={onPointerMove} onPointerLeave={() => { setCursor(null); }}>
             {yAxis.ticks.map((tick) => (
               <g key={tick}>
                 <line x1={MARGIN.left} x2={width - MARGIN.right} y1={px(yOf(tick)) + 0.5} y2={px(yOf(tick)) + 0.5} className="stroke-line-subtle" />
@@ -187,11 +187,11 @@ export const LineChart = memo(function LineChart({
             {series.map((s) =>
               s.segments.map((segment, index) =>
                 segment.length === 1 && segment[0] ? (
-                  <circle key={`${s.key}-${index}`} cx={px(xOf(segment[0].t))} cy={px(yOf(segment[0].v))} r={4} className={TONE[s.tone].fill} />
+                  <circle key={`${s.key}-${String(index)}`} cx={px(xOf(segment[0].t))} cy={px(yOf(segment[0].v))} r={4} className={TONE[s.tone].fill} />
                 ) : (
                   <polyline
-                    key={`${s.key}-${index}`}
-                    points={segment.map((point) => `${px(xOf(point.t))},${px(yOf(point.v))}`).join(" ")}
+                    key={`${s.key}-${String(index)}`}
+                    points={segment.map((point) => `${String(px(xOf(point.t)))},${String(px(yOf(point.v)))}`).join(" ")}
                     fill="none"
                     strokeWidth={2}
                     strokeLinejoin="round"

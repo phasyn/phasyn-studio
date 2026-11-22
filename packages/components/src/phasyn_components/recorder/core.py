@@ -29,7 +29,8 @@ import time
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from types import TracebackType
+from typing import Any, Self
 
 from ..ids import is_local_id, require_uuid
 from ..settings import normalize_recording
@@ -39,6 +40,7 @@ from .metrics import metric
 from .sink import RecordingSink
 from .summary import CallFacts, build_summary, environment_facts, merge_summaries
 from .writer import EventWriter, Publisher
+
 
 LEVELS = {"debug": 10, "info": 20, "warning": 30, "error": 40}
 DETAIL_MODES = ("detailed", "trace")
@@ -78,7 +80,7 @@ class Span:
         "step_index",
     )
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - Keep the published positional and keyword API.
         self,
         rec: Recorder,
         name: str,
@@ -89,6 +91,7 @@ class Span:
         phase: str | None,
         critical: bool,
     ) -> None:
+        """Initialize span with its configuration."""
         self._rec = rec
         self.name = name
         self.part = part
@@ -106,19 +109,32 @@ class Span:
         self.coverage = "full"
         self.reason: str | None = None
 
-    def __enter__(self) -> Span:
+    def __enter__(self) -> Self:
+        """Enter the managed operation."""
         self.start_ns = mono_ns()
         return self
 
-    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> None:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        """Complete or abandon the operation when its scope exits."""
         self.end_ns = mono_ns()
         if exc is not None and self.reason is None:
             self.reason = f"{type(exc).__name__}: {exc}"[:500]
         self._rec._finish_span(self)
 
     def set_gpu(
-        self, ms: float | None, *, device_id: str | None, stream_id: str | None, reason: str | None = None
+        self,
+        ms: float | None,
+        *,
+        device_id: str | None,
+        stream_id: str | None,
+        reason: str | None = None,
     ) -> None:
+        """Attach GPU event timing to the span."""
         self.gpu_event_ms = _finite(ms)
         self.gpu_device_id = device_id
         self.gpu_stream_id = stream_id
@@ -127,13 +143,14 @@ class Span:
 
     @property
     def host_ms(self) -> float:
+        """Return the host elapsed time in milliseconds."""
         return max(0, self.end_ns - self.start_ns) / 1_000_000
 
 
 class Recorder:
     """One stream of one recording. Thread-safe; an I/O failure only degrades the recording."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - Keep the published positional and keyword API.
         self,
         *,
         recordings_root: Path | None,
@@ -152,6 +169,7 @@ class Recorder:
         clock_domain: str | None = None,
         track_process_cpu: bool = False,
     ) -> None:
+        """Initialize recorder with its configuration."""
         self.recording_id = require_uuid(recording_id, "recording_id")
         self.stream_id = stream_id
         self.node_id = node_id
@@ -183,7 +201,9 @@ class Recorder:
                     Path(recordings_root),
                     self.recording_id,
                     stream_id,
-                    segment_bytes=int(self.config.get("segment_bytes", 64 * 1024 * 1024)),
+                    segment_bytes=int(
+                        self.config.get("segment_bytes", 64 * 1024 * 1024)
+                    ),
                 )
             except OSError as exc:
                 degraded = f"無法建立紀錄目錄：{exc}"
@@ -194,7 +214,9 @@ class Recorder:
             stream_id=stream_id,
             queue_max_events=int(self.config.get("queue_max_events", 8192)),
             queue_max_bytes=int(self.config.get("queue_max_bytes", 16 * 1024 * 1024)),
-            max_detail_bytes=int(self.config.get("max_detail_bytes_per_recording", 2 * 1024**3)),
+            max_detail_bytes=int(
+                self.config.get("max_detail_bytes_per_recording", 2 * 1024**3)
+            ),
             degraded_reason=degraded,
         )
 
@@ -207,26 +229,37 @@ class Recorder:
     # ------------------------------------------------------------------ helpers
     @property
     def detailed(self) -> bool:
+        """Report whether detailed recording is active."""
         return self.mode in DETAIL_MODES
 
     @property
     def enabled(self) -> bool:
+        """Report whether recording is enabled."""
         return self.mode != "off"
 
     @property
     def directory(self) -> Path | None:
+        """Return the directory for this record or file."""
         return self._sink.directory if self._sink is not None else None
 
     def _next_span_id(self) -> str:
         return f"sp-{next(self._span_counter)}"
 
     def part_selected(self, part: str | None) -> bool:
+        """Check whether the configured selection includes this part."""
         if not self._part_filters or part is None:
             return True
-        return any(part == f or fnmatch.fnmatchcase(part, f) for f in self._part_filters)
+        return any(
+            part == f or fnmatch.fnmatchcase(part, f) for f in self._part_filters
+        )
 
     def step_selected(self, step_index: int | None) -> bool:
-        return not self._step_filters or step_index is None or step_index in self._step_filters
+        """Check whether the configured selection includes this step."""
+        return (
+            not self._step_filters
+            or step_index is None
+            or step_index in self._step_filters
+        )
 
     # ------------------------------------------------------------------ context
     def write_context(
@@ -236,6 +269,7 @@ class Recorder:
         input_summary: Mapping[str, Any] | None = None,
         environment: Mapping[str, Any] | None = None,
     ) -> dict[str, Any]:
+        """Persist the effective operation context."""
         ctx = {
             "recording_id": self.recording_id,
             "node_id": self.node_id,
@@ -263,7 +297,14 @@ class Recorder:
         return ctx
 
     # ------------------------------------------------------------------ events
-    def _emit(self, kind: str, data: Mapping[str, Any], *, level: str = "info", critical: bool = False) -> int | None:
+    def _emit(
+        self,
+        kind: str,
+        data: Mapping[str, Any],
+        *,
+        level: str = "info",
+        critical: bool = False,
+    ) -> int | None:
         if self.mode == "off" or self._closed:
             return None
         started = time.perf_counter_ns()
@@ -285,7 +326,7 @@ class Recorder:
         return self._writer.enqueue(event, critical=critical, started_ns=started)
 
     # ------------------------------------------------------------------ spans
-    def span(
+    def span(  # noqa: PLR0913 - Keep the published positional and keyword API.
         self,
         name: str,
         *,
@@ -295,9 +336,16 @@ class Recorder:
         phase: str | None = None,
         critical: bool = False,
     ) -> Span:
+        """Open a measured host span."""
         parent_id = parent.span_id if isinstance(parent, Span) else parent
         return Span(
-            self, name, part=part, step_index=step_index, parent_span_id=parent_id, phase=phase, critical=critical
+            self,
+            name,
+            part=part,
+            step_index=step_index,
+            parent_span_id=parent_id,
+            phase=phase,
+            critical=critical,
         )
 
     def _finish_span(self, span: Span) -> None:
@@ -306,11 +354,15 @@ class Recorder:
             if span.phase:
                 self._agg.add_phase(span.phase, host_ms)
             if span.part:
-                self._agg.add_part(span.part, host_ms=host_ms, gpu_ms=span.gpu_event_ms, calls=1)
+                self._agg.add_part(
+                    span.part, host_ms=host_ms, gpu_ms=span.gpu_event_ms, calls=1
+                )
         if not self.enabled:
             return
         if not span.critical and not (
-            self.detailed and self.part_selected(span.part) and self.step_selected(span.step_index)
+            self.detailed
+            and self.part_selected(span.part)
+            and self.step_selected(span.step_index)
         ):
             return
         self._emit("span", self._span_data(span), critical=span.critical)
@@ -334,7 +386,7 @@ class Recorder:
             "reason": span.reason,
         }
 
-    def add_span(
+    def add_span(  # noqa: PLR0913 - Keep the published positional and keyword API.
         self,
         name: str,
         *,
@@ -349,22 +401,49 @@ class Recorder:
         critical: bool = False,
         reason: str | None = None,
     ) -> None:
-        sp = Span(self, name, part=part, step_index=step_index, parent_span_id=None, phase=phase, critical=critical)
+        """Record a completed timing span."""
+        sp = Span(
+            self,
+            name,
+            part=part,
+            step_index=step_index,
+            parent_span_id=None,
+            phase=phase,
+            critical=critical,
+        )
         sp.start_ns, sp.end_ns = int(start_ns), int(end_ns)
-        sp.set_gpu(gpu_event_ms, device_id=gpu_device_id, stream_id=gpu_stream_id, reason=reason)
+        sp.set_gpu(
+            gpu_event_ms,
+            device_id=gpu_device_id,
+            stream_id=gpu_stream_id,
+            reason=reason,
+        )
         self._finish_span(sp)
 
     @contextmanager
-    def phase(self, name: str, *, part: str | None = None, critical: bool = False) -> Iterator[Span]:
+    def phase(
+        self, name: str, *, part: str | None = None, critical: bool = False
+    ) -> Iterator[Span]:
+        """Measure an execution phase."""
         with self.span(name, part=part, phase=name, critical=critical) as sp:
             yield sp
 
     # ------------------------------------------------------------------ parts
-    def part_call(self, part: str, *, host_ms: float = 0.0, gpu_event_ms: float | None = None, calls: int = 1) -> None:
+    def part_call(
+        self,
+        part: str,
+        *,
+        host_ms: float = 0.0,
+        gpu_event_ms: float | None = None,
+        calls: int = 1,
+    ) -> None:
+        """Measure one component part invocation."""
         with self._lock:
             self._agg.add_part(part, host_ms=host_ms, gpu_ms=gpu_event_ms, calls=calls)
 
-    def part_value(self, part: str, name: str, value: float | int | None, *, unit: str, method: str) -> None:
+    def part_value(
+        self, part: str, name: str, value: float | None, *, unit: str, method: str
+    ) -> None:
         """An extra measurement of a part (e.g. a CUDA-event wait for weights); not a global counter."""
         with self._lock:
             self._agg.set_part_value(part, name, value, unit=unit, method=method)
@@ -376,19 +455,23 @@ class Recorder:
             self._agg.declare(names)
 
     def count(self, name: str, n: int = 1, *, part: str | None = None) -> None:
+        """Increase the named counter."""
         with self._lock:
             self._agg.count(name, n, part=part)
 
-    def set_metric(self, name: str, value: float | int | None, **kw: Any) -> None:
+    def set_metric(self, name: str, value: float | None, **kw: Any) -> None:
+        """Record an observed metric value."""
         m = metric(name, value, **kw)
         with self._lock:
             self._agg.metrics[name] = m
 
     def put_metric(self, name: str, m: Mapping[str, Any]) -> None:
+        """Store a metric with its evidence."""
         with self._lock:
             self._agg.metrics[name] = dict(m)
 
-    def max_metric(self, name: str, value: float | int | None, **kw: Any) -> None:
+    def max_metric(self, name: str, value: float | None, **kw: Any) -> None:
+        """Keep the largest observed metric value."""
         if value is None:
             return
         m = metric(name, value, **kw)
@@ -401,16 +484,26 @@ class Recorder:
             self._agg.set_coverage(coverage, reason)
 
     def note(self, text: str) -> None:
+        """Add an explanatory note to this recording."""
         with self._lock:
             self._agg.add_note(text)
 
     def measurement_error(self, what: str) -> None:
+        """Record why a measurement could not be collected."""
         with self._lock:
             self._measurement_errors += 1
             self._agg.add_note(f"量測失敗：{what}")
 
     # ------------------------------------------------------------------ cost (ETA data)
-    def record_cost(self, stage: str, *, work: float, unit: str, compute_ms: float | None = None, **shape: Any) -> None:
+    def record_cost(
+        self,
+        stage: str,
+        *,
+        work: float,
+        unit: str,
+        compute_ms: float | None = None,
+        **shape: Any,
+    ) -> None:
         """The work one stage actually did in this call (data for the ETA cost profiles, never a prediction).
 
         ``work`` is counted in ``unit``, one of :data:`COST_UNITS`; ``compute_ms`` is the stage's
@@ -426,29 +519,20 @@ class Recorder:
         if not math.isfinite(amount) or amount < 0:
             raise ValueError(f"cost work must be a finite number >= 0: {work!r}")
         if unit not in COST_UNITS:
-            raise ValueError(f"cost unit must be one of {', '.join(COST_UNITS)}: {unit!r}")
+            raise ValueError(
+                f"cost unit must be one of {', '.join(COST_UNITS)}: {unit!r}"
+            )
         ms = None if compute_ms is None else float(compute_ms)
         if ms is not None and (not math.isfinite(ms) or ms < 0):
             raise ValueError(f"compute_ms must be a finite number >= 0: {compute_ms!r}")
-        risk = shape.get("risk_measure")
-        if "risk_measure" in shape and (
-            isinstance(risk, bool) or not isinstance(risk, (int, float)) or not math.isfinite(risk) or risk < 0
-        ):
-            raise ValueError(f"risk_measure must be a finite number >= 0: {risk!r}")
-        if "risk_unit" in shape and not (
-            isinstance(shape["risk_unit"], str) and RISK_UNIT_RE.match(shape["risk_unit"])
-        ):
-            raise ValueError(f"risk_unit must match {RISK_UNIT_RE.pattern}: {shape['risk_unit']!r}")
-        facts: dict[str, Any] = {}
-        for key, value in shape.items():
-            if not is_local_id(key):
-                raise ValueError(f"cost shape key must be a local id: {key!r}")
-            if isinstance(value, float) and not math.isfinite(value):
-                raise ValueError(f"cost shape value must be finite: {key}={value!r}")
-            if value is not None and not isinstance(value, (bool, int, float, str)):
-                raise ValueError(f"cost shape values must be scalars: {key}={value!r}")
-            facts[key] = value[:COST_SHAPE_TEXT_LIMIT] if isinstance(value, str) else value
-        entry = {"stage": stage, "work": amount, "work_unit": unit, "compute_ms": ms, "shape": facts}
+        facts = _cost_shape(shape)
+        entry = {
+            "stage": stage,
+            "work": amount,
+            "work_unit": unit,
+            "compute_ms": ms,
+            "shape": facts,
+        }
         with self._lock:
             self._agg.cost.add_stage(entry)
 
@@ -465,7 +549,9 @@ class Recorder:
         facts = {
             "load_digest": load_digest,
             "warm": warm,
-            "loadavg": None if loadavg is None else {"start": loadavg.get("start"), "end": loadavg.get("end")},
+            "loadavg": None
+            if loadavg is None
+            else {"start": loadavg.get("start"), "end": loadavg.get("end")},
             "device_id": device_id,
             "source_revision": source_revision,
         }
@@ -473,7 +559,7 @@ class Recorder:
             self._agg.cost.facts.update(facts)
 
     # ------------------------------------------------------------------ steps
-    def step(
+    def step(  # noqa: PLR0913 - Keep the published positional and keyword API.
         self,
         step_index: int,
         *,
@@ -485,6 +571,7 @@ class Recorder:
         sigma: float | None = None,
         metrics: Mapping[str, Mapping[str, Any]] | None = None,
     ) -> None:
+        """Record a scheduler step."""
         with self._lock:
             self._agg.add_step(host_ms, gpu_event_ms)
         if self.detailed and self.step_selected(step_index):
@@ -503,7 +590,7 @@ class Recorder:
             )
 
     # ------------------------------------------------------------------ transfers
-    def transfer(
+    def transfer(  # noqa: PLR0913 - Keep the published positional and keyword API.
         self,
         category: str,
         *,
@@ -533,8 +620,7 @@ class Recorder:
         reason: str | None = None,
         transfer_id: str | None = None,
     ) -> str:
-        """Record one real (or no-op) copy. With ``completion_status='submitted'``, complete it later
-        with :meth:`transfer_completed`."""
+        """Record one real (or no-op) copy. With ``completion_status='submitted'``, complete it later with :meth:`transfer_completed`."""
         tid = transfer_id or f"tx-{next(self._transfer_counter)}"
         if completion_status == "completed":
             if completed_bytes is None:
@@ -556,7 +642,11 @@ class Recorder:
                 completion_status=completion_status,
                 part=part,
             )
-        if self.detailed and self.part_selected(part) and self.step_selected(step_index):
+        if (
+            self.detailed
+            and self.part_selected(part)
+            and self.step_selected(step_index)
+        ):
             self._emit(
                 "transfer",
                 {
@@ -584,25 +674,44 @@ class Recorder:
                     "dst": dst,
                     "src_memory_kind": src_memory_kind,
                     "dst_memory_kind": dst_memory_kind,
-                    "logical_bytes": int(logical_bytes if logical_bytes is not None else submitted_bytes),
+                    "logical_bytes": int(
+                        logical_bytes if logical_bytes is not None else submitted_bytes
+                    ),
                     "host_submit_ms": max(0.0, float(host_submit_ms)),
-                    "completion_status": "no_op" if not actual_copy else completion_status,
+                    "completion_status": "no_op"
+                    if not actual_copy
+                    else completion_status,
                 },
             )
         return tid
 
     def transfer_completed(
-        self, transfer_id: str, *, completed_bytes: int, completed_count: int = 1, gpu_event_ms: float | None = None
+        self,
+        transfer_id: str,
+        *,
+        completed_bytes: int,
+        completed_count: int = 1,
+        gpu_event_ms: float | None = None,
     ) -> None:
+        """Record completion of a previously submitted transfer."""
         with self._lock:
             self._agg.complete_transfer(
-                transfer_id, completed_bytes=completed_bytes, completed_count=completed_count, gpu_event_ms=gpu_event_ms
+                transfer_id,
+                completed_bytes=completed_bytes,
+                completed_count=completed_count,
+                gpu_event_ms=gpu_event_ms,
             )
 
     # ------------------------------------------------------------------ samples/logs/notices
     def sample(
-        self, sample_id: str, *, device_id: str | None, process_id: int | None, metrics: Mapping[str, Mapping[str, Any]]
+        self,
+        sample_id: str,
+        *,
+        device_id: str | None,
+        process_id: int | None,
+        metrics: Mapping[str, Mapping[str, Any]],
     ) -> None:
+        """Record a time-correlated device sample."""
         with self._lock:
             self._agg.add_sample(metrics)
         if self.enabled:
@@ -617,6 +726,7 @@ class Recorder:
             )
 
     def log(self, level: str, message: str, **fields: Any) -> None:
+        """Record a structured log event."""
         lvl = LEVELS.get(level, 20)
         critical = lvl >= LEVELS["warning"]
         if not critical and lvl < self._log_threshold:
@@ -632,10 +742,21 @@ class Recorder:
                 safe_fields[k] = repr(v)[:2000]
         if critical or self.detailed or self.mode == "summary":
             self._emit(
-                "log", {"message": text, "fields": safe_fields, "truncated": truncated}, level=level, critical=critical
+                "log",
+                {"message": text, "fields": safe_fields, "truncated": truncated},
+                level=level,
+                critical=critical,
             )
 
-    def notice(self, code: str, message: str, *, dropped_events: int = 0, dropped_bytes: int = 0) -> None:
+    def notice(
+        self,
+        code: str,
+        message: str,
+        *,
+        dropped_events: int = 0,
+        dropped_bytes: int = 0,
+    ) -> None:
+        """Record a structured runtime notice."""
         self._emit(
             "notice",
             {
@@ -649,6 +770,7 @@ class Recorder:
         )
 
     def write_trace(self, name: str, document: Any) -> Path | None:
+        """Persist a named trace artifact."""
         if self._sink is None:
             return None
         try:
@@ -659,11 +781,12 @@ class Recorder:
 
     # ------------------------------------------------------------------ summary
     def recorder_state(self) -> str:
+        """Report the current health of the recorder."""
         if self.mode == "off":
             return "off"
         return "degraded" if self._writer.degraded_reason else "ok"
 
-    def finalize(
+    def finalize(  # noqa: PLR0913 - Keep the published positional and keyword API.
         self,
         state: str,
         *,
@@ -678,7 +801,11 @@ class Recorder:
             return self.summary
         end_ns = mono_ns()
         if error is not None:
-            self.log("error", f"{error.get('code')}: {error.get('message')}", error=dict(error))
+            self.log(
+                "error",
+                f"{error.get('code')}: {error.get('message')}",
+                error=dict(error),
+            )
         self._closed = True
         self._writer.close(drain_timeout_s)
         with self._lock:
@@ -688,7 +815,9 @@ class Recorder:
                 operation=self.operation,
                 mode=self.mode,
                 wall_ms=(end_ns - self.start_ns) / 1_000_000,
-                cpu_ms=(time.process_time() - self._cpu_start) * 1000 if self._cpu_start is not None else None,
+                cpu_ms=(time.process_time() - self._cpu_start) * 1000
+                if self._cpu_start is not None
+                else None,
                 measurement_errors=self._measurement_errors,
                 context_available=self.context is not None,
             )
@@ -713,4 +842,38 @@ class Recorder:
         return summary
 
 
-__all__ = ["DETAIL_MODES", "LEVELS", "Recorder", "Span", "environment_facts", "merge_summaries"]
+def _cost_shape(shape: Mapping[str, Any]) -> dict[str, Any]:
+    risk = shape.get("risk_measure")
+    if "risk_measure" in shape and (
+        isinstance(risk, bool)
+        or not isinstance(risk, (int, float))
+        or not math.isfinite(risk)
+        or risk < 0
+    ):
+        raise ValueError(f"risk_measure must be a finite number >= 0: {risk!r}")
+    if "risk_unit" in shape and not (
+        isinstance(shape["risk_unit"], str) and RISK_UNIT_RE.match(shape["risk_unit"])
+    ):
+        raise ValueError(
+            f"risk_unit must match {RISK_UNIT_RE.pattern}: {shape['risk_unit']!r}"
+        )
+    facts: dict[str, Any] = {}
+    for key, value in shape.items():
+        if not is_local_id(key):
+            raise ValueError(f"cost shape key must be a local id: {key!r}")
+        if isinstance(value, float) and not math.isfinite(value):
+            raise ValueError(f"cost shape value must be finite: {key}={value!r}")
+        if value is not None and not isinstance(value, (bool, int, float, str)):
+            raise ValueError(f"cost shape values must be scalars: {key}={value!r}")
+        facts[key] = value[:COST_SHAPE_TEXT_LIMIT] if isinstance(value, str) else value
+    return facts
+
+
+__all__ = [
+    "DETAIL_MODES",
+    "LEVELS",
+    "Recorder",
+    "Span",
+    "environment_facts",
+    "merge_summaries",
+]

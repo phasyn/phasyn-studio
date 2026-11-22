@@ -1,17 +1,18 @@
-"""phasyn_qimg 的 recorder hooks 與權重駐留（與 H3 ``phasyn_h3.instrument`` 相同的量測原則）。
+"""phasyn_qimg 的 recorder hooks 與權重駐留（與 H3 ``phasyn_h3.instrument`` 相同的量測原則）.
 
-- stage：host span＋compute stream 上的 CUDA event pair（只在結果本來就要回到 CPU 的邊界解 event；
+- stage：host span+compute stream 上的 CUDA event pair（只在結果本來就要回到 CPU 的邊界解 event；
   不做 device-wide synchronize）。event 區間是 stream 上的時間，不是 kernel active time。
 - 每次 call 的 allocator 峰值（``AllocatorWindow``：allocated 與 reserved 分開，不相加）。
 - 權重搬移（after_use=host）：H2D 以 copy 前後的 event pair 計時，記 ``weight_h2d`` transfer；
   用完只把參數指回既有的 host 副本（權重不變，沒有 D2H），記 ``device_discard_count``。
-- 未知的量測值一律 null＋原因，不補 0。
+- 未知的量測值一律 null+原因，不補 0。
 """
 
 from __future__ import annotations
 
 import contextlib
 import time
+import traceback
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
@@ -21,6 +22,7 @@ from phasyn_components.recorder import Recorder
 
 from .config import GIB
 from .memory import format_gib
+
 
 # Library workspaces (cuBLAS keeps one per handle and stream from its first use until the process exits) can leave a
 # failed first call slightly above its starting allocation without holding any of the call's tensors. Policy
@@ -33,10 +35,12 @@ def _gpu_timing_enabled(rec: Recorder) -> bool:
 
 
 @contextlib.contextmanager
-def timed_stage(rec: Recorder, name: str, *, part: str | None, cuda: bool) -> Iterator[Any]:
-    """一段 stage：recorder span（host 時間）＋ CUDA event 區間（cuda=True 且啟用 gpu_event_timing 時）。
+def timed_stage(
+    rec: Recorder, name: str, *, part: str | None, cuda: bool
+) -> Iterator[Any]:
+    """一段 stage：recorder span（host 時間）+ CUDA event 區間（cuda=True 且啟用 gpu_event_timing 時）.
 
-    呼叫端在 with 區塊內把結果搬回 CPU（同步點），所以離開時 event 已完成；未完成或失敗 → null＋原因。
+    呼叫端在 with 區塊內把結果搬回 CPU（同步點），所以離開時 event 已完成；未完成或失敗 → null+原因。
     """
     pairs = None
     start = None
@@ -59,19 +63,23 @@ def timed_stage(rec: Recorder, name: str, *, part: str | None, cuda: bool) -> It
                     end = pairs.record()
                     pairs.pair(start, end, lambda ms: result.__setitem__("ms", ms))
                     pairs.drain(wait=True)
-                except Exception as exc:  # 量測失敗不影響運算
-                    rec.measurement_error(f"{name} CUDA event：{type(exc).__name__}: {exc}"[:300])
+                except Exception as exc:  # noqa: BLE001 - Optional instrumentation failures must not change generation.
+                    rec.measurement_error(
+                        f"{name} CUDA event：{type(exc).__name__}: {exc}"[:300]
+                    )
                 ms = result.get("ms")
                 span.set_gpu(
                     ms,
                     device_id=None,
                     stream_id=None,
-                    reason=None if ms is not None else "CUDA event 未記錄（gpu_event_timing 停用或事件失敗）",
+                    reason=None
+                    if ms is not None
+                    else "CUDA event 未記錄（gpu_event_timing 停用或事件失敗）",
                 )
 
 
-def allocator_window(cuda: bool) -> Any:
-    """CUDA 元件的 allocator 視窗（start 已呼叫）；CPU 元件回傳 None。"""
+def allocator_window(cuda: bool) -> Any:  # noqa: FBT001 - Keep the published runtime API.
+    """CUDA 元件的 allocator 視窗（start 已呼叫）；CPU 元件回傳 None."""
     if not cuda:
         return None
     from phasyn_components.recorder.gpu import AllocatorWindow
@@ -82,6 +90,7 @@ def allocator_window(cuda: bool) -> Any:
 
 
 def finish_allocator(rec: Recorder, window: Any, *, scope: str, cuda: bool) -> None:
+    """Finish allocator measurements for the call."""
     if window is not None:
         window.finish(rec, scope=scope)
         return
@@ -90,7 +99,12 @@ def finish_allocator(rec: Recorder, window: Any, *, scope: str, cuda: bool) -> N
             "torch_allocated_peak_bytes",
             "torch_reserved_peak_bytes",
         ):
-            rec.set_metric(name, None, quality="not_applicable", reason="CPU 元件沒有 CUDA allocator")
+            rec.set_metric(
+                name,
+                None,
+                quality="not_applicable",
+                reason="CPU 元件沒有 CUDA allocator",
+            )
 
 
 def drop_frame_locals(exc: BaseException) -> None:
@@ -101,8 +115,6 @@ def drop_frame_locals(exc: BaseException) -> None:
     activation memory until the next successful call. Only locals are cleared (file names, line numbers and
     messages are kept); frames still executing are skipped by ``traceback.clear_frames``.
     """
-    import traceback
-
     traceback.clear_frames(exc.__traceback__)
 
 
@@ -135,11 +147,17 @@ def record_after_release(rec: Any, device: Any) -> None:
         import torch
 
         reserved = int(torch.cuda.memory_reserved(device))
-    except Exception as exc:  # 量測失敗只降級紀錄
-        rec.measurement_error(f"釋放後 reserved 量測失敗：{type(exc).__name__}: {exc}"[:300])
+    except Exception as exc:  # noqa: BLE001 - Optional instrumentation failures must not change generation.
+        rec.measurement_error(
+            f"釋放後 reserved 量測失敗：{type(exc).__name__}: {exc}"[:300]
+        )
         return
     rec.set_metric(
-        "qimg.torch_reserved_after_release_bytes", reserved, unit="bytes", scope="component_call", method="runtime_hook"
+        "qimg.torch_reserved_after_release_bytes",
+        reserved,
+        unit="bytes",
+        scope="component_call",
+        method="runtime_hook",
     )
 
 
@@ -162,7 +180,11 @@ class CallMemory:
         """From an allocator window that was just started (None: a CPU call, nothing to check)."""
         if window is None:
             return None
-        return cls(device, getattr(window, "start_allocated", None), getattr(window, "reason", None))
+        return cls(
+            device,
+            getattr(window, "start_allocated", None),
+            getattr(window, "reason", None),
+        )
 
     def settle(self, code: str) -> dict[str, Any] | None:
         """Release the cached blocks and check whether the process is back at its allocation before the call.
@@ -189,7 +211,7 @@ class CallMemory:
                 torch.cuda.empty_cache()
             allocated = int(torch.cuda.memory_allocated(self.device))
             reserved = int(torch.cuda.memory_reserved(self.device))
-        except Exception as exc:  # a broken CUDA context ends up here as well
+        except Exception as exc:  # noqa: BLE001 - Optional instrumentation failures must not change generation.
             report["reason"] = (
                 f"失敗後無法量測 GPU 記憶體（{type(exc).__name__}: {exception_message(exc)[:200]}），"
                 "不能確認已釋放；請重新載入元件"
@@ -216,7 +238,7 @@ class CallMemory:
 
 
 def module_bytes(module: Any) -> int:
-    """參數＋buffer 的實際 storage bytes（共用的 tensor 只算一次；meta tensor 不算）。"""
+    """參數+buffer 的實際 storage bytes（共用的 tensor 只算一次；meta tensor 不算）."""
     seen: set[int] = set()
     total = 0
     for tensor in (*module.parameters(), *module.buffers()):
@@ -228,6 +250,7 @@ def module_bytes(module: Any) -> int:
 
 
 def dtype_census(module: Any) -> dict[str, int]:
+    """Count model parameters by dtype."""
     out: dict[str, int] = {}
     for p in module.parameters():
         out[str(p.dtype)] = out.get(str(p.dtype), 0) + int(p.numel())
@@ -247,19 +270,24 @@ def check_vram(device: Any, required: int, *, what: str, hint: str) -> dict[str,
     if free < required:
         raise gpu_memory_insufficient(
             f"{what}：GPU 可用記憶體 {free / GIB:.2f} GiB 小於權重 {required / GIB:.2f} GiB；{hint}",
-            details={"gpu_free_bytes": int(free), "gpu_total_bytes": int(total), "weight_bytes": int(required)},
+            details={
+                "gpu_free_bytes": int(free),
+                "gpu_total_bytes": int(total),
+                "weight_bytes": int(required),
+            },
         )
     return {"gpu_free_bytes": int(free), "gpu_total_bytes": int(total)}
 
 
 class HostResidency:
-    """offload {mode: none, after_use: host}：權重常駐 host（可 pinned），每次呼叫搬上裝置、用完丟掉裝置副本。
+    """offload {mode: none, after_use: host}：權重常駐 host（可 pinned），每次呼叫搬上裝置、用完丟掉裝置副本.
 
     host 副本在建構時建立一次；之後 ``to_device`` 只做 H2D，``release`` 把參數指回 host 副本並清掉裝置
     cache（權重沒有被修改，不需要 D2H）。
     """
 
     def __init__(self, module: Any, *, device: Any, pinned: bool) -> None:
+        """Initialize the state for this operation."""
         import torch
 
         self.torch = torch
@@ -287,6 +315,7 @@ class HostResidency:
         return out
 
     def to_device(self, rec: Recorder, *, part: str, what: str) -> None:
+        """Transfer the block to the configured device."""
         if self.on_device:
             rec.transfer(
                 "weight_h2d",
@@ -299,7 +328,12 @@ class HostResidency:
             return
         cuda = self.device.type == "cuda"
         if cuda:
-            check_vram(self.device, self.weight_bytes, what=what, hint="請改用較小的設定或先停止同一張卡上的其他元件")
+            check_vram(
+                self.device,
+                self.weight_bytes,
+                what=what,
+                hint="請改用較小的設定或先停止同一張卡上的其他元件",
+            )
         torch = self.torch
         from phasyn_components.recorder.gpu import EventPairs
 
@@ -307,13 +341,17 @@ class HostResidency:
         start = pairs.record()
         t0 = time.perf_counter_ns()
         for tensor in self._tensors():
-            tensor.data = self._host[id(tensor)].to(self.device, non_blocking=self.pinned)
+            tensor.data = self._host[id(tensor)].to(
+                self.device, non_blocking=self.pinned
+            )
         submit_ms = (time.perf_counter_ns() - t0) / 1e6
         end = pairs.record()
         result: dict[str, float | None] = {}
         pairs.pair(start, end, lambda ms: result.__setitem__("ms", ms))
         if cuda:
-            torch.cuda.current_stream(self.device).synchronize()  # 權重必須在 forward 前到位（本來就要等）
+            torch.cuda.current_stream(
+                self.device
+            ).synchronize()  # 權重必須在 forward 前到位（本來就要等）
         pairs.drain(wait=False)
         self.on_device = True
         rec.transfer(
@@ -331,16 +369,19 @@ class HostResidency:
         )
 
     def release(self, rec: Recorder, *, part: str) -> None:
+        """Release the owned buffers and placement state."""
         if not self.on_device:
             return
         self.restore()
         if self.device.type == "cuda":
             with self.torch.cuda.device(self.device):
                 self.torch.cuda.empty_cache()
-        rec.count("device_discard_count", part=part)  # 丟棄裝置副本；host 權重沒變，沒有 D2H
+        rec.count(
+            "device_discard_count", part=part
+        )  # 丟棄裝置副本；host 權重沒變，沒有 D2H
 
     def restore(self) -> None:
-        """把參數指回 host 副本（失敗後的清理也用這個；不需要 recorder）。"""
+        """把參數指回 host 副本（失敗後的清理也用這個；不需要 recorder）."""
         for tensor in self._tensors():
             tensor.data = self._host[id(tensor)]
         self.on_device = False

@@ -24,7 +24,7 @@ function PathList({ title, paths, empty }: { title: string; paths: readonly stri
       {paths.length === 0 ? (
         <p className="text-data text-fg-secondary">{empty}</p>
       ) : (
-        <ul className="grid max-h-40 gap-0.5 overflow-y-auto font-mono text-mono text-fg-secondary">
+        <ul className="grid max-h-40 gap-0.5 overflow-y-auto font-mono text-data text-fg-secondary">
           {paths.slice(0, SHOWN).map((path) => (
             <li key={path} className="truncate" title={path}>
               {path}
@@ -46,10 +46,10 @@ export function ConflictConfirm({
   onCancel: () => void;
   onConfirm: (choices: ReadonlyMap<string, Side>) => void;
 }) {
-  const [choices, setChoices] = useState<ReadonlyMap<string, Side>>(new Map());
+  const [choices, setChoices] = useState<ReadonlyMap<string, Side>>(() => new Map());
   const preview = state?.preview;
   const overwrite = state?.choice === "overwrite";
-  const pick = (path: string, side: Side) => setChoices((current) => new Map(current).set(path, side));
+  const pick = (path: string, side: Side) => { setChoices((current) => new Map(current).set(path, side)); };
   return (
     <Dialog
       open={state !== null}
@@ -78,12 +78,12 @@ export function ConflictConfirm({
                     const side = choices.get(conflict.path) ?? "latest";
                     return (
                       <li key={conflict.path} className="grid gap-1">
-                        <span className="font-mono text-mono text-fg">{conflict.path}</span>
+                        <span className="font-mono text-data text-fg">{conflict.path}</span>
                         <div className="flex flex-wrap gap-2">
-                          <Button size="sm" variant={side === "latest" ? "primary" : "secondary"} aria-pressed={side === "latest"} onClick={() => pick(conflict.path, "latest")}>
+                          <Button size="sm" variant={side === "latest" ? "primary" : "secondary"} aria-pressed={side === "latest"} onClick={() => { pick(conflict.path, "latest"); }}>
                             {t("用最新版：{value}", { value: short(conflict.latest) })}
                           </Button>
-                          <Button size="sm" variant={side === "mine" ? "primary" : "secondary"} aria-pressed={side === "mine"} onClick={() => pick(conflict.path, "mine")}>
+                          <Button size="sm" variant={side === "mine" ? "primary" : "secondary"} aria-pressed={side === "mine"} onClick={() => { pick(conflict.path, "mine"); }}>
                             {t("用這裡的：{value}", { value: short(conflict.mine) })}
                           </Button>
                         </div>

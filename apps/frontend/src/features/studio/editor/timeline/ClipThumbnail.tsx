@@ -24,11 +24,11 @@ export interface ClipThumbnailProps {
 }
 
 export function ClipThumbnail({ clip, source, fps, height, left, paused }: ClipThumbnailProps) {
-  const frame = useRef<HTMLSpanElement>(null);
+  const frameRef = useRef<HTMLSpanElement>(null);
   // Captured only for clips that have been on screen: a long sequence does not decode every clip at once
   const [seen, setSeen] = useState(() => typeof IntersectionObserver === "undefined");
   useEffect(() => {
-    const node = frame.current;
+    const node = frameRef.current;
     if (!node || typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver((entries) => {
       if (!entries.some((entry) => entry.isIntersecting)) return;
@@ -36,7 +36,7 @@ export function ClipThumbnail({ clip, source, fps, height, left, paused }: ClipT
       observer.disconnect();
     });
     observer.observe(node);
-    return () => observer.disconnect();
+    return () => { observer.disconnect(); };
   }, []);
   const url = source.file ? mediaUrl(source.file.node_id, source.file.file_id) : null;
   const still = source.kind === "image";
@@ -47,8 +47,8 @@ export function ClipThumbnail({ clip, source, fps, height, left, paused }: ClipT
   const width = Math.round(height * aspect);
   if (width < MIN_WIDTH || height < MIN_WIDTH) return null;
   return (
-    <span ref={frame} aria-hidden className="pointer-events-none absolute top-[22px] overflow-hidden rounded-[3px]" style={{ left, width, height }}>
-      {picture ? <img src={picture} alt="" draggable={false} decoding="async" className="size-full animate-fade-in object-cover" /> : null}
+    <span ref={frameRef} aria-hidden className="pointer-events-none absolute top-[22px] overflow-hidden rounded-[3px]" style={{ left, width, height }}>
+      {(picture != null && picture !== "") ? <img src={picture} alt="" draggable={false} decoding="async" className="size-full animate-fade-in object-cover" /> : null}
     </span>
   );
 }

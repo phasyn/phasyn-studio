@@ -28,16 +28,16 @@ export function shellCrumbs(pathname: string): ShellCrumbs {
   const [, second, third] = parts;
   let page: string | null = null;
   let detail: string | null = null;
-  if (areaId === "studio") page = second ? (STUDIO_WORKSPACE_LABELS[second] ?? null) : null;
+  if (areaId === "studio") page = (second != null && second !== "") ? (STUDIO_WORKSPACE_LABELS[second] ?? null) : null;
   else if (areaId === "inference") page = sectionLabel(INFERENCE_SECTIONS, second);
   else if (areaId === "admin") {
-    page = second ? (ADMIN_PAGE_LABELS[second] ?? null) : null;
-    if (second === "pipelines" && third) detail = third === "new" ? t("新增") : decodeSafe(third);
+    page = (second != null && second !== "") ? (ADMIN_PAGE_LABELS[second] ?? null) : null;
+    if (second === "pipelines" && (third != null && third !== "")) detail = third === "new" ? t("新增") : decodeSafe(third);
   } else if (areaId === "records") {
     page = sectionLabel(RECORDS_SECTIONS, second);
-    if (page && third) detail = shortId(decodeSafe(third));
+    if ((page != null && page !== "") && (third != null && third !== "")) detail = shortId(decodeSafe(third));
   }
-  return { area, page, detail: page ? detail : null };
+  return { area, page, detail: (page != null && page !== "") ? detail : null };
 }
 
 function decodeSafe(value: string): string {

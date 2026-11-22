@@ -21,16 +21,29 @@ from dataclasses import dataclass
 from fractions import Fraction
 from itertools import pairwise
 
-from .composition import AudioChunk, BoundedGraph, CompositionClip, CompositionPlan, chunk_samples
+from .composition import (
+    AudioChunk,
+    BoundedGraph,
+    CompositionClip,
+    CompositionPlan,
+    chunk_samples,
+)
 from .composition_curves import expression, number
 from .effects import AUDIO_RATE, samples_for
 from .seek import AudioCut
+
+
+_MAX_ATEMPO = 2
+_NORMAL_SPEED_PERCENT = 100
+
 
 FORMAT = "aformat=sample_fmts=fltp:channel_layouts=stereo"
 
 
 @dataclass(frozen=True)
 class AudioInput:
+    """An FFmpeg input and its audio processing parameters."""
+
     index: int  # FFmpeg input number
     cut: AudioCut
 
@@ -62,7 +75,22 @@ def _source(clip: CompositionClip, cut: AudioCut, fps: Fraction) -> list[str]:
     return parts
 
 
-def _clip(clip: CompositionClip, position: int, source: AudioInput, fps: Fraction) -> str:
+def tempo_steps(factor: float) -> list[float]:
+    """Split a tempo factor into atempo stages of at most 2x each (one stage per doubling sounds cleaner than a.
+
+    single large step); factors below 1 are one stage, since the contract never goes under 0.5x.
+    """
+    steps: list[float] = []
+    while factor > _MAX_ATEMPO:
+        steps.append(2.0)
+        factor /= 2
+    steps.append(factor)
+    return steps
+
+
+def _clip(
+    clip: CompositionClip, position: int, source: AudioInput, fps: Fraction
+) -> str:
     planned = clip.plan
     # Reconstruct the full effect clock's origin. Adjacent windows sliced at their
     # original positions share this origin, including the fractional-rate sample grid.
@@ -80,12 +108,17 @@ def _clip(clip: CompositionClip, position: int, source: AudioInput, fps: Fractio
     right = f"(1+min(0,{pan}))*{number(1 + min(0, clip.track['pan']))}"
     amplitude = "0" if effects and effects.mute else f"pow(10,(({gain})+{fixed})/20)"
     parts = _source(clip, source.cut, fps)
-    if effects and effects.speed_percent != 100:
-        parts.append(f"atempo={number(effects.speed_percent / 100)}")
+    if effects and effects.speed_percent != _NORMAL_SPEED_PERCENT:
+        parts += [
+            f"atempo={number(step)}"
+            for step in tempo_steps(effects.speed_percent / 100)
+        ]
     hold_start = effects.hold.start if effects else 0
     hold_end = effects.hold.end if effects else 0
     head = samples_for(origin + hold_start, fps) - sample_origin
-    core = samples_for(origin + planned.frames - hold_end, fps) - samples_for(origin + hold_start, fps)
+    core = samples_for(origin + planned.frames - hold_end, fps) - samples_for(
+        origin + hold_start, fps
+    )
     # Tempo processing can produce a partial frame beyond the integer video core.
     # Bound the core before padding either hold, so held frames remain silent.
     parts += [f"apad=whole_len={core}", f"atrim=end_sample={core}", "asetpts=N/SR/TB"]
@@ -100,7 +133,9 @@ def _clip(clip: CompositionClip, position: int, source: AudioInput, fps: Fractio
             origin + planned.frames - effects.fade.audio_out, fps
         )
         parts.append(f"afade=t=out:ss={total - length}:ns={length}")
-    parts.append(f"aeval=exprs='val(0)*({amplitude})*({left})|val(1)*({amplitude})*({right})':channel_layout=stereo")
+    parts.append(
+        f"aeval=exprs='val(0)*({amplitude})*({left})|val(1)*({amplitude})*({right})':channel_layout=stereo"
+    )
     if clip.window_start != 0 or clip.window_end != planned.frames:
         start = samples_for(origin + clip.window_start, fps) - sample_origin
         end = samples_for(origin + clip.window_end, fps) - sample_origin
@@ -114,7 +149,9 @@ def _silence(clip: CompositionClip, position: int, fps: Fraction) -> str:
     return f"anullsrc=r={AUDIO_RATE}:cl=stereo,atrim=end_sample={length},{FORMAT}[audio{position}]"
 
 
-def _chain(graph: list[str], plan: CompositionPlan, group: tuple[int, ...], number_: int) -> tuple[str, int, int]:
+def _chain(
+    graph: list[str], plan: CompositionPlan, group: tuple[int, ...], number_: int
+) -> tuple[str, int, int]:
     """Join the clips of one transition chain; returns its label and absolute sample range."""
     fps = plan.fps
     first = plan.clips[group[0]]
@@ -130,20 +167,30 @@ def _chain(graph: list[str], plan: CompositionPlan, group: tuple[int, ...], numb
         target = f"across{number_}_{right_index}"
         if not transition.dips:
             # A cross-fade and every moving transition (push, slide, whip, wipe, zoom) cross-fade the sound.
-            graph.append(f"[{current}][audio{right_index}]acrossfade=ns={overlap}:c1=tri:c2=tri[{target}]")
+            graph.append(
+                f"[{current}][audio{right_index}]acrossfade=ns={overlap}:c1=tri:c2=tri[{target}]"
+            )
         else:
             # Same curves as the legacy sequence: outgoing first half, incoming second half.
             half = overlap // 2
             out, into = f"dipa{number_}_{right_index}", f"dipb{number_}_{right_index}"
-            graph.append(f"[{current}]afade=t=out:ss={end - origin - overlap}:ns={max(1, half)}[{out}]")
-            graph.append(f"[audio{right_index}]afade=t=in:ss={half}:ns={max(1, overlap - half)}[{into}]")
-            graph.append(f"[{out}][{into}]acrossfade=ns={overlap}:c1=nofade:c2=nofade[{target}]")
+            graph.append(
+                f"[{current}]afade=t=out:ss={end - origin - overlap}:ns={max(1, half)}[{out}]"
+            )
+            graph.append(
+                f"[audio{right_index}]afade=t=in:ss={half}:ns={max(1, overlap - half)}[{into}]"
+            )
+            graph.append(
+                f"[{out}][{into}]acrossfade=ns={overlap}:c1=nofade:c2=nofade[{target}]"
+            )
         current = target
         end = samples_for(right.end, fps)
     return current, origin, end
 
 
-def chunk_graph(plan: CompositionPlan, chunk: AudioChunk, inputs: Mapping[int, AudioInput]) -> str:
+def chunk_graph(
+    plan: CompositionPlan, chunk: AudioChunk, inputs: Mapping[int, AudioInput]
+) -> str:
     """The graph of one chunk; its only output ``[a]`` has exactly the chunk's samples.
 
     ``inputs`` maps an index of ``plan.clips`` to the opened file of that (enabled) clip. Of a transition
@@ -160,7 +207,11 @@ def chunk_graph(plan: CompositionPlan, chunk: AudioChunk, inputs: Mapping[int, A
             continue
         for index in part:
             clip = plan.clips[index]
-            graph.append(_clip(clip, index, inputs[index], fps) if clip.enabled else _silence(clip, index, fps))
+            graph.append(
+                _clip(clip, index, inputs[index], fps)
+                if clip.enabled
+                else _silence(clip, index, fps)
+            )
         current, origin, end = _chain(graph, plan, part, number_)
         start, stop = max(origin, first), min(end, last)
         label = f"agroup{number_}"
@@ -170,7 +221,9 @@ def chunk_graph(plan: CompositionPlan, chunk: AudioChunk, inputs: Mapping[int, A
         )
         labels.append(f"[{label}]")
     if labels:
-        graph.append(f"{''.join(labels)}amix=inputs={len(labels)}:normalize=0:duration=longest[mix]")
+        graph.append(
+            f"{''.join(labels)}amix=inputs={len(labels)}:normalize=0:duration=longest[mix]"
+        )
         source = "[mix]"
     else:
         source = f"anullsrc=r={AUDIO_RATE}:cl=stereo,"

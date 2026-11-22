@@ -16,6 +16,7 @@ from typing import Any
 
 from phasyn_components.errors import Cancelled
 
+
 # code -> 預設是否可單獨重試（只是描述；本產品不自動重試）
 MEDIA_ERROR_CODES: dict[str, bool] = {
     "INVALID_ARGUMENT": False,
@@ -29,7 +30,7 @@ MEDIA_ERROR_CODES: dict[str, bool] = {
 }
 
 
-def diagnostic(
+def diagnostic(  # noqa: PLR0913 - Preserve the public keyword signature.
     code: str,
     message: str,
     *,
@@ -39,6 +40,7 @@ def diagnostic(
     expected: str | None = None,
     actual: str | None = None,
 ) -> dict[str, Any]:
+    """Build a structured media diagnostic."""
     doc: dict[str, Any] = {
         "code": code,
         "message": message[:2048],
@@ -54,9 +56,9 @@ def diagnostic(
 
 
 class MediaError(Exception):
-    """帶 taxonomy code 與繁中訊息的媒體失敗。"""
+    """帶 taxonomy code 與繁中訊息的媒體失敗."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - Preserve the public keyword signature.
         self,
         code: str,
         message: str,
@@ -66,25 +68,30 @@ class MediaError(Exception):
         expected: Any = None,
         actual: Any = None,
     ) -> None:
+        """Store the error code and structured media diagnostic."""
         if code not in MEDIA_ERROR_CODES:
             raise ValueError(f"unknown media error code: {code}")
         super().__init__(f"{code}: {message}")
         self.code = code
         self.message = message
         self.field_paths: tuple[str, ...] = tuple(field_paths)
-        self.retryable = MEDIA_ERROR_CODES[code] if retryable is None else bool(retryable)
+        self.retryable = (
+            MEDIA_ERROR_CODES[code] if retryable is None else bool(retryable)
+        )
         self.expected = None if expected is None else str(expected)
         self.actual = None if actual is None else str(actual)
 
     @property
     def error_code(self) -> str:
+        """Return the component error code surfaced to callers."""
         return self.code
 
 
-class MediaCanceled(MediaError, Cancelled):
+class MediaCanceled(MediaError, Cancelled):  # noqa: N818 - Published exception name.
     """A cancel request observed at a safe boundary (code ``CANCELLED``)."""
 
     def __init__(self, message: str = "已要求取消") -> None:
+        """Create the cancellation error returned to the component host."""
         MediaError.__init__(self, "CANCELLED", message)
 
 
@@ -98,6 +105,7 @@ def cancel_requested(cancel: Any) -> bool:
 
 
 def raise_if_canceled(cancel: Any, what: str = "媒體處理") -> None:
+    """Raise a cancellation error when the supplied signal is set."""
     if cancel_requested(cancel):
         reason = getattr(cancel, "reason", "") or ""
         raise MediaCanceled(f"{what}已取消" + (f"：{reason}" if reason else ""))

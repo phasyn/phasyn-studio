@@ -1,9 +1,10 @@
+import { isNonzeroNumber } from "@/lib/json";
 // "Recording not found" → fetch it back from a Node. Deleting a recording on the Controller leaves the Node's own copy,
 // and so can a Controller that never received it; the Controller has no context of the recording left, so the user picks
 // the Node from the directory. One explicit POST …/fetch-history (sent once, never retried): it only reads the Node's
 // log and events into the Controller index, runs and resumes nothing. On success the page re-reads the recording.
 import { DatabaseBackup, RotateCcw, SearchX, TriangleAlert } from "lucide-react";
-import { useId, useState, type FormEvent } from "react";
+import { useId, useState, type SubmitEvent } from "react";
 import { useCatalog } from "@/api/catalog";
 import type { Catalog } from "@/api/generated/contracts";
 import { ActionButton } from "@/components/common/ActionButton";
@@ -40,7 +41,7 @@ export function RecoverFromNode({
   const nodeId = choice ?? only?.node_id ?? "";
   const mutation = useFetchHistory(recordingId);
 
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const submit = (event: SubmitEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!nodeId || mutation.isPending) return;
     onSubmit();
@@ -62,7 +63,7 @@ export function RecoverFromNode({
       <form onSubmit={submit} className="flex flex-wrap items-end gap-2" noValidate>
         <Field id={`${id}-node`} label="Node" className="min-w-[14rem] flex-1">
           {(describedBy) => (
-            <Select id={`${id}-node`} value={nodeId} onChange={(event) => setChoice(event.target.value)} aria-describedby={describedBy}>
+            <Select id={`${id}-node`} value={nodeId} onChange={(event) => { setChoice(event.target.value); }} aria-describedby={describedBy}>
               <option value="">{directory.isPending ? t("讀取 Node 清單…") : t("選擇 Node")}</option>
               {nodes.map((node) => (
                 <option key={node.node_id} value={node.node_id}>
@@ -103,15 +104,15 @@ export function RecoverFromNode({
             <p>{t("Node 與主控都找不到這筆紀錄：它可能在另一個 Node，或 Node 本機的紀錄也已清除。")}</p>
             <p className="machine text-caption text-fg-tertiary">
               {error.code}
-              {error.status ? ` · HTTP ${error.status}` : ""}
+              {isNonzeroNumber(error.status) ? ` · HTTP ${String(error.status)}` : ""}
             </p>
           </Callout>
         ) : (
           <Callout tone="danger" title={error.headline} role="alert" className="animate-rise-in">
-            {error.serverMessage ? <p>{error.serverMessage}</p> : null}
+            {(error.serverMessage != null && error.serverMessage !== "") ? <p>{error.serverMessage}</p> : null}
             <p className="machine text-caption text-fg-tertiary">
               {error.code}
-              {error.status ? ` · HTTP ${error.status}` : ""}
+              {isNonzeroNumber(error.status) ? ` · HTTP ${String(error.status)}` : ""}
             </p>
             {outcomeUnknown ? (
               <>

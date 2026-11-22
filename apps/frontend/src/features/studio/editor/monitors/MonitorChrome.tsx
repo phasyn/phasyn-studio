@@ -21,12 +21,12 @@ export interface ScrubRange {
  * `end` is where End and the arrows may go: the last frame, or the sequence end (one past it) where an edit appends.
  */
 export function ScrubBar({ frame, total, fps, range, label, end, onSeek }: { frame: number; total: number; fps: number; range?: ScrubRange | null; label: string; end?: number; onSeek: (frame: number) => void }) {
-  const track = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
   const last = Math.max(0, total - 1);
   const limit = Math.max(0, end ?? last);
   const position = (value: number) => (total > 0 ? Math.max(0, Math.min(1, value / total)) * 100 : 0);
   const frameAt = (clientX: number) => {
-    const box = track.current?.getBoundingClientRect();
+    const box = trackRef.current?.getBoundingClientRect();
     return box && box.width > 0 ? Math.max(0, Math.min(last, Math.round(((clientX - box.left) / box.width) * total))) : 0;
   };
   const drag = (event: PointerEvent<HTMLDivElement>) => {
@@ -42,7 +42,7 @@ export function ScrubBar({ frame, total, fps, range, label, end, onSeek }: { fra
   };
   return (
     <div
-      ref={track}
+      ref={trackRef}
       role="slider"
       tabIndex={0}
       data-scrub-bar=""
@@ -63,13 +63,13 @@ export function ScrubBar({ frame, total, fps, range, label, end, onSeek }: { fra
     >
       <span aria-hidden className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-line-subtle transition-[height] duration-(--duration-fast) group-hover/scrub:h-2" />
       {range && total > 0 ? (
-        <span aria-hidden className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-trim/55 group-hover/scrub:h-2" style={{ left: `${position(range.start)}%`, width: `${position(range.end) - position(range.start)}%` }} />
+        <span aria-hidden className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-trim/55 group-hover/scrub:h-2" style={{ left: `${String(position(range.start))}%`, width: `${String(position(range.end) - position(range.start))}%` }} />
       ) : null}
-      <span aria-hidden className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-l-full bg-playhead/35 group-hover/scrub:h-2" style={{ left: 0, width: `${position(frame)}%` }} />
+      <span aria-hidden className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-l-full bg-playhead/35 group-hover/scrub:h-2" style={{ left: 0, width: `${String(position(frame))}%` }} />
       <span
         aria-hidden
         className="absolute top-1/2 h-4 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-playhead shadow-glow-sm group-focus-visible/scrub:ring-2 group-focus-visible/scrub:ring-focus"
-        style={{ left: `${position(frame)}%` }}
+        style={{ left: `${String(position(frame))}%` }}
       />
     </div>
   );
@@ -78,7 +78,7 @@ export function ScrubBar({ frame, total, fps, range, label, end, onSeek }: { fra
 const ZOOM_CHOICES: readonly ViewerZoom[] = ["fit", 25, 50, 100, 200];
 
 function zoomLabel(zoom: ViewerZoom): string {
-  return zoom === "fit" ? t("符合") : `${zoom}%`;
+  return zoom === "fit" ? t("符合") : `${String(zoom)}%`;
 }
 
 /** The viewer's magnification: fit to the panel, or a fixed percentage of the output size. */
@@ -93,7 +93,7 @@ export function ZoomMenu({ zoom, onZoom }: { zoom: ViewerZoom; onZoom: (zoom: Vi
         aria-expanded={anchor !== null}
         aria-controls={anchor ? id : undefined}
         title={t("畫面縮放")}
-        onClick={(event) => setAnchor(anchor ? null : event.currentTarget)}
+        onClick={(event) => { setAnchor(anchor ? null : event.currentTarget); }}
         className="pressable inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-caption text-fg-secondary hover:bg-raised hover:text-fg"
       >
         <span className="machine">{zoomLabel(zoom)}</span>
@@ -105,8 +105,8 @@ export function ZoomMenu({ zoom, onZoom }: { zoom: ViewerZoom; onZoom: (zoom: Vi
           label={t("畫面縮放")}
           anchor={{ kind: "element", element: anchor }}
           returnFocus={anchor}
-          onClose={() => setAnchor(null)}
-          items={ZOOM_CHOICES.map((choice) => ({ id: String(choice), label: zoomLabel(choice), disabledReason: choice === zoom ? t("目前的縮放") : null, onSelect: () => onZoom(choice) }))}
+          onClose={() => { setAnchor(null); }}
+          items={ZOOM_CHOICES.map((choice) => ({ id: String(choice), label: zoomLabel(choice), disabledReason: choice === zoom ? t("目前的縮放") : null, onSelect: () => { onZoom(choice); } }))}
         />
       ) : null}
     </>
@@ -153,24 +153,24 @@ export function MarkGlyph({ edge }: { edge: "in" | "out" }) {
 
 /** One transport control: 36 px, tooltip with the shortcut; an unavailable one stays focusable and says why. */
 export function MonitorButton({ label, shortcut, onClick, disabledReason, pressed, primary = false, text, children }: MonitorButtonProps) {
-  const title = disabledReason ?? (shortcut ? t("{label}（{shortcut}）", { label, shortcut }) : label);
+  const title = disabledReason ?? ((shortcut != null && shortcut !== "") ? t("{label}（{shortcut}）", { label, shortcut }) : label);
   return (
     <button
       type="button"
       aria-label={label}
       aria-pressed={pressed}
-      aria-disabled={disabledReason ? true : undefined}
+      aria-disabled={(disabledReason != null && disabledReason !== "") ? true : undefined}
       title={title}
       onClick={() => {
-        if (!disabledReason) onClick();
+        if (!(disabledReason != null && disabledReason !== "")) onClick();
       }}
       className={cn(
-        primary ? cn(PLAY_BUTTON, "mx-1") : cn(TOOL_BUTTON, "h-9 [&_svg]:size-4", text ? "w-auto gap-1.5 px-2.5 text-caption" : "w-9", pressed && TOOL_BUTTON_ON),
-        disabledReason && "cursor-not-allowed text-fg-disabled hover:bg-transparent hover:text-fg-disabled",
+        primary ? cn(PLAY_BUTTON, "mx-1") : cn(TOOL_BUTTON, "h-9 [&_svg]:size-4", (text != null && text !== "") ? "w-auto gap-1.5 px-2.5 text-caption" : "w-9", ((pressed === true) ? TOOL_BUTTON_ON : pressed)),
+        ((disabledReason != null && disabledReason !== "") ? "cursor-not-allowed text-fg-disabled hover:bg-transparent hover:text-fg-disabled" : disabledReason),
       )}
     >
       {children}
-      {text ? <span>{text}</span> : null}
+      {(text != null && text !== "") ? <span>{text}</span> : null}
     </button>
   );
 }

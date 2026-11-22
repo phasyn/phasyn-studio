@@ -1,3 +1,4 @@
+import { contractFixture, fixtureValue } from "@/test/fixtures";
 // The project panel's boundaries on the saved document. Assets tab: an item nothing uses is removed after confirming
 // (autosave sends the library without it and focus moves to the next item); an item still in use names where it is used
 // and cannot be removed, and its shot can be selected from there; the One-Click Character Swap source video is never
@@ -74,7 +75,7 @@ function renderBin(project: StudioProject) {
     "GET /api/pipelines": () => ({ items: [t2vaPipeline()] }),
     "GET /api/runs": () => ({ items: [], next_cursor: null }),
     "GET /api/cost-profiles": () => ({ computed_at: FIXED_TIME, items: [] }),
-    "PUT /api/studio/projects/project-1": ({ body }: FakeRequest) => ({ ...(body as StudioProject), revision: (body as StudioProject).revision + 1 }),
+    "PUT /api/studio/projects/project-1": ({ body }: FakeRequest) => { const doc = contractFixture("StudioProject", body); return { ...doc, revision: doc.revision + 1 }; },
   });
   const view = renderWithProviders(
     <StudioProvider initial={project}>
@@ -88,8 +89,8 @@ function renderBin(project: StudioProject) {
 
 /** The last project document the panel saved. */
 async function lastSave(calls: FakeRequest[]): Promise<StudioProject> {
-  await waitFor(() => expect(calls.some((call) => call.method === "PUT")).toBe(true), { timeout: 3000 });
-  return calls.filter((call) => call.method === "PUT").at(-1)?.body as StudioProject;
+  await waitFor(() => { expect(calls.some((call) => call.method === "PUT")).toBe(true); }, { timeout: 3000 });
+  return contractFixture("StudioProject", calls.filter((call) => call.method === "PUT").at(-1)?.body);
 }
 
 describe("Bin project library removal", () => {
@@ -105,9 +106,9 @@ describe("Bin project library removal", () => {
     expect(within(dialog).getByText(/不會刪除檔案/)).toBeInTheDocument();
     await user.click(within(dialog).getByRole("button", { name: "移除" }));
 
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => { expect(screen.queryByRole("dialog")).toBeNull(); });
     expect(screen.queryByText("new.png")).toBeNull();
-    await waitFor(() => expect(screen.getByRole("button", { name: "在素材庫查看「old.mp4」" })).toHaveFocus());
+    await waitFor(() => { expect(screen.getByRole("button", { name: "在素材庫查看「old.mp4」" })).toHaveFocus(); });
     const saved = await lastSave(calls);
     expect(saved.library?.map((entry) => entry.item_id)).toEqual(["lib-old"]);
   });
@@ -131,11 +132,11 @@ describe("Bin project library removal", () => {
     const [shotUse, imageUse] = within(uses).getAllByRole("listitem");
     expect(shotUse).toHaveTextContent("02雨夜參考 @Image1在屬性面板的「參考」分頁移除");
     expect(imageUse).toHaveTextContent("Image Studio・海報參考圖片在 Image Studio 的「圖片」分頁移除");
-    expect(within(imageUse!).getByRole("link", { name: "在 Image Studio 開啟" })).toHaveAttribute("href", "/image?project=project-1&shot=img-1");
+    expect(within(fixtureValue(imageUse, "Bin.dom.test.tsx")).getByRole("link", { name: "在 Image Studio 開啟" })).toHaveAttribute("href", "/image?project=project-1&shot=img-1");
     expect(within(dialog).getByRole("button", { name: "移除" })).toBeDisabled();
 
-    await user.click(within(shotUse!).getByRole("button", { name: "選取鏡頭" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await user.click(within(fixtureValue(shotUse, "Bin.dom.test.tsx")).getByRole("button", { name: "選取鏡頭" }));
+    await waitFor(() => { expect(screen.queryByRole("dialog")).toBeNull(); });
     expect(screen.getByRole("status", { name: "selected shot" })).toHaveTextContent("shot-2");
     expect(screen.getByText("hero.png")).toBeInTheDocument();
     expect(calls.some((call) => call.method === "PUT")).toBe(false);
@@ -173,7 +174,11 @@ describe("Bin shot multi-selection", () => {
     expect(screen.getByRole("toolbar", { name: "選取的鏡頭" })).toHaveTextContent("已選取 3 個");
 
     await user.click(screen.getByRole("button", { name: "把選取的鏡頭改成同一個時長" }));
-    await user.click(screen.getByRole("menuitem", { name: /107 影格/ }));
+    const duration = screen.getByRole("dialog", { name: "把選取的鏡頭改成同一個時長" });
+    const frames = within(duration).getByRole("spinbutton", { name: "影格數" });
+    await user.clear(frames);
+    await user.type(frames, "107");
+    await user.click(within(duration).getByRole("button", { name: "套用" }));
     const saved = await lastSave(calls);
     expect(saved.shots.map((shot) => [shot.shot_id, shot.frames])).toEqual([
       ["shot-1", 107],

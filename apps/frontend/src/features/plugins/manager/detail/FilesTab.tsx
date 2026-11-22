@@ -104,7 +104,7 @@ function Preview({ plugin, detail, file, preview }: { plugin: StudioPlugin; deta
 export function FilesTab({ plugin, detail, state, preview }: { plugin: StudioPlugin; detail: StudioPluginDetail | null; state: DetailState | null; preview: boolean }) {
   const [picked, setPicked] = useState<string>(MANIFEST);
   if (!detail) {
-    if (state?.error) return <ErrorCallout error={state.error} title={t("讀不到這個插件的內容")} onRetry={state.retry} retrying={state.retrying} />;
+    if (state?.error != null) return <ErrorCallout error={state.error} title={t("讀不到這個插件的內容")} onRetry={state.retry} retrying={state.retrying} />;
     return (
       <div role="status" aria-label={t("讀取插件內容…")} className="grid content-start gap-2">
         <Skeleton className="h-4 w-48" />
@@ -132,7 +132,7 @@ export function FilesTab({ plugin, detail, state, preview }: { plugin: StudioPlu
             <dd className="machine m-0 text-fg-secondary">{plugin.revision}</dd>
           </div>
         ) : null}
-        {plugin.digest ? (
+        {(plugin.digest != null && plugin.digest !== "") ? (
           <div className="flex min-w-0 items-center gap-2">
             <dt className="text-fg-tertiary">digest</dt>
             <dd className="m-0 min-w-0">
@@ -143,7 +143,7 @@ export function FilesTab({ plugin, detail, state, preview }: { plugin: StudioPlu
       </dl>
       <div className="grid min-h-0 flex-1 grid-rows-[minmax(7rem,2fr)_minmax(8rem,3fr)] overflow-hidden rounded-lg border border-line-subtle bg-canvas/60">
         <ul aria-label={t("包內的檔案")} className="grid min-h-0 content-start gap-0.5 overflow-y-auto p-1.5">
-          {hasManifest ? <FileRow index={0} path={MANIFEST} size={null} mediaType="application/json" selected={file === null} onSelect={() => setPicked(MANIFEST)} /> : null}
+          {hasManifest ? <FileRow index={0} path={MANIFEST} size={null} mediaType="application/json" selected={file === null} onSelect={() => { setPicked(MANIFEST); }} /> : null}
           {files.map((item, index) => (
             <FileRow
               key={item.path}
@@ -152,7 +152,7 @@ export function FilesTab({ plugin, detail, state, preview }: { plugin: StudioPlu
               size={item.size_bytes}
               mediaType={item.media_type}
               selected={file?.path === item.path}
-              onSelect={() => setPicked(item.path)}
+              onSelect={() => { setPicked(item.path); }}
             />
           ))}
         </ul>

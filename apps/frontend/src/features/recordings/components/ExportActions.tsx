@@ -30,7 +30,7 @@ function clickDownload(url: string) {
 export function ExportActions({ recordingId, traceExpected }: { recordingId: string; traceExpected: boolean }) {
   const statusId = useId();
   const redactId = useId();
-  const [chosen, setChosen] = useState<ReadonlySet<RedactField>>(new Set());
+  const [chosen, setChosen] = useState<ReadonlySet<RedactField>>(() => new Set());
   const redact = redactQuery(chosen);
   const trace = useMutation({
     mutationFn: () => fetchTrace(recordingId),
@@ -41,13 +41,12 @@ export function ExportActions({ recordingId, traceExpected }: { recordingId: str
     },
   });
   const traceMissing = trace.isError && isTraceMissing(trace.error);
-  const toggle = (field: RedactField, on: boolean) =>
-    setChosen((previous) => {
+  const toggle = (field: RedactField, on: boolean) => { setChosen((previous) => {
       const next = new Set(previous);
       if (on) next.add(field);
       else next.delete(field);
       return next;
-    });
+    }); };
   return (
     <div className="grid gap-2">
       <fieldset className="grid gap-1" aria-describedby={redactId}>
@@ -55,7 +54,7 @@ export function ExportActions({ recordingId, traceExpected }: { recordingId: str
         <div className="flex flex-wrap gap-x-3 gap-y-1">
           {REDACT_FIELDS.map((field) => (
             <label key={field} className="inline-flex min-h-7 items-center gap-1.5 text-caption text-fg-secondary pointer-coarse:min-h-11">
-              <input type="checkbox" className="size-3.5 accent-action" checked={chosen.has(field)} onChange={(event) => toggle(field, event.target.checked)} />
+              <input type="checkbox" className="size-3.5 accent-action" checked={chosen.has(field)} onChange={(event) => { toggle(field, event.target.checked); }} />
               {REDACT_LABELS[field]}
             </label>
           ))}
@@ -80,7 +79,7 @@ export function ExportActions({ recordingId, traceExpected }: { recordingId: str
         <ActionButton
           size="sm"
           icon={<FileCode aria-hidden />}
-          onClick={() => trace.mutate()}
+          onClick={() => { trace.mutate(); }}
           pending={trace.isPending}
           disabledReason={redact.length > 0 ? t("trace 不支援遮蔽：取消勾選遮蔽後才能下載") : null}
           aria-describedby={statusId}

@@ -7,7 +7,7 @@ export function isAbortError(error: unknown): boolean {
 /** Resolves after `ms`; rejects with an AbortError as soon as `signal` aborts (immediately if it already has). */
 export function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
+    if (signal?.aborted === true) {
       reject(new DOMException("aborted", "AbortError"));
       return;
     }

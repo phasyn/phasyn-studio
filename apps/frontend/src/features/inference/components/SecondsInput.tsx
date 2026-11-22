@@ -33,8 +33,8 @@ export function SecondsInput({
       compact
       inputMode="decimal"
       aria-label={label}
-      value={disabledReason ? "" : text}
-      placeholder={disabledReason ? t("不適用") : placeholder}
+      value={(disabledReason != null && disabledReason !== "") ? "" : text}
+      placeholder={(disabledReason != null && disabledReason !== "") ? t("不適用") : placeholder}
       disabled={Boolean(disabledReason)}
       title={disabledReason ?? undefined}
       aria-invalid={invalid || undefined}

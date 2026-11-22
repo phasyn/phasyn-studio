@@ -109,10 +109,10 @@ export function soundRefusal(clip: TimelineClip, peers: readonly TimelineClip[])
  */
 export function splitRefusal(timeline: StudioTimeline, clip: TimelineClip, peers: readonly TimelineClip[], animated: (item: TimelineClip) => string | null): string | null {
   const locked = lockRefusal(timeline, clip, peers);
-  if (locked) return locked;
+  if (locked != null && locked !== "") return locked;
   for (const item of [clip, ...peers]) {
     const reason = retimingReason(item) ?? (hasShake(item) ? t("這個片段已經有震動：請先在「效果控制」重設鏡頭運動") : animated(item));
-    if (reason) return reason;
+    if (reason != null && reason !== "") return reason;
   }
   return soundRefusal(clip, peers);
 }
@@ -158,7 +158,7 @@ function clipZone(timeline: StudioTimeline, clip: TimelineClip): (frame: number)
   };
 }
 
-const anchorKey = (anchor: CutAnchor) => `${anchor.original}:${anchor.take}`;
+const anchorKey = (anchor: CutAnchor) => `${String(anchor.original)}:${String(anchor.take)}`;
 
 /**
  * The matched pairs walked in order, then the early switch on the clip's end: the anchors kept and the ones left out
@@ -171,7 +171,7 @@ function chooseAnchors(analysis: ConformAnalysis, length: number, zone: (frame: 
   const consider = (anchor: CutAnchor) => {
     const stretch = () => (stretchFits(previous, anchor) ? null : t("和前一個對齊的切點之間，生成要拉長或壓縮超過 {max} 倍（多半是把閃光誤判成切點）", { max: MAX_STRETCH }));
     const reason = excluded.get(anchorKey(anchor)) ?? (anchor.take >= length ? t("生成的切點在片段結尾之後") : (zone(anchor.take) ?? zone(anchor.original) ?? stretch()));
-    if (reason) blocked.push({ ...anchor, reason });
+    if (reason != null && reason !== "") blocked.push({ ...anchor, reason });
     else {
       kept.push(anchor);
       previous = anchor;
@@ -341,7 +341,7 @@ export function planConform({ timeline, clipId, analysis }: ConformInput): Confo
   if (!clip) return refused(t("找不到這個片段（可能已經刪除，或被復原拿掉了）"));
   const peers = linkedPeers(timeline, clip);
   const refusal = splitRefusal(timeline, clip, peers, conformAnimated);
-  if (refusal) return refused(refusal);
+  if (refusal != null && refusal !== "") return refused(refusal);
   const length = clipDuration(clip);
   if (length !== analysis.length) return refused(t("片段在分析之後改變了，請重新分析"));
   // An early switch at the clip's end is conformed whatever the original's other cuts

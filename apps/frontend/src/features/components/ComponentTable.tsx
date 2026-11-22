@@ -13,8 +13,9 @@ import { useColumnWidths } from "@/components/workbench/useColumnWidths";
 import { cn } from "@/lib/cn";
 import { usePersistentSet } from "@/lib/usePersistentSize";
 import { COMPONENT_COLUMNS } from "./componentsModel";
-import { t, tServer } from "@/i18n";
+import { t } from "@/i18n";
 import { T } from "@/i18n/T";
+import { failureText } from "@/lib/errors";
 
 /** 每層資料夾縮排（px）；第一欄原本左內距 16 px。 */
 const INDENT = 14;
@@ -23,14 +24,14 @@ const COLUMN_COUNT = COMPONENT_COLUMNS.length + 1;
 
 function RevisionCell({ entry }: { entry: ComponentEntry }) {
   const settings = entry.descriptor.settings;
-  const loaded = settings.loaded_revision === null ? "—" : `#${settings.loaded_revision}`;
+  const loaded = settings.loaded_revision === null ? "—" : `#${String(settings.loaded_revision)}`;
   return (
     <span
       className="inline-flex max-w-full items-center gap-1.5 whitespace-nowrap"
       title={t("已保存 #{stored_revision} · 目前載入 {loaded}{value}", { stored_revision: settings.stored_revision, loaded, value: settings.restart_required ? t(" · 已保存的 load 設定與目前載入不同，需要明確 restart") : "" })}
     >
       <span className="machine truncate text-fg-secondary">
-        <T source={"#{stored_revision}<0>／{loaded}</0>"} values={{ stored_revision: settings.stored_revision, loaded }} slots={[<span className="text-fg-tertiary" />]} />
+        <T source={"#{stored_revision}<0>／{loaded}</0>"} values={{ stored_revision: settings.stored_revision, loaded }} slots={[<span key="slot-0" className="text-fg-tertiary" />]} />
       </span>
       {settings.restart_required ? (
         <span className="inline-flex shrink-0 text-warning">
@@ -47,7 +48,7 @@ function LastErrorCell({ entry }: { entry: ComponentEntry }) {
   const error = entry.descriptor.last_error;
   if (!error) return <span className="text-fg-tertiary">—</span>;
   return (
-    <span className="block truncate machine text-danger" title={t("{code}：{message}", { code: error.code, message: tServer(error.message) })}>
+    <span className="block truncate machine text-danger" title={failureText(error.code, error.message)}>
       {error.code}
     </span>
   );
@@ -94,7 +95,7 @@ function InstanceRow({ entry, depth, selected, onSelect }: { entry: ComponentEnt
   const kind = providerKind(d.provider_id);
   const stale = entry.node.stale;
   return (
-    <Tr selected={selected} className={cn("cursor-pointer [&>td]:align-middle", stale && "opacity-80")} onClick={() => onSelect(entry)}>
+    <Tr selected={selected} className={cn("cursor-pointer [&>td]:align-middle", stale && "opacity-80")} onClick={() => { onSelect(entry); }}>
       <Td className="py-1" style={{ paddingLeft: BASE_PAD + depth * INDENT }}>
         <button
           type="button"
@@ -143,7 +144,7 @@ function InstanceRow({ entry, depth, selected, onSelect }: { entry: ComponentEnt
       <Td>
         <RevisionCell entry={entry} />
       </Td>
-      <Td onClick={(event) => event.stopPropagation()}>
+      <Td onClick={(event) => { event.stopPropagation(); }}>
         <IdText value={d.active_call_id} copy={false} />
       </Td>
       <Td>
@@ -202,9 +203,9 @@ export function ComponentTable({
                 <ColumnResizer
                   spec={spec}
                   width={widthOf(columns.widths, spec)}
-                  onPreview={(width) => columns.preview(spec.id, width)}
-                  onCommit={(width) => columns.commit(spec.id, width)}
-                  onReset={() => columns.reset(spec.id)}
+                  onPreview={(width) => { columns.preview(spec.id, width); }}
+                  onCommit={(width) => { columns.commit(spec.id, width); }}
+                  onReset={() => { columns.reset(spec.id); }}
                 />
               </Th>
             ))}
@@ -214,7 +215,7 @@ export function ComponentTable({
         <tbody>
           {rows.map((row) =>
             row.kind === "folder" ? (
-              <FolderRow key={`folder:${row.node.path}`} node={row.node} expanded={row.expanded} filtering={filtering} onToggle={() => toggle(row.node.path)} />
+              <FolderRow key={`folder:${row.node.path}`} node={row.node} expanded={row.expanded} filtering={filtering} onToggle={() => { toggle(row.node.path); }} />
             ) : (
               <InstanceRow key={row.item.key} entry={row.item} depth={row.depth} selected={row.item.key === selectedKey} onSelect={onSelect} />
             ),

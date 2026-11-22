@@ -1,0 +1,312 @@
+{
+  "label": "語音辨識與字幕",
+  "kind": "media.transcribe",
+  "inputs": [
+    {
+      "name": "audio_file",
+      "type_id": "media.audio.v1",
+      "description": "音訊來源（與影片擇一）",
+      "transport": "file",
+      "required": false
+    },
+    {
+      "name": "video_file",
+      "type_id": "media.video.v1",
+      "description": "影片中的音軌（與音訊擇一）",
+      "transport": "file",
+      "required": false
+    }
+  ],
+  "outputs": [
+    {
+      "name": "srt_file",
+      "type_id": "subtitle.srt.v1",
+      "description": "來源媒體時間軸 SRT 字幕",
+      "transport": "file",
+      "required": true
+    },
+    {
+      "name": "transcript_file",
+      "type_id": "speech.transcript.v1",
+      "description": "含來源時間與設定的 JSON 轉錄檔",
+      "transport": "file",
+      "required": true
+    }
+  ],
+  "parameters_schema": {
+    "type": "object",
+    "properties": {
+      "audio_stream": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 15,
+        "default": 0,
+        "description": "Audio track ordinal, starting at zero"
+      },
+      "channel": {
+        "type": [
+          "integer",
+          "null"
+        ],
+        "minimum": 0,
+        "maximum": 7,
+        "default": null,
+        "description": "Channel ordinal; null mixes the selected track to mono"
+      },
+      "language": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "pattern": "^[a-z]{2,3}$",
+        "default": null
+      },
+      "vad": {
+        "type": "boolean",
+        "default": true
+      },
+      "word_timestamps": {
+        "type": "boolean",
+        "default": false
+      },
+      "chinese_script": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "traditional",
+          "simplified",
+          null
+        ],
+        "default": null,
+        "description": "中文辨識結果的字體：traditional（臺灣繁體）、simplified（簡體）；null 保留模型寫出的字"
+      }
+    },
+    "additionalProperties": false
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "load": {
+        "type": "object",
+        "properties": {
+          "model_path": {
+            "type": "string",
+            "description": "Node 本機模型路徑（使用者提供，不由主控下載）"
+          },
+          "model_revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "device": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "cpu",
+                  "cuda"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "maxLength": 16384,
+                "pattern": "^[^\\x00-\\x1f\\x7f]*$"
+              },
+              "resource_group": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id",
+              "resource_group"
+            ],
+            "additionalProperties": false
+          },
+          "precision": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          },
+          "offload": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          },
+          "part_overrides": {
+            "type": "array"
+          },
+          "provider_options": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "device",
+          "model_path"
+        ],
+        "additionalProperties": false
+      },
+      "invoke": {
+        "type": "object",
+        "properties": {
+          "audio_stream": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 15,
+            "default": 0,
+            "description": "Audio track ordinal, starting at zero"
+          },
+          "channel": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 7,
+            "default": null,
+            "description": "Channel ordinal; null mixes the selected track to mono"
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^[a-z]{2,3}$",
+            "default": null
+          },
+          "vad": {
+            "type": "boolean",
+            "default": true
+          },
+          "word_timestamps": {
+            "type": "boolean",
+            "default": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "recording": {
+        "type": "object"
+      }
+    },
+    "required": [
+      "load",
+      "invoke",
+      "recording"
+    ],
+    "additionalProperties": false
+  },
+  "default_settings": {
+    "invoke": {},
+    "load": {
+      "device": {
+        "kind": "cpu",
+        "id": "cpu",
+        "resource_group": "cpu-asr"
+      },
+      "model_path": "/path/to/models/faster-whisper-small",
+      "model_revision": "536b0662742c02347bc0e980a01041f333bce120"
+    },
+    "recording": {
+      "batch_max_bytes": 262144,
+      "batch_max_events": 256,
+      "capture_prompt": true,
+      "capture_stderr": true,
+      "cuda_pending_event_pairs": 4096,
+      "device_sample_hz": 2,
+      "finite_scan": false,
+      "gpu_event_timing": true,
+      "log_level": "info",
+      "max_detail_bytes_per_recording": 2147483648,
+      "mode": "detailed",
+      "parts": [],
+      "publish_interval_ms": 1000,
+      "queue_max_bytes": 16777216,
+      "queue_max_events": 8192,
+      "record_shapes": false,
+      "segment_bytes": 67108864,
+      "steps": [],
+      "tensor_dump": false,
+      "trace_parts": [],
+      "trace_steps": [
+        0,
+        1
+      ],
+      "with_stack": false
+    }
+  },
+  "schema_version": "1.0",
+  "provider_id": "media.transcribe",
+  "entry_point": "phasyn_transcription.provider:TranscriptionProvider",
+  "operations": [
+    "transcribe"
+  ],
+  "capability_version": "1.0.0",
+  "license": "Apache-2.0",
+  "models": [
+    {
+      "id": "Systran/faster-whisper-small",
+      "revision": "536b0662742c02347bc0e980a01041f333bce120",
+      "license": "MIT",
+      "variants": [
+        "small-multilingual-ct2-fp16"
+      ],
+      "files": [
+        {
+          "path": "config.json",
+          "size_bytes": 2370,
+          "sha256": null
+        },
+        {
+          "path": "model.bin",
+          "size_bytes": 483546902,
+          "sha256": "3e305921506d8872816023e4c273e75d2419fb89b24da97b4fe7bce14170d671"
+        },
+        {
+          "path": "tokenizer.json",
+          "size_bytes": 2203239,
+          "sha256": null
+        },
+        {
+          "path": "vocabulary.txt",
+          "size_bytes": 459861,
+          "sha256": null
+        }
+      ],
+      "file_scope": "Four fixed local files. model.bin uses SHA-256; Git blobs use their pinned Git object ID."
+    }
+  ],
+  "resources": {
+    "devices": [
+      "cpu",
+      "cuda"
+    ],
+    "required_modules": [
+      "faster_whisper",
+      "ctranslate2",
+      "numpy",
+      "onnxruntime"
+    ],
+    "executables": [
+      "ffmpeg",
+      "ffprobe"
+    ],
+    "vram_bytes": null,
+    "memory_basis": "CPU int8 or GPU float16. Memory depends on input duration."
+  },
+  "execution": {
+    "cache": "none",
+    "retry": "verify_stopped_first",
+    "cancellation": "cooperative",
+    "progress": [
+      "stage"
+    ],
+    "error_contract": "ComponentError",
+    "retry_condition": "Confirm the prior attempt stopped and inspect any published output before requesting another run."
+  }
+}

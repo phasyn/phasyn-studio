@@ -59,7 +59,7 @@ function Choice({
       <input type="radio" name={name} checked={checked} onChange={onChoose} className="sr-only" />
       <span className="relative grid aspect-video w-full place-items-center overflow-hidden bg-stage">
         {visual}
-        {badge ? <span className={cn(HUD_CHIP, "absolute bottom-1 left-1 max-w-[calc(100%-0.5rem)] truncate px-1.5 text-[11px]")}>{badge}</span> : null}
+        {(badge != null && badge !== "") ? <span className={cn(HUD_CHIP, "absolute bottom-1 left-1 max-w-[calc(100%-0.5rem)] truncate px-1.5 text-[11px]")}>{badge}</span> : null}
         {checked ? (
           <span aria-hidden className="absolute top-1 right-1 grid size-5 place-items-center rounded-full bg-brand-gradient text-on-accent animate-pop-in">
             <Check className="size-3" />
@@ -96,7 +96,7 @@ export interface BatchReplaceGroupProps {
 
 export function BatchReplaceGroup({ group, index, choices, items, pick, changed, unclipped, onPick, onUpload, children }: BatchReplaceGroupProps) {
   const id = useId();
-  const fileInput = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const kind = KIND_LABEL[group.kind];
   const total = group.shotIds.length;
   const uses = new Map(group.files.map((file) => [file.itemId, file.shots]));
@@ -134,11 +134,11 @@ export function BatchReplaceGroup({ group, index, choices, items, pick, changed,
           <KindIcon kind={group.kind} className="size-3.5" />
           <span className="min-w-0 truncate text-fg-secondary">{t("{kind}・在 {count} 個鏡頭", { kind, count: total })}</span>
         </h3>
-        <Button size="sm" variant="quiet" className="ml-auto min-h-7 px-2" icon={<Upload aria-hidden />} aria-label={upload} title={upload} onClick={() => fileInput.current?.click()}>
+        <Button size="sm" variant="quiet" className="ml-auto min-h-7 px-2" icon={<Upload aria-hidden />} aria-label={upload} title={upload} onClick={() => fileInputRef.current?.click()}>
           {t("上傳新檔案")}
         </Button>
         <input
-          ref={fileInput}
+          ref={fileInputRef}
           type="file"
           accept={`${group.kind}/*`}
           hidden
@@ -174,7 +174,7 @@ export function BatchReplaceGroup({ group, index, choices, items, pick, changed,
           name={id}
           index={0}
           checked={pick === null}
-          onChoose={() => onPick(null)}
+          onChoose={() => { onPick(null); }}
           visual={<Undo2 aria-hidden className="size-5 text-fg-tertiary" />}
           title={t("不換")}
           detail={t("保留目前的檔案")}
@@ -187,7 +187,7 @@ export function BatchReplaceGroup({ group, index, choices, items, pick, changed,
               name={id}
               index={at + 1}
               checked={pick === item.item_id}
-              onChoose={() => onPick(item.item_id)}
+              onChoose={() => { onPick(item.item_id); }}
               visual={<LibraryThumb item={item} className={cn("object-contain", THUMB_ZOOM)} />}
               badge={count === undefined ? null : t("目前・{count} 個鏡頭", { count })}
               title={item.name}
@@ -201,7 +201,7 @@ export function BatchReplaceGroup({ group, index, choices, items, pick, changed,
 
       <p ref={noteRef} className={cn("min-h-[18px] text-caption", pick !== null && changed > 0 ? "text-fg" : "text-fg-tertiary")}>
         {note}
-        {clipNote ? <span className="block text-warning">{clipNote}</span> : null}
+        {(clipNote != null && clipNote !== "") ? <span className="block text-warning">{clipNote}</span> : null}
       </p>
     </section>
   );

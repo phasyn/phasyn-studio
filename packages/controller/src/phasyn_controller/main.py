@@ -18,6 +18,7 @@ from phasyn_server.serve import server_config
 from .app import create_app
 from .config import ConfigError, ControllerConfig, load_config
 
+
 log = logging.getLogger("phasyn_controller")
 
 EXIT_OK = 0
@@ -27,7 +28,7 @@ GRACEFUL_SHUTDOWN_S = 5
 
 
 def _fail(message: object) -> None:
-    print(f"phasyn-studio controller：{message}", file=sys.stderr)
+    sys.stderr.write(f"phasyn-studio controller：{message}\n")
 
 
 async def serve(
@@ -38,7 +39,12 @@ async def serve(
 ) -> None:
     """Run the controller on the current event loop until a stop signal (tests or embedding)."""
     app = create_app(config, lock=lock, transport=transport)
-    uv_config = server_config(app, host=config.bind_host, port=config.port, graceful_timeout_s=GRACEFUL_SHUTDOWN_S)
+    uv_config = server_config(
+        app,
+        host=config.bind_host,
+        port=config.port,
+        graceful_timeout_s=GRACEFUL_SHUTDOWN_S,
+    )
     await Server(uv_config).serve()
 
 

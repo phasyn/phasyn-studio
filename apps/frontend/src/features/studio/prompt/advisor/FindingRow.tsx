@@ -95,10 +95,10 @@ export function FindingRow({ rowId, item, text, open, blockedReason, canReveal, 
         <p id={`${rowId}-detail`} className={cn("text-caption leading-5 text-fg-secondary [overflow-wrap:anywhere]", long && !expanded && "line-clamp-3")}>
           {item.detail}
         </p>
-        {expanded && item.source ? <p className="text-caption leading-5 text-fg-tertiary [overflow-wrap:anywhere] animate-reveal">{t("依據：{source}", { source: item.source })}</p> : null}
+        {expanded && (item.source != null && item.source !== "") ? <p className="text-caption leading-5 text-fg-tertiary [overflow-wrap:anywhere] animate-reveal">{t("依據：{source}", { source: item.source })}</p> : null}
         <div className="flex flex-wrap items-center gap-1">
-          {long || item.source ? (
-            <Button size="sm" variant="quiet" className="min-h-7 px-2" aria-expanded={expanded} aria-controls={`${rowId}-detail`} onClick={() => setExpanded((value) => !value)}>
+          {long || (item.source != null && item.source !== "") ? (
+            <Button size="sm" variant="quiet" className="min-h-7 px-2" aria-expanded={expanded} aria-controls={`${rowId}-detail`} onClick={() => { setExpanded((value) => !value); }}>
               {expanded ? t("收合說明") : t("完整說明與依據")}
             </Button>
           ) : null}
@@ -116,7 +116,7 @@ export function FindingRow({ rowId, item, text, open, blockedReason, canReveal, 
               title={item.fix.label}
               icon={<WandSparkles aria-hidden />}
               blockedReason={blockedReason}
-              onClick={() => onToggle("fix")}
+              onClick={() => { onToggle("fix"); }}
             />
           ) : null}
           {item.action ? (
@@ -129,7 +129,7 @@ export function FindingRow({ rowId, item, text, open, blockedReason, canReveal, 
               icon={<FilePenLine aria-hidden />}
               blockedReason={blockedReason}
               className="h-auto max-w-full text-left whitespace-normal"
-              onClick={() => onToggle("action")}
+              onClick={() => { onToggle("action"); }}
             />
           ) : null}
         </div>
@@ -140,7 +140,7 @@ export function FindingRow({ rowId, item, text, open, blockedReason, canReveal, 
             before={text}
             after={after}
             blockedReason={blockedReason}
-            onConfirm={() => onApply(open)}
+            onConfirm={() => { onApply(open); }}
             onCancel={() => {
               onToggle(open);
               (open === "fix" ? fixRef : actionRef).current?.focus();

@@ -1,3 +1,4 @@
+import { hasSlotContent } from "@/lib/dom";
 import type { HTMLAttributes, ReactNode, RefCallback } from "react";
 import { cn } from "@/lib/cn";
 
@@ -53,7 +54,7 @@ export function DockHeader({
         {count !== undefined && count !== null ? <span className="machine text-caption font-normal text-fg-tertiary">{count}</span> : null}
       </h2>
       {children}
-      {actions ? <div className="ml-auto flex shrink-0 items-center gap-0.5">{actions}</div> : null}
+      {hasSlotContent(actions) ? <div className="ml-auto flex shrink-0 items-center gap-0.5">{actions}</div> : null}
     </div>
   );
 }

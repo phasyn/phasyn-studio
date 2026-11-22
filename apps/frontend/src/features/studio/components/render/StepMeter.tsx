@@ -27,7 +27,7 @@ export function StepMeter({ progress, tone, label, live = false, className }: { 
     >
       <span
         className={cn(METER_FILL, tone === "success" ? "bg-success" : tone === "danger" ? "bg-danger" : tone === "warning" ? "bg-warning/60" : cn("bg-brand-gradient", live && SHIMMER))}
-        style={{ width: `${(done / progress.total) * 100}%` }}
+        style={{ width: `${String((done / progress.total) * 100)}%` }}
       />
     </span>
   );

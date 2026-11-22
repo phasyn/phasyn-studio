@@ -14,8 +14,10 @@ import {
   RunDetailPage,
   RunsPage,
   SemanticsPage,
+  StoragePage,
   StudioPage,
   TrackingPage,
+  TrainingPage,
 } from "./lazyPages";
 import { NotFoundPage } from "./NotFoundPage";
 import { PATHS } from "./paths";
@@ -34,7 +36,7 @@ const SELF = { frame: "self" } as const;
  *                 /inference/prompt-studies?study=&tab=, /inference/run?pipeline=&run= (manual run)
  *   Components    /admin/components?node=&component=, /admin/pipelines, /admin/pipelines/new, /admin/pipelines/:pipelineId
  *   Records       /records/runs, /records/runs/:runId, /records/recordings, /records/recordings/:recordingId (?component_id=&node_id=&run_id=),
- *                 /records/comparisons?ids=a,b, /records/tracking
+ *                 /records/comparisons?ids=a,b, /records/tracking, /records/storage
  * Paths come from paths.ts; anything else is a 404.
  */
 export function createAppRouter() {
@@ -60,6 +62,7 @@ export function createAppRouter() {
             { path: "semantics", element: <SemanticsPage />, handle: SELF },
             { path: "prompt-studies", element: <PromptStudiesPage />, handle: SELF },
             { path: "run", element: <InferencePage />, handle: SELF },
+            { path: "training", element: <TrainingPage />, handle: SELF },
             { path: "*", element: <NotFoundPage /> },
           ],
         },
@@ -86,6 +89,7 @@ export function createAppRouter() {
             { path: "recordings/:recordingId", element: <RecordingsPage />, handle: SELF },
             { path: "comparisons", element: <ComparisonsPage />, handle: SELF },
             { path: "tracking", element: <TrackingPage />, handle: SELF },
+            { path: "storage", element: <StoragePage /> },
             { path: "*", element: <NotFoundPage /> },
           ],
         },

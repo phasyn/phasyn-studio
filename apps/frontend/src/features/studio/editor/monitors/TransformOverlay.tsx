@@ -6,7 +6,7 @@ import type { TimelineClip } from "@/api/generated/contracts";
 import { t } from "@/i18n";
 import { cn } from "@/lib/cn";
 import { upsertCurveKey } from "../curves";
-import { clipDuration, motionAt, MOTION_LIMITS, toProcessingFrame, type MotionChannel } from "../model";
+import { clipDuration, motionAt, MOTION_CHANNELS, MOTION_LIMITS, toProcessingFrame, type MotionChannel } from "../model";
 
 type TransformMode = "move" | "scale" | "rotate";
 
@@ -25,12 +25,13 @@ interface Gesture {
 /** Writes motion values at a frame: into the property's keyframes when it is animated, else into its fixed value. */
 function applyMotion(clip: TimelineClip, frame: number, patch: Partial<Record<MotionChannel, number>>): TimelineClip {
   const motion = { ...clip.motion, keyframes: { ...clip.motion.keyframes } };
-  for (const [property, raw] of Object.entries(patch)) {
-    const key = property as MotionChannel;
+  for (const key of MOTION_CHANNELS) {
+    const raw = patch[key];
+    if (raw === undefined) continue;
     const [low, high] = MOTION_LIMITS[key];
     const value = Math.max(low, Math.min(high, raw));
     const keys = motion.keyframes[key];
-    if (keys?.length) motion.keyframes[key] = upsertCurveKey(keys, toProcessingFrame(clip, Math.round(frame - clip.start_frame)), value);
+    if (keys?.length != null && Boolean(keys.length)) motion.keyframes[key] = upsertCurveKey(keys, toProcessingFrame(clip, Math.round(frame - clip.start_frame)), value);
     else motion[key] = value;
   }
   return { ...clip, motion };
@@ -66,13 +67,13 @@ export function TransformOverlay({
   onCancel: () => void;
   onStart: () => void;
 }) {
-  const root = useRef<HTMLDivElement>(null);
-  const gesture = useRef<Gesture | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const gestureRef = useRef<Gesture | null>(null);
   const motion = motionAt(clip, frame);
   if (locked || frame < clip.start_frame || frame >= clip.start_frame + clipDuration(clip)) return null;
 
   const begin = (event: PointerEvent<HTMLElement>, mode: TransformMode) => {
-    const rect = root.current?.getBoundingClientRect();
+    const rect = rootRef.current?.getBoundingClientRect();
     if (event.button !== 0 || !rect) return;
     event.preventDefault();
     event.stopPropagation();
@@ -80,7 +81,7 @@ export function TransformOverlay({
     onStart();
     event.currentTarget.setPointerCapture(event.pointerId);
     const at = motionAt(original, frame);
-    gesture.current = {
+    gestureRef.current = {
       id: event.pointerId,
       mode,
       clip: original,
@@ -112,19 +113,19 @@ export function TransformOverlay({
   };
   const handlers = {
     onPointerMove: (event: PointerEvent<HTMLElement>) => {
-      const state = gesture.current;
+      const state = gestureRef.current;
       if (state?.id === event.pointerId) onPreview(changed(event, state));
     },
     onPointerUp: (event: PointerEvent<HTMLElement>) => {
-      const state = gesture.current;
+      const state = gestureRef.current;
       if (state?.id !== event.pointerId) return;
       const next = changed(event, state);
-      gesture.current = null;
+      gestureRef.current = null;
       if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
       onCommit(next);
     },
     onPointerCancel: () => {
-      gesture.current = null;
+      gestureRef.current = null;
       onCancel();
     },
   };
@@ -132,7 +133,7 @@ export function TransformOverlay({
     const amount = event.shiftKey ? 10 : 1;
     const dx = event.key === "ArrowLeft" ? -amount : event.key === "ArrowRight" ? amount : 0;
     const dy = event.key === "ArrowUp" ? -amount : event.key === "ArrowDown" ? amount : 0;
-    const rect = root.current?.getBoundingClientRect();
+    const rect = rootRef.current?.getBoundingClientRect();
     if (!rect || (!dx && !dy)) return;
     event.preventDefault();
     event.stopPropagation();
@@ -151,12 +152,12 @@ export function TransformOverlay({
     onCommit(applyMotion(original, frame, { rotation: motion.rotation + (event.key === "ArrowLeft" ? -1 : 1) }));
   };
   // The frame is scaled with the clip; handles keep their size on screen
-  const steady = { transform: `scale(${1 / Math.max(0.05, motion.scale)})` };
+  const steady = { transform: `scale(${String(1 / Math.max(0.05, motion.scale))})` };
   return (
-    <div ref={root} className="pointer-events-none absolute inset-0 z-20" role="group" aria-label={t("節目監看器變形控制")}>
+    <div ref={rootRef} className="pointer-events-none absolute inset-0 z-20" role="group" aria-label={t("節目監看器變形控制")}>
       <div
         className="absolute inset-0 origin-center"
-        style={{ transform: `translate(${motion.x * 100}%, ${motion.y * 100}%) rotate(${motion.rotation}deg) scale(${motion.scale})` }}
+        style={{ transform: `translate(${String(motion.x * 100)}%, ${String(motion.y * 100)}%) rotate(${String(motion.rotation)}deg) scale(${String(motion.scale)})` }}
       >
         <div
           role="button"
@@ -164,7 +165,7 @@ export function TransformOverlay({
           aria-label={t("拖曳移動片段")}
           title={t("拖曳移動；Shift 限制方向，方向鍵微調")}
           className="pointer-events-auto absolute inset-0 touch-none cursor-move border border-brand-cyan/80 outline-none focus-visible:border-2 focus-visible:border-focus"
-          onPointerDown={(event) => begin(event, "move")}
+          onPointerDown={(event) => { begin(event, "move"); }}
           onKeyDown={nudge}
           {...handlers}
         />
@@ -176,7 +177,7 @@ export function TransformOverlay({
             title={t("拖曳縮放；加減鍵微調")}
             className={cn(HANDLE, corner.className)}
             style={steady}
-            onPointerDown={(event) => begin(event, "scale")}
+            onPointerDown={(event) => { begin(event, "scale"); }}
             onKeyDown={resize}
             {...handlers}
           />
@@ -187,7 +188,7 @@ export function TransformOverlay({
           title={t("拖曳旋轉；Shift 每 15 度，左右鍵微調")}
           className={cn(HANDLE, "-top-1.5 left-1/2 -ml-1.5 cursor-grab rounded-full active:cursor-grabbing")}
           style={steady}
-          onPointerDown={(event) => begin(event, "rotate")}
+          onPointerDown={(event) => { begin(event, "rotate"); }}
           onKeyDown={turn}
           {...handlers}
         />

@@ -9,7 +9,7 @@ import { findRoute, ROUTE_MISSING, routeName, type Engine } from "../../model/ro
 
 /** Takes that can be played (finished, with a video): the ones a person can pick. */
 export function playableTakeCount(shot: StudioShot): number {
-  return shot.takes.filter((take) => take.state === "succeeded" && take.asset).length;
+  return shot.takes.filter((take) => Boolean(take.state === "succeeded" && take.asset)).length;
 }
 
 /** Per shot, the item of the running render: the one rendering now, otherwise the first one still waiting. */
@@ -17,7 +17,7 @@ export function activityByShot(activity: RenderActivity | null): ReadonlyMap<str
   const found = new Map<string, ActivityItem>();
   for (const item of activity?.items ?? []) {
     const shotId = item.shot?.shot_id;
-    if (!shotId || (item.state !== "running" && item.state !== "waiting")) continue;
+    if (!(shotId != null && shotId !== "") || (item.state !== "running" && item.state !== "waiting")) continue;
     const known = found.get(shotId);
     if (!known || (known.state === "waiting" && item.state === "running")) found.set(shotId, item);
   }

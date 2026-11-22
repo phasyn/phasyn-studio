@@ -1,3 +1,8 @@
+import reactRules from "@eslint-react/eslint-plugin";
+import accessibility from "eslint-plugin-jsx-a11y-x";
+import noUnsanitized from "eslint-plugin-no-unsanitized";
+import tailwind from "eslint-plugin-better-tailwindcss";
+import fiber from "@react-three/eslint-plugin";
 import js from "@eslint/js";
 import { defineConfig, globalIgnores } from "eslint/config";
 import reactHooks from "eslint-plugin-react-hooks";
@@ -22,15 +27,23 @@ const ANY_FEATURE = {
 };
 
 export default defineConfig([
+  { linterOptions: { reportUnusedDisableDirectives: "error", reportUnusedInlineConfigs: "error" } },
   globalIgnores(["dist", "src/api/generated", "src/compute/generated"]),
   {
     files: ["**/*.{ts,tsx}"],
     extends: [
       js.configs.recommended,
-      tseslint.configs.recommendedTypeChecked,
-      reactHooks.configs.flat.recommended,
+      reactRules.configs["strict-type-checked"],
+      accessibility.configs.strict,
+      noUnsanitized.configs.recommended,
+      tailwind.configs["correctness-error"],
+      tseslint.configs.strictTypeChecked,
+      tseslint.configs.stylisticTypeChecked,
+      reactHooks.configs.flat["recommended-latest"],
       reactRefresh.configs.vite,
     ],
+    plugins: { "@react-three": fiber },
+    settings: { "better-tailwindcss": { entryPoint: "src/index.css", detectComponentClasses: true } },
     languageOptions: {
       ecmaVersion: 2022,
       globals: globals.browser,
@@ -42,7 +55,19 @@ export default defineConfig([
     rules: {
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
       "@typescript-eslint/consistent-type-imports": "error",
-      "@typescript-eslint/no-misused-promises": ["error", { checksVoidReturn: { attributes: false } }],
+      "@typescript-eslint/no-misused-promises": "error",
+      "@react-three/no-clone-in-loop": "error",
+      "@react-three/no-new-in-loop": "error",
+      "preserve-caught-error": "error",
+      "@typescript-eslint/switch-exhaustiveness-check": "error",
+      "@typescript-eslint/consistent-type-exports": "error",
+      "@typescript-eslint/no-import-type-side-effects": "error",
+      "@typescript-eslint/require-array-sort-compare": "error",
+      "@typescript-eslint/prefer-readonly": "error",
+      "@typescript-eslint/strict-boolean-expressions": "error",
+      "@typescript-eslint/no-unsafe-type-assertion": "error",
+      "@typescript-eslint/strict-void-return": "error",
+
       "no-restricted-syntax": [
         "error",
         {

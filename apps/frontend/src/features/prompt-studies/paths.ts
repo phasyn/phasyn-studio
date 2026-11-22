@@ -8,7 +8,7 @@ export const IMAGE_STUDIO_PATH = PATHS.image;
 
 function withQuery(path: string, params: Record<string, string | null | undefined>): string {
   const query = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) if (value) query.set(key, value);
+  for (const [key, value] of Object.entries(params)) if (value != null && value !== "") query.set(key, value);
   const search = query.toString();
   return search ? `${path}?${search}` : path;
 }

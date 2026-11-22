@@ -1,0 +1,22 @@
+{
+  "component_id": "person-mask",
+  "label": "單人人物遮罩",
+  "provider_id": "media.person_mask",
+  "runtime_id": "performance-cpu",
+  "autostart": false,
+  "folder": "製作/控制素材",
+  "settings": {
+    "load": {
+      "model_path": "/path/to/models/mediapipe/pose_landmarker_full.task",
+      "device": {
+        "kind": "cpu",
+        "id": "cpu",
+        "resource_group": "cpu-performance"
+      }
+    },
+    "invoke": {},
+    "recording": {
+      "mode": "detailed"
+    }
+  }
+}

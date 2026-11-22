@@ -49,12 +49,12 @@ function CopyErrorButton({ text }: { text: string }) {
   const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
   useEffect(() => {
     if (state === "idle") return;
-    const timer = window.setTimeout(() => setState("idle"), 2000);
-    return () => window.clearTimeout(timer);
+    const timer = window.setTimeout(() => { setState("idle"); }, 2000);
+    return () => { window.clearTimeout(timer); };
   }, [state]);
   return (
     <>
-      <Button size="sm" variant="quiet" icon={state === "copied" ? <Check aria-hidden className="text-success" /> : <Copy aria-hidden />} onClick={() => void copyText(text).then((ok) => setState(ok ? "copied" : "failed"))}>
+      <Button size="sm" variant="quiet" icon={state === "copied" ? <Check aria-hidden className="text-success" /> : <Copy aria-hidden />} onClick={() => void copyText(text).then((ok) => { setState(ok ? "copied" : "failed"); })}>
         {t("複製錯誤")}
       </Button>
       <span className="sr-only" aria-live="polite">
@@ -67,7 +67,7 @@ function CopyErrorButton({ text }: { text: string }) {
 function FixLink({ shot }: { shot: StudioShot }) {
   const link = useShotsLink();
   return (
-    <Link to={link.href(shot.shot_id)} onClick={() => link.prepare(shot.shot_id)} className={cn(buttonVariants({ variant: "primary", size: "sm" }), "max-w-full min-w-0 no-underline")} title={t("在「鏡頭」選取「{title}」", { title: shot.title })}>
+    <Link to={link.href(shot.shot_id)} onClick={() => { link.prepare(shot.shot_id); }} className={cn(buttonVariants({ variant: "primary", size: "sm" }), "max-w-full min-w-0 no-underline")} title={t("在「鏡頭」選取「{title}」", { title: shot.title })}>
       <Wrench aria-hidden />
       <span className="truncate">{t("前往「{title}」修正", { title: shot.title })}</span>
     </Link>
@@ -81,7 +81,7 @@ function FailureCard({ run, item, items, lookup }: { run: WireRun; item: QueueIt
   const failedShotId = items.find((entry) => entry.suffix === failure.suffix)?.shot?.shot_id;
   const shot = project.shots.find((candidate) => candidate.shot_id === failedShotId) ?? null;
   const stage = failure.stage;
-  const title = shot && stage ? t("「{shot}」：{stage}失敗", { shot: shot.title, stage }) : stage ? t("{stage}失敗", { stage }) : runErrorTitle(run);
+  const title = shot && (stage != null && stage !== "") ? t("「{shot}」：{stage}失敗", { shot: shot.title, stage }) : (stage != null && stage !== "") ? t("{stage}失敗", { stage }) : runErrorTitle(run);
   const message = info ? tServer(info.message) : null;
   const copied = [title, message, info ? info.code : null, failure.stepId, `run ${run.run_id}`].filter(Boolean).join("\n");
   return (
@@ -90,8 +90,8 @@ function FailureCard({ run, item, items, lookup }: { run: WireRun; item: QueueIt
         <CircleX aria-hidden className="mt-0.5 size-5 shrink-0 text-danger" />
         <div className="grid min-w-0 gap-1">
           <h3 className="text-body font-semibold text-fg [overflow-wrap:anywhere]">{title}</h3>
-          {message ? <p className="text-data text-fg-secondary [overflow-wrap:anywhere]">{message}</p> : null}
-          {info?.hint ? <p className="text-caption text-fg-tertiary">{info.hint}</p> : null}
+          {(message != null && message !== "") ? <p className="text-data text-fg-secondary [overflow-wrap:anywhere]">{message}</p> : null}
+          {(info?.hint != null && info.hint !== "") ? <p className="text-caption text-fg-tertiary">{info.hint}</p> : null}
         </div>
       </div>
       <div className="flex min-w-0 flex-wrap items-center gap-2 pl-8">
@@ -104,7 +104,7 @@ function FailureCard({ run, item, items, lookup }: { run: WireRun; item: QueueIt
           <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-3 gap-y-1 text-caption">
             <dt className="text-fg-tertiary">{t("錯誤碼")}</dt>
             <dd className="machine text-fg-secondary">{info.code}</dd>
-            {failure.stepId ? (
+            {(failure.stepId != null && failure.stepId !== "") ? (
               <>
                 <dt className="machine text-fg-tertiary">step_id</dt>
                 <dd className="machine text-fg-secondary">{failure.stepId}</dd>

@@ -5,6 +5,7 @@
 // differs from the active take (details in the tooltip). The active take's frame has the cyan outline, the take shown
 // in A the selected look, and the B control pins the take as B. Once the project has take reviews, the frame carries
 // the review chip (TakeReview.tsx): the residue light and the adherence score, with the failed items in the tooltip.
+// A take made by the 修正 menu carries 「修正自 take N · 工具」 instead of its time (fix/tools.ts).
 // The strip owns selection, focus and keys.
 import { Film, LoaderCircle, Star } from "lucide-react";
 import { useMemo, type KeyboardEvent, type MouseEvent } from "react";
@@ -17,6 +18,7 @@ import { cn } from "@/lib/cn";
 import { isoToMs } from "@/lib/time";
 import { t } from "@/i18n";
 import { formatRelativeTime, joinInline } from "@/i18n/format";
+import { fixOrigin } from "../../fix";
 import { useFilmstrip } from "../../hooks/useMediaPreview";
 import { useVariantBadge } from "../../hooks/useVariantBadge";
 import { activeTake } from "../../model/project";
@@ -86,7 +88,7 @@ function CardPicture({ take, active, fraction }: { take: StudioTake; active: boo
   }
   return (
     <span className={box}>
-      {frame ? <img src={frame} alt="" draggable={false} className={cn("size-full object-cover animate-fade-in", THUMB_ZOOM)} /> : <Film aria-hidden className="size-4 text-fg-disabled" />}
+      {(frame != null && frame !== "") ? <img src={frame} alt="" draggable={false} className={cn("size-full object-cover animate-fade-in", THUMB_ZOOM)} /> : <Film aria-hidden className="size-4 text-fg-disabled" />}
     </span>
   );
 }
@@ -111,7 +113,7 @@ function CardNote({ take, active, stage, differences }: { take: StudioTake; acti
           {item.label}
         </span>
       ))}
-      {rest > 0 ? <span className="machine shrink-0 text-[11px] leading-4 text-fg-tertiary">{`+${rest}`}</span> : null}
+      {rest > 0 ? <span className="machine shrink-0 text-[11px] leading-4 text-fg-tertiary">{`+${String(rest)}`}</span> : null}
     </span>
   );
 }
@@ -159,6 +161,7 @@ export function TakeCard({ shot, take, index, viewed, compared, archived, compar
     [take, reference, active, engine.routes, fps],
   );
   const variant = useVariantBadge(shot, take);
+  const fixed = useMemo(() => fixOrigin(shot, take), [shot, take]);
   const stage = rendering ? renderStage(take, activity, live, true) : null;
   const created = isoToMs(take.created_at);
   const relative = now === null || created === null ? null : formatRelativeTime(created, now);
@@ -171,17 +174,17 @@ export function TakeCard({ shot, take, index, viewed, compared, archived, compar
       ref={reveal(index)}
       role="option"
       aria-selected={viewed}
-      aria-label={reviewed ? joinInline([words.label, reviewed.label]) : words.label}
+      aria-label={joinInline([fixed?.label, words.label, reviewed?.label].filter((part): part is string => part !== undefined))}
       aria-keyshortcuts={shortcuts || undefined}
       data-take-card={take.take_id}
       tabIndex={focusable ? 0 : -1}
-      title={reviewed ? `${words.tooltip}\n\n${reviewed.lines.join("\n")}` : words.tooltip}
+      title={[fixed?.label, words.tooltip, reviewed ? `\n${reviewed.lines.join("\n")}` : null].filter((line) => line != null && line !== "").join("\n")}
       onClick={onClick}
       onKeyDown={onKeyDown}
       className={cn(
         CHOICE_BASE,
         "group/tile flex h-12 shrink-0 cursor-pointer items-center gap-2 rounded-lg p-1 outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-inset",
-        variant ? "w-64" : "w-46",
+        variant ? "w-64" : fixed ? "w-56" : "w-46",
         viewed ? CHOICE_SELECTED : CHOICE_IDLE,
       )}
     >
@@ -193,8 +196,10 @@ export function TakeCard({ shot, take, index, viewed, compared, archived, compar
       </span>
       <span className="grid min-w-0 flex-1 gap-0.5 text-caption leading-4">
         <span className="flex min-w-0 items-baseline gap-1.5">
-          <span className="machine shrink-0 font-semibold text-fg">{`#${takeNumber(shot, take)}`}</span>
-          {variant ? <VariantTag badge={variant} /> : relative ? <span className="truncate text-fg-tertiary">{relative}</span> : null}
+          <span className="machine shrink-0 font-semibold text-fg">{`#${String(takeNumber(shot, take))}`}</span>
+          {variant ? <VariantTag badge={variant} />
+            : fixed ? <span className="min-w-0 truncate rounded-sm bg-brand-soft px-1 text-[11px] leading-4 text-fg-secondary">{fixed.label}</span>
+            : (relative != null && relative !== "") ? <span className="truncate text-fg-tertiary">{relative}</span> : null}
         </span>
         <CardNote take={take} active={active} stage={stage} differences={differences ?? []} />
       </span>

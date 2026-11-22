@@ -18,7 +18,7 @@ import { reveal } from "@/components/ui/motion";
 
 /** 這一步找不到元件時補充原因：kind 之外還要求特定輸出埠，或沒有配置 preview decoder。 */
 function missingHint(slot: TemplateSlot): string {
-  if (slot.outputType) return t("（輸出需為 {outputType}）", { outputType: slot.outputType });
+  if (slot.outputType != null && slot.outputType !== "") return t("（輸出需為 {outputType}）", { outputType: slot.outputType });
   return slot.kinds.includes("decode.preview") ? t("（未配置 preview decoder）") : "";
 }
 
@@ -56,7 +56,7 @@ function TemplateForm({
   const blockReason = missing.length > 0 ? t("目錄中沒有可用於「{value}」的元件", { value: missing[0]?.label ?? "" }) : idError;
 
   const create = () => {
-    if (blockReason) return;
+    if (blockReason != null && blockReason !== "") return;
     const chosen = activeSlots.flatMap((slot) => {
       const option = selectedFor(slot);
       return option ? [{ slot, descriptor: option.descriptor }] : [];
@@ -72,12 +72,12 @@ function TemplateForm({
           <legend className="mb-1 text-data font-semibold text-fg">{t("範本")}</legend>
           {TEMPLATES.map((template, index) => (
             // 範本卡：選取＝品牌底＋左側漸層標記（單選鈕仍是狀態來源）；滑過抬升 1 px、按下縮小；依序淡入
-            <label
+            <label aria-label={[template.label, template.description].join(" ")}
               key={template.id}
               ref={reveal(index)}
               className={cn("relative flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border px-3 py-2", LIFT_CARD, template.id === templateId ? cn("border-brand-blue/55", SELECTED_ITEM) : "border-line hover:border-line-strong hover:bg-raised/60")}
             >
-              <input type="radio" name="template" className="mt-1 accent-action" checked={template.id === templateId} onChange={() => setTemplateId(template.id)} />
+              <input type="radio" name="template" className="mt-1 accent-action" checked={template.id === templateId} onChange={() => { setTemplateId(template.id); }} />
               <span className="min-w-0">
                 <span className="block text-body text-fg">{template.label}</span>
                 <span className="block text-caption text-fg-tertiary">{template.description}</span>
@@ -91,7 +91,7 @@ function TemplateForm({
             label={t("包含音訊分支（audio.decode → media.mux）")}
             description={t("沒有音訊分支時不會自動產生音訊。")}
             checked={includeAudio}
-            onChange={(event) => setIncludeAudio(event.target.checked)}
+            onChange={(event) => { setIncludeAudio(event.target.checked); }}
           />
         ) : null}
         <fieldset className="grid gap-3">
@@ -110,7 +110,7 @@ function TemplateForm({
                     {t("目錄中沒有 kind 為 {kinds} 的元件{value}。可先到元件頁新建 instance。", { kinds: slot.kinds.join(t(" 或 ")), value: missingHint(slot) })}
                   </p>
                 ) : (
-                  <Select id={id} value={selected?.value ?? ""} onChange={(event) => setChoices({ ...choices, [`${templateId}:${slot.id}`]: event.target.value })}>
+                  <Select id={id} value={selected?.value ?? ""} onChange={(event) => { setChoices({ ...choices, [`${templateId}:${slot.id}`]: event.target.value }); }}>
                     {candidates.map((option) => (
                       <option key={option.value} value={option.value}>
                         <T source={"{label} / {value}（{component_id}）· {kind} · {option}"} values={{ label: option.node.label, value: option.descriptor.label || option.descriptor.component_id, component_id: option.descriptor.component_id, kind: option.kind, option: readinessText(option) }} />
@@ -118,7 +118,7 @@ function TemplateForm({
                     ))}
                   </Select>
                 )}
-                {slot.variant && selected && componentVariant(selected.descriptor) !== slot.variant ? (
+                {(slot.variant != null && slot.variant !== "") && selected && componentVariant(selected.descriptor) !== slot.variant ? (
                   <p className="text-caption text-warning">
                     {t("這個元件載入的是 {actual} checkpoint，但這一步需要 {wanted}；用它建出的元件組合做不到這個範本的任務。", { actual: componentVariant(selected.descriptor), wanted: slot.variant })}
                   </p>
@@ -141,16 +141,16 @@ function TemplateForm({
               className="machine"
               value={pipelineId}
               aria-invalid={Boolean(idError) || undefined}
-              onChange={(event) => setIds({ ...ids, [templateId]: event.target.value })}
+              onChange={(event) => { setIds({ ...ids, [templateId]: event.target.value }); }}
             />
-            {idError ? <p className="text-caption text-danger">{idError}</p> : null}
+            {(idError != null && idError !== "") ? <p className="text-caption text-danger">{idError}</p> : null}
             {existingIds.has(pipelineId) ? <p className="text-caption text-warning">{t("已有同 ID 的元件組合：儲存會覆寫它。")}</p> : null}
           </div>
           <div className="grid gap-1">
             <label htmlFor="template-label" className="text-caption text-fg-secondary">
               {t("名稱")}
             </label>
-            <Input id="template-label" value={label} onChange={(event) => setLabels({ ...labels, [templateId]: event.target.value })} />
+            <Input id="template-label" value={label} onChange={(event) => { setLabels({ ...labels, [templateId]: event.target.value }); }} />
           </div>
         </div>
         <p className="text-caption text-fg-tertiary">{t("建立的是可編輯草稿：接線依元件宣告的型別自動帶入，請在編輯器確認後再儲存或執行。")}</p>
@@ -186,7 +186,7 @@ export function TemplateDialog({
           <DialogTitle>{t("從範本建立元件組合")}</DialogTitle>
           <DialogDescription>{t("每一步都可以放在任何 Node 的相容元件上；之後在編輯器中仍可更換。")}</DialogDescription>
         </DialogHeader>
-        {open ? <TemplateForm existingIds={existingIds} onCreate={onCreate} onCancel={() => onOpenChange(false)} /> : null}
+        {open ? <TemplateForm existingIds={existingIds} onCreate={onCreate} onCancel={() => { onOpenChange(false); }} /> : null}
       </DialogContent>
     </Dialog>
   );

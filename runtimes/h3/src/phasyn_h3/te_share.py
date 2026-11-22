@@ -1,4 +1,4 @@
-"""h3.conditioning：不同 task variant 共用同一份已載入的文字編碼器（Qwen3-VL TE）——只在能證明相同時（torch-free）。
+"""h3.conditioning：不同 task variant 共用同一份已載入的文字編碼器（Qwen3-VL TE）——只在能證明相同時（torch-free）.
 
 背景：一個 variant=fl2va、shared_from=ref2va 的 TE 元件 load 時預載 t2va／fl2va 用的 TE
 （``h3-fl2va-local-text_encoder``）；第一次 ref2va 呼叫改用另一份 model manifest（model_id ``h3-ref2va-local``）建 plan，
@@ -41,6 +41,10 @@ from phasyn_components.canonical import digest as canonical_digest
 from phasyn_components.errors import exception_message
 from phasyn_components.model_identity import location
 
+
+_SHA256_HEX_LENGTH = 64
+
+
 SHARED_KINDS = ("text_encoder", "tokenizer", "processor")
 # recipe encode_conditioning 固定：blocks 0..49、final norm Identity、hidden_states[50]（minimax_h3_qwen3vl.py:328-392）
 TAP = "hidden_states[50]"
@@ -53,21 +57,25 @@ _LIST_LIMIT = 3
 
 
 def file_sha256(path: Path) -> str:
+    """Hash the file contents with SHA-256."""
     h = hashlib.sha256()
-    with open(path, "rb") as fh:
+    with Path(path).open("rb") as fh:
         for block in iter(lambda: fh.read(_BLOCK), b""):
             h.update(block)
     return h.hexdigest()
 
 
 class DigestCache:
-    """檔案 SHA-256；大檔以檔案身分（解析後路徑、st_dev、st_ino、大小、mtime_ns、ctime_ns）為 key 快取在 ``cache_dir``。
+    """檔案 SHA-256；大檔以檔案身分（解析後路徑、st_dev、st_ino、大小、mtime_ns、ctime_ns）為 key 快取在 ``cache_dir``.
 
     比 transformer_file 的 path:size:mtime 快取多看 inode 與 ctime：覆寫內容（就算把 mtime 改回去）會改 ctime，快取失效重算
     （檔案系統時間戳粒度內的連續寫入除外）。算的過程中檔案變了就不寫快取。同一 inode 的比對不需要 digest（見 ``compare_dirs``）。
     """
 
-    def __init__(self, cache_dir: Path | None, *, min_bytes: int = HASH_CACHE_MIN_BYTES) -> None:
+    def __init__(
+        self, cache_dir: Path | None, *, min_bytes: int = HASH_CACHE_MIN_BYTES
+    ) -> None:
+        """Start with an empty cache of model file digests."""
         self.cache_dir = cache_dir
         self.min_bytes = min_bytes
         self.computed_files = 0
@@ -81,13 +89,19 @@ class DigestCache:
         if st.st_size < self.min_bytes:
             return None
         identity = f"{path.resolve()}:{st.st_dev}:{st.st_ino}:{st.st_size}:{st.st_mtime_ns}:{st.st_ctime_ns}"
-        return self.cache_dir / f"te-share-sha256-{hashlib.sha256(identity.encode()).hexdigest()[:32]}.txt"
+        return (
+            self.cache_dir
+            / f"te-share-sha256-{hashlib.sha256(identity.encode()).hexdigest()[:32]}.txt"
+        )
 
     def __call__(self, path: Path) -> str:
+        """Return the cached digest or hash the selected file."""
         cached = self._cache_path(path)
         if cached is not None and cached.is_file():
             value = cached.read_text(encoding="utf-8").strip()
-            if len(value) == 64 and all(c in "0123456789abcdef" for c in value):
+            if len(value) == _SHA256_HEX_LENGTH and all(
+                c in "0123456789abcdef" for c in value
+            ):
                 self.cache_hits += 1
                 return value
         value = file_sha256(path)
@@ -97,10 +111,11 @@ class DigestCache:
             cached.parent.mkdir(parents=True, exist_ok=True)
             partial = cached.with_name(f"{cached.name}.{os.getpid()}.part")
             partial.write_text(value, encoding="utf-8")
-            os.replace(partial, cached)
+            partial.replace(cached)
         return value
 
     def facts(self) -> dict[str, int]:
+        """Return the observed runtime facts for reporting."""
         return {
             "computed_files": self.computed_files,
             "computed_bytes": self.computed_bytes,
@@ -110,7 +125,7 @@ class DigestCache:
 
 @dataclass(frozen=True)
 class DirProof:
-    """一個元件目錄（已載入的那份 vs 另一份 manifest 會載入的那份）的逐檔比對結果。"""
+    """一個元件目錄（已載入的那份 vs 另一份 manifest 會載入的那份）的逐檔比對結果."""
 
     kind: str
     loaded: str
@@ -125,6 +140,7 @@ class DirProof:
     reason: str | None = None
 
     def fact(self) -> dict[str, Any]:
+        """Record the evidence for this directory."""
         return {
             "kind": self.kind,
             "loaded": self.loaded,
@@ -141,7 +157,9 @@ class DirProof:
 
 
 def _list_files(root: Path) -> list[str]:
-    return sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
+    return sorted(
+        p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file()
+    )
 
 
 def _few(items: Sequence[str]) -> str:
@@ -156,16 +174,27 @@ def _shown(path: Path, root: Path | None) -> str:
 
 
 def compare_dirs(
-    kind: str, loaded: Path, other: Path, *, digest: Callable[[Path], str], root: Path | None = None
+    kind: str,
+    loaded: Path,
+    other: Path,
+    *,
+    digest: Callable[[Path], str],
+    root: Path | None = None,
 ) -> DirProof:
-    """逐檔證明兩個目錄相同：檔案清單相同，且每個檔同 (st_dev, st_ino)，或同大小且同 SHA-256。
+    """逐檔證明兩個目錄相同：檔案清單相同，且每個檔同 (st_dev, st_ino)，或同大小且同 SHA-256.
 
     ``root`` (the model root): the proof names the directories relative to it, never by absolute path.
     """
 
     def differ(reason: str, files: int = 0) -> DirProof:
         return DirProof(
-            kind, _shown(loaded, root), _shown(other, root), identical=False, method=None, files=files, reason=reason
+            kind,
+            _shown(loaded, root),
+            _shown(other, root),
+            identical=False,
+            method=None,
+            files=files,
+            reason=reason,
         )
 
     for path in (loaded, other):
@@ -197,19 +226,16 @@ def compare_dirs(
             inode_files += 1
             continue
         if sa.st_size != sb.st_size:
-            return differ(f"{name} 大小不同（{sa.st_size:,} B ≠ {sb.st_size:,} B）", len(names))
+            return differ(
+                f"{name} 大小不同（{sa.st_size:,} B ≠ {sb.st_size:,} B）", len(names)
+            )
         if digest(a) != digest(b):
             return differ(f"{name} 內容不同（SHA-256）", len(names))
         sha_files += 1
         sha_bytes += sa.st_size
-    if same_path:
-        method = "same_path"
-    elif sha_files == 0:
-        method = "inode"
-    elif inode_files == 0:
-        method = "sha256"
-    else:
-        method = "inode+sha256"
+    method = _proof_method(
+        same_path=same_path, sha_files=sha_files, inode_files=inode_files
+    )
     return DirProof(
         kind,
         _shown(loaded, root),
@@ -225,25 +251,37 @@ def compare_dirs(
 
 
 def _components(model: Mapping[str, Any]) -> dict[str, Mapping[str, Any]]:
-    return {str(c.get("kind")): c for c in model.get("components") or [] if isinstance(c, Mapping)}
+    return {
+        str(c.get("kind")): c
+        for c in model.get("components") or []
+        if isinstance(c, Mapping)
+    }
 
 
-def manifest_identity(model: Mapping[str, Any], kinds: Sequence[str] = SHARED_KINDS) -> dict[str, Any]:
-    """registry key 會用到的 manifest 身分（model_id／source_revision＋各元件 component_id／relative_path／format）。"""
+def manifest_identity(
+    model: Mapping[str, Any], kinds: Sequence[str] = SHARED_KINDS
+) -> dict[str, Any]:
+    """Registry key 會用到的 manifest 身分（model_id／source_revision\N{FULLWIDTH PLUS SIGN}各元件 component_id／relative_path／format）."""
     comps = _components(model)
     return {
         "model_id": model.get("model_id"),
         "source_revision": model.get("source_revision"),
-        **{kind: {f: (comps.get(kind) or {}).get(f) for f in _IDENTITY_FIELDS} for kind in kinds},
+        **{
+            kind: {f: (comps.get(kind) or {}).get(f) for f in _IDENTITY_FIELDS}
+            for kind in kinds
+        },
     }
 
 
 def settings_fingerprint(profile: Mapping[str, Any]) -> dict[str, Any]:
-    """TE 載入與 forward 會用到的設定（同一份 profile → 同一個 ComponentPolicy／ServerArgs knobs）。"""
+    """TE 載入與 forward 會用到的設定（同一份 profile → 同一個 ComponentPolicy／ServerArgs knobs）."""
     components = profile.get("components") or {}
     residency = None
     for ext in profile.get("extensions") or []:
-        if isinstance(ext, Mapping) and ext.get("namespace") == "phasyn.sglang_h3.residency":
+        if (
+            isinstance(ext, Mapping)
+            and ext.get("namespace") == "phasyn.sglang_h3.residency"
+        ):
             residency = (ext.get("values") or {}).get("text_encoder")
     return {
         "text_encoder": components.get("text_encoder"),
@@ -255,7 +293,9 @@ def settings_fingerprint(profile: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _read_index(path: Path, root: Path | None) -> tuple[dict[str, Any] | None, str | None]:
+def _read_index(
+    path: Path, root: Path | None
+) -> tuple[dict[str, Any] | None, str | None]:
     shown = _shown(path, root)
     if not path.is_file():
         return None, f"{shown} 不存在（loader 會改用釘版參考 model_index；這裡不推論）"
@@ -269,9 +309,13 @@ def _read_index(path: Path, root: Path | None) -> tuple[dict[str, Any] | None, s
 
 
 def compare_model_index(
-    loaded_dir: Path, other_dir: Path, kinds: Sequence[str] = SHARED_KINDS, *, root: Path | None = None
+    loaded_dir: Path,
+    other_dir: Path,
+    kinds: Sequence[str] = SHARED_KINDS,
+    *,
+    root: Path | None = None,
 ) -> dict[str, Any]:
-    """兩個 variant 目錄的 model_index.json：``_class_name`` 與各元件的 [library, class] 是否相同。
+    """兩個 variant 目錄的 model_index.json：``_class_name`` 與各元件的 [library, class] 是否相同.
 
     ``root`` (the model root): files are named relative to it, never by absolute path.
     """
@@ -284,7 +328,12 @@ def compare_model_index(
         doc, problem = _read_index(loaded_dir / MODEL_INDEX, root)
         if doc is None:
             return {**out, "identical": False, "reason": problem}
-        return {**out, "identical": True, "method": "same_file", "entries": {k: doc.get(k) for k in keys}}
+        return {
+            **out,
+            "identical": True,
+            "method": "same_file",
+            "entries": {k: doc.get(k) for k in keys},
+        }
     loaded_doc, problem = _read_index(loaded_dir / MODEL_INDEX, root)
     other_doc, other_problem = _read_index(other_dir / MODEL_INDEX, root)
     if loaded_doc is None or other_doc is None:
@@ -297,12 +346,17 @@ def compare_model_index(
             "reason": f"model_index.json 的 {'、'.join(differ)} 不同",
             "entries": {k: [loaded_doc.get(k), other_doc.get(k)] for k in differ},
         }
-    return {**out, "identical": True, "method": "entries", "entries": {k: loaded_doc.get(k) for k in keys}}
+    return {
+        **out,
+        "identical": True,
+        "method": "entries",
+        "entries": {k: loaded_doc.get(k) for k in keys},
+    }
 
 
 @dataclass(frozen=True)
 class ShareDecision:
-    """另一個 variant（``variant``）的 job 能不能用此元件已載入的 TE（``own_variant`` 的 manifest 身分）。"""
+    """另一個 variant（``variant``）的 job 能不能用此元件已載入的 TE（``own_variant`` 的 manifest 身分）."""
 
     variant: str
     own_variant: str
@@ -316,9 +370,11 @@ class ShareDecision:
     seconds: float = 0.0
 
     def methods(self) -> dict[str, str | None]:
+        """List the methods used to verify sharing."""
         return {p.kind: p.method for p in self.proofs}
 
     def fact(self) -> dict[str, Any]:
+        """Return the evidence used for the sharing decision."""
         return {
             "variant": self.variant,
             "own_variant": self.own_variant,
@@ -333,7 +389,7 @@ class ShareDecision:
         }
 
     def summary(self) -> dict[str, Any]:
-        """invoke 紀錄用的精簡版（完整證明在 load 紀錄的 observed.text_encoder_sharing）。"""
+        """Invoke 紀錄用的精簡版（完整證明在 load 紀錄的 observed.text_encoder_sharing）."""
         return {
             "applied": self.applied,
             "reason": self.reason,
@@ -343,14 +399,16 @@ class ShareDecision:
         }
 
 
-def _component_dir(model_root: Path, model: Mapping[str, Any], kind: str) -> Path | None:
+def _component_dir(
+    model_root: Path, model: Mapping[str, Any], kind: str
+) -> Path | None:
     entry = _components(model).get(kind)
     if not entry or not entry.get("relative_path"):
         return None
     return model_root / str(entry["relative_path"])
 
 
-def decide(
+def decide(  # noqa: PLR0913 - Preserve the existing provider or recipe ABI.
     *,
     variant: str,
     own_variant: str,
@@ -364,8 +422,10 @@ def decide(
     kinds: Sequence[str] = SHARED_KINDS,
     clock: Callable[[], float] = time.perf_counter,
 ) -> ShareDecision:
-    """``loaded``：此元件載入（或會載入）的 manifest；``shared``：沿用其身分、給 ``variant`` 的 manifest；
-    ``separate``：不共用時（以前的做法）``variant`` 的 manifest。證明全部成立才 applied=True，任何錯誤都不共用。"""
+    """``loaded``：此元件載入（或會載入）的 manifest；``shared``：沿用其身分、給 ``variant`` 的 manifest；.
+
+    ``separate``：不共用時（以前的做法）``variant`` 的 manifest。證明全部成立才 applied=True，任何錯誤都不共用。
+    """
     started = clock()
     manifests = {
         "loaded": manifest_identity(loaded, kinds),
@@ -384,7 +444,11 @@ def decide(
     hashing = getattr(digest, "facts", None)
 
     def done(
-        applied: bool, reason: str, proofs: Sequence[DirProof] = (), index: Mapping[str, Any] | None = None
+        *,
+        applied: bool,
+        reason: str,
+        proofs: Sequence[DirProof] = (),
+        index: Mapping[str, Any] | None = None,
     ) -> ShareDecision:
         return ShareDecision(
             variant=variant,
@@ -400,44 +464,43 @@ def decide(
         )
 
     if variant == own_variant:
-        return done(True, "同一個 variant：用此元件自己載入的 TE")
+        return done(applied=True, reason="同一個 variant：用此元件自己載入的 TE")
     if manifests["shared"] != manifests["loaded"]:
         return done(
-            False, "共用用的 manifest 身分與已載入的不同（model_id／revision／component_id／路徑），registry 會另載一份"
+            applied=False,
+            reason="共用用的 manifest 身分與已載入的不同（model_id／revision／component_id／路徑），registry 會另載一份",
         )
     if not settings["identical"]:
-        changed = sorted(k for k in loaded_settings if loaded_settings.get(k) != variant_settings.get(k))
-        return done(False, f"兩個 variant 的 TE 設定不同（{'、'.join(changed) or 'fingerprint'}）")
+        changed = sorted(
+            k
+            for k in loaded_settings
+            if loaded_settings.get(k) != variant_settings.get(k)
+        )
+        return done(
+            applied=False,
+            reason=f"兩個 variant 的 TE 設定不同（{'、'.join(changed) or 'fingerprint'}）",
+        )
     dirs: dict[str, tuple[Path, Path]] = {}
     for kind in kinds:
         own_dir = _component_dir(model_root, loaded, kind)
         other_dir = _component_dir(model_root, separate, kind)
         if own_dir is None or other_dir is None:
-            return done(False, f"manifest 缺少 {kind} 的 relative_path，無法比對")
+            return done(
+                applied=False, reason=f"manifest 缺少 {kind} 的 relative_path，無法比對"
+            )
         dirs[kind] = (own_dir, other_dir)
     # loader 以元件目錄的上一層（variant 目錄）的 model_index.json 選類別；三個元件不在同一層就不推論
     parents = {(own.parent, other.parent) for own, other in dirs.values()}
     if len(parents) != 1:
-        return done(False, f"{'／'.join(kinds)} 不在同一個 variant 目錄，model_index 無法一次比對（不推論）")
-    proofs: list[DirProof] = []
-    try:
-        ((loaded_parent, other_parent),) = parents
-        index = compare_model_index(loaded_parent, other_parent, kinds, root=model_root)
-        if not index["identical"]:
-            return done(False, f"model_index.json 不同：{index.get('reason')}", proofs, index)
-        for kind in kinds:
-            proof = compare_dirs(kind, *dirs[kind], digest=digest, root=model_root)
-            proofs.append(proof)
-            if not proof.identical:
-                return done(False, f"{kind} 不同：{proof.reason}", proofs, index)
-    except OSError as exc:  # 讀不到就不共用（照舊各載一份），不猜
-        return done(False, f"無法比對檔案：{type(exc).__name__}: {exception_message(exc)}"[:500], proofs)
-    methods = "、".join(f"{p.kind} {p.method}" for p in proofs)
-    return done(
-        True,
-        f"{'／'.join(kinds)} 逐檔相同（{methods}），model_index 與 TE 設定相同：{variant} 沿用已載入的那一份",
-        proofs,
-        index,
+        return done(
+            applied=False,
+            reason=f"{'／'.join(kinds)} 不在同一個 variant 目錄，model_index 無法一次比對（不推論）",
+        )
+    return _compare_variant_files(
+        _ShareDirectories(model_root, dirs, kinds, next(iter(parents))),
+        digest,
+        variant,
+        done,
     )
 
 
@@ -455,3 +518,70 @@ __all__ = [
     "manifest_identity",
     "settings_fingerprint",
 ]
+
+
+def _proof_method(*, same_path: bool, sha_files: int, inode_files: int) -> str:
+    if same_path:
+        method = "same_path"
+    elif sha_files == 0:
+        method = "inode"
+    elif inode_files == 0:
+        method = "sha256"
+    else:
+        method = "inode+sha256"
+    return method
+
+
+@dataclass(frozen=True)
+class _ShareDirectories:
+    root: Path
+    components: Mapping[str, tuple[Path, Path]]
+    kinds: Sequence[str]
+    parents: tuple[Path, Path]
+
+
+def _compare_variant_files(
+    directories: _ShareDirectories,
+    digest: Callable[[Path], str],
+    variant: str,
+    done: Callable[..., ShareDecision],
+) -> ShareDecision:
+    kinds = directories.kinds
+    model_root = directories.root
+    dirs = directories.components
+    loaded_parent, other_parent = directories.parents
+    proofs: list[DirProof] = []
+    try:
+        index = compare_model_index(loaded_parent, other_parent, kinds, root=model_root)
+        if not index["identical"]:
+            return done(
+                applied=False,
+                reason=f"model_index.json 不同：{index.get('reason')}",
+                proofs=proofs,
+                index=index,
+            )
+        for kind in kinds:
+            proof = compare_dirs(kind, *dirs[kind], digest=digest, root=model_root)
+            proofs.append(proof)
+            if not proof.identical:
+                return done(
+                    applied=False,
+                    reason=f"{kind} 不同：{proof.reason}",
+                    proofs=proofs,
+                    index=index,
+                )
+    except OSError as exc:  # 讀不到就不共用（照舊各載一份），不猜
+        return done(
+            applied=False,
+            reason=f"無法比對檔案：{type(exc).__name__}: {exception_message(exc)}"[
+                :500
+            ],
+            proofs=proofs,
+        )
+    methods = "、".join(f"{p.kind} {p.method}" for p in proofs)
+    return done(
+        applied=True,
+        reason=f"{'／'.join(kinds)} 逐檔相同（{methods}），model_index 與 TE 設定相同：{variant} 沿用已載入的那一份",
+        proofs=proofs,
+        index=index,
+    )

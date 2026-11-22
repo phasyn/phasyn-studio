@@ -107,7 +107,7 @@ export function ImageStudioPage() {
   // 與影片 Studio 同一個 query key；開啟時一定重新讀取一次，讀到之後才建立文件（不用可能過時的快取當起點）
   const project = useProjectQuery(projectId);
 
-  if (!projectId) {
+  if (!(projectId != null && projectId !== "")) {
     if (projects.isPending) return <Loading text={t("讀取專案…")} />;
     const latest = projects.data?.items[0];
     if (latest) return <Navigate to={imagePath(latest.project_id)} replace />;

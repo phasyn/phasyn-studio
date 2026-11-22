@@ -194,7 +194,7 @@ export interface TemplateBuild {
  */
 export function buildFromTemplate(
   spec: TemplateWiring,
-  chosen: ReadonlyArray<{ slot: Pick<TemplateSlot, "id">; descriptor: ComponentDescriptor }>,
+  chosen: readonly { slot: Pick<TemplateSlot, "id">; descriptor: ComponentDescriptor }[],
   pipelineId: string,
   label: string,
 ): TemplateBuild {
@@ -233,7 +233,7 @@ export function buildFromTemplate(
       const existing = inputs.find((input) => input.type_id === port.type_id && !dedicated.has(input.name));
       if (existing) {
         bindings[port.name] = { from_input: existing.name };
-      } else if (port.required || spec.requiredInputs?.includes(port.type_id)) {
+      } else if (port.required || Boolean(spec.requiredInputs?.includes(port.type_id))) {
         const input = pipelineInputFor(port, spec.inputNames[port.type_id], takenInputs);
         inputs.push(input);
         bindings[port.name] = { from_input: input.name };

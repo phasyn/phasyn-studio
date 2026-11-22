@@ -1,5 +1,8 @@
+import { hasSlotContent } from "@/lib/dom";
+import { matchesReply } from "@/api/http";
+import { wireDefinitions } from "@/lib/contractSchemas";
 import { Activity, CircleAlert, CopyPlus, Play, Plus, Save, Trash2, Undo2, Workflow } from "lucide-react";
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { use, useMemo, useRef, useState, type ReactNode } from "react";
 import { useBlocker, useNavigate } from "react-router";
 import { useCatalog, useProviderIndex } from "@/api/catalog";
 import { useSavePipeline } from "@/api/pipelines";
@@ -18,7 +21,7 @@ import { PanelTabs } from "@/components/workbench/PanelTabs";
 import { StatusChip } from "@/components/workbench/StatusChip";
 import { WorkbenchPage } from "@/components/workbench/WorkbenchPage";
 import { localIdError, uniqueName } from "@/lib/ids";
-import { cloneJson, isRecord } from "@/lib/json";
+import { cloneJson } from "@/lib/json";
 import { ActivityLog } from "@/features/activity";
 import { componentOptions, makeLookup } from "./catalogIndex";
 import { PipelineGraph } from "./graph/PipelineGraph";
@@ -52,6 +55,7 @@ export function PipelineEditor({
   /** 頁面層級的提醒（例如範本有無法自動接線的輸入）。 */
   notice?: ReactNode;
 }) {
+  const definitions = use(wireDefinitions());
   const navigate = useNavigate();
   const catalog = useCatalog();
   // 圖的版面依 lookup 計算：目錄資料不變時保持同一個函式，避免每次重繪都重新排版
@@ -67,20 +71,20 @@ export function PipelineEditor({
   /** 有錯誤時按儲存：先確認（草稿可以儲存，但建立 run 時伺服器會以 422 拒絕）。 */
   const [confirmSave, setConfirmSave] = useState(false);
   const [runSeed, setRunSeed] = useState<RunFormSeed | null>(null);
-  const allowLeave = useRef(false);
+  const allowLeaveRef = useRef(false);
   // 「步驟與接線」：上移／下移後，步驟卡從舊位置平滑移到新位置（FLIP，只用 transform）
-  const stepList = useRef<HTMLOListElement>(null);
-  useFlipList(stepList, stepKeys.keys.join("␟"));
+  const stepListRef = useRef<HTMLOListElement>(null);
+  useFlipList(stepListRef, stepKeys.keys.join("␟"));
 
   const issues = validatePipeline(draft, lookup);
   const errors = issues.filter((issue) => issue.severity === "error");
-  const warnings = issues.filter((issue) => issue.severity === "warning" && !issue.stepId);
+  const warnings = issues.filter((issue) => issue.severity === "warning" && !(issue.stepId != null && issue.stepId !== ""));
   const edges = wiringEdges(draft, lookup);
   const idTaken = isNew && existingIds.has(draft.pipeline_id);
   const typeSuggestions = options.flatMap((option) => [...option.descriptor.inputs, ...option.descriptor.outputs].map((port) => port.type_id));
   const labelOfNode = (nodeId: string) => catalog.data?.directory.find((entry) => entry.node_id === nodeId)?.label ?? null;
 
-  const blocker = useBlocker(({ currentLocation, nextLocation }) => !allowLeave.current && dirty && currentLocation.pathname !== nextLocation.pathname);
+  const blocker = useBlocker(({ currentLocation, nextLocation }) => !allowLeaveRef.current && dirty && currentLocation.pathname !== nextLocation.pathname);
 
   const saveReason = save.isPending
     ? null
@@ -89,7 +93,7 @@ export function PipelineEditor({
       : localIdError(draft.pipeline_id, "pipeline_id ") ?? (draft.steps.length === 0 ? t("至少需要一個步驟") : null);
 
   const doSave = (confirmed = false) => {
-    if (saveReason || save.isPending) return;
+    if ((saveReason ?? "") || save.isPending) return;
     if (errors.length > 0 && !confirmed) {
       setConfirmSave(true);
       return;
@@ -99,7 +103,7 @@ export function PipelineEditor({
       onSuccess: (saved) => {
         editor.markSaved(saved);
         if (isNew) {
-          allowLeave.current = true;
+          allowLeaveRef.current = true;
           void navigate(`/admin/pipelines/${encodeURIComponent(saved.pipeline_id)}`, { replace: true });
         }
       },
@@ -111,7 +115,7 @@ export function PipelineEditor({
    * state：要在清單上顯示的說明（例如伺服器上已經沒有這個元件組合）。
    */
   const leaveToList = (state?: ListLeaveState) => {
-    allowLeave.current = true;
+    allowLeaveRef.current = true;
     setConfirmDelete(false);
     void navigate("/admin/pipelines", { replace: true, flushSync: true, state: state ?? undefined });
   };
@@ -131,28 +135,28 @@ export function PipelineEditor({
       lookup,
       options,
       issues,
-      onChange: (next) => editor.updateStep(index, next),
+      onChange: (next) => { editor.updateStep(index, next); },
       onRename: (next) => {
         const error = editor.renameAt(index, step.step_id, next);
-        if (!error && selection?.kind === "step" && selection.id === step.step_id) select({ kind: "step", id: next });
+        if (!(error != null && error !== "") && selection?.kind === "step" && selection.id === step.step_id) select({ kind: "step", id: next });
         return error;
       },
-      onMove: (to) => editor.moveAt(index, to),
+      onMove: (to) => { editor.moveAt(index, to); },
       onRemove: () => {
         const removed = editor.removeAt(index);
-        if (removed && selection?.kind === "step" && selection.id === removed) select(null);
+        if ((removed != null && removed !== "") && selection?.kind === "step" && selection.id === removed) select(null);
       },
       onAddInput: editor.addInputFor,
       // 步驟輸出埠上的流程輸出
       exports: {
         byPort: exportsOfStep(draft, step.step_id),
-        onAdd: (port) => editor.exportPort(step.step_id, port),
-        onSelect: (name) => select({ kind: "output", id: name }),
+        onAdd: (port) => { editor.exportPort(step.step_id, port); },
+        onSelect: (name) => { select({ kind: "output", id: name }); },
       },
       nodeLabel: labelOfNode,
     };
   };
-  const addStep = () => select({ kind: "step", id: editor.addStep() });
+  const addStep = () => { select({ kind: "step", id: editor.addStep() }); };
 
   const idField = isNew ? (
     <CommitInput
@@ -161,7 +165,7 @@ export function PipelineEditor({
       value={draft.pipeline_id}
       onCommit={(next) => {
         const error = localIdError(next, "pipeline_id ");
-        if (error) return error;
+        if (error != null && error !== "") return error;
         setDraft({ ...draft, pipeline_id: next });
         return null;
       }}
@@ -186,7 +190,7 @@ export function PipelineEditor({
         </div>
         {catalog.isError ? <ErrorCallout error={catalog.error} title={t("無法讀取元件目錄：連接埠與型別無法檢查")} onRetry={() => void catalog.refetch()} /> : null}
         {draft.steps.length === 0 ? <p className="text-data text-fg-tertiary">{t("還沒有步驟。新增步驟後從元件庫選擇 instance。")}</p> : null}
-        <ol ref={stepList} className="grid gap-3">
+        <ol ref={stepListRef} className="grid gap-3">
           {draft.steps.map((_step, index) => {
             const binding = stepBinding(index);
             return binding ? <StepEditor key={stepKeys.keys[index]} appear={index} {...binding} /> : null;
@@ -205,11 +209,11 @@ export function PipelineEditor({
         label="pipeline JSON"
         value={draft}
         accept={(next) =>
-          isRecord(next) && Array.isArray(next.steps) && Array.isArray(next.inputs) && isRecord(next.outputs) && typeof next.pipeline_id === "string"
+          matchesReply(next, "WirePipeline", definitions)
             ? null
             : t("需要 pipeline_id、label、inputs[]、steps[]、outputs{}")
         }
-        onChange={(next) => setDraft(next as WirePipeline)}
+        onChange={(next) => { if (matchesReply(next, "WirePipeline", definitions)) setDraft(next); }}
         rows={24}
       />
       <Badge className="w-fit">{t("伺服器以 contracts Pipeline schema 驗證；與節點圖、「步驟與接線」是同一份草稿")}</Badge>
@@ -252,11 +256,11 @@ export function PipelineEditor({
               pending={save.isPending}
               disabledReason={saveReason}
               title={errors.length > 0 ? t("有 {errorsCount} 個錯誤：儲存前會先確認", { errorsCount: errors.length }) : undefined}
-              onClick={() => doSave()}
+              onClick={() => { doSave(); }}
             >
               {t("儲存元件組合")}
             </ActionButton>
-            <ActionButton size="sm" icon={<Play aria-hidden />} disabledReason={runReason} onClick={() => setRunSeed({ pipeline: draft, label: draft.label, title: t("以目前草稿建立 run") })}>
+            <ActionButton size="sm" icon={<Play aria-hidden />} disabledReason={runReason} onClick={() => { setRunSeed({ pipeline: draft, label: draft.label, title: t("以目前草稿建立 run") }); }}>
               {t("執行")}
             </ActionButton>
             {!isNew ? (
@@ -265,7 +269,7 @@ export function PipelineEditor({
                 variant="quiet"
                 icon={<CopyPlus aria-hidden />}
                 onClick={() => {
-                  allowLeave.current = true;
+                  allowLeaveRef.current = true;
                   const copy = { ...cloneJson(draft), pipeline_id: uniqueName(`${draft.pipeline_id}-copy`, existingIds), label: t("{label}（複製）", { label: draft.label }) };
                   void navigate("/admin/pipelines/new", { state: { draft: copy } });
                 }}
@@ -277,14 +281,14 @@ export function PipelineEditor({
               {t("捨棄修改")}
             </Button>
             {!isNew ? (
-              <Button size="sm" variant="danger" icon={<Trash2 aria-hidden />} onClick={() => setConfirmDelete(true)}>
+              <Button size="sm" variant="danger" icon={<Trash2 aria-hidden />} onClick={() => { setConfirmDelete(true); }}>
                 {t("刪除元件組合")}
               </Button>
             ) : null}
           </>
         }
       />
-      {notice || save.isError || (save.isSuccess && !dirty) ? (
+      {hasSlotContent(notice) || save.isError || (save.isSuccess && !dirty) ? (
         <div className="grid shrink-0 gap-2 border-b border-line-subtle px-4 py-2">
           {notice}
           {save.isError ? <ErrorCallout error={save.error} write title={t("儲存失敗；草稿仍保留")} /> : null}
@@ -295,7 +299,7 @@ export function PipelineEditor({
           ) : null}
         </div>
       ) : null}
-      <PanelTabs tabs={VIEWS} value={view} onChange={(id) => setView(id as (typeof VIEWS)[number]["id"])} idPrefix="pipeline-view" label={t("元件組合檢視")} variant="underline" />
+      <PanelTabs tabs={VIEWS} value={view} onChange={setView} idPrefix="pipeline-view" label={t("元件組合檢視")} variant="underline" />
       {view === "graph" ? (
         // 畫布自己處理滾輪（平移／縮放），不能放在會捲動的容器裡
         <div role="tabpanel" id="pipeline-view-panel-graph" aria-labelledby="pipeline-view-tab-graph" className="relative min-h-0 flex-1">
@@ -352,16 +356,16 @@ export function PipelineEditor({
             icon: CircleAlert,
             count: issues.length,
             countTone: errors.length > 0 ? "danger" : issues.length > 0 ? "warning" : "neutral",
-            render: () => <IssuesPanel issues={issues} onSelectStep={(stepId) => select({ kind: "step", id: stepId })} />,
+            render: () => <IssuesPanel issues={issues} onSelectStep={(stepId) => { select({ kind: "step", id: stepId }); }} />,
           },
           { id: "activity", label: t("活動"), icon: Activity, render: () => <ActivityLog /> },
         ]}
       />
       <PipelineOutline pipeline={draft} lookup={lookup} issues={issues} selection={selection} onSelect={select} />
-      <RunFormDialog seed={runSeed} onOpenChange={(open) => (open ? undefined : setRunSeed(null))} />
+      <RunFormDialog seed={runSeed} onOpenChange={(open) => { if (!(open)) { setRunSeed(null); } }} />
 
       <DeletePipelineDialog open={confirmDelete} onOpenChange={setConfirmDelete} pipeline={draft} dirty={dirty} onDeleted={leaveToList} />
-      <SaveWithErrorsDialog open={confirmSave} onOpenChange={setConfirmSave} errors={errors} pending={save.isPending} onConfirm={() => doSave(true)} />
+      <SaveWithErrorsDialog open={confirmSave} onOpenChange={setConfirmSave} errors={errors} pending={save.isPending} onConfirm={() => { doSave(true); }} />
       <LeaveDraftDialog blocker={blocker} />
     </>
   );

@@ -2,7 +2,8 @@
 // 主控目錄是 Node 推送的快照（狀態改變後 ≥ 200 ms 才更新）：剛送出就讀到的 error／stopped 可能是送出前的舊狀態。
 // 只有看到這次的變化（讀到過 loading、錯誤內容改變）或超過寬限時間才下結論；不自動重試。
 import type { ComponentDescriptor } from "@/api/generated/contracts";
-import { t, tServer } from "@/i18n";
+import { t } from "@/i18n";
+import { failureText } from "@/lib/errors";
 
 /** 沒看到 loading 也沒看到錯誤內容改變時，error／stopped 維持超過這段時間才當成這次啟動的結果。 */
 export const START_GRACE_MS = 10_000;
@@ -53,13 +54,15 @@ export function observeStart(watch: StartWatch, current: Pick<ComponentDescripto
       return { watch: next, outcome: { kind: "ready" } };
     case "error": {
       if (!next.sawLoading && !late && errorKey(current.last_error) === watch.errorBefore) return { watch: next, outcome: { kind: "wait" } };
-      const message = current.last_error ? t("{code}：{message}", { code: current.last_error.code, message: tServer(current.last_error.message) }) : t("元件進入錯誤狀態");
+      const message = current.last_error ? failureText(current.last_error.code, current.last_error.message) : t("元件進入錯誤狀態");
       return { watch: next, outcome: { kind: "failed", message } };
     }
     case "stopped":
       if (next.sawLoading) return { watch: next, outcome: { kind: "cancelled", message: t("載入已取消：元件在載入途中回到「已停止」（可能在其他地方按了停止）"), unknown: false } };
       if (late) return { watch: next, outcome: { kind: "cancelled", message: t("送出啟動後目錄一直顯示「已停止」：載入可能已被取消，請查看元件狀態"), unknown: true } };
       return { watch: next, outcome: { kind: "wait" } };
+    case "loading":
+    case "stopping":
     default:
       return { watch: next, outcome: { kind: "wait" } };
   }

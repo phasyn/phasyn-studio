@@ -17,9 +17,17 @@ from typing import Any
 
 from phasyn_h3.recipe.abi.canonical import canonical_json_bytes
 
-from . import constants as C
+from . import constants
 
-COMPONENT_KINDS = ("processor", "tokenizer", "text_encoder", "transformer", "video_vae", "audio_vae")
+
+COMPONENT_KINDS = (
+    "processor",
+    "tokenizer",
+    "text_encoder",
+    "transformer",
+    "video_vae",
+    "audio_vae",
+)
 
 # metadata.total_size of the native index JSONs (identical for FL2VA and Ref2VA at H3@d21241f0):
 # FL2VA|Ref2VA/text_encoder/model.safetensors.index.json, FL2VA|Ref2VA/transformer/model.safetensors.index.json.
@@ -27,8 +35,8 @@ COMPONENT_KINDS = ("processor", "tokenizer", "text_encoder", "transformer", "vid
 NATIVE_INDEX_TENSOR_BYTES: dict[str, int | None] = {
     "processor": None,
     "tokenizer": None,
-    "text_encoder": C.TEXT_INDEX_BYTES,
-    "transformer": C.DIT_INDEX_BYTES,
+    "text_encoder": constants.TEXT_INDEX_BYTES,
+    "transformer": constants.DIT_INDEX_BYTES,
     "video_vae": None,
     "audio_vae": None,
 }
@@ -36,7 +44,9 @@ NATIVE_INDEX_TENSOR_BYTES: dict[str, int | None] = {
 _DIGEST = re.compile(r"^(sha256:)?[0-9a-f]{64}$")
 
 
-def _component(model_id: str, kind: str, path: str, fmt: str, index_bytes: int | None) -> dict[str, Any]:
+def _component(
+    model_id: str, kind: str, path: str, fmt: str, index_bytes: int | None
+) -> dict[str, Any]:
     return {
         "component_id": f"{model_id}-{kind}",
         "kind": kind,
@@ -54,10 +64,12 @@ def content_revision(component_digests: Mapping[str, str]) -> str:
 
     This is NOT an upstream git SHA; it only pins the exact local file set.
     """
-    return hashlib.sha256(canonical_json_bytes(dict(component_digests))).hexdigest()[:40]
+    return hashlib.sha256(canonical_json_bytes(dict(component_digests))).hexdigest()[
+        :40
+    ]
 
 
-def local_manifest(
+def local_manifest(  # noqa: PLR0913 - Preserve the existing provider or recipe ABI.
     variant: str,
     *,
     model_id: str | None = None,
@@ -78,55 +90,82 @@ def local_manifest(
 
     The source is recorded as ``local:...``: the files are the user's copy, never fetched by Phasyn Studio.
     """
-    if variant not in C.VARIANT_SUBFOLDER:
-        raise ValueError(f"unknown MiniMax H3 variant {variant!r}; expected fl2va or ref2va")
-    if shared_from is not None and shared_from not in C.VARIANT_SUBFOLDER:
-        raise ValueError(f"unknown shared_from variant {shared_from!r}; expected fl2va or ref2va")
+    _check_variants(variant, shared_from)
     if (transformer_file is None) != (transformer_digest is None):
         raise ValueError("transformer_file and transformer_digest go together")
     if transformer_digest is not None and not _DIGEST.match(transformer_digest):
         raise ValueError("transformer_digest must be lower-case sha256 hex")
-    if transformer_file is not None and (transformer_file.startswith("/") or ".." in Path(transformer_file).parts):
+    if transformer_file is not None and (
+        transformer_file.startswith("/") or ".." in Path(transformer_file).parts
+    ):
         raise ValueError("transformer_file must be a path relative to the model root")
     root = layout_root.strip("/")
 
     def variant_dir(name: str) -> str:
-        return f"{root}/{C.VARIANT_SUBFOLDER[name]}" if root else C.VARIANT_SUBFOLDER[name]
+        return (
+            f"{root}/{constants.VARIANT_SUBFOLDER[name]}"
+            if root
+            else constants.VARIANT_SUBFOLDER[name]
+        )
 
     own = variant_dir(variant)
     shared = variant_dir(shared_from) if shared_from else own
-    snapshot = f"{C.SOURCE_REPO}@{C.SOURCE_REVISION}"
+    snapshot = f"{constants.SOURCE_REPO}@{constants.SOURCE_REVISION}"
     if transformer_file is not None:
-        assert transformer_digest is not None
+        if not (transformer_digest is not None):
+            raise AssertionError
         suffix = "nf4dit" if "nf4" in Path(transformer_file).name.lower() else "dit"
         model_id = model_id or f"h3-{variant}-local-{suffix}"
         source_repo = f"local:{root or '.'} copy of {snapshot} + {transformer_file} (user-provided DiT)"
-        revision = content_revision({"snapshot": C.SOURCE_REVISION, "transformer": transformer_digest})
+        revision = content_revision(
+            {"snapshot": constants.SOURCE_REVISION, "transformer": transformer_digest}
+        )
     else:
         model_id = model_id or f"h3-{variant}-local"
         source_repo = f"local:{root or '.'} copy of {snapshot}"
-        revision = C.SOURCE_REVISION
+        revision = constants.SOURCE_REVISION
     components = []
     for kind in COMPONENT_KINDS:
         if kind == "transformer" and transformer_file is not None:
-            components.append(_component(model_id, kind, transformer_file, "safetensors", None))
+            components.append(
+                _component(model_id, kind, transformer_file, "safetensors", None)
+            )
             continue
         base = own if kind == "transformer" else shared
-        components.append(_component(model_id, kind, f"{base}/{kind}", "hf_native", NATIVE_INDEX_TENSOR_BYTES[kind]))
+        components.append(
+            _component(
+                model_id,
+                kind,
+                f"{base}/{kind}",
+                "hf_native",
+                NATIVE_INDEX_TENSOR_BYTES[kind],
+            )
+        )
     return {
         "schema_version": "1.0",
         "model_id": model_id,
-        "family": C.FAMILY,
+        "family": constants.FAMILY,
         "variant": variant,
         "source_repo": source_repo[:256],
         "source_revision": revision,
-        "license_url": C.LICENSE_URL,
+        "license_url": constants.LICENSE_URL,
         "license_digest": None,
         "components": components,
-        "supported_tasks": list(C.VARIANT_TASKS[variant]),
+        "supported_tasks": list(constants.VARIANT_TASKS[variant]),
         "status": "registered",
         "is_fixture": False,
     }
 
 
 __all__ = ["COMPONENT_KINDS", "content_revision", "local_manifest"]
+
+
+def _check_variants(variant: str, shared_from: str | None) -> None:
+    if variant not in constants.VARIANT_SUBFOLDER:
+        raise ValueError(
+            f"unknown MiniMax H3 variant {variant!r}; expected fl2va or ref2va"
+        )
+    if shared_from is not None and shared_from not in constants.VARIANT_SUBFOLDER:
+        raise ValueError(
+            f"unknown shared_from variant {shared_from!r}; expected fl2va or ref2va"
+        )

@@ -35,6 +35,21 @@ no_model_data() {
   [[ -z $hits ]] || { echo "$hits"; return 1; }
 }
 
+h3_mypy() {
+  # phasyn_h3 is type-checked strictly against its real runtime dependencies (torch, SGLang, Triton): the root
+  # environment lacks them, so a throwaway venv stacks the root and the x86_64 runtime site-packages
+  local gate site
+  gate=$(mktemp -d)/h3gate
+  site="lib/python3.12/site-packages"
+  .venv/bin/python -m venv --without-pip "$gate" || return 1
+  printf '%s\n' "$PWD/.venv/$site" "$PWD/deploy/runtimes/x86_64/.venv/$site" > "$gate/$site/owner.pth"
+  MYPYPATH=packages/components/src:packages/media/src:runtimes/h3/src \
+    "$gate/bin/python" -m mypy --config-file runtimes/h3/pyproject.toml -p phasyn_h3
+  local rc=$?
+  rm -rf "$(dirname "$gate")"
+  return $rc
+}
+
 step "case-insensitive path collisions" case_collisions
 step "no model data in tree or history" no_model_data
 step "uv sync --frozen" uv sync --all-packages --frozen -q
@@ -42,7 +57,7 @@ step "ruff check" uv run --no-sync ruff check .
 step "ruff format --check" uv run --no-sync ruff format --check .
 step "mypy components/media/contracts" uv run --no-sync mypy packages/components/src packages/media/src tools/contracts
 step "mypy server/node/controller/cli" uv run --no-sync mypy packages/server/src packages/node/src packages/controller/src packages/cli/src
-step "mypy phasyn_h3" env MYPYPATH=runtimes/h3/src uv run --no-sync mypy -p phasyn_h3
+step "mypy phasyn_h3 (runtime deps)" h3_mypy
 step "mypy qimg/captioner" uv run --no-sync mypy runtimes/qimg/src runtimes/captioner/src
 step "mypy repository tools" uv run --no-sync mypy tools/arch tools/i18n
 step "openapi in sync" uv run --no-sync python tools/contracts/sync_openapi.py --check
@@ -56,7 +71,8 @@ step "i18n:check" pnpm --filter @phasyn-studio/frontend i18n:check
 step "gen:types --check" pnpm --filter @phasyn-studio/frontend gen:types --check
 step "pnpm build" pnpm -r build
 step "uv lock --check" uv lock --check
-for tuple in x86_64 aarch64-sm121 qimg-x86_64; do
+for lock in deploy/runtimes/*/uv.lock; do
+  tuple=$(basename "$(dirname "$lock")")
   step "uv lock --check ($tuple)" bash -c "cd deploy/runtimes/$tuple && uv lock --check --python 3.12"
 done
 echo "failures: $fails"

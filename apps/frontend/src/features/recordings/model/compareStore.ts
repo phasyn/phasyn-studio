@@ -8,7 +8,7 @@ const STORAGE_KEY = "phasyn.recordings.compare.v1";
 
 /** 解析逗號分隔的 recording IDs：去空白、去重、保序，最多 8 筆。 */
 export function parseIds(value: string | null | undefined): string[] {
-  if (!value) return [];
+  if (!(value != null && value !== "")) return [];
   const ids: string[] = [];
   for (const raw of value.split(",")) {
     const id = raw.trim();
@@ -45,11 +45,10 @@ export function useCompareSelection(): CompareSelection {
     ids,
     has: (id) => ids.includes(id),
     full: ids.length >= MAX_COMPARE,
-    add: (id) => store.set((current) => (current.includes(id) || current.length >= MAX_COMPARE ? current : [...current, id])),
-    remove: (id) => store.set((current) => current.filter((item) => item !== id)),
-    toggle: (id) =>
-      store.set((current) => (current.includes(id) ? current.filter((item) => item !== id) : current.length < MAX_COMPARE ? [...current, id] : current)),
-    clear: () => store.set([]),
-    replace: (next) => store.set(parseIds(next.join(","))),
+    add: (id) => { store.set((current) => (current.includes(id) || current.length >= MAX_COMPARE ? current : [...current, id])); },
+    remove: (id) => { store.set((current) => current.filter((item) => item !== id)); },
+    toggle: (id) => { store.set((current) => (current.includes(id) ? current.filter((item) => item !== id) : current.length < MAX_COMPARE ? [...current, id] : current)); },
+    clear: () => { store.set([]); },
+    replace: (next) => { store.set(parseIds(next.join(","))); },
   };
 }

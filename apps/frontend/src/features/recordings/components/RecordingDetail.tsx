@@ -30,7 +30,7 @@ const TAB_ITEMS = [
   { id: "timeline", label: t("時間軸"), icon: ChartNoAxesGantt },
   { id: "parts", label: t("部件"), icon: Puzzle },
   { id: "settings", label: t("設定"), icon: SlidersHorizontal },
-] satisfies Array<{ id: CenterTab; label: string; icon: typeof ClipboardList }>;
+] satisfies { id: CenterTab; label: string; icon: typeof ClipboardList }[];
 
 export function RecordingDetail({
   recordingId,
@@ -58,11 +58,11 @@ export function RecordingDetail({
   const query = useRecording(recordingId);
   const [visited, setVisited] = useState<ReadonlySet<CenterTab>>(() => new Set([tab]));
   // A backfill from the "not found" view replaces that view (and the focused button) with the recording
-  const recovering = useRef(false);
+  const recoveringRef = useRef(false);
   const loaded = query.data !== undefined;
   useEffect(() => {
-    if (!loaded || !recovering.current) return;
-    recovering.current = false;
+    if (!loaded || !recoveringRef.current) return;
+    recoveringRef.current = false;
     if (document.activeElement === null || document.activeElement === document.body) pageFocusTarget()?.focus({ preventScroll: true });
   }, [loaded]);
 
@@ -87,7 +87,7 @@ export function RecordingDetail({
             title={t("找不到此 recording")}
             description={
               <p>
-                <T source={"<0>{recordingId}</0> 不在主控的紀錄索引中：可能已從主控刪除、尚未上報、ID 不正確，或 Node 從未連上主控。"} values={{ recordingId }} slots={[<code className="machine break-all" />]} />
+                <T source={"<0>{recordingId}</0> 不在主控的紀錄索引中：可能已從主控刪除、尚未上報、ID 不正確，或 Node 從未連上主控。"} values={{ recordingId }} slots={[<code key="slot-0" className="machine break-all" />]} />
               </p>
             }
           >
@@ -96,7 +96,7 @@ export function RecordingDetail({
               rereading={query.isFetching}
               onReread={() => void query.refetch()}
               onSubmit={() => {
-                recovering.current = true;
+                recoveringRef.current = true;
               }}
             />
           </EmptyState>
@@ -123,7 +123,7 @@ export function RecordingDetail({
   return (
     <section aria-labelledby={titleId} className="flex min-h-0 flex-1 flex-col">
       <DetailHeader recording={recording} nodeLabel={nodeLabel(context.node_id)} titleId={titleId} onOpenRaw={onOpenRaw} />
-      <PanelTabs tabs={TAB_ITEMS} value={tab} onChange={(id) => changeTab(id as CenterTab)} idPrefix={idPrefix} label={t("recording 檢視")} variant="underline" className="px-3" />
+      <PanelTabs tabs={TAB_ITEMS} value={tab} onChange={changeTab} idPrefix={idPrefix} label={t("recording 檢視")} variant="underline" className="px-3" />
       <DockBody>
         <div className="grid gap-3 px-4 pt-4">
           {query.isPlaceholderData ? (
@@ -150,7 +150,7 @@ export function RecordingDetail({
               <span aria-hidden className="block h-1 rounded-full bg-brand-gradient-soft animate-shimmer" />
             </div>
           ) : null}
-          <ConclusionPanel summary={summary} onOpenTimeline={() => changeTab("timeline")} onOpenParts={() => changeTab("parts")} />
+          <ConclusionPanel summary={summary} onOpenTimeline={() => { changeTab("timeline"); }} onOpenParts={() => { changeTab("parts"); }} />
         </div>
         {TAB_ITEMS.map((item) => (
           <div
@@ -158,7 +158,7 @@ export function RecordingDetail({
             role="tabpanel"
             id={`${idPrefix}-panel-${item.id}`}
             aria-labelledby={`${idPrefix}-tab-${item.id}`}
-            tabIndex={0}
+             /* eslint-disable-line jsx-a11y-x/no-noninteractive-tabindex -- The tab panel is a keyboard destination even when its content has no interactive controls. */ tabIndex={0}
             hidden={item.id !== tab}
             className="min-w-0 rounded-md px-4 pt-6 pb-6 focus-visible:outline-offset-[-2px]"
           >
@@ -166,13 +166,13 @@ export function RecordingDetail({
               <SummaryTab
                 recording={recording}
                 selectedCategory={selectedCategory}
-                onSelectCategory={(category) => onSelect({ kind: "category", category })}
+                onSelectCategory={(category) => { onSelect({ kind: "category", category }); }}
                 onShowErrors={onShowErrors}
               />
             ) : item.id === "timeline" ? (
               <TimelineTab recording={recording} selectedKey={selectionEventKey(selection)} onSelectItem={onSelectItem} />
             ) : item.id === "parts" ? (
-              <PartsTab recording={recording} selectedPart={selectedPart} onSelectPart={(part) => onSelect({ kind: "part", part })} />
+              <PartsTab recording={recording} selectedPart={selectedPart} onSelectPart={(part) => { onSelect({ kind: "part", part }); }} />
             ) : (
               <SettingsTab recording={recording} />
             )}

@@ -1,8 +1,18 @@
 {
   "extends": "./tsconfig.app.json",
   "compilerOptions": {
+    "skipLibCheck": false,
+    "useUnknownInCatchVariables": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitReturns": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "erasableSyntaxOnly": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+    "types": [],
     "lib": [
-      "ES2023",
+      "ESNext",
       "WebWorker"
     ]
   },

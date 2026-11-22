@@ -76,10 +76,10 @@ function TakeDetails({ entry, onExpand, onUseTake, onJumpToShot }: { entry: Extr
         <p className="text-caption text-fg-tertiary">{joinInline([renderDimensions(entry), renderDuration(entry), renderSize(entry)])}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant={entry.active ? "secondary" : "primary"} disabled={entry.active} onClick={() => onUseTake(shot.shot_id, take.take_id)} title={entry.active ? t("時間軸與匯出用這個 take") : t("時間軸與匯出改用這個 take")}>
+        <Button size="sm" variant={entry.active ? "secondary" : "primary"} disabled={entry.active} onClick={() => { onUseTake(shot.shot_id, take.take_id); }} title={entry.active ? t("時間軸與匯出用這個 take") : t("時間軸與匯出改用這個 take")}>
           {entry.active ? t("使用中") : t("設為使用中")}
         </Button>
-        <Button size="sm" variant="secondary" icon={<MonitorPlay aria-hidden />} onClick={() => onJumpToShot(shot.shot_id, take.take_id)} title={t("關閉素材庫，到編輯的監看器看這個 take")}>
+        <Button size="sm" variant="secondary" icon={<MonitorPlay aria-hidden />} onClick={() => { onJumpToShot(shot.shot_id, take.take_id); }} title={t("關閉素材庫，到編輯的監看器看這個 take")}>
           {t("跳到鏡頭")}
         </Button>
         <TakeDownloadLink shot={shot} take={take} className={buttonVariants({ variant: "quiet", size: "sm" })} />
@@ -88,10 +88,10 @@ function TakeDetails({ entry, onExpand, onUseTake, onJumpToShot }: { entry: Extr
         <Fact label={t("鏡頭")}>
           <span className="machine text-fg-tertiary">{String(entry.shotIndex + 1).padStart(2, "0")}</span> {shot.title}
         </Fact>
-        <Fact label="take">{`${entry.takeNumber} / ${shot.takes.length}`}</Fact>
-        <Fact label="seed">
+        <Fact label="take">{`${String(entry.takeNumber)} / ${String(shot.takes.length)}`}</Fact>
+        {take.seed !== null ? <Fact label="seed">
           <span className="machine">{take.seed}</span>
-        </Fact>
+        </Fact> : null}
         <Fact label={t("運算路由")}>
           <span className="inline-flex min-w-0 items-center gap-1.5" title={route.title}>
             <span className="truncate">{route.label}</span>
@@ -117,7 +117,7 @@ function TakeDetails({ entry, onExpand, onUseTake, onJumpToShot }: { entry: Extr
           <Mono value={take.take_id} />
         </Fact>
       </dl>
-      {take.prompt ? (
+      {(take.prompt ?? "").length > 0 ? (
         <section className="grid gap-1.5" aria-label="Prompt">
           <h4 className="text-caption font-medium text-fg-secondary">Prompt</h4>
           <p className="max-h-40 overflow-y-auto rounded-md border border-line-subtle bg-sunken/60 px-2.5 py-2 text-caption whitespace-pre-wrap text-fg-secondary [overflow-wrap:anywhere]">{take.prompt}</p>
@@ -141,7 +141,7 @@ function ExportDetails({ entry, onExpand }: { entry: Extract<RenderEntry, { kind
         <p className="text-caption text-fg-tertiary">{joinInline([renderDimensions(entry), renderDuration(entry), renderSize(entry)])}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <a href={mediaUrl(file.node_id, file.file_id)} download={`${title} export ${entry.exportNumber}.${extensionFor(file.media_type)}`} className={buttonVariants({ variant: "secondary", size: "sm" })}>
+        <a href={mediaUrl(file.node_id, file.file_id)} download={`${title} export ${String(entry.exportNumber)}.${extensionFor(file.media_type)}`} className={buttonVariants({ variant: "secondary", size: "sm" })}>
           <Download aria-hidden />
           {t("下載 MP4")}
         </a>
@@ -210,9 +210,9 @@ export function RenderDetails({ entry, selected, onExpand, onUseTake, onJumpToSh
         {selected.length > 1 ? (
           <MultiDetails selected={selected} onClearSelection={onClearSelection} />
         ) : entry?.kind === "take" ? (
-          <TakeDetails entry={entry} onExpand={() => onExpand(entry.id)} onUseTake={onUseTake} onJumpToShot={onJumpToShot} />
+          <TakeDetails entry={entry} onExpand={() => { onExpand(entry.id); }} onUseTake={onUseTake} onJumpToShot={onJumpToShot} />
         ) : entry?.kind === "export" ? (
-          <ExportDetails entry={entry} onExpand={() => onExpand(entry.id)} />
+          <ExportDetails entry={entry} onExpand={() => { onExpand(entry.id); }} />
         ) : (
           <div className="grid h-full content-center justify-items-center gap-2 p-6 text-center">
             <span aria-hidden className="grid size-10 place-items-center rounded-xl border border-line bg-sunken text-fg-tertiary">

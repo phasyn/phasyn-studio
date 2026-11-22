@@ -1,0 +1,24 @@
+{
+  "component_id": "lora-register",
+  "label": "LoRA 登錄（此 Node 的模型目錄）",
+  "provider_id": "lora.register",
+  "runtime_id": "cpu",
+  "autostart": false,
+  "folder": "訓練",
+  "settings": {
+    "load": {
+      "device": {
+        "kind": "cpu",
+        "id": "cpu",
+        "resource_group": "cpu-lora"
+      },
+      "model_path": "/path/to/models"
+    },
+    "invoke": {},
+    "recording": {
+      "mode": "summary"
+    }
+  },
+  "load_policy": "on_demand",
+  "idle_unload_seconds": 600
+}

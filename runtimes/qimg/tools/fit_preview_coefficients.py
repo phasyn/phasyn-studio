@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-"""從我們自己產生的 (final latent, 解碼影像) 配對，以最小平方擬合 ``linear_fit`` 預覽係數（64→3 矩陣＋bias）。
+"""從我們自己產生的 (final latent, 解碼影像) 配對，以最小平方擬合 ``linear_fit`` 預覽係數（64→3 矩陣+bias）.
 
 只用我們自己的輸出（不使用任何第三方係數）。手動執行的維護工具；不寫入任何服務、不送 POST。
 
@@ -12,7 +11,7 @@
 輸出：--output 係數 JSON（schema phasyn_qimg.preview_linear_fit.v1；已存在時需 --force 才覆寫）。
 
 擬合目標：影像先以白底合成 alpha（與預覽顯示一致），再以 16×16 區塊平均降到 latent 格點，RGB 縮放到 [0,1]；
-解 [X 1]·β = Y（X＝latent 每 token 的 C 維；可選 --ridge 只對矩陣部分加 L2）。報告每 channel RMSE／R²。
+解 [X 1]·β = Y（X=latent 每 token 的 C 維；可選 --ridge 只對矩陣部分加 L2）。報告每 channel RMSE／R²。
 torch-free：只需要 numpy 與 Pillow（自帶最小 safetensors 讀取器，BF16 以位元轉 FP32）。
 """
 
@@ -21,16 +20,24 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import struct
 import sys
+import urllib.parse
 import urllib.request
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from http.client import HTTPMessage
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
 import numpy as np
+
+
+_PACKED_RANK = 3
+
+_SAFETENSOR_LENGTH_BYTES = 8
 
 SCHEMA = "phasyn_qimg.preview_linear_fit.v1"
 SOURCE = "phasyn_qimg.fit_preview_coefficients"
@@ -42,8 +49,8 @@ DTYPES = {"F32": np.float32, "F16": np.float16, "F64": np.float64}
 
 # ---------------------------------------------------------------------------------------------- 讀檔
 def read_safetensors(data: bytes) -> dict[str, np.ndarray]:
-    """最小 safetensors 讀取器（F32／F16／F64／BF16；BF16 以高 16 位元展開成 FP32，數值無損）。"""
-    if len(data) < 8:
+    """最小 safetensors 讀取器（F32／F16／F64／BF16；BF16 以高 16 位元展開成 FP32，數值無損）."""
+    if len(data) < _SAFETENSOR_LENGTH_BYTES:
         raise ValueError("safetensors 太短")
     (header_len,) = struct.unpack("<Q", data[:8])
     header = json.loads(data[8 : 8 + header_len])
@@ -60,7 +67,9 @@ def read_safetensors(data: bytes) -> dict[str, np.ndarray]:
             bits = np.frombuffer(raw, dtype="<u2").astype(np.uint32) << 16
             array = bits.view(np.float32)
         elif dtype in DTYPES:
-            array = np.frombuffer(raw, dtype=np.dtype(DTYPES[dtype]).newbyteorder("<")).astype(np.float32)
+            array = np.frombuffer(
+                raw, dtype=np.dtype(DTYPES[dtype]).newbyteorder("<")
+            ).astype(np.float32)
         else:
             raise ValueError(f"不支援的 dtype {dtype}（{name}）")
         out[name] = array.reshape(shape)
@@ -68,12 +77,12 @@ def read_safetensors(data: bytes) -> dict[str, np.ndarray]:
 
 
 def image_targets(png: bytes, *, latent_h: int, latent_w: int) -> np.ndarray:
-    """PNG → 白底合成 → [0,1] RGB → 16×16 區塊平均到 (H·W, 3)。"""
-    import io
+    """PNG → 白底合成 → [0,1] RGB → 16×16 區塊平均到 (H·W, 3)."""
+    import io  # noqa: PLC0415 - Load optional runtime dependencies only on the path that needs them.
 
     from PIL import Image
 
-    image = Image.open(io.BytesIO(png))
+    image: Image.Image = Image.open(io.BytesIO(png))
     image.load()
     if image.mode in ("RGBA", "LA", "P"):
         image = image.convert("RGBA")
@@ -84,7 +93,9 @@ def image_targets(png: bytes, *, latent_h: int, latent_w: int) -> np.ndarray:
         image = image.convert("RGB")
     width, height = image.size
     if (width, height) != (latent_w * VAE_SCALE, latent_h * VAE_SCALE):
-        raise ValueError(f"影像 {width}×{height} 與 latent 格點 {latent_w}×{latent_h}（×16）不符")
+        raise ValueError(
+            f"影像 {width}×{height} 與 latent 格點 {latent_w}×{latent_h}（×16）不符"
+        )
     rgb = np.asarray(image, dtype=np.float64) / 255.0
     blocks = rgb.reshape(latent_h, VAE_SCALE, latent_w, VAE_SCALE, 3).mean(axis=(1, 3))
     return blocks.reshape(latent_h * latent_w, 3)
@@ -92,19 +103,24 @@ def image_targets(png: bytes, *, latent_h: int, latent_w: int) -> np.ndarray:
 
 @dataclass
 class Pair:
+    """Decoded image targets paired with their originating latents."""
+
     latent: np.ndarray  # (N, C) float64
     target: np.ndarray  # (N, 3)
     provenance: dict[str, Any]
 
 
-def pair_from_bytes(latent_bytes: bytes, png_bytes: bytes, *, provenance: Mapping[str, Any]) -> Pair:
+def pair_from_bytes(
+    latent_bytes: bytes, png_bytes: bytes, *, provenance: Mapping[str, Any]
+) -> Pair:
+    """Build a training pair from latent and image bytes."""
     tensors = read_safetensors(latent_bytes)
     if "latent" not in tensors:
         raise ValueError("latent payload 沒有 'latent' tensor")
     latent = tensors["latent"]
-    if latent.ndim != 3 or latent.shape[0] != 1:
+    if latent.ndim != _PACKED_RANK or latent.shape[0] != 1:
         raise ValueError(f"latent 必須是 (1, H·W, C)，收到 {list(latent.shape)}")
-    import io
+    import io  # noqa: PLC0415 - Load optional runtime dependencies only on the path that needs them.
 
     from PIL import Image
 
@@ -112,7 +128,9 @@ def pair_from_bytes(latent_bytes: bytes, png_bytes: bytes, *, provenance: Mappin
         width, height = probe.size
     latent_h, latent_w = height // VAE_SCALE, width // VAE_SCALE
     if latent_h * latent_w != latent.shape[1]:
-        raise ValueError(f"latent token 數 {latent.shape[1]} 與影像 {width}×{height} 不符")
+        raise ValueError(
+            f"latent token 數 {latent.shape[1]} 與影像 {width}×{height} 不符"
+        )
     target = image_targets(png_bytes, latent_h=latent_h, latent_w=latent_w)
     info = {
         **dict(provenance),
@@ -127,7 +145,7 @@ def pair_from_bytes(latent_bytes: bytes, png_bytes: bytes, *, provenance: Mappin
 
 # ---------------------------------------------------------------------------------------------- 擬合
 def fit(pairs: Iterable[Pair], *, ridge: float = 0.0) -> dict[str, Any]:
-    """[X 1]·β = Y 的正規方程式（累加，不保留全部樣本）；ridge 只加在矩陣部分（bias 不懲罰）。"""
+    """[X 1]·β = Y 的正規方程式（累加，不保留全部樣本）；ridge 只加在矩陣部分（bias 不懲罰）."""
     xtx: np.ndarray | None = None
     xty: np.ndarray | None = None
     count = 0
@@ -140,7 +158,8 @@ def fit(pairs: Iterable[Pair], *, ridge: float = 0.0) -> dict[str, Any]:
             xty = np.zeros((x.shape[1], 3))
         elif xtx.shape[0] != x.shape[1]:
             raise ValueError("配對之間的 latent channel 數不同")
-        assert xty is not None
+        if xty is None:
+            raise AssertionError
         xtx += x.T @ x
         xty += x.T @ pair.target
         count += x.shape[0]
@@ -153,6 +172,7 @@ def fit(pairs: Iterable[Pair], *, ridge: float = 0.0) -> dict[str, Any]:
 
 
 def evaluate(beta: np.ndarray, pairs: Iterable[Pair]) -> dict[str, Any]:
+    """Measure the fit on the supplied held-out pairs."""
     sse = np.zeros(3)
     total = np.zeros(3)
     sums = np.zeros(3)
@@ -173,7 +193,10 @@ def evaluate(beta: np.ndarray, pairs: Iterable[Pair]) -> dict[str, Any]:
     return {"rmse_rgb01": [float(v) for v in rmse], "r2": r2, "samples": n}
 
 
-def build_document(beta: np.ndarray, *, stats: Mapping[str, Any], pairs: list[Pair], ridge: float) -> dict[str, Any]:
+def build_document(
+    beta: np.ndarray, *, stats: Mapping[str, Any], pairs: list[Pair], ridge: float
+) -> dict[str, Any]:
+    """Build a versioned coefficient document from fitted weights and evaluation results."""
     channels = beta.shape[0] - 1
     return {
         "schema": SCHEMA,
@@ -199,18 +222,59 @@ def build_document(beta: np.ndarray, *, stats: Mapping[str, Any], pairs: list[Pa
 
 
 # ---------------------------------------------------------------------------------------------- run 輸出
+RUN_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}")
+
+
+class _SameHostRedirect(urllib.request.HTTPRedirectHandler):
+    """只跟隨同一主機的 http(s) 轉址，避免 30x 把 GET 帶去其他主機或非 http(s) 目標（SSRF 防護）."""
+
+    def redirect_request(  # noqa: PLR0913, PLR0917 - signature fixed by urllib.request.HTTPRedirectHandler
+        self,
+        req: urllib.request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: HTTPMessage,
+        newurl: str,
+    ) -> urllib.request.Request | None:
+        """Follow a redirect only to an http(s) URL on the same host."""
+        parsed = urllib.parse.urlsplit(newurl)
+        if (
+            parsed.scheme not in ("http", "https")
+            or parsed.netloc != urllib.parse.urlsplit(req.full_url).netloc
+        ):
+            raise urllib.request.HTTPError(newurl, code, msg, headers, fp)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+# 不走系統代理（與 phasyn_cli.machine 同一做法）；controller 由操作者指定，只送 GET。
+_OPENER = urllib.request.build_opener(
+    _SameHostRedirect, urllib.request.ProxyHandler({})
+)
+
+
 def _get_json(url: str, timeout: float) -> Any:
-    if not url.startswith(("http://", "https://")):
-        raise ValueError(f"controller URL 必須是 http(s)：{url}")
-    request = urllib.request.Request(url, method="GET", headers={"Accept": "application/json"})  # noqa: S310
-    with urllib.request.urlopen(request, timeout=timeout) as resp:  # noqa: S310 - 上面已限定 http(s)
+    parsed = urllib.parse.urlsplit(url)
+    if (
+        parsed.scheme not in ("http", "https")
+        or not parsed.hostname
+        or parsed.username is not None
+    ):
+        raise ValueError(
+            f"controller URL 必須是 http(s)、帶主機名且不含帳號密碼：{url}"
+        )
+    request = urllib.request.Request(  # noqa: S310 - The URL above is restricted to HTTP(S) with a host.
+        url, method="GET", headers={"Accept": "application/json"}
+    )
+    with _OPENER.open(request, timeout=timeout) as resp:
         return json.loads(resp.read())
 
 
 def run_pairs(run: Mapping[str, Any]) -> list[dict[str, Any]]:
-    """run JSON → [{dit_step, decode_step, latent_payload: FileRef, image: FileRef}]（只看已完成的步驟）。"""
+    """Run JSON → [{dit_step, decode_step, latent_payload: FileRef, image: FileRef}]（只看已完成的步驟）."""
     pipeline_steps = {
-        str(s.get("step_id")): s for s in ((run.get("request") or {}).get("pipeline") or {}).get("steps") or []
+        str(s.get("step_id")): s
+        for s in ((run.get("request") or {}).get("pipeline") or {}).get("steps") or []
     }
     states = run.get("steps") or {}
     found: list[dict[str, Any]] = []
@@ -225,7 +289,9 @@ def run_pairs(run: Mapping[str, Any]) -> list[dict[str, Any]]:
             for consumer_id, consumer in pipeline_steps.items():
                 bindings = consumer.get("inputs") or {}
                 if not any(
-                    isinstance(b, Mapping) and b.get("from_step") == step_id and b.get("output") == port
+                    isinstance(b, Mapping)
+                    and b.get("from_step") == step_id
+                    and b.get("output") == port
                     for b in bindings.values()
                 ):
                     continue
@@ -248,6 +314,7 @@ def run_pairs(run: Mapping[str, Any]) -> list[dict[str, Any]]:
 
 
 def read_node_file(data_dir: Path, ref: Mapping[str, Any]) -> bytes:
+    """Read the specified payload from the local Node file store."""
     path = data_dir / "files" / str(ref["file_id"]) / "payload"
     data = path.read_bytes()
     sha = hashlib.sha256(data).hexdigest()
@@ -257,6 +324,7 @@ def read_node_file(data_dir: Path, ref: Mapping[str, Any]) -> bytes:
 
 
 def collect(args: argparse.Namespace) -> list[Pair]:
+    """Collect matching latent and image pairs from the selected runs."""
     pairs: list[Pair] = []
     for latent_path, image_path in args.pair or []:
         pairs.append(
@@ -274,16 +342,28 @@ def collect(args: argparse.Namespace) -> list[Pair]:
         if not args.controller or not args.data_dir:
             raise SystemExit("--run 需要 --controller 與 --data-dir")
         for run_id in args.run:
-            run = _get_json(f"{args.controller.rstrip('/')}/api/runs/{run_id}", args.timeout)
+            if not RUN_ID_RE.fullmatch(
+                run_id
+            ):  # URL path tampering guard: run_id is letters, digits and _ . : - only
+                raise SystemExit(f"run_id 格式不正確（僅英數與 _ . : -）：{run_id}")
+            run = _get_json(
+                f"{args.controller.rstrip('/')}/api/runs/{run_id}", args.timeout
+            )
             found = run_pairs(run)
             if not found:
-                print(f"run {run_id}：沒有找到 (qimg.latent.v1, PNG) 配對", file=sys.stderr)
+                print(  # noqa: T201 - This utility reports progress and errors on the terminal.
+                    f"run {run_id}：沒有找到 (qimg.latent.v1, PNG) 配對",
+                    file=sys.stderr,
+                )
             for item in found:
                 try:
                     latent = read_node_file(Path(args.data_dir), item["latent_payload"])
                     image = read_node_file(Path(args.data_dir), item["image"])
                 except (OSError, ValueError) as exc:
-                    print(f"run {run_id} {item['dit_step']}：略過（{exc}）", file=sys.stderr)
+                    print(  # noqa: T201 - This utility reports progress and errors on the terminal.
+                        f"run {run_id} {item['dit_step']}：略過（{exc}）",
+                        file=sys.stderr,
+                    )
                     continue
                 pairs.append(
                     pair_from_bytes(
@@ -301,32 +381,54 @@ def collect(args: argparse.Namespace) -> list[Pair]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Fit preview coefficients from the supplied inputs."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--pair", nargs=2, action="append", metavar=("LATENT_SAFETENSORS", "IMAGE_PNG"))
+    parser.add_argument(
+        "--pair", nargs=2, action="append", metavar=("LATENT_SAFETENSORS", "IMAGE_PNG")
+    )
     parser.add_argument("--run", action="append", help="已完成的 run_id（可重複）")
-    parser.add_argument("--controller", help="controller URL（只送 GET），例如 http://127.0.0.1:8080")
-    parser.add_argument("--data-dir", help="跑 qimg.dit／vae_decode 的 Node 資料目錄（含 files/）")
+    parser.add_argument(
+        "--controller", help="controller URL（只送 GET），例如 http://127.0.0.1:8080"
+    )
+    parser.add_argument(
+        "--data-dir", help="跑 qimg.dit／vae_decode 的 Node 資料目錄（含 files/）"
+    )
     parser.add_argument("--output", required=True, help="係數 JSON 輸出路徑")
     parser.add_argument("--force", action="store_true", help="輸出檔已存在時覆寫")
-    parser.add_argument("--ridge", type=float, default=0.0, help="矩陣部分的 L2（預設 0＝純最小平方）")
+    parser.add_argument(
+        "--ridge",
+        type=float,
+        default=0.0,
+        help="矩陣部分的 L2（預設 0\N{FULLWIDTH EQUALS SIGN}純最小平方）",
+    )
     parser.add_argument("--min-pairs", type=int, default=1)
     parser.add_argument("--timeout", type=float, default=30.0)
-    parser.add_argument("--synthetic", action="store_true", help="標記 --pair 輸入為合成資料（只用於測試）")
+    parser.add_argument(
+        "--synthetic",
+        action="store_true",
+        help="標記 --pair 輸入為合成資料（只用於測試）",
+    )
     args = parser.parse_args(argv)
     output = Path(args.output)
     if output.exists() and not args.force:
-        print(f"{output} 已存在；需要 --force 才覆寫", file=sys.stderr)
+        print(f"{output} 已存在；需要 --force 才覆寫", file=sys.stderr)  # noqa: T201 - This utility reports progress and errors on the terminal.
         return 2
     pairs = collect(args)
     if len(pairs) < args.min_pairs:
-        print(f"配對數 {len(pairs)} 少於 --min-pairs {args.min_pairs}", file=sys.stderr)
+        print(f"配對數 {len(pairs)} 少於 --min-pairs {args.min_pairs}", file=sys.stderr)  # noqa: T201 - This utility reports progress and errors on the terminal.
         return 2
     result = fit(pairs, ridge=args.ridge)
     stats = evaluate(result["beta"], pairs)
     doc = build_document(result["beta"], stats=stats, pairs=pairs, ridge=args.ridge)
     output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({"output": str(output), "pairs": len(pairs), **stats}, ensure_ascii=False))
+    output.write_text(
+        json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    print(  # noqa: T201 - This utility reports progress and errors on the terminal.
+        json.dumps(
+            {"output": str(output), "pairs": len(pairs), **stats}, ensure_ascii=False
+        )
+    )
     return 0
 
 

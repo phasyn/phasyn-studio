@@ -26,13 +26,13 @@ export function RunStepsOutliner({
 }) {
   const now = useNow(steps.some((step) => step.state === "running"));
   const ordered = [...steps].sort((a, b) => {
-    if (a.started_at && b.started_at) return a.started_at.localeCompare(b.started_at);
-    if (a.started_at) return -1;
-    if (b.started_at) return 1;
+    if ((a.started_at != null && a.started_at !== "") && (b.started_at != null && b.started_at !== "")) return a.started_at.localeCompare(b.started_at);
+    if (a.started_at != null && a.started_at !== "") return -1;
+    if (b.started_at != null && b.started_at !== "") return 1;
     return 0;
   });
   const items: TreeItem[] = ordered.map((step) => {
-    const descriptor = step.node_id && step.component_id ? lookup(step.node_id, step.component_id) : null;
+    const descriptor = (step.node_id != null && step.node_id !== "") && (step.component_id != null && step.component_id !== "") ? lookup(step.node_id, step.component_id) : null;
     const kind = providerKind(descriptor?.provider_id);
     const state = statusSpec("step", step.state);
     const ms = elapsedMs(step.started_at, step.finished_at, step.state === "running" ? now : null);
@@ -41,7 +41,7 @@ export function RunStepsOutliner({
       label: step.step_id,
       icon: kind.icon,
       iconTone: kind.tone,
-      detail: ms === null ? undefined : formatElapsed(ms),
+      ...(ms === null ? {} : { detail: formatElapsed(ms) }),
       title: `${step.step_id} · ${step.component_id ?? "—"} · ${state.label}`,
       dot: state.tone,
       dotLabel: state.label,
@@ -49,7 +49,7 @@ export function RunStepsOutliner({
   });
   return (
     <Outliner title={t("步驟")} icon={<ListOrdered aria-hidden />} count={steps.length}>
-      <TreeView items={items} label={t("run 的步驟")} selectedId={selectedStepId} expanded={new Set()} onToggle={() => undefined} onActivate={(item) => onSelect(item.id)} />
+      <TreeView items={items} label={t("run 的步驟")} selectedId={selectedStepId} expanded={new Set()} onToggle={() => undefined} onActivate={(item) => { onSelect(item.id); }} />
     </Outliner>
   );
 }

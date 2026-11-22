@@ -1,0 +1,212 @@
+{
+  "schema_version": "1.0",
+  "provider_id": "storyboard.from_script",
+  "label": "劇本轉可編輯分鏡",
+  "kind": "storyboard.from_script",
+  "inputs": [
+    {
+      "name": "script",
+      "type_id": "text.prompt.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "原始劇本（最多 32768 字元）；支援場景、鏡頭標題、說話者與匿名段落。"
+    }
+  ],
+  "outputs": [
+    {
+      "name": "board",
+      "type_id": "studio.storyboard.v1",
+      "required": true,
+      "transport": "file",
+      "description": "UTF-8 JSON，可直接供 Studio storyboard check/apply 讀取。內含原文與逐行來源。"
+    }
+  ],
+  "parameters_schema": {
+    "type": "object",
+    "properties": {
+      "board_id": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "minLength": 1,
+        "maxLength": 20,
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,19}$",
+        "default": null,
+        "description": "鏡頭識別前綴；同專案的不同劇本請使用不同前綴。留空時取自原文雜湊。"
+      },
+      "cut_seconds": {
+        "type": "number",
+        "minimum": 0.1,
+        "maximum": 10,
+        "default": 2,
+        "description": "每鏡可編輯的預設剪輯秒數。"
+      }
+    },
+    "additionalProperties": false
+  },
+  "settings_schema": {
+    "type": "object",
+    "properties": {
+      "load": {
+        "type": "object",
+        "properties": {
+          "model_path": {
+            "type": "string",
+            "description": "Node 本機模型路徑（使用者提供，不由主控下載）"
+          },
+          "model_revision": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "device": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "cpu"
+                ]
+              },
+              "id": {
+                "type": "string",
+                "maxLength": 16384,
+                "pattern": "^[^\\x00-\\x1f\\x7f]*$"
+              },
+              "resource_group": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "id",
+              "resource_group"
+            ],
+            "additionalProperties": false
+          },
+          "precision": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          },
+          "offload": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          },
+          "part_overrides": {
+            "type": "array"
+          },
+          "provider_options": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "device"
+        ],
+        "additionalProperties": false
+      },
+      "invoke": {
+        "type": "object",
+        "properties": {
+          "board_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "minLength": 1,
+            "maxLength": 20,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,19}$",
+            "default": null,
+            "description": "鏡頭識別前綴；同專案的不同劇本請使用不同前綴。留空時取自原文雜湊。"
+          },
+          "cut_seconds": {
+            "type": "number",
+            "minimum": 0.1,
+            "maximum": 10,
+            "default": 2,
+            "description": "每鏡可編輯的預設剪輯秒數。"
+          }
+        },
+        "additionalProperties": false
+      },
+      "recording": {
+        "type": "object"
+      }
+    },
+    "required": [
+      "load",
+      "invoke",
+      "recording"
+    ],
+    "additionalProperties": false
+  },
+  "default_settings": {
+    "load": {
+      "device": {
+        "kind": "cpu",
+        "id": "cpu",
+        "resource_group": "cpu-text"
+      }
+    },
+    "invoke": {
+      "cut_seconds": 2
+    },
+    "recording": {
+      "device_sample_hz": 2,
+      "publish_interval_ms": 1000,
+      "batch_max_events": 256,
+      "batch_max_bytes": 262144,
+      "queue_max_events": 8192,
+      "queue_max_bytes": 16777216,
+      "segment_bytes": 67108864,
+      "max_detail_bytes_per_recording": 2147483648,
+      "cuda_pending_event_pairs": 4096,
+      "trace_steps": [
+        0,
+        1
+      ],
+      "trace_parts": [],
+      "record_shapes": false,
+      "with_stack": false,
+      "capture_prompt": false,
+      "tensor_dump": false,
+      "capture_stderr": true,
+      "finite_scan": false,
+      "gpu_event_timing": false,
+      "log_level": "info",
+      "parts": [],
+      "steps": [],
+      "mode": "summary"
+    }
+  },
+  "entry_point": "phasyn_components.providers.storyboard:StoryboardFromScriptProvider",
+  "operations": [
+    "script_to_storyboard"
+  ],
+  "resources": {
+    "devices": [
+      "cpu"
+    ],
+    "required_modules": [],
+    "executables": [],
+    "vram_bytes": 0,
+    "memory_basis": "Bounded UTF-8 text parsing, no model weights."
+  },
+  "execution": {
+    "cache": "none",
+    "retry": "verify_stopped_first",
+    "cancellation": "cooperative",
+    "progress": [
+      "stage"
+    ],
+    "error_contract": "ComponentError",
+    "retry_condition": "Publishes a new board file; verify the previous attempt and its outputs first."
+  },
+  "models": [],
+  "license": "Apache-2.0",
+  "capability_version": "1.0.0"
+}

@@ -29,21 +29,21 @@ const RUN_DONE: Record<Exclude<WireRun["state"], "running">, { level: LogLevel; 
 
 function stepLines(run: WireRun, label: string, step: RunStepView, providers: ReadonlyMap<string, string> | undefined): LogLine[] {
   const lines: LogLine[] = [];
-  const providerId = step.node_id && step.component_id ? providers?.get(instanceKey(step.node_id, step.component_id)) : undefined;
+  const providerId = (step.node_id != null && step.node_id !== "") && (step.component_id != null && step.component_id !== "") ? providers?.get(instanceKey(step.node_id, step.component_id)) : undefined;
   const source: LogSource = {
     kind: "step",
     label: step.component_id ?? step.step_id,
-    ...(providerId ? { providerId } : {}),
+    ...((providerId != null && providerId !== "") ? { providerId } : {}),
     to: runPath(run.run_id),
   };
   const context = joinParts([
     t("run「{label}」{run_id}", { label, run_id: shortId(run.run_id) }),
-    step.node_id && `node ${shortId(step.node_id)}`,
-    step.call_id && `call ${step.call_id}`,
-    step.recording_id && `recording ${step.recording_id}`,
+    step.node_id != null && step.node_id !== "" && `node ${shortId(step.node_id)}`,
+    step.call_id != null && step.call_id !== "" && `call ${step.call_id}`,
+    step.recording_id != null && step.recording_id !== "" && `recording ${step.recording_id}`,
   ]);
   const idBase = `run:${run.run_id}:step:${step.step_id}`;
-  if (step.started_at) {
+  if (step.started_at != null && step.started_at !== "") {
     lines.push({
       id: `${idBase}:started`,
       at: step.started_at,
@@ -54,7 +54,7 @@ function stepLines(run: WireRun, label: string, step: RunStepView, providers: Re
     });
   }
   const done = STEP_DONE[step.state];
-  if (step.finished_at && done) {
+  if ((step.finished_at != null && step.finished_at !== "") && done) {
     const duration = durationMs(step.started_at, step.finished_at);
     const succeeded = step.state === "succeeded";
     let level = done.level;
@@ -90,11 +90,11 @@ export function linesFromRun(run: WireRun, options: RunLineOptions = {}): LogLin
       level: "info",
       source,
       message: t("建立 run「{label}」・{stepsCount} 個步驟", { label, stepsCount: pipeline.steps.length }),
-      detail: joinParts([`run ${run.run_id}`, `pipeline ${pipeline.pipeline_id}`, run.request.origin?.source_run_id && t("來源 run {source_run_id}", { source_run_id: run.request.origin.source_run_id })]),
+      detail: joinParts([`run ${run.run_id}`, `pipeline ${pipeline.pipeline_id}`, run.request.origin?.source_run_id != null && run.request.origin.source_run_id !== "" && t("來源 run {source_run_id}", { source_run_id: run.request.origin.source_run_id })]),
     },
   ];
   for (const step of runSteps(run)) lines.push(...stepLines(run, label, step, providers));
-  if (run.state !== "running" && run.finished_at) {
+  if (run.state !== "running" && (run.finished_at != null && run.finished_at !== "")) {
     const done = RUN_DONE[run.state];
     const duration = durationMs(run.created_at, run.finished_at);
     const succeeded = run.state === "succeeded";

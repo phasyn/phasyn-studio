@@ -1,0 +1,78 @@
+{
+  "Wan2.1_VAE.pth": {
+    "size": 507609880,
+    "sha256": "38071ab59bd94681c686fa51d75a1968f64e470262043be31f7a094e442fd981"
+  },
+  "config.json": {
+    "size": 890,
+    "sha256": "a6da0bd7da5fd43ba04049c625056b512b367d5caa5963623dc9e04252a4c7a6"
+  },
+  "configuration.json": {
+    "size": 43,
+    "sha256": "a6b66993e9da0feaba8d42d06b21ad9cfaf7d8b591f32fd639ae35b7f5d2d859"
+  },
+  "diffusion_pytorch_model-00001-of-00004.safetensors": {
+    "size": 9968229352,
+    "sha256": "5fb54febf10b729a6da7da222625d6ecaedde78becda01efbc13f6bebaeb6d43"
+  },
+  "diffusion_pytorch_model-00002-of-00004.safetensors": {
+    "size": 9891539248,
+    "sha256": "922928094d8ea9b075888d473b7f9bf80ec60852eb83934079141b161a186f01"
+  },
+  "diffusion_pytorch_model-00003-of-00004.safetensors": {
+    "size": 9956985634,
+    "sha256": "017fab8d2845976c9555df841765255118552fbad3e6760629342b47c36c24fc"
+  },
+  "diffusion_pytorch_model-00004-of-00004.safetensors": {
+    "size": 2774887624,
+    "sha256": "5c194909066b8d7ed91f2c214389aa7ec7f25c60e3dd10ba8f607daf4f5cc6c0"
+  },
+  "diffusion_pytorch_model.safetensors.index.json": {
+    "size": 113150,
+    "sha256": "b5ea0e7789d82c00bd25cfbeb940a1675e048986b1527198251da74d700508d2"
+  },
+  "google/umt5-xxl/special_tokens_map.json": {
+    "size": 6623,
+    "sha256": "7b8a9f5040adb67b5805abdfd42c1f8d0f3d0e711f10726580eb3789cd0ad61d"
+  },
+  "google/umt5-xxl/spiece.model": {
+    "size": 4548313,
+    "sha256": "e3909a67b780650b35cf529ac782ad2b6b26e6d1f849d3fbb6a872905f452458"
+  },
+  "google/umt5-xxl/tokenizer.json": {
+    "size": 16837417,
+    "sha256": "6e197b4d3dbd71da14b4eb255f4fa91c9c1f2068b20a2de2472967ca3d22602b"
+  },
+  "google/umt5-xxl/tokenizer_config.json": {
+    "size": 61728,
+    "sha256": "ed9a3a8b0faa71a70a32847e0435fe036e6e112d4df4edb7bb48a921e344dc05"
+  },
+  "models_t5_umt5-xxl-enc-bf16.pth": {
+    "size": 11361920418,
+    "sha256": "7cace0da2b446bbbbc57d031ab6cf163a3d59b366da94e5afe36745b746fd81d"
+  },
+  "wav2vec2-large-xlsr-53-english/config.json": {
+    "size": 1531,
+    "sha256": "ffcc5c417fe11433447975d5053b2279fbeafd6bca03dd2753082e72ad2d36b7"
+  },
+  "wav2vec2-large-xlsr-53-english/configuration.json": {
+    "size": 86,
+    "sha256": "38a052799e44f23ab0eafcb31ffe9b05d9bca18d56c0a471cd99f788b9ffbbfa"
+  },
+  "wav2vec2-large-xlsr-53-english/model.safetensors": {
+    "size": 1261942732,
+    "sha256": "6144f8464c6aaa220dd57c5a2ad4039b5710dcf8ee6e67057675f76597c19875"
+  },
+  "wav2vec2-large-xlsr-53-english/preprocessor_config.json": {
+    "size": 262,
+    "sha256": "ca5999a45e98bb76ea87a461ba28a23ad32a5bb9f733b8e0f6546ff38b6c612d"
+  },
+  "wav2vec2-large-xlsr-53-english/special_tokens_map.json": {
+    "size": 85,
+    "sha256": "bb7068de1150661a10b55f9e4b12a0e77af8bf91f5e45e1b58afaf1d0e17f675"
+  },
+  "wav2vec2-large-xlsr-53-english/vocab.json": {
+    "size": 300,
+    "sha256": "1ec5eeced764da0e4a4d2e95c1c3470c3235222db0182088beac3e7c67eda8ff"
+  }
+}

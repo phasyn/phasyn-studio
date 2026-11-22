@@ -9,11 +9,11 @@ import { t } from "@/i18n";
 
 export function VersionSwitchDialog({ study, switchTo, onCancel, onConfirm }: { study: PromptStudy; switchTo: string | null; onCancel: () => void; onConfirm: () => void }) {
   return (
-    <Dialog open={switchTo !== null} onOpenChange={(next) => (next ? undefined : onCancel())}>
+    <Dialog open={switchTo !== null} onOpenChange={(next) => { if (!(next)) { onCancel(); } }}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("捨棄未儲存的修改？")}</DialogTitle>
-          <DialogDescription>{t("切換到 {value} 會捨棄目前場景的修改（已儲存的版本不受影響）。", { value: switchTo ? versionLabel(study, switchTo) : t("另一個版本") })}</DialogDescription>
+          <DialogDescription>{t("切換到 {value} 會捨棄目前場景的修改（已儲存的版本不受影響）。", { value: (switchTo != null && switchTo !== "") ? versionLabel(study, switchTo) : t("另一個版本") })}</DialogDescription>
         </DialogHeader>
         <DialogFooter>
           <Button variant="quiet" onClick={onCancel}>

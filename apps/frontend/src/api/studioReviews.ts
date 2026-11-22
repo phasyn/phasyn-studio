@@ -4,7 +4,7 @@
 // while the page is visible. A project the Controller does not have yet (404) has no reviews.
 import { useQuery } from "@tanstack/react-query";
 import type { StudioTakeReviews } from "./generated/contracts";
-import { ApiError, apiJson } from "./http";
+import { ApiError, contractJson } from "./http";
 
 const REVIEWS_POLL_MS = 60_000;
 
@@ -14,7 +14,7 @@ export const reviewKeys = {
 
 async function fetchReviews(projectId: string, signal: AbortSignal): Promise<StudioTakeReviews> {
   try {
-    return await apiJson<StudioTakeReviews>(`/api/studio/projects/${encodeURIComponent(projectId)}/reviews`, { signal });
+    return await contractJson("StudioTakeReviews", `/api/studio/projects/${encodeURIComponent(projectId)}/reviews`, { signal });
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return { project_id: projectId, revision: 0, updated_at: null, reviews: [] };
     throw error;

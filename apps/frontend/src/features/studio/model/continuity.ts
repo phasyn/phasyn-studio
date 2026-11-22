@@ -1,3 +1,4 @@
+import { firstFrameCount } from "@/lib/json";
 // 鏡頭的首幀（MiniMax H3 fl2va），兩種來源：
 //   previous_last＝時間軸上前一個鏡頭片段最後顯示的那一格（它使用中的 take）：run 的步驟由 renderPlan.ts 以 fl2va
 //                  元件組合為範本組出，另加一個 media.frame 步驟接到元件組合的首幀輸入；
@@ -65,7 +66,7 @@ export function predecessor(project: StudioProject, shotId: string): Predecessor
   for (let i = index - 1; i >= 0; i -= 1) {
     const clip = clips[i];
     const id = clip ? shotOf(clip.source_id) : null;
-    const shot = id && id !== shotId ? project.shots.find((item) => item.shot_id === id) : undefined;
+    const shot = (id != null && id !== "") && id !== shotId ? project.shots.find((item) => item.shot_id === id) : undefined;
     if (!clip || !shot || !clipEnabled(clip)) continue;
     return { previous: { shot, lastSourceFrame: sourceFrameAtTimeline(clip, clipEnd(clip) - 1), fps: timeline.fps }, problem: null };
   }
@@ -78,7 +79,7 @@ export type FrameSelection = { position: "last" } | { position: "index"; frame_i
 /** take 為 null＝前一個鏡頭在同一個 run 內重新渲染（以計畫影格數判斷是不是最後一格）。 */
 export function frameSelection(previous: Predecessor, take: StudioTake | null): FrameSelection {
   const asset = take?.state === "succeeded" ? take.asset : null;
-  const total = Math.max(1, asset?.frame_count || take?.frames || previous.shot.frames);
+  const total = Math.max(1, firstFrameCount([asset?.frame_count, take?.frames], previous.shot.frames));
   const takeFps = asset?.fps ? asset.fps.num / asset.fps.den : H3_FPS;
   const index = Math.floor((previous.lastSourceFrame * takeFps * previous.fps.den) / previous.fps.num);
   return index < total - 1 ? { position: "index", frame_index: Math.max(0, index) } : { position: "last" };
@@ -122,7 +123,7 @@ export function continuitySource(project: StudioProject, shot: StudioShot): Cont
 /** 不能用「從前一個鏡頭接續」渲染的原因（來源，再來是路由的 fl2va／取影格條件）；可以時為 null。 */
 export function continuityProblem(project: StudioProject, shot: StudioShot, support?: ContinuitySupport): string | null {
   const { problem } = continuitySource(project, shot);
-  if (problem) return problem;
+  if (problem != null && problem !== "") return problem;
   if (support && !support.ready) return support.supported ? t("首幀接續需要的元件未就緒：{summary}", { summary: support.summary }) : support.summary;
   return null;
 }
@@ -189,11 +190,11 @@ export type ImageFirstFrameResult = { source: ImageFirstFrame; problem: null } |
 /** 鏡頭以素材庫圖片當首幀：找到項目並檢查（是圖片、比例與專案畫面相同）；不行時回傳原因。 */
 export function imageFirstFrameSource(project: StudioProject, shot: StudioShot): ImageFirstFrameResult {
   const itemId = firstFrameItemId(shot);
-  if (!itemId) return { source: null, problem: t("這個鏡頭沒有選首幀圖片") };
+  if (!(itemId != null && itemId !== "")) return { source: null, problem: t("這個鏡頭沒有選首幀圖片") };
   const item = (project.library ?? []).find((entry) => entry.item_id === itemId);
   if (!item) return { source: null, problem: t("首幀圖片已不在專案素材庫（可能已被移除）：重新選一張圖片") };
   const problem = firstFrameImageProblem(item, project.format);
-  if (problem) return { source: null, problem };
+  if (problem != null && problem !== "") return { source: null, problem };
   return { source: { item, note: firstFrameImageNote(item, project.format) }, problem: null };
 }
 
@@ -231,7 +232,7 @@ export function continuityChange(take: StudioTake, shot: StudioShot, project: St
     return item && !sameFile(item.file, used.first_frame) ? t("首幀圖片") : null;
   }
   const { source } = continuitySource(project, shot);
-  if (!source || source.shot.shot_id !== used.source_shot_id) return t("前一個鏡頭");
+  if (source?.shot.shot_id !== used.source_shot_id) return t("前一個鏡頭");
   if (source.take.take_id !== used.source_take_id) return t("前一個鏡頭的 take");
   const index = source.frame.position === "index" ? source.frame.frame_index : null;
   if (index !== used.source_frame_index) return t("前一個鏡頭的出點");
@@ -245,7 +246,7 @@ function firstFrameStep(run: WireRun, stepIds: readonly string[]): string | null
   const ids = new Set(stepIds);
   for (const step of run.request.pipeline.steps) {
     if (!ids.has(step.step_id)) continue;
-    const binding = step.inputs.first_frame;
+    const binding = step.inputs["first_frame"];
     if (binding && "from_step" in binding && ids.has(binding.from_step)) return binding.from_step;
   }
   return null;
@@ -262,8 +263,8 @@ export function continuityTakeOutcome(run: WireRun, take: StudioTake): Continuit
   if (!used) return base;
   if (used.mode === "image") return { ...base, continuity: used };
   const frameId = firstFrameStep(run, branchStepIds(run, take.output_key));
-  const frame = frameId ? parseRunStep(frameId, run.steps[frameId]) : null;
-  const image = frame?.outputs.image;
+  const frame = (frameId != null && frameId !== "") ? parseRunStep(frameId, run.steps[frameId]) : null;
+  const image = frame?.outputs["image"];
   const firstFrame = frame?.state === "succeeded" && image ? typedFile(image) : null;
   return { ...base, continuity: { ...used, first_frame: firstFrame ?? used.first_frame } };
 }

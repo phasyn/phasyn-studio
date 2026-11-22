@@ -18,6 +18,7 @@ export function easing(interpolation: TimelineKeyframe["interpolation"], progres
     case "ease_in": return value * value;
     case "ease_out": return value * (2 - value);
     case "ease_in_out": return value * value * (3 - 2 * value);
+    case "linear":
     default: return value;
   }
 }
@@ -54,7 +55,7 @@ export function segmentProgress(key: TimelineKeyframe, progress: number): number
 }
 
 export function evaluateCurve(keys: readonly TimelineKeyframe[] | undefined, frame: number, fallback: number): number {
-  if (!keys?.length) return fallback;
+  if (!(keys?.length != null && Boolean(keys.length))) return fallback;
   const first = keys[0];
   if (!first || frame <= first.frame) return first?.value ?? fallback;
   for (let i = 1; i < keys.length; i += 1) {

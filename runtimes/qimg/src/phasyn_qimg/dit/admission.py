@@ -1,10 +1,9 @@
-"""Memory admission estimates (torch-free formulas); available VRAM is measured by the shared
-``phasyn_qimg.memory`` helper (torch is imported lazily).
+"""Memory admission estimates (torch-free formulas); available VRAM is measured by the shared ``phasyn_qimg.memory`` helper (torch is imported lazily).
 
 These are admission *estimates*, not a guarantee against arbitrary CUDA OOMs; every number is recorded
 (quality=derived). Available VRAM (``fill_device_memory``): on a discrete GPU it is the ``mem_get_info``
 free value; on an integrated/unified-memory (UMA) GPU (``memory_model`` setting or ``is_integrated``) it is
-MemAvailable − ``unified_reserve_bytes``, because on UMA ``mem_get_info`` free only tracks MemFree and
+MemAvailable - ``unified_reserve_bytes``, because on UMA ``mem_get_info`` free only tracks MemFree and
 excludes reclaimable page cache, which would refuse work that fits. The basis used (``available_basis``),
 the reason and all raw readings (``device_memory``) are in ``to_dict()`` and in the message.
 
@@ -28,14 +27,21 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from phasyn_components.errors import ComponentError, gpu_memory_insufficient, host_memory_insufficient
+from phasyn_components.errors import (
+    ComponentError,
+    gpu_memory_insufficient,
+    host_memory_insufficient,
+)
 
 from .. import memory as device_mem
+
 
 GIB = 1024**3
 ACTIVATION_RESERVE_BYTES = 1536 * 1024 * 1024
 ACTIVATION_PER_TOKEN_FACTOR = 24
-GGUF_DEQUANT_FACTOR = 16  # dequantization scratch: largest quantized matrix × 4 FP32-sized copies
+GGUF_DEQUANT_FACTOR = (
+    16  # dequantization scratch: largest quantized matrix × 4 FP32-sized copies
+)
 PIN_RAM_RESERVE_BYTES = 6 * GIB
 STREAM_RESIDENT_BLOCKS = 3
 IMG_TOKENS_PER_SLOT = 4
@@ -44,7 +50,7 @@ RAM_BASIS = "MemAvailable（cgroup v2 memory.max 有上限時取較小者）"
 
 @dataclass(frozen=True)
 class BranchShape:
-    """一個 CFG 分支的序列形狀：VLM 序列長度（含影像槽）、影像槽數、目標 latent token 數。"""
+    """一個 CFG 分支的序列形狀：VLM 序列長度（含影像槽）、影像槽數、目標 latent token 數."""
 
     text_len: int
     image_slots: int
@@ -53,35 +59,49 @@ class BranchShape:
 
     @property
     def prefix_tokens(self) -> int:
-        """KV cache 的 prefix：文字 token＋展開後的參考圖 token（L − slots + 4·slots）。"""
+        """KV cache 的 prefix：文字 token+展開後的參考圖 token（L - slots + 4·slots）."""
         return self.text_len + (IMG_TOKENS_PER_SLOT - 1) * self.image_slots
 
     @property
     def joint_tokens(self) -> int:
+        """Count the tokens presented jointly to attention."""
         return self.prefix_tokens + self.target_tokens
 
 
 @dataclass(frozen=True)
 class ModelDims:
+    """Transformer dimensions used to estimate attention memory."""
+
     num_layers: int
     hidden: int
     element_size: int = 2
 
 
 def kv_cache_bytes(dims: ModelDims, branches: Iterable[BranchShape]) -> int:
-    """每層 K、V 各一份 (B, prefix, heads, head_dim)；CFG 時兩個分支各自一份（依實際長度相加）。"""
-    return sum(dims.num_layers * 2 * b.batch * b.prefix_tokens * dims.hidden * dims.element_size for b in branches)
+    """每層 K、V 各一份 (B, prefix, heads, head_dim)；CFG 時兩個分支各自一份（依實際長度相加）."""
+    return sum(
+        dims.num_layers
+        * 2
+        * b.batch
+        * b.prefix_tokens
+        * dims.hidden
+        * dims.element_size
+        for b in branches
+    )
 
 
 def activation_bytes(dims: ModelDims, branches: Iterable[BranchShape]) -> int:
-    """單次 forward 的 activation 估計：max(1.5 GiB, B·joint·hidden·elem·24)（兩分支依序執行，取最大）。"""
+    """單次 forward 的 activation 估計：max(1.5 GiB, B·joint·hidden·elem·24)（兩分支依序執行，取最大）."""
     longest = max((b.batch * b.joint_tokens for b in branches), default=0)
-    return max(ACTIVATION_RESERVE_BYTES, longest * dims.hidden * dims.element_size * ACTIVATION_PER_TOKEN_FACTOR)
+    return max(
+        ACTIVATION_RESERVE_BYTES,
+        longest * dims.hidden * dims.element_size * ACTIVATION_PER_TOKEN_FACTOR,
+    )
 
 
 @dataclass
 class Estimate:
-    """一次准入判斷的完整拆解（全部 bytes）。``available`` 為 None 時代表無法量測（不可假裝通過）。"""
+    """一次准入判斷的完整拆解（全部 bytes）。``available`` 為 None 時代表無法量測（不可假裝通過）."""
 
     placement: str
     memory: str  # "vram" | "ram"
@@ -94,13 +114,16 @@ class Estimate:
 
     @property
     def required(self) -> int:
+        """Return the total memory requirement."""
         return sum(self.components.values())
 
     @property
     def ok(self) -> bool:
+        """Report whether the estimated workload fits."""
         return self.available is not None and self.available >= self.required
 
     def to_dict(self) -> dict[str, Any]:
+        """Serialize this value for the runtime contract."""
         mem = self.device_memory
         return {
             "placement": self.placement,
@@ -117,6 +140,7 @@ class Estimate:
         }
 
     def message(self) -> str:
+        """Explain the memory estimate and available capacity."""
         mem = self.device_memory
         if self.memory != "vram":
             what = "主記憶體（MemAvailable）"
@@ -124,13 +148,19 @@ class Estimate:
             what = "統一記憶體可用量"
         else:
             what = "GPU 可用記憶體"
-        parts = "、".join(f"{k} {v / GIB:.2f} GiB" for k, v in self.components.items() if v)
+        parts = "、".join(
+            f"{k} {v / GIB:.2f} GiB" for k, v in self.components.items() if v
+        )
         if self.available is None:
             return f"無法量測{what}（{self.reason or '原因不明'}）；placement={self.placement} 需要 {self.required / GIB:.2f} GiB（{parts}）"
         return (
             f"{what}不足以執行 placement={self.placement}：可用 {self.available / GIB:.2f} GiB，"
             f"估計需要 {self.required / GIB:.2f} GiB（{parts}）"
-            + ("" if mem is None else f"；可用量＝{mem.describe()}")
+            + (
+                ""
+                if mem is None
+                else f"；可用量\N{FULLWIDTH EQUALS SIGN}{mem.describe()}"
+            )
         )
 
 
@@ -145,7 +175,11 @@ def require(estimate: Estimate) -> None:
     details = {"admission": estimate.to_dict()}
     if estimate.available is None:
         raise ComponentError("UNSUPPORTED_SETTING", estimate.message(), details=details)
-    refuse = gpu_memory_insufficient if estimate.memory == "vram" else host_memory_insufficient
+    refuse = (
+        gpu_memory_insufficient
+        if estimate.memory == "vram"
+        else host_memory_insufficient
+    )
     raise refuse(estimate.message(), details=details)
 
 
@@ -156,8 +190,10 @@ def fill_device_memory(
     memory_model: str = "auto",
     unified_reserve_bytes: int = device_mem.DEFAULT_UNIFIED_RESERVE_BYTES,
 ) -> Estimate:
-    """VRAM 估計填入共用 helper 的量測：可用量、依據、量不到的原因與原始值（free 先釋放本程序 allocator 的閒置區塊）。"""
-    mem = device_mem.device_memory(device, memory_model=memory_model, unified_reserve_bytes=unified_reserve_bytes)
+    """VRAM 估計填入共用 helper 的量測：可用量、依據、量不到的原因與原始值（free 先釋放本程序 allocator 的閒置區塊）."""
+    mem = device_mem.device_memory(
+        device, memory_model=memory_model, unified_reserve_bytes=unified_reserve_bytes
+    )
     est.available = mem.available_bytes
     est.total = mem.cuda.total_bytes
     est.reason = mem.reason
@@ -166,7 +202,7 @@ def fill_device_memory(
     return est
 
 
-def invoke_vram_estimate(
+def invoke_vram_estimate(  # noqa: PLR0913 - Keep the published runtime API.
     placement: str,
     *,
     dims: ModelDims,
@@ -176,7 +212,7 @@ def invoke_vram_estimate(
     max_block_bytes: int = 0,
     dequant_bytes: int = 0,
 ) -> Estimate:
-    """呼叫前的 VRAM 需求（不含 available；由呼叫端以 ``fill_device_memory`` 填入）。"""
+    """呼叫前的 VRAM 需求（不含 available；由呼叫端以 ``fill_device_memory`` 填入）."""
     est = Estimate(placement=placement, memory="vram")
     est.components["prefix_kv_cache"] = kv_cache_bytes(dims, branches)
     est.components["activation_reserve"] = activation_bytes(dims, branches)
@@ -194,7 +230,7 @@ def invoke_vram_estimate(
 
 
 def load_vram_estimate(placement: str, *, weight_bytes: int) -> Estimate:
-    """load 時的靜態檢查：none 需要整份權重常駐＋最小 activation reserve。"""
+    """Load 時的靜態檢查：none 需要整份權重常駐+最小 activation reserve."""
     est = Estimate(placement=placement, memory="vram")
     est.components["transformer_weights"] = weight_bytes
     est.components["activation_reserve"] = ACTIVATION_RESERVE_BYTES
@@ -202,7 +238,7 @@ def load_vram_estimate(placement: str, *, weight_bytes: int) -> Estimate:
 
 
 def preload_ram_estimate(placement: str, *, file_bytes: int) -> Estimate:
-    """載入前：權重先完整讀進主記憶體（phase／gguf_phase 之後也一直留在主記憶體）＋保留量。"""
+    """載入前：權重先完整讀進主記憶體（phase／gguf_phase 之後也一直留在主記憶體）+保留量."""
     est = Estimate(placement=placement, memory="ram", basis=RAM_BASIS)
     est.components["transformer_checkpoint"] = file_bytes
     est.components["host_reserve"] = PIN_RAM_RESERVE_BYTES
@@ -217,7 +253,9 @@ def pin_ram_estimate(*, weight_bytes: int) -> Estimate:
     return est
 
 
-def available_ram_bytes(meminfo: Path | None = None, cgroup: Path = Path("/sys/fs/cgroup")) -> int | None:
+def available_ram_bytes(
+    meminfo: Path | None = None, cgroup: Path = Path("/sys/fs/cgroup")
+) -> int | None:
     """Linux MemAvailable (shared /proc/meminfo parser), capped by a finite cgroup v2 limit when one is set."""
     available = device_mem.read_meminfo(meminfo).available_bytes
     if available is None:
@@ -235,8 +273,13 @@ def available_ram_bytes(meminfo: Path | None = None, cgroup: Path = Path("/sys/f
 def branch_shapes(
     *, text_lens: Mapping[str, int], image_slots: Mapping[str, int], target_tokens: int
 ) -> list[BranchShape]:
+    """Describe each guidance branch and its effective sequence shape."""
     return [
-        BranchShape(text_len=int(text_lens[k]), image_slots=int(image_slots.get(k, 0)), target_tokens=target_tokens)
+        BranchShape(
+            text_len=int(text_lens[k]),
+            image_slots=int(image_slots.get(k, 0)),
+            target_tokens=target_tokens,
+        )
         for k in sorted(text_lens)
     ]
 

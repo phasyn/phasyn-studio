@@ -1,0 +1,40 @@
+{
+  "pipeline_id": "interpolate-take-local",
+  "label": "影片補幀 2×（維持播放長度並保留原音訊）",
+  "inputs": [
+    {
+      "name": "video",
+      "type_id": "media.video.v1",
+      "required": true,
+      "transport": "file",
+      "description": "要補幀的來源影片，例如一個 take 的 MP4。"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "interpolate",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "interpolate-rife-gpu1",
+      "inputs": {
+        "video_file": {
+          "from_input": "video"
+        }
+      },
+      "parameters": {
+        "multiplier": 2,
+        "mode": "smooth",
+        "audio_policy": "preserve",
+        "ranges": [],
+        "holds": [],
+        "scene_threshold": 0.3,
+        "crf": 16
+      }
+    }
+  ],
+  "outputs": {
+    "final": {
+      "from_step": "interpolate",
+      "output": "asset"
+    }
+  }
+}

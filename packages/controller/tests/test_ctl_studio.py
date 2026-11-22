@@ -13,7 +13,13 @@ from controller_support import Harness
 from phasyn_components import contracts
 from phasyn_components.errors import ComponentError
 from phasyn_components.testing.ids import NODE_A_ID, uid
-from phasyn_controller.studio import StudioStore
+
+from phasyn_controller.studio import StudioStore, run_refs, without_run
+from phasyn_controller.studio_backfill import (
+    reconcile_exports as port_exports,
+    reconcile_images as port_images,
+    reconcile_takes,
+)
 
 
 def project(pid: str = "p1") -> dict[str, Any]:
@@ -45,14 +51,20 @@ def test_studio_project_revision_list_and_delete(tmp_path: Path) -> None:
             saved = created.json()
             assert saved["revision"] == 1 and saved["updated_at"] != doc["updated_at"]
 
-            stale = await h.client.put("/api/studio/projects/p1", json=doc)  # 仍帶 revision 0
-            assert stale.status_code == 409 and stale.json()["code"] == "REVISION_CONFLICT"
+            stale = await h.client.put(
+                "/api/studio/projects/p1", json=doc
+            )  # 仍帶 revision 0
+            assert (
+                stale.status_code == 409 and stale.json()["code"] == "REVISION_CONFLICT"
+            )
             assert stale.json()["details"]["stored_revision"] == 1
 
             edited = copy.deepcopy(saved)
             edited["title"] = "改名"
             second = (await h.client.put("/api/studio/projects/p1", json=edited)).json()
-            assert second["revision"] == 2 and second["created_at"] == saved["created_at"]
+            assert (
+                second["revision"] == 2 and second["created_at"] == saved["created_at"]
+            )
 
             listed = (await h.client.get("/api/studio/projects")).json()["items"]
             contracts.validate("StudioProjectList", {"items": listed})
@@ -61,17 +73,35 @@ def test_studio_project_revision_list_and_delete(tmp_path: Path) -> None:
                  "updated_at": second["updated_at"], "shot_count": 2, "rendered_shot_count": 1}
             ]  # fmt: skip
 
-            bad = copy.deepcopy(second)
-            bad["shots"][0]["frames"] = 50  # H3 下限 96
+            # Project storage supports every route; the selected provider validates native frame constraints.
+            short = copy.deepcopy(second)
+            short["shots"][0]["frames"] = 50
+            accepted = await h.client.put("/api/studio/projects/p1", json=short)
+            assert (
+                accepted.status_code == 200
+                and accepted.json()["shots"][0]["frames"] == 50
+            )
+            current = accepted.json()
+            assert current["revision"] == 3
+            bad = copy.deepcopy(current)
+            bad["shots"][0]["frames"] = 0
             invalid = await h.client.put("/api/studio/projects/p1", json=bad)
-            assert invalid.status_code == 422 and invalid.json()["code"] == "INVALID_ARGUMENT"
+            assert (
+                invalid.status_code == 422
+                and invalid.json()["code"] == "INVALID_ARGUMENT"
+            )
             mismatch = await h.client.put("/api/studio/projects/other", json=second)
             assert mismatch.status_code == 422
 
-            assert (await h.client.delete("/api/studio/projects/p1?revision=1")).status_code == 409
+            assert (
+                await h.client.delete("/api/studio/projects/p1?revision=1")
+            ).status_code == 409
             assert (await h.client.delete("/api/studio/projects/p1")).status_code == 422
-            gone = await h.client.delete("/api/studio/projects/p1?revision=2")
-            assert gone.status_code == 200 and gone.json() == {"project_id": "p1", "deleted": True}
+            gone = await h.client.delete("/api/studio/projects/p1?revision=3")
+            assert gone.status_code == 200 and gone.json() == {
+                "project_id": "p1",
+                "deleted": True,
+            }
             missing = await h.client.get("/api/studio/projects/p1")
             assert missing.status_code == 404
 
@@ -80,7 +110,6 @@ def test_studio_project_revision_list_and_delete(tmp_path: Path) -> None:
 
 def test_run_refs_and_without_run_cover_image_shots() -> None:
     """圖片鏡頭（image_shots）的 take 也由 run 刪除連動：列出、移除、清掉使用中的 take。"""
-    from phasyn_controller.studio import run_refs, without_run
 
     doc = {
         "shots": [],
@@ -178,7 +207,9 @@ def _timeline_document() -> dict[str, Any]:
         "duration_bound",
     ],
 )
-def test_timeline_invalid_save_preserves_document_and_revision(tmp_path: Path, case: str) -> None:
+def test_timeline_invalid_save_preserves_document_and_revision(
+    tmp_path: Path, case: str
+) -> None:
     store = StudioStore(tmp_path / "projects")
     body = project()
     body["timeline"] = _timeline_document()
@@ -196,9 +227,13 @@ def test_timeline_invalid_save_preserves_document_and_revision(tmp_path: Path, c
     elif case == "source_handles":
         clip["out_frame"] = 25
     elif case == "overlap":
-        timeline["clips"].append({**copy.deepcopy(clip), "clip_id": "clip-b", "start_frame": 12})
+        timeline["clips"].append(
+            {**copy.deepcopy(clip), "clip_id": "clip-b", "start_frame": 12}
+        )
     elif case == "automation_range":
-        clip["motion"]["keyframes"] = {"opacity": [{"frame": 0, "value": 2, "interpolation": "linear"}]}
+        clip["motion"]["keyframes"] = {
+            "opacity": [{"frame": 0, "value": 2, "interpolation": "linear"}]
+        }
     elif case == "automation_order":
         clip["motion"]["keyframes"] = {
             "x": [
@@ -215,7 +250,9 @@ def test_timeline_invalid_save_preserves_document_and_revision(tmp_path: Path, c
     assert (tmp_path / "projects" / "p1.json").read_bytes() == snapshot
 
 
-def test_timeline_file_references_remain_protected_after_run_removal(tmp_path: Path) -> None:
+def test_timeline_file_references_remain_protected_after_run_removal(
+    tmp_path: Path,
+) -> None:
     store = StudioStore(tmp_path / "projects")
     body = project()
     timeline = _timeline_document()
@@ -330,17 +367,27 @@ def test_timeline_effect_extent_refusal_preserves_document_and_revision(
     assert (tmp_path / "projects" / "p1.json").read_bytes() == snapshot
 
 
-# Read-back of finished runs into projects (UI #27): a data-integrity boundary, the Controller writes projects itself.
+# Read-back of finished runs into projects: a data-integrity boundary, the Controller writes projects itself.
 def _waiting_project(run_id: str) -> dict[str, Any]:
     doc = project()
-    take = {**doc["shots"][0]["takes"][0], "take_id": "t2", "run_id": run_id, "state": "rendering", "asset": None}
+    take = {
+        **doc["shots"][0]["takes"][0],
+        "take_id": "t2",
+        "run_id": run_id,
+        "state": "rendering",
+        "asset": None,
+    }
     doc["shots"][0]["takes"].append(take)
     doc["shots"][1]["takes"] = [{**take, "take_id": "t3", "output_key": "final_1"}]
     return doc
 
 
 def _run(run_id: str, state: str) -> dict[str, Any]:
-    error = {"code": "NODE_UNREACHABLE", "message": "node gone"} if state != "running" else None
+    error = (
+        {"code": "NODE_UNREACHABLE", "message": "node gone"}
+        if state != "running"
+        else None
+    )
     return {"run_id": run_id, "state": state, "error": error, "request": {"pipeline": {"steps": [], "outputs": {}}},
             "steps": {}}  # fmt: skip
 
@@ -363,10 +410,14 @@ def test_backfill_reads_finished_runs_into_rendering_takes_only(tmp_path: Path) 
     after = store.get("p1")
     assert after["revision"] == edited["revision"] + 1 and after["title"] == "改名"
     takes = {t["take_id"]: t for shot in after["shots"] for t in shot["takes"]}
-    assert takes["t1"] == edited["shots"][0]["takes"][0]  # an already final take is untouched
+    assert (
+        takes["t1"] == edited["shots"][0]["takes"][0]
+    )  # an already final take is untouched
     assert takes["t2"]["state"] == takes["t3"]["state"] == "failed"
     assert takes["t2"]["error"]["code"] == "NODE_UNREACHABLE"
-    assert after["shots"][0]["active_take_id"] == "t1"  # a failed take never becomes the active one
+    assert (
+        after["shots"][0]["active_take_id"] == "t1"
+    )  # a failed take never becomes the active one
     assert store.projects_waiting_on() == {}
 
     # Read back again: nothing left to change, nothing written
@@ -391,7 +442,11 @@ def _file(n: int) -> dict[str, Any]:
 def _succeeded_two_shot_run(run_id: str) -> dict[str, Any]:
     asset = {"asset_id": uid(950), "kind": "final", "file": _file(0), "frame_count": 107, "fps": {"num": 24, "den": 1},
              "width": 768, "height": 448, "complete": True, "actual_settings": {}}  # fmt: skip
-    step = {"state": "succeeded", "started_at": "2026-11-16T07:00:00.000Z", "finished_at": "2026-11-16T07:01:00.500Z"}
+    step = {
+        "state": "succeeded",
+        "started_at": "2026-11-16T07:00:00.000Z",
+        "finished_at": "2026-11-16T07:01:00.500Z",
+    }
     return {
         "run_id": run_id, "state": "failed", "error": {"code": "STEP_FAILED", "message": "shot 2 failed"},
         "request": {"pipeline": {
@@ -408,8 +463,6 @@ def _succeeded_two_shot_run(run_id: str) -> dict[str, Any]:
 def test_backfill_reads_a_partly_failed_run_into_takes_and_exports() -> None:
     """A run whose second shot failed: the first take succeeds, the second fails with its step's error, and the
     export that needed both fails."""
-    from phasyn_controller.studio_backfill import reconcile_exports as port_exports
-    from phasyn_controller.studio_backfill import reconcile_takes
 
     rid = str(uuid.uuid4())
     doc = _waiting_project(rid)
@@ -422,18 +475,24 @@ def test_backfill_reads_a_partly_failed_run_into_takes_and_exports() -> None:
     assert reconcile_takes(port, run) == 2
     assert port_exports(port, run) == 1
     takes = {t["take_id"]: t for shot in port["shots"] for t in shot["takes"]}
-    assert takes["t2"]["state"] == "succeeded" and takes["t2"]["asset"]["frame_count"] == 107
-    assert takes["t3"]["state"] == "failed" and takes["t3"]["error"]["code"] == "GPU_OOM"
+    assert (
+        takes["t2"]["state"] == "succeeded"
+        and takes["t2"]["asset"]["frame_count"] == 107
+    )
+    assert (
+        takes["t3"]["state"] == "failed" and takes["t3"]["error"]["code"] == "GPU_OOM"
+    )
     assert port["exports"][0]["state"] == "failed"
 
 
-def _image_asset(n: int, white: bool) -> dict[str, Any]:
+def _image_asset(n: int, *, white: bool) -> dict[str, Any]:
     file = {**_file(n), "media_type": "image/png"}
     return {"asset_id": uid(960 + n), "file": file, "width": 1024, "height": 1024, "mode": "RGB" if white else "RGBA",
             "has_alpha": not white, "white_matte": white, "source_take": None, "actual_settings": {}}  # fmt: skip
 
 
 def _image_project(run_id: str) -> dict[str, Any]:
+
     doc = project()
     shot: dict[str, Any] = {
         "image_shot_id": "i1", "title": "Lantern", "mode": "t2i", "prompt": "a lantern", "negative_prompt": "",
@@ -452,9 +511,13 @@ def _image_project(run_id: str) -> dict[str, Any]:
 
 
 def _image_run(run_id: str) -> dict[str, Any]:
-    step = {"state": "succeeded", "started_at": "2026-11-16T07:00:00.000Z", "finished_at": "2026-11-16T07:00:30.000Z"}
-    outputs = {"image": {"type_id": "image.asset.v1", "value": _image_asset(1, False)},
-               "image_white": {"type_id": "image.asset.v1", "value": _image_asset(2, True)}}  # fmt: skip
+    step = {
+        "state": "succeeded",
+        "started_at": "2026-11-16T07:00:00.000Z",
+        "finished_at": "2026-11-16T07:00:30.000Z",
+    }
+    outputs = {"image": {"type_id": "image.asset.v1", "value": _image_asset(1, white=False)},
+               "image_white": {"type_id": "image.asset.v1", "value": _image_asset(2, white=True)}}  # fmt: skip
     return {
         "run_id": run_id, "state": "succeeded", "error": None,
         "request": {"pipeline": {
@@ -466,10 +529,11 @@ def _image_run(run_id: str) -> dict[str, Any]:
     }  # fmt: skip
 
 
-def test_backfill_adds_finished_images_to_the_library_like_the_studio(tmp_path: Path) -> None:
+def test_backfill_adds_finished_images_to_the_library_like_the_studio(
+    tmp_path: Path,
+) -> None:
     """An image finished while no page was open reaches the library (auto_library) through the Controller's
     read-back; a second read-back adds nothing."""
-    from phasyn_controller.studio_backfill import reconcile_images as port_images
 
     rid = str(uuid.uuid4())
     port = _image_project(rid)
@@ -486,6 +550,40 @@ def test_backfill_adds_finished_images_to_the_library_like_the_studio(tmp_path: 
     assert take["state"] == "succeeded" and shot["active_take_id"] == "it1"
     assert take["library_item_id"] == "imgw-it1"
     item = next(entry for entry in after["library"] if entry["item_id"] == "imgw-it1")
-    assert item["file"] == _image_asset(2, True)["file"] and item["name"] == "Lantern · take 1 (white bg).png"
+    assert (
+        item["file"] == _image_asset(2, white=True)["file"]
+        and item["name"] == "Lantern · take 1 (white bg).png"
+    )
     assert store.projects_waiting_on() == {}
     assert store.backfill("p1", [_image_run(rid)]) is False
+
+
+@pytest.mark.parametrize("chosen", ["earlier", None])
+@pytest.mark.parametrize("medium", ["video", "image"])
+def test_other_run_preserves_selected_take(medium: str, chosen: str | None) -> None:
+    """A new generation preserves a manual pick or the latest success shown by a legacy project."""
+    rid = str(uuid.uuid4())
+    if medium == "video":
+        doc = _waiting_project(rid)
+        shot = doc["shots"][0]
+        pending = shot["takes"][1]
+        pending["output_key"] = "final_0"
+        run = _succeeded_two_shot_run(rid)
+    else:
+        doc = _image_project(rid)
+        shot = doc["image_shots"][0]
+        pending = shot["takes"][0]
+        run = _image_run(rid)
+    old = {**pending, "run_id": str(uuid.uuid4()), "state": "succeeded"}
+    shot["takes"] = [
+        {**old, "take_id": "earlier"},
+        {**old, "take_id": "later"},
+        pending,
+    ]
+    shot["active_take_id"] = chosen
+    if medium == "video":
+        reconcile_takes(doc, run)
+    else:
+        port_images(doc, run, "2026-11-19T00:00:00Z")
+    assert pending["state"] == "succeeded"
+    assert shot["active_take_id"] == (chosen or "later")

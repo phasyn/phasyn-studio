@@ -64,12 +64,12 @@ export function useFitLevel(ref: RefObject<HTMLElement | null>, levels: number, 
     setStore(current);
   }
   const state = current.state;
-  const latest = useRef({ state, levels, measure });
-  const observation = useRef<Observation>({ observer: null, element: null, observed: new WeakSet() });
+  const latestRef = useRef({ state, levels, measure });
+  const observationRef = useRef<Observation>({ observer: null, element: null, observed: new WeakSet() });
 
   // Each new state is measured before paint and may step again (the steps end: see nextFitState)
   useLayoutEffect(() => {
-    latest.current = { state, levels, measure };
+    latestRef.current = { state, levels, measure };
     const element = ref.current;
     if (!element) return;
     const next = nextFitState(state, measure(element), levels);
@@ -80,7 +80,7 @@ export function useFitLevel(ref: RefObject<HTMLElement | null>, levels: number, 
   // stepping after that render
   useLayoutEffect(() => {
     const element = ref.current;
-    const watch = observation.current;
+    const watch = observationRef.current;
     if (typeof ResizeObserver === "undefined") return;
     if (element !== watch.element) {
       watch.observer?.disconnect();
@@ -90,7 +90,7 @@ export function useFitLevel(ref: RefObject<HTMLElement | null>, levels: number, 
         ? new ResizeObserver(() => {
             const target = watch.element;
             if (!target) return;
-            const { state: committed, levels: max, measure: measureNow } = latest.current;
+            const { state: committed, levels: max, measure: measureNow } = latestRef.current;
             const next = nextFitState(committed, measureNow(target), max);
             if (next !== committed) setStore((previous) => (previous.state === committed ? { ...previous, state: next } : previous));
           })
@@ -107,7 +107,7 @@ export function useFitLevel(ref: RefObject<HTMLElement | null>, levels: number, 
   });
 
   useLayoutEffect(() => {
-    const watch = observation.current;
+    const watch = observationRef.current;
     return () => {
       watch.observer?.disconnect();
       watch.observer = null;

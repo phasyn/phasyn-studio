@@ -28,11 +28,11 @@ export function takeActivity(stages: readonly TakeStage[], preview: Pick<RunStep
     if (preview && preview.total > 0) {
       fraction = Math.min(1, Math.max(0, preview.step / preview.total));
       text = t("DiT 第 {step}／{total} 步（預覽）", { step: preview.step, total: preview.total });
-    } else if (dit && dit.total !== null && dit.completed !== null) {
+    } else if (dit?.total != null && dit.completed !== null) {
       fraction = dit.fraction;
       text = dit.current !== null ? t("DiT 第 {current}／{total} 步", { current: dit.current, total: dit.total }) : dit.loopDone ? t("DiT {total}／{total2} 步・收尾中", { total: dit.total, total2: dit.total }) : t("DiT 已完成 {completed}／{total} 步", { completed: dit.completed, total: dit.total });
     } else {
-      text = dit?.total ? t("DiT 去噪中・共 {total} 步", { total: dit.total }) : t("DiT 去噪中");
+      text = (dit?.total != null && Boolean(dit.total)) ? t("DiT 去噪中・共 {total} 步", { total: dit.total }) : t("DiT 去噪中");
     }
   } else if (running) {
     text = t("{label}執行中", { label: running.label });

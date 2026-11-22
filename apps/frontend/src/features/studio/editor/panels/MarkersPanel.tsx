@@ -2,7 +2,8 @@
 // swatch opens the colour menu; a double click on the name renames it and on the timecode retimes it; the row's menu
 // (right click, Shift+F10) and the keys Enter, F2 and Delete carry the same actions. The toolbar adds a marker at the
 // playhead and steps to the marker before or after it. Every change is one commit of the timeline document.
-import { ChevronLeft, ChevronRight, Flag, MapPin, PencilLine, Trash2, createLucideIcon, type LucideIcon } from "lucide-react";
+import { focusOpenedControl } from "@/lib/dom";
+import { ChevronLeft, ChevronRight, Flag, MapPin, PencilLine, Trash2, createLucideIcon } from "lucide-react";
 import { useId, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent } from "react";
 import type { TimelineMarker } from "@/api/generated/contracts";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -24,18 +25,18 @@ import { MARKER_COLOR } from "../timeline/markerColors";
 type MarkerColor = TimelineMarker["color"];
 type MarkerField = "name" | "frame";
 
-const COLORS: readonly { value: MarkerColor; label: string; fill: string }[] = [
-  { value: "blue", label: t("藍色"), fill: "fill-brand-blue" },
-  { value: "green", label: t("綠色"), fill: "fill-success" },
-  { value: "amber", label: t("琥珀色"), fill: "fill-warning" },
-  { value: "rose", label: t("玫瑰色"), fill: "fill-danger" },
-  { value: "violet", label: t("紫色"), fill: "fill-brand-violet" },
-];
-const COLOR_LABEL = Object.fromEntries(COLORS.map((color) => [color.value, color.label])) as Record<MarkerColor, string>;
-/** A filled dot per colour, in the shape of the icons a menu item takes. */
-const COLOR_ICON = Object.fromEntries(
-  COLORS.map((color) => [color.value, createLucideIcon(`marker-${color.value}`, [["circle", { cx: 12, cy: 12, r: 7, stroke: "none", className: color.fill, key: "dot" }]])]),
-) as Record<MarkerColor, LucideIcon>;
+function markerColor(value: MarkerColor, label: string, fill: string) {
+  const icon = createLucideIcon(`marker-${value}`, [["circle", { cx: 12, cy: 12, r: 7, stroke: "none", className: fill, key: "dot" }]]);
+  return { value, label, icon };
+}
+const BY_COLOR = {
+  blue: markerColor("blue", t("藍色"), "fill-brand-blue"),
+  green: markerColor("green", t("綠色"), "fill-success"),
+  amber: markerColor("amber", t("琥珀色"), "fill-warning"),
+  rose: markerColor("rose", t("玫瑰色"), "fill-danger"),
+  violet: markerColor("violet", t("紫色"), "fill-brand-violet"),
+} satisfies Record<MarkerColor, ReturnType<typeof markerColor>>;
+const COLORS = Object.values(BY_COLOR);
 /** Longest marker name the document takes. */
 const NAME_LIMIT = 200;
 const UNAVAILABLE = "cursor-not-allowed text-fg-disabled hover:bg-transparent hover:text-fg-disabled";
@@ -56,31 +57,31 @@ interface InlineFieldProps {
  * otherwise drops it; Esc drops it. Text that cannot be applied on Enter stays, marked, with the reason as its tooltip.
  */
 function InlineField({ label, value, maxLength, onApply, onClose, className }: InlineFieldProps) {
-  const closed = useRef(false);
+  const closedRef = useRef(false);
   const [problem, setProblem] = useState<string | null>(null);
   const close = () => {
-    closed.current = true;
+    closedRef.current = true;
     onClose(true);
   };
   return (
     <input
-      autoFocus
+      ref={focusOpenedControl}
       defaultValue={value}
       maxLength={maxLength}
       aria-label={label}
-      aria-invalid={problem ? true : undefined}
+      aria-invalid={(problem != null && problem !== "") ? true : undefined}
       title={problem ?? undefined}
-      onFocus={(event) => event.currentTarget.select()}
-      onChange={() => setProblem(null)}
+      onFocus={(event) => { event.currentTarget.select(); }}
+      onChange={() => { setProblem(null); }}
       onBlur={(event) => {
-        if (closed.current) return;
+        if (closedRef.current) return;
         onApply(event.target.value);
         onClose(false);
       }}
       onKeyDown={(event) => {
         if (event.key === "Enter") {
           const rejected = onApply(event.currentTarget.value);
-          if (rejected) setProblem(rejected);
+          if (rejected != null && rejected !== "") setProblem(rejected);
           else close();
         } else if (event.key === "Escape") close();
       }}
@@ -109,7 +110,7 @@ interface MarkerRowProps {
 }
 
 function MarkerRow({ marker, index, fps, selected, tabbable, current, editing, onEdit, onEditEnd, onSelect, onSeek, onChange, onRemove, onMenu }: MarkerRowProps) {
-  const row = useRef<HTMLDivElement>(null);
+  const rowRef = useRef<HTMLDivElement>(null);
   const name = marker.name || t("未命名標記");
   const rename = (text: string): string | null => {
     const next = text.trim();
@@ -126,11 +127,11 @@ function MarkerRow({ marker, index, fps, selected, tabbable, current, editing, o
     if (event.target instanceof Element && event.target.closest("button, input")) return;
     onSeek();
   };
-  const endEdit = (byKey: boolean) => onEditEnd(byKey ? row.current : null);
+  const endEdit = (byKey: boolean) => { onEditEnd(byKey ? rowRef.current : null); };
   return (
-    <div
+    <div /* eslint-disable-line jsx-a11y-x/click-events-have-key-events -- The focused row delegates its keyboard actions to the parent grid or tree. */
       ref={(node) => {
-        row.current = node;
+        rowRef.current = node;
         return reveal(index)(node);
       }}
       role="row"
@@ -151,9 +152,9 @@ function MarkerRow({ marker, index, fps, selected, tabbable, current, editing, o
           type="button"
           tabIndex={-1}
           aria-haspopup="menu"
-          aria-label={t("「{name}」的顏色：{color}", { name, color: COLOR_LABEL[marker.color] })}
-          title={t("顏色：{color}", { color: COLOR_LABEL[marker.color] })}
-          onClick={(event) => onMenu("color", { kind: "element", element: event.currentTarget }, row.current)}
+          aria-label={t("「{name}」的顏色：{color}", { name, color: BY_COLOR[marker.color].label })}
+          title={t("顏色：{color}", { color: BY_COLOR[marker.color].label })}
+          onClick={(event) => { onMenu("color", { kind: "element", element: event.currentTarget }, rowRef.current); }}
           className={TOOL_BUTTON}
         >
           <span aria-hidden className={cn("size-3 rounded-[3px]", MARKER_COLOR[marker.color])} />
@@ -163,18 +164,18 @@ function MarkerRow({ marker, index, fps, selected, tabbable, current, editing, o
         {editing === "name" ? (
           <InlineField label={t("標記名稱")} value={marker.name} maxLength={NAME_LIMIT} onApply={rename} onClose={endEdit} className="w-full" />
         ) : (
-          <span className={cn("min-w-0 flex-1 truncate text-data", marker.name ? "text-fg" : "text-fg-tertiary")} title={t("{name}（按兩下重新命名）", { name })} onDoubleClick={() => onEdit("name")}>
+          <button onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); onEdit("name"); } }} type="button" className={cn("min-w-0 flex-1 truncate text-data", marker.name ? "text-fg" : "text-fg-tertiary")} title={t("{name}（按兩下重新命名）", { name })} onDoubleClick={() => { onEdit("name"); }}>
             {name}
-          </span>
+          </button>
         )}
       </span>
       <span role="gridcell" className="flex shrink-0 items-center">
         {editing === "frame" ? (
           <InlineField label={t("標記位置（影格或時間碼）")} value={formatTimecode(marker.frame, fps)} onApply={retime} onClose={endEdit} className="machine w-24 text-caption" />
         ) : (
-          <span className={cn("machine px-1 text-caption", current ? "text-brand-cyan" : "text-fg-tertiary")} title={t("按兩下輸入影格、時間碼或 +／− 位移")} onDoubleClick={() => onEdit("frame")}>
+          <button onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); onEdit("frame"); } }} type="button" className={cn("machine px-1 text-caption", current ? "text-brand-cyan" : "text-fg-tertiary")} title={t("按兩下輸入影格、時間碼或 +／− 位移")} onDoubleClick={() => { onEdit("frame"); }}>
             {formatTimecode(marker.frame, fps)}
-          </span>
+          </button>
         )}
       </span>
       <span role="gridcell" className="flex shrink-0">
@@ -199,7 +200,7 @@ function usePlayheadMarkers(playhead: PlayheadStore, markers: readonly TimelineM
   const snapshot = useSyncExternalStore(playhead.subscribe, () => {
     const frame = playhead.getFrame();
     const current = markers.find((marker) => marker.frame === frame)?.marker_id ?? "";
-    return `${markers.some((marker) => marker.frame < frame) ? 1 : 0}${markers.some((marker) => marker.frame > frame) ? 1 : 0}${current}`;
+    return `${String(markers.some((marker) => marker.frame < frame) ? 1 : 0)}${String(markers.some((marker) => marker.frame > frame) ? 1 : 0)}${current}`;
   });
   return { before: snapshot.startsWith("1"), after: snapshot.charAt(1) === "1", currentId: snapshot.slice(2) || null };
 }
@@ -276,14 +277,14 @@ export function MarkersPanel() {
     COLORS.map((color, index) => ({
       id: `color-${color.value}`,
       label: color.label,
-      icon: COLOR_ICON[color.value],
+      icon: color.icon,
       separatorBefore: separated && index === 0,
       disabledReason: color.value === marker.color ? t("目前的顏色") : null,
       onSelect: () => void change(marker.marker_id, { color: color.value }),
     }));
   const rowItems = (marker: TimelineMarker): MenuItem[] => [
-    { id: "seek", label: t("把播放頭移到這個標記"), icon: MapPin, shortcut: "Enter", onSelect: () => transport.seek(marker.frame) },
-    { id: "rename", label: t("重新命名"), icon: PencilLine, shortcut: "F2", onSelect: () => setEditing({ markerId: marker.marker_id, field: "name" }) },
+    { id: "seek", label: t("把播放頭移到這個標記"), icon: MapPin, shortcut: "Enter", onSelect: () => { transport.seek(marker.frame); } },
+    { id: "rename", label: t("重新命名"), icon: PencilLine, shortcut: "F2", onSelect: () => { setEditing({ markerId: marker.marker_id, field: "name" }); } },
     {
       id: "move",
       label: t("把標記移到播放頭"),
@@ -292,7 +293,7 @@ export function MarkersPanel() {
       onSelect: () => void change(marker.marker_id, { frame: playhead.getFrame() }),
     },
     ...colorItems(marker, true),
-    { id: "remove", label: t("刪除標記"), icon: Trash2, shortcut: "Delete", tone: "danger", separatorBefore: true, onSelect: () => remove(marker) },
+    { id: "remove", label: t("刪除標記"), icon: Trash2, shortcut: "Delete", tone: "danger", separatorBefore: true, onSelect: () => { remove(marker); } },
   ];
 
   return (
@@ -303,10 +304,10 @@ export function MarkersPanel() {
           {t("新增標記")}
         </Button>
         <span className="ml-auto flex items-center gap-0.5">
-          <button type="button" aria-label={t("上一個標記")} aria-disabled={before ? undefined : true} title={before ? t("上一個標記") : t("播放頭之前沒有標記")} onClick={() => step(-1)} className={cn(TOOL_BUTTON, !before && UNAVAILABLE)}>
+          <button type="button" aria-label={t("上一個標記")} aria-disabled={before ? undefined : true} title={before ? t("上一個標記") : t("播放頭之前沒有標記")} onClick={() => { step(-1); }} className={cn(TOOL_BUTTON, !before && UNAVAILABLE)}>
             <ChevronLeft aria-hidden />
           </button>
-          <button type="button" aria-label={t("下一個標記")} aria-disabled={after ? undefined : true} title={after ? t("下一個標記") : t("播放頭之後沒有標記")} onClick={() => step(1)} className={cn(TOOL_BUTTON, !after && UNAVAILABLE)}>
+          <button type="button" aria-label={t("下一個標記")} aria-disabled={after ? undefined : true} title={after ? t("下一個標記") : t("播放頭之後沒有標記")} onClick={() => { step(1); }} className={cn(TOOL_BUTTON, !after && UNAVAILABLE)}>
             <ChevronRight aria-hidden />
           </button>
         </span>
@@ -316,7 +317,7 @@ export function MarkersPanel() {
           <EmptyState size="compact" icon={<Flag />} title={t("還沒有標記")} description={t("標記會出現在時間尺上，按一下就能回到那個位置。")} />
         </div>
       ) : (
-        <div id={listId} role="grid" aria-label={t("序列標記")} data-delete-keys="" onKeyDown={keys} className="min-h-0 flex-1 overflow-y-auto py-1">
+        <div tabIndex={-1} id={listId} role="grid" aria-label={t("序列標記")} data-delete-keys="" onKeyDown={keys} className="min-h-0 flex-1 overflow-y-auto py-1">
           {markers.map((marker, index) => (
             <MarkerRow
               key={marker.marker_id}
@@ -327,16 +328,16 @@ export function MarkersPanel() {
               tabbable={selected ? marker.marker_id === selected.marker_id : index === 0}
               current={marker.marker_id === currentId}
               editing={editing?.markerId === marker.marker_id ? editing.field : null}
-              onEdit={(field) => setEditing({ markerId: marker.marker_id, field })}
+              onEdit={(field) => { setEditing({ markerId: marker.marker_id, field }); }}
               onEditEnd={(row) => {
                 setEditing(null);
                 row?.focus();
               }}
-              onSelect={() => setSelectedId(marker.marker_id)}
-              onSeek={() => transport.seek(marker.frame)}
+              onSelect={() => { setSelectedId(marker.marker_id); }}
+              onSeek={() => { transport.seek(marker.frame); }}
               onChange={(patch) => change(marker.marker_id, patch)}
-              onRemove={() => remove(marker)}
-              onMenu={(kind, anchor, row) => setMenu({ markerId: marker.marker_id, kind, anchor, returnFocus: row })}
+              onRemove={() => { remove(marker); }}
+              onMenu={(kind, anchor, row) => { setMenu({ markerId: marker.marker_id, kind, anchor, returnFocus: row }); }}
             />
           ))}
         </div>
@@ -348,7 +349,7 @@ export function MarkersPanel() {
           items={menu.kind === "color" ? colorItems(menuMarker, false) : rowItems(menuMarker)}
           anchor={menu.anchor}
           returnFocus={menu.returnFocus}
-          onClose={() => setMenu(null)}
+          onClose={() => { setMenu(null); }}
         />
       ) : null}
     </div>

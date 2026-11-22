@@ -26,8 +26,8 @@ describe("preset：刪除", () => {
     const confirm = await screen.findByRole("dialog", { name: "刪除 preset「快速」？" });
     expect(within(confirm).getByText(/已套用過它的元件設定不受影響/)).toBeInTheDocument();
     await user.click(within(confirm).getByRole("button", { name: "刪除 preset" }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "刪除 preset「快速」？" })).not.toBeInTheDocument());
-    await waitFor(() => expect(screen.queryByText("快速")).not.toBeInTheDocument());
+    await waitFor(() => { expect(screen.queryByRole("dialog", { name: "刪除 preset「快速」？" })).not.toBeInTheDocument(); });
+    await waitFor(() => { expect(screen.queryByText("快速")).not.toBeInTheDocument(); });
     expect(screen.getByText("仔細")).toBeInTheDocument();
     expect(calls.filter((call) => call.method === "DELETE").map((call) => call.path)).toEqual(["/api/presets/fast"]);
     expect(calls.filter((call) => call.method === "GET" && call.path === "/api/presets").length).toBeGreaterThanOrEqual(2);
@@ -39,7 +39,7 @@ describe("preset：刪除", () => {
     await user.click(await screen.findByRole("button", { name: "刪除 preset「快速」" }));
     const confirm = await screen.findByRole("dialog", { name: "刪除 preset「快速」？" });
     await user.click(within(confirm).getByRole("button", { name: "取消" }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "刪除 preset「快速」？" })).not.toBeInTheDocument());
+    await waitFor(() => { expect(screen.queryByRole("dialog", { name: "刪除 preset「快速」？" })).not.toBeInTheDocument(); });
     expect(calls.filter((call) => call.method === "DELETE")).toEqual([]);
   });
 });

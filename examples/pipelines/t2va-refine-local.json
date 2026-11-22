@@ -1,0 +1,103 @@
+{
+  "pipeline_id": "t2va-refine-local",
+  "label": "H3 草稿精修（BF16、online AdaLN），預設從 50 步取樣網格的第 40 步進入",
+  "inputs": [
+    {
+      "name": "conditioning",
+      "type_id": "h3.conditioning.tap50.v1",
+      "required": true,
+      "transport": "file",
+      "description": "所選文字草稿的 conditioning 輸出，含文字編碼與附件"
+    },
+    {
+      "name": "job",
+      "type_id": "h3.job.v1",
+      "required": true,
+      "transport": "inline",
+      "description": "同一份草稿的 job 輸出，保留原始任務、尺寸與影格數"
+    },
+    {
+      "name": "init_latent",
+      "type_id": "video.final-latent.v1",
+      "required": true,
+      "transport": "file",
+      "description": "同一份草稿的 video_latent 輸出，檔案參照會連結保存影像與音訊的張量"
+    }
+  ],
+  "steps": [
+    {
+      "step_id": "dit",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "dit-fl2va-bf16-base",
+      "inputs": {
+        "conditioning": {
+          "from_input": "conditioning"
+        },
+        "job": {
+          "from_input": "job"
+        },
+        "init_latent": {
+          "from_input": "init_latent"
+        }
+      },
+      "parameters": {
+        "steps": 50,
+        "start_step": 40
+      }
+    },
+    {
+      "step_id": "video",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "vae-gpu0",
+      "inputs": {
+        "latent": {
+          "from_step": "dit",
+          "output": "video_latent"
+        }
+      },
+      "parameters": {}
+    },
+    {
+      "step_id": "audio",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "audio-gpu1",
+      "inputs": {
+        "latent": {
+          "from_step": "dit",
+          "output": "audio_latent"
+        }
+      },
+      "parameters": {}
+    },
+    {
+      "step_id": "mux",
+      "node_id": "00000000-0000-4000-8000-0000000000a1",
+      "component_id": "mux",
+      "inputs": {
+        "video": {
+          "from_step": "video",
+          "output": "asset"
+        },
+        "audio": {
+          "from_step": "audio",
+          "output": "audio"
+        }
+      },
+      "parameters": {}
+    }
+  ],
+  "outputs": {
+    "final": {
+      "from_step": "mux",
+      "output": "asset"
+    },
+    "video_latent": {
+      "from_step": "dit",
+      "output": "video_latent"
+    },
+    "audio_latent": {
+      "from_step": "dit",
+      "output": "audio_latent"
+    }
+  }
+}

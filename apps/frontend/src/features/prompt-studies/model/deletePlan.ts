@@ -4,7 +4,7 @@
 import type { DeleteMode, PromptStudyDeletionPlan } from "../types";
 import { t } from "@/i18n";
 
-export const DELETE_MODES: ReadonlyArray<{ mode: DeleteMode; label: string; description: string }> = [
+export const DELETE_MODES: readonly { mode: DeleteMode; label: string; description: string }[] = [
   {
     mode: "keep_images",
     label: t("保留圖片移除"),

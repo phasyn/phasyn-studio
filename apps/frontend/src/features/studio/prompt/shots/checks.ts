@@ -97,7 +97,7 @@ export function applyShotSize(text: string, size: ShotSize, lowerCase: boolean):
 /** What a subject chip writes: `<Subject 1> with long pink hair and a gold hair clip`. */
 export function subjectInsertion(subject: Pick<SubjectCheck, "number" | "phrase">): string {
   const phrase = subject.phrase.trim();
-  return phrase === "" ? `<Subject ${subject.number}>` : `<Subject ${subject.number}> ${phrase}`;
+  return phrase === "" ? `<Subject ${String(subject.number)}>` : `<Subject ${String(subject.number)}> ${phrase}`;
 }
 
 /** The subjects a description names (<Subject N>, by number): the pressed character chips. */
@@ -228,7 +228,7 @@ export function blocksSave(issue: ShotIssue): boolean {
 }
 
 export function issueKey(issue: ShotIssue): string {
-  return issue.kind === "undefined" || issue.kind === "features" ? `${issue.kind}:${issue.subject}` : issue.kind;
+  return issue.kind === "undefined" || issue.kind === "features" ? `${issue.kind}:${String(issue.subject)}` : issue.kind;
 }
 
 /** One short sentence: what is missing and what to add. */
@@ -243,11 +243,11 @@ export function issueText(issue: ShotIssue): string {
     case "subject":
       return t("沒寫出角色：用角色按鈕加上 <Subject N>（沒有角色的空鏡可以不管）");
     case "undefined":
-      return t("{subject} 沒有定義：subject_definitions 裡沒有這個角色", { subject: `<Subject ${issue.subject}>` });
+      return t("{subject} 沒有定義：subject_definitions 裡沒有這個角色", { subject: `<Subject ${String(issue.subject)}>` });
     case "features":
       return issue.phrase === ""
-        ? t("{subject} 沒寫特徵：加上髮色和一個配件，否則快速動作的鏡頭會畫回原角色", { subject: `<Subject ${issue.subject}>` })
-        : t("{subject} 沒寫特徵：加上「{phrase}」，否則快速動作的鏡頭會畫回原角色", { subject: `<Subject ${issue.subject}>`, phrase: issue.phrase });
+        ? t("{subject} 沒寫特徵：加上髮色和一個配件，否則快速動作的鏡頭會畫回原角色", { subject: `<Subject ${String(issue.subject)}>` })
+        : t("{subject} 沒寫特徵：加上「{phrase}」，否則快速動作的鏡頭會畫回原角色", { subject: `<Subject ${String(issue.subject)}>`, phrase: issue.phrase });
     case "viewpoint":
       return t("沒寫視角：看著左邊的參考畫面按視角按鈕；寫得和原片相反時，H3 會照抄原片那一鏡");
     case "negation":

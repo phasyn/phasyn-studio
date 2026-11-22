@@ -42,7 +42,7 @@ export function countLeaves(node: PartNode): number {
 }
 
 function acceptedFields(part: Part): Set<string> {
-  const properties = isRecord(part.settings_schema) ? part.settings_schema.properties : undefined;
+  const properties = isRecord(part.settings_schema) ? part.settings_schema["properties"] : undefined;
   return new Set(isRecord(properties) ? Object.keys(properties) : []);
 }
 
@@ -63,7 +63,7 @@ export interface RuleAnalysis {
   /** 欄位 → schema（取第一個命中且宣告該欄位的 part）。 */
   fieldSchemas: Record<string, unknown>;
   /** 規則中被至少一個命中 part 拒絕的欄位。 */
-  rejected: Array<{ field: string; parts: string[] }>;
+  rejected: { field: string; parts: string[] }[];
   overlaps: RuleOverlap[];
 }
 
@@ -80,7 +80,7 @@ export function analyzeRules(parts: readonly Part[], rules: readonly PartOverrid
     const fieldSchemas: Record<string, unknown> = {};
     for (const field of accepted) {
       for (const part of matchedParts) {
-        const properties = isRecord(part.settings_schema) ? part.settings_schema.properties : undefined;
+        const properties = isRecord(part.settings_schema) ? part.settings_schema["properties"] : undefined;
         if (isRecord(properties) && Object.hasOwn(properties, field)) {
           fieldSchemas[field] = properties[field];
           break;
@@ -107,7 +107,7 @@ export function analyzeRules(parts: readonly Part[], rules: readonly PartOverrid
 
 /** 阻擋儲存的錯誤（伺服器一定會以 422 拒絕）。 */
 export function ruleBlockingErrors(analysis: RuleAnalysis): string[] {
-  if (analysis.selectorError) return [analysis.selectorError];
+  if (analysis.selectorError != null && analysis.selectorError !== "") return [analysis.selectorError];
   const errors: string[] = [];
   if (analysis.matched.length === 0) errors.push(t("selector「{selector}」沒有命中任何子部件", { selector: analysis.selector }));
   for (const item of analysis.rejected) errors.push(t("欄位 {field} 不被 {partsCount} 個命中的 part 接受（例如 {value}）", { field: item.field, partsCount: item.parts.length, value: item.parts[0] ?? "" }));
@@ -139,7 +139,7 @@ export function expandParts(parts: readonly Part[], basePrecision: unknown, rule
       if (!analysis.matched.includes(part.path)) return;
       const ruleSettings = rules[analysis.index]?.settings;
       if (!isRecord(ruleSettings)) return;
-      settings = applyMergePatch(settings, ruleSettings) as JsonObject;
+      settings = applyMergePatch(settings, ruleSettings);
       for (const key of Object.keys(ruleSettings)) sources[key] = analysis.index;
     });
     return { path: part.path, settings, sources };

@@ -23,6 +23,7 @@ from typing import Any
 
 from .sink import RecordingSink
 
+
 CRITICAL_QUEUE_EVENTS = 2048
 CRITICAL_QUEUE_BYTES = 8 * 1024 * 1024
 MAX_MISSING_RANGES = 64
@@ -33,7 +34,11 @@ Publisher = Callable[[dict[str, Any]], bool]
 
 
 def json_line(obj: Mapping[str, Any]) -> bytes:
-    return (json.dumps(obj, ensure_ascii=False, allow_nan=False, separators=(",", ":")) + "\n").encode("utf-8")
+    """Encode one complete JSONL record."""
+    return (
+        json.dumps(obj, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
+        + "\n"
+    ).encode("utf-8")
 
 
 @dataclass(frozen=True)
@@ -54,7 +59,9 @@ class WriterStats:
 
 
 class EventWriter:
-    def __init__(
+    """Queue and drain recording events to local storage."""
+
+    def __init__(  # noqa: PLR0913 - Keep the published positional and keyword API.
         self,
         *,
         sink: RecordingSink | None,
@@ -65,6 +72,7 @@ class EventWriter:
         max_detail_bytes: int,
         degraded_reason: str | None = None,
     ) -> None:
+        """Initialize event writer with its configuration."""
         self._sink = sink
         self._publish = publish
         self._stream_id = stream_id
@@ -73,8 +81,12 @@ class EventWriter:
         self.max_detail_bytes = max_detail_bytes
         self._cv = threading.Condition()
         self._seq = 0
-        self._detail: collections.deque[tuple[bytes, dict[str, Any]]] = collections.deque()
-        self._critical: collections.deque[tuple[bytes, dict[str, Any]]] = collections.deque()
+        self._detail: collections.deque[tuple[bytes, dict[str, Any]]] = (
+            collections.deque()
+        )
+        self._critical: collections.deque[tuple[bytes, dict[str, Any]]] = (
+            collections.deque()
+        )
         self._detail_q_bytes = 0
         self._critical_q_bytes = 0
         self._detail_bytes = 0
@@ -96,19 +108,24 @@ class EventWriter:
     # ------------------------------------------------------------------ producer side
     @property
     def has_publisher(self) -> bool:
+        """Report whether a downstream publisher is configured."""
         return self._publish is not None
 
     @property
     def degraded_reason(self) -> str | None:
+        """Return the reason recording is degraded."""
         with self._cv:
             return self._degraded_reason
 
     def degrade(self, reason: str) -> None:
+        """Mark the writer as degraded."""
         with self._cv:
             if self._degraded_reason is None:
                 self._degraded_reason = reason
 
-    def enqueue(self, event: dict[str, Any], *, critical: bool, started_ns: int | None = None) -> int | None:
+    def enqueue(
+        self, event: dict[str, Any], *, critical: bool, started_ns: int | None = None
+    ) -> int | None:
         """Assign the next ``seq``, serialise and queue the event (or count it as dropped).
 
         ``started_ns`` (``time.perf_counter_ns()``) lets the caller's own preparation count as recorder time.
@@ -130,7 +147,10 @@ class EventWriter:
                 return None
             size = len(line)
             if critical:
-                if len(self._critical) >= CRITICAL_QUEUE_EVENTS or self._critical_q_bytes + size > CRITICAL_QUEUE_BYTES:
+                if (
+                    len(self._critical) >= CRITICAL_QUEUE_EVENTS
+                    or self._critical_q_bytes + size > CRITICAL_QUEUE_BYTES
+                ):
                     self._drop(seq, size)
                     self._degraded_reason = self._degraded_reason or "critical 佇列已滿"
                 else:
@@ -141,7 +161,10 @@ class EventWriter:
             elif self._detail_bytes + size > self.max_detail_bytes:
                 self._detail_truncated = True
                 self._drop(seq, size)
-            elif len(self._detail) >= self._queue_max_events or self._detail_q_bytes + size > self._queue_max_bytes:
+            elif (
+                len(self._detail) >= self._queue_max_events
+                or self._detail_q_bytes + size > self._queue_max_bytes
+            ):
                 self._drop(seq, size)
             else:
                 self._detail.append((line, event))
@@ -158,7 +181,7 @@ class EventWriter:
             return
         try:
             ok = self._publish(record)
-        except Exception:  # the publisher is best-effort by contract: never let it break recording
+        except Exception:  # noqa: BLE001 - Publisher callbacks are isolated from recording.
             ok = False
         if not ok:
             with self._cv:
@@ -183,7 +206,9 @@ class EventWriter:
     # ------------------------------------------------------------------ writer thread
     def _start_thread(self) -> None:
         if self._thread is None and not self._closing:
-            self._thread = threading.Thread(target=self._loop, name=f"recorder-{self._stream_id}", daemon=True)
+            self._thread = threading.Thread(
+                target=self._loop, name=f"recorder-{self._stream_id}", daemon=True
+            )
             self._thread.start()
 
     def _loop(self) -> None:
@@ -224,9 +249,15 @@ class EventWriter:
             try:
                 written = self._sink.write_lines([line for line, _ in batch])
             except (OSError, ValueError) as exc:
-                reason = exc.strerror if isinstance(exc, OSError) and exc.strerror else str(exc)
+                reason = (
+                    exc.strerror
+                    if isinstance(exc, OSError) and exc.strerror
+                    else str(exc)
+                )
                 with self._cv:
-                    self._degraded_reason = self._degraded_reason or f"紀錄寫入失敗（{reason}）"
+                    self._degraded_reason = (
+                        self._degraded_reason or f"紀錄寫入失敗（{reason}）"
+                    )
                     for line, event in batch:
                         self._drop(int(event["seq"]), len(line))
                 return
@@ -265,6 +296,7 @@ class EventWriter:
         return True
 
     def stats(self) -> WriterStats:
+        """Return the current writer statistics."""
         with self._cv:
             return WriterStats(
                 dropped_events=self._dropped_events,

@@ -17,8 +17,8 @@ Step by step, as in the pipeline:
 - The prefix (text + references) is modulated at t=0 (``causal_condition``): step 0 runs with
   ``kv_cache_mode="extract"`` to fill the KV cache, later steps use ``"cached"`` and only recompute target
   tokens. With CFG each branch has its own cache.
-- CFG: ``neg + s·(cond − neg)`` when guidance > 1.
-- FlowMatch Euler: ``sample.float() + (σ[i+1] − σ[i])·v``, cast back to the dtype of ``v``; σ lives on the
+- CFG: ``neg + s·(cond - neg)`` when guidance > 1.
+- FlowMatch Euler: ``sample.float() + (sigma[i+1] - sigma[i])·v``, cast back to the dtype of ``v``; sigma lives on the
   device (as in the scheduler).
 
 Every tensor operation keeps the pipeline's order, dtype and layout, so the same inputs on the same device
@@ -35,12 +35,13 @@ from .. import VAE_SCALE_FACTOR
 from ..latents import latent_hw
 from .schedule import Schedule
 
+
 IMG_TOKENS_PER_SLOT = 4
 
 
 @dataclass
 class Branch:
-    """一個 CFG 分支的條件（裝置上的 tensor）。``mask`` 為 None 表示沒有 padding（與 encode_prompt 相同語意）。"""
+    """一個 CFG 分支的條件（裝置上的 tensor）。``mask`` 為 None 表示沒有 padding（與 encode_prompt 相同語意）."""
 
     embeds: Any
     image_pad_mask: Any
@@ -49,6 +50,8 @@ class Branch:
 
 @dataclass
 class DenoiseRequest:
+    """Inputs, schedule and guidance for a single denoising pass."""
+
     width: int
     height: int
     seed: int
@@ -61,25 +64,42 @@ class DenoiseRequest:
 
     @property
     def cfg(self) -> bool:
+        """Report whether classifier-free guidance is required."""
         return self.guidance > 1
 
 
 class StepObserver(Protocol):
-    def check_cancelled(self) -> None: ...
+    """Callbacks used to record an individual denoising step."""
 
-    def step_start(self, index: int) -> None: ...
+    def check_cancelled(self) -> None:
+        """Raise if the caller cancelled the current job."""
+        ...
 
-    def forward_done(self, index: int, branch: str) -> None: ...
+    def step_start(self, index: int) -> None:
+        """Begin measurements for this denoising step."""
+        ...
 
-    def step_end(self, index: int, *, sigma: float, forwards: int) -> None: ...
+    def forward_done(self, index: int, branch: str) -> None:
+        """Record the completion of a denoiser forward pass."""
+        ...
 
-    def wants_preview(self, index: int) -> bool: ...
+    def step_end(self, index: int, *, sigma: float, forwards: int) -> None:
+        """Finish measurements for this denoising step."""
+        ...
 
-    def preview(self, index: int, x0: Callable[[], Any]) -> None: ...
+    def wants_preview(self, index: int) -> bool:
+        """Report whether this step should publish a preview."""
+        ...
+
+    def preview(self, index: int, x0: Callable[[], Any]) -> None:
+        """Publish the intermediate preview for this step."""
+        ...
 
 
 @dataclass
 class DenoiseResult:
+    """The generated latents and measured per-branch work."""
+
     latents: Any
     kv_cache: bool
     forwards: int
@@ -87,25 +107,32 @@ class DenoiseResult:
     img_shapes: list[tuple[int, int, int]]
 
 
-def initial_noise(*, seed: int, channels: int, height: int, width: int, dtype: Any, device: Any) -> Any:
-    """``randn_tensor(shape, generator=torch.Generator("cpu").manual_seed(seed), device, dtype)`` 的 CPU 路徑＋打包。"""
+def initial_noise(  # noqa: PLR0913 - Keep the published runtime API.
+    *, seed: int, channels: int, height: int, width: int, dtype: Any, device: Any
+) -> Any:
+    """``randn_tensor(shape, generator=torch.Generator("cpu").manual_seed(seed), device, dtype)`` 的 CPU 路徑+打包."""
     import torch
 
     h, w = latent_hw(width, height)
     generator = torch.Generator("cpu").manual_seed(int(seed))
     shape = (1, 1, channels, h, w)
-    latents = torch.randn(shape, generator=generator, device="cpu", dtype=dtype, layout=torch.strided).to(device)
+    latents = torch.randn(
+        shape, generator=generator, device="cpu", dtype=dtype, layout=torch.strided
+    ).to(device)
     return latents.view(1, channels, h * w).transpose(1, 2)
 
 
 def _append_target_slots(mask: Any, target_tokens: int) -> Any:
     import torch
 
-    return torch.cat([mask, mask.new_ones(mask.shape[0], target_tokens // IMG_TOKENS_PER_SLOT)], dim=1)
+    return torch.cat(
+        [mask, mask.new_ones(mask.shape[0], target_tokens // IMG_TOKENS_PER_SLOT)],
+        dim=1,
+    )
 
 
 def _schedule_tensors(schedule: Schedule, device: Any) -> tuple[Any, Any]:
-    """同 ``set_timesteps``：``from_numpy(sigmas).to(float32, device)``、``timesteps = sigmas * N``、terminal 0。"""
+    """同 ``set_timesteps``：``from_numpy(sigmas).to(float32, device)``、``timesteps = sigmas * N``、terminal 0."""
     import torch
 
     sigmas = torch.from_numpy(schedule.sigmas).to(dtype=torch.float32, device=device)
@@ -122,18 +149,12 @@ def denoise(
     observer: StepObserver | None = None,
     use_kv_cache: bool = True,
 ) -> DenoiseResult:
-    """單次 invoke 內的完整去噪迴圈；回傳最後一次 Euler 更新後的打包 latent（正規化空間）。"""
+    """單次 invoke 內的完整去噪迴圈；回傳最後一次 Euler 更新後的打包 latent（正規化空間）."""
     import torch
-    from diffusers.models.transformers.transformer_qwenimage21 import QwenImage21KVCache
 
     if request.cfg and request.negative is None:
         raise ValueError("guidance > 1 需要負向條件（CFG 分支）")
-    embeds = request.positive.embeds
-    dtype = embeds.dtype
-    channels = int(transformer.config.in_channels)
-    latents = initial_noise(
-        seed=request.seed, channels=channels, height=request.height, width=request.width, dtype=dtype, device=device
-    )
+    dtype, latents = _initial_latents(transformer, request, device)
     ref = request.ref_latents
     img_shapes = [
         [
@@ -145,11 +166,14 @@ def denoise(
     target_tokens = int(latents.shape[1])
     pos_mask = _append_target_slots(request.positive.image_pad_mask, target_tokens)
     neg = request.negative if request.cfg else None
-    neg_mask = _append_target_slots(neg.image_pad_mask, target_tokens) if neg is not None else None
-    num_blocks = len(transformer.transformer_blocks)
-    cache_enabled = bool(use_kv_cache and transformer.config.causal_condition)
-    cond_cache = QwenImage21KVCache(num_blocks) if cache_enabled else None
-    neg_cache = QwenImage21KVCache(num_blocks) if cache_enabled and neg is not None else None
+    neg_mask = (
+        _append_target_slots(neg.image_pad_mask, target_tokens)
+        if neg is not None
+        else None
+    )
+    cache_enabled, cond_cache, neg_cache = _branch_caches(
+        transformer, neg, use_kv_cache=use_kv_cache
+    )
     attention_kwargs: dict[str, Any] = {}
     forwards = 0
 
@@ -158,7 +182,11 @@ def denoise(
             if observer is not None:
                 observer.check_cancelled()
                 observer.step_start(i)
-            kv_mode = "extract" if (cache_enabled and i == 0) else ("cached" if cache_enabled else None)
+            kv_mode = (
+                "extract"
+                if (cache_enabled and i == 0)
+                else ("cached" if cache_enabled else None)
+            )
             latent_model_input = latents
             if ref is not None:
                 latent_model_input = torch.cat([ref, latents], dim=1)
@@ -167,7 +195,7 @@ def denoise(
                 noise_pred = transformer(
                     hidden_states=latent_model_input,
                     timestep=timestep / 1000,
-                    encoder_hidden_states=embeds,
+                    encoder_hidden_states=request.positive.embeds,
                     encoder_hidden_states_mask=request.positive.mask,
                     img_shapes=img_shapes,
                     img_mask=pos_mask,
@@ -198,26 +226,24 @@ def denoise(
                 forwards += 1
                 if observer is not None:
                     observer.forward_done(i, "uncond")
-                noise_pred = neg_noise_pred + request.guidance * (noise_pred - neg_noise_pred)
+                noise_pred = neg_noise_pred + request.guidance * (
+                    noise_pred - neg_noise_pred
+                )
 
             sigma = sigmas[i]
             sigma_next = sigmas[i + 1]
             if observer is not None and observer.wants_preview(i):
-                pre_step, model_output, step_sigma = latents, noise_pred, sigma
-
-                def x0(s: Any = pre_step, v: Any = model_output, sg: Any = step_sigma) -> Any:
-                    # x0 estimate for previews: x0 = sample − σ·v (read-only; sampling state is unchanged)
-                    sg32 = torch.as_tensor(sg, device=s.device, dtype=torch.float32)
-                    return s[:1].detach().float() - sg32 * v[:1].detach().float()
-
-                observer.preview(i, x0)
-            # FlowMatchEulerDiscreteScheduler.step（確定性分支）
+                _submit_x0(observer, i, latents, noise_pred, sigma)
             sample = latents.to(torch.float32)
             dt = sigma_next - sigma
             prev_sample = sample + dt * noise_pred
             latents = prev_sample.to(noise_pred.dtype)
             if observer is not None:
-                observer.step_end(i, sigma=float(request.schedule.sigmas[i]), forwards=2 if neg is not None else 1)
+                observer.step_end(
+                    i,
+                    sigma=float(request.schedule.sigmas[i]),
+                    forwards=2 if neg is not None else 1,
+                )
 
     return DenoiseResult(
         latents=latents,
@@ -228,4 +254,57 @@ def denoise(
     )
 
 
-__all__ = ["Branch", "DenoiseRequest", "DenoiseResult", "StepObserver", "denoise", "initial_noise"]
+def _initial_latents(
+    transformer: Any, request: DenoiseRequest, device: Any
+) -> tuple[Any, Any]:
+    embeds = request.positive.embeds
+    dtype = embeds.dtype
+    channels = int(transformer.config.in_channels)
+    latents = initial_noise(
+        seed=request.seed,
+        channels=channels,
+        height=request.height,
+        width=request.width,
+        dtype=dtype,
+        device=device,
+    )
+    return dtype, latents
+
+
+def _branch_caches(
+    transformer: Any, neg: Any, *, use_kv_cache: bool
+) -> tuple[bool, Any, Any]:
+    from diffusers.models.transformers.transformer_qwenimage21 import QwenImage21KVCache
+
+    num_blocks = len(transformer.transformer_blocks)
+    cache_enabled = bool(use_kv_cache and transformer.config.causal_condition)
+    cond_cache = QwenImage21KVCache(num_blocks) if cache_enabled else None
+    neg_cache = (
+        QwenImage21KVCache(num_blocks) if cache_enabled and neg is not None else None
+    )
+    return cache_enabled, cond_cache, neg_cache
+
+
+def _submit_x0(
+    observer: StepObserver, i: int, latents: Any, noise_pred: Any, sigma: Any
+) -> None:
+    import torch
+
+    pre_step, model_output, step_sigma = latents, noise_pred, sigma
+
+    def x0(s: Any = pre_step, v: Any = model_output, sg: Any = step_sigma) -> Any:
+        # x0 estimate for previews: x0 = sample - sigma * v (read-only; sampling state is unchanged)
+        sg32 = torch.as_tensor(sg, device=s.device, dtype=torch.float32)
+        return s[:1].detach().float() - sg32 * v[:1].detach().float()
+
+    observer.preview(i, x0)
+
+
+__all__ = [
+    "Branch",
+    "DenoiseRequest",
+    "DenoiseResult",
+    "StepObserver",
+    "denoise",
+    "initial_noise",
+]

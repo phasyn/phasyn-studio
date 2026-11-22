@@ -3,7 +3,7 @@ import { ApiError } from "@/api/http";
 import type { ErrorKind } from "@/api/generated/errorCodes";
 import { errorHeadline, errorHint, errorKind } from "@/i18n/errors";
 import { isRecord } from "./json";
-import { t, tServer } from "@/i18n";
+import { getLocale, t, tServer } from "@/i18n";
 
 export interface ErrorInfo {
   code: string;
@@ -34,16 +34,16 @@ export function toErrorInfo(error: unknown): ErrorInfo {
       kind: errorKind(error.code),
     };
   }
-  if (isRecord(error) && typeof error.code === "string") {
+  if (isRecord(error) && typeof error["code"] === "string") {
     return {
-      code: error.code,
-      message: typeof error.message === "string" && error.message ? error.message : error.code,
+      code: error["code"],
+      message: typeof error["message"] === "string" && error["message"] ? error["message"] : error["code"],
       status: null,
-      details: isRecord(error.details) ? error.details : {},
-      remoteOutcomeUnknown: error.remote_outcome_unknown === true,
-      headline: errorHeadline(error.code),
-      hint: errorHint(error.code),
-      kind: errorKind(error.code),
+      details: isRecord(error["details"]) ? error["details"] : {},
+      remoteOutcomeUnknown: error["remote_outcome_unknown"] === true,
+      headline: errorHeadline(error["code"]),
+      hint: errorHint(error["code"]),
+      kind: errorKind(error["code"]),
     };
   }
   if (error instanceof Error) {
@@ -68,7 +68,63 @@ function mentionsRemoteUnknown(text: string): boolean {
   return text.includes("遠端結果未知") || text.includes(t("遠端結果未知")); // i18n-ignore: the first is the server's original text
 }
 
-const CODE_PATTERN = /^[A-Z][A-Z0-9_]+$/;
+const UUID_SOURCE = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const RUN_ID_RE = new RegExp(`\\brun\\s+(${UUID_SOURCE})`, "giu");
+const UUID_RE = new RegExp(UUID_SOURCE, "giu");
+const CJK_RE = /[\u3400-\u9fff\uf900-\ufaff]/u;
+
+/** Finds the name of a run the app has already read (the query cache); null when it is not known. */
+export type RunNamer = (runId: string) => string | null;
+let runNamer: RunNamer = () => null;
+
+/** Set once by the app's query client, so failure texts can name runs instead of showing their ids. */
+export function setRunNamer(namer: RunNamer): void {
+  runNamer = namer;
+}
+
+/**
+ * Replaces the ids a person cannot read in a server message: 「run <id>」 becomes the run's name (or 「另一個工作」 when
+ * the app has not read that run), any other id (file, node, component instance) is left out.
+ */
+export function humanizeIds(text: string): string {
+  return text
+    .replace(RUN_ID_RE, (_match, id: string) => {
+      const name = runNamer(id.toLowerCase());
+      return name === null ? t("另一個工作") : t("「{name}」", { name });
+    })
+    .replace(UUID_RE, "")
+    .replace(/[ \t]{2,}/gu, " ")
+    // Chinese has no spaces between words: a space left between two Chinese characters or brackets goes
+    .replace(/([\u3400-\u9fff」）])[ \t]+(?=[\u3400-\u9fff「（])/gu, "$1")
+    .replace(/[ \t]+([，。；：、）」,.;:)])/gu, "$1")
+    .replace(/([（「(])[ \t]+/gu, "$1")
+    .replace(/（）|\(\)/gu, "")
+    .trim();
+}
+
+/**
+ * The words a person reads for a failure, everywhere the UI shows one: the server's message in the interface language
+ * (a fixed message translated), without the error code and with readable names instead of ids. A message the catalog
+ * cannot translate (a dynamic one) is shown as it is in the source language; in another language the code's localized
+ * headline and next step stand in for it in English, instead of Chinese the reader may not read.
+ */
+export function failureText(code: string, message: string | null | undefined, details: Record<string, unknown> = {}): string {
+  const source = message ?? "";
+  const translated = tServer(source);
+  // Japanese readers read the Chinese source well enough; English readers get the headline instead
+  const unreadable = translated === source && getLocale() === "en" && CJK_RE.test(source);
+  let text = unreadable ? "" : humanizeIds(translated);
+  const holder = details["active_run_id"];
+  if (text && typeof holder === "string") {
+    const name = runNamer(holder.toLowerCase());
+    if (name !== null) text = t("{text}（{name}）", { text, name });
+  }
+  if (text) return text;
+  const headline = errorHeadline(code);
+  const hint = errorHint(code);
+  if (headline !== null && hint !== null) return t("{headline}：{hint}", { headline, hint });
+  return headline ?? (humanizeIds(translated) || code);
+}
 
 export interface ErrorTextOptions {
   /** Where to check when a write's remote outcome is unknown (default REMOTE_UNKNOWN_TEXT). */
@@ -76,14 +132,13 @@ export interface ErrorTextOptions {
 }
 
 /**
- * One-line error text for notices and inline errors: "{code}：{message}" for coded errors, the message otherwise (a fixed
- * server message is shown translated), and the remote-outcome warning appended once when a write may or may not have
- * happened (never when the message already says so).
+ * One-line error text for notices and inline errors: failureText (the message in plain words, no error code, no ids),
+ * and the remote-outcome warning appended once when a write may or may not have happened (never when the message
+ * already says so).
  */
 export function errorText(error: unknown, options: ErrorTextOptions = {}): string {
   const info = toErrorInfo(error);
-  const message = tServer(info.message);
-  const base = CODE_PATTERN.test(info.code) && info.message !== info.code ? t("{code}：{message}", { code: info.code, message }) : message;
+  const base = failureText(info.code, info.message, info.details);
   if (!writeOutcomeUnknown(error)) return base;
   const remoteUnknown = options.remoteUnknown ?? REMOTE_UNKNOWN_TEXT;
   return base.includes(remoteUnknown) || mentionsRemoteUnknown(info.message) ? base : t("{base}（{remoteUnknown}）", { base, remoteUnknown });

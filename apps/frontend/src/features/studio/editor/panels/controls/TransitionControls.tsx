@@ -65,13 +65,14 @@ export function TransitionControls({ clip, transition }: TransitionControlsProps
   const title = useChangeFade<HTMLHeadingElement>(transition.kind);
   const ordered = trackClips(timeline, clip.track_id);
   const next = ordered[ordered.findIndex((item) => item.clip_id === clip.clip_id) + 1];
+  // eslint-disable-next-line @eslint-react/no-unstable-context-value -- The lock reason is a primitive string or null; React compares it by value.
   const lock = lockReason(timeline, clip, linked);
   // The clips as they are at the cut bound the length: what they lend beyond it does not count
   const cut = cutOf(transition);
   const longest = Math.min(TRANSITION_MAX_FRAMES, clipDuration(clip) - cut.outgoing.frames, next ? clipDuration(next) - cut.incoming.frames : TRANSITION_MAX_FRAMES);
   const repeated = next ? repeatedFrames(clip, next, transition) : { outgoing: 0, incoming: 0 };
   const names = next ? t("{from} → {to}", { from: clip.name, to: next.name }) : clip.name;
-  const set = (kind: Kind | "cut", frames: number, options?: TransitionOptions, alignment?: TransitionAlignment) => runEdit(editor, { type: "transition", clipId: clip.clip_id, kind, frames, options, alignment, linked });
+  const set = (kind: Kind | "cut", frames: number, options?: TransitionOptions, alignment?: TransitionAlignment) => runEdit(editor, { type: "transition", clipId: clip.clip_id, kind, frames, ...(options === undefined ? {} : { options }), ...(alignment === undefined ? {} : { alignment }), linked });
   const report = (result: ReturnType<typeof set>) => {
     if (typeof result === "string") editor.warn(result);
   };
@@ -88,7 +89,7 @@ export function TransitionControls({ clip, transition }: TransitionControlsProps
   });
   const wipe = moving?.kind === "wipe" ? moving : null;
   return (
-    <FieldLockContext.Provider value={lock}>
+    <FieldLockContext value={lock}>
       <div data-keep-focus="" className="flex min-h-0 flex-1 flex-col">
         <header className="flex h-9 shrink-0 items-center gap-2 border-b border-line-subtle px-2">
           <Hourglass aria-hidden className="size-4 shrink-0 text-brand-cyan" />
@@ -101,10 +102,10 @@ export function TransitionControls({ clip, transition }: TransitionControlsProps
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto py-1">
           <Row label={t("種類")}>
-            <SelectField label={t("轉場種類")} value={transition.kind} options={KIND_OPTIONS} onChange={(kind) => report(set(kind, transition.frames))} className="max-w-56 flex-1" />
+            <SelectField label={t("轉場種類")} value={transition.kind} options={KIND_OPTIONS} onChange={(kind) => { report(set(kind, transition.frames)); }} className="max-w-56 flex-1" />
           </Row>
           <Row label={t("對齊")} hint={ALIGNMENT_HINT}>
-            <Segmented label={t("轉場對齊")} value={cut.alignment} options={ALIGNMENT_OPTIONS} onChange={(alignment) => report(set(transition.kind, transition.frames, undefined, alignment))} />
+            <Segmented label={t("轉場對齊")} value={cut.alignment} options={ALIGNMENT_OPTIONS} onChange={(alignment) => { report(set(transition.kind, transition.frames, undefined, alignment)); }} />
             <span className="min-w-0 truncate text-caption text-fg-secondary">{TRANSITION_ALIGNMENT_LABELS[cut.alignment]}</span>
           </Row>
           {repeated.outgoing + repeated.incoming > 0 ? (
@@ -124,7 +125,7 @@ export function TransitionControls({ clip, transition }: TransitionControlsProps
           {moving ? (
             <div key={`moving-${moving.kind === "zoom" ? "zoom" : "edge"}`} ref={reveal(0)}>
               <Row label={t("方向")} hint={DIRECTION_HINT}>
-                <Segmented label={t("轉場方向")} value={moving.direction} options={directionOptions} onChange={(direction) => report(set(moving.kind, moving.frames, { direction }))} />
+                <Segmented label={t("轉場方向")} value={moving.direction} options={directionOptions} onChange={(direction) => { report(set(moving.kind, moving.frames, { direction })); }} />
               </Row>
               <Row label={t("緩動")} hint={EASING_HINT}>
                 <SelectField
@@ -132,7 +133,7 @@ export function TransitionControls({ clip, transition }: TransitionControlsProps
                   hint={EASING_HINT}
                   value={moving.easing ?? DEFAULT_TRANSITION_EASING}
                   options={EASING_OPTIONS}
-                  onChange={(easing) => report(set(moving.kind, moving.frames, { easing }))}
+                  onChange={(easing) => { report(set(moving.kind, moving.frames, { easing })); }}
                   className="max-w-56 flex-1"
                 />
               </Row>
@@ -173,6 +174,6 @@ export function TransitionControls({ clip, transition }: TransitionControlsProps
           </ActionRow>
         </div>
       </div>
-    </FieldLockContext.Provider>
+    </FieldLockContext>
   );
 }

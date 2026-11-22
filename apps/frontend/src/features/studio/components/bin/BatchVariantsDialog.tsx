@@ -72,11 +72,11 @@ function ShotVariantRow({ item, index, position, routeLabel }: { item: ShotVaria
             const badge = comboBadge(shot, axes, combo, routeLabel);
             return (
               <li
-                key={`${combo.route}\n${combo.item?.item_id ?? ""}\n${combo.seed}`}
+                key={`${combo.route}\n${combo.item?.item_id ?? ""}\n${String(combo.seed)}`}
                 title={badge.text}
                 className="inline-flex max-w-full min-w-0 items-center gap-1 rounded-md bg-raised/60 px-1.5 py-px text-caption animate-pop-in"
               >
-                <span className="machine shrink-0 font-semibold text-fg">{`#${shot.takes.length + at + 1}`}</span>
+                <span className="machine shrink-0 font-semibold text-fg">{`#${String(shot.takes.length + at + 1)}`}</span>
                 <span className={cn("min-w-0 truncate", badge.same ? "text-fg-tertiary" : "text-fg-secondary")}>{badge.text}</span>
               </li>
             );
@@ -94,7 +94,7 @@ export function BatchVariantsDialog({ shotIds, open, positions, onClose }: Batch
   const studio = useStudio();
   const { engine, catalog, plugins, busy, runBlockedReason, renderVariantBatch } = studio;
   const id = useId();
-  const content = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
   const [choices, setChoices] = useState<BatchVariantChoices>(INITIAL_BATCH_CHOICES);
   const [pending, setPending] = useState(false);
   /** The project as it was when the run was sent or the dialog closed (shown while it fades out). */
@@ -114,7 +114,7 @@ export function BatchVariantsDialog({ shotIds, open, positions, onClose }: Batch
     for (const shot of shots) for (const route of variantRoutes(shot, engine.routes, catalog).slice(1)) counts.set(route.id, (counts.get(route.id) ?? 0) + 1);
     return engine.routes.flatMap((route): BatchRouteOption[] => {
       const count = counts.get(route.id);
-      return count ? [{ route, shots: count }] : [];
+      return (count != null && Boolean(count)) ? [{ route, shots: count }] : [];
     });
   }, [shots, engine.routes, catalog]);
   const plan = useMemo(() => batchVariantPlan(project, shots, choices, { routes: engine.routes, catalog, plugins, lanes }), [project, shots, choices, engine.routes, catalog, plugins, lanes]);
@@ -131,7 +131,7 @@ export function BatchVariantsDialog({ shotIds, open, positions, onClose }: Batch
   const reason = unavailable ?? plan.problem;
   const finish = eta.eta && now !== null && reason === null ? finishText(now + eta.eta.totalSeconds * 1000, now) : null;
   const totals = t("{shotsCount} 個鏡頭共 {count} 個 take", { shotsCount: included.length, count });
-  const statusRef = useChangeFade<HTMLDivElement>(`${count}\n${eta.eta?.totalSeconds ?? ""}\n${finish ?? ""}\n${reason ?? ""}`);
+  const statusRef = useChangeFade<HTMLDivElement>(`${String(count)}\n${String(eta.eta?.totalSeconds ?? "")}\n${finish ?? ""}\n${reason ?? ""}`);
   const labelRef = useChangeFade<HTMLSpanElement>(count);
   const shortcut = t("{key}+Enter 渲染・Esc 取消", { key: modifierLabel("Mod", detectApplePlatform()) });
 
@@ -160,11 +160,11 @@ export function BatchVariantsDialog({ shotIds, open, positions, onClose }: Batch
       }}
     >
       <DialogContent
-        ref={content}
+        ref={contentRef}
         wide
         onOpenAutoFocus={(event) => {
           // The random-seed count, as in the popover
-          const first = content.current?.querySelector<HTMLElement>("[data-autofocus]");
+          const first = contentRef.current?.querySelector<HTMLElement>("[data-autofocus]");
           if (!first) return;
           event.preventDefault();
           first.focus();
@@ -219,7 +219,7 @@ export function BatchVariantsDialog({ shotIds, open, positions, onClose }: Batch
             {count > 0 && reason === null ? (
               <>
                 <EtaLine state={eta} />
-                {finish ? <p className="pl-5 text-caption font-medium text-fg">{finish}</p> : null}
+                {(finish != null && finish !== "") ? <p className="pl-5 text-caption font-medium text-fg">{finish}</p> : null}
               </>
             ) : null}
             {reason !== null ? <p className="text-caption text-fg-tertiary [overflow-wrap:anywhere]">{reason}</p> : null}

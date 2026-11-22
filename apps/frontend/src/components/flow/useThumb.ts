@@ -5,41 +5,41 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
 
 export function useThumb(containerRef: RefObject<HTMLElement | null>, thumbRef: RefObject<HTMLElement | null>, selector: string): void {
-  const placed = useRef(false);
-  const place = useRef<() => void>(() => undefined);
+  const placedRef = useRef(false);
+  const placeRef = useRef<() => void>(() => undefined);
 
   useLayoutEffect(() => {
-    place.current = () => {
+    placeRef.current = () => {
       const container = containerRef.current;
       const thumb = thumbRef.current;
       if (!container || !thumb) return;
       const active = container.querySelector<HTMLElement>(selector);
       if (!active || active.offsetWidth === 0) {
         thumb.style.opacity = "0";
-        placed.current = false;
+        placedRef.current = false;
         return;
       }
-      const first = !placed.current;
+      const first = !placedRef.current;
       if (first) thumb.style.transition = "none";
-      thumb.style.transform = `translate(${active.offsetLeft}px, ${active.offsetTop}px)`;
-      thumb.style.width = `${active.offsetWidth}px`;
-      thumb.style.height = `${active.offsetHeight}px`;
+      thumb.style.transform = `translate(${String(active.offsetLeft)}px, ${String(active.offsetTop)}px)`;
+      thumb.style.width = `${String(active.offsetWidth)}px`;
+      thumb.style.height = `${String(active.offsetHeight)}px`;
       thumb.style.opacity = "1";
       if (first) {
         thumb.getBoundingClientRect();
         thumb.style.removeProperty("transition");
-        placed.current = true;
+        placedRef.current = true;
       }
     };
-    place.current();
+    placeRef.current();
   });
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => place.current());
+    const observer = new ResizeObserver(() => { placeRef.current(); });
     observer.observe(container);
     for (const child of Array.from(container.children)) if (child !== thumbRef.current) observer.observe(child);
-    return () => observer.disconnect();
+    return () => { observer.disconnect(); };
   }, [containerRef, thumbRef]);
 }

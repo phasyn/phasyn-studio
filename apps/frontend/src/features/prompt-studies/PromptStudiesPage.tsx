@@ -45,5 +45,5 @@ function StudyLoader({ studyId }: { studyId: string }) {
 export function PromptStudiesPage() {
   const [params] = useSearchParams();
   const studyId = params.get("study");
-  return studyId ? <StudyLoader key={studyId} studyId={studyId} /> : <StudyListView />;
+  return (studyId != null && studyId !== "") ? <StudyLoader key={studyId} studyId={studyId} /> : <StudyListView />;
 }

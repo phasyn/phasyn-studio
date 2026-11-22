@@ -28,7 +28,7 @@ export function useVideoClock(ref: RefObject<HTMLVideoElement | null>, src: stri
   const [clock, setClock] = useState(STOPPED);
   useEffect(() => {
     const video = ref.current;
-    if (!video || !src) return;
+    if (!video || !(src != null && src !== "")) return;
     let raf = 0;
     const read = () => {
       const reading = clockFrom(video, fps);

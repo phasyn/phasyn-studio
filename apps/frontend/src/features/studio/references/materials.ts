@@ -64,7 +64,7 @@ export function nearLimit(count: number, limit: number): boolean {
 /** 這個類型下一個可用的 alias：最小的未使用序號（移除 Image2 後，下一張圖片會用 Image2）；用完 → null。 */
 export function nextAlias(kind: ReferenceKind, references: readonly StudioReference[]): string | null {
   const used = new Set(references.filter((ref) => ref.kind === kind).map((ref) => aliasOrdinal(ref.alias)));
-  for (let n = 1; n <= MAX_ORDINAL; n += 1) if (!used.has(n)) return `${ALIAS_PREFIX[kind]}${n}`;
+  for (let n = 1; n <= MAX_ORDINAL; n += 1) if (!used.has(n)) return `${ALIAS_PREFIX[kind]}${String(n)}`;
   return null;
 }
 
@@ -81,9 +81,9 @@ export function addBlockedReason(kind: ReferenceKind, references: readonly Studi
  * 原片的台詞是原角色的嘴型與聲線，生成的人聲要照 prompt 來；要用時在參考的片段設定打開。舊鏡頭存的 null 維持 runtime 預設（使用）。
  */
 export function newReference(item: Pick<StudioLibraryItem, "item_id" | "kind">, references: readonly StudioReference[], refId: string): StudioReference | null {
-  if (addBlockedReason(item.kind, references)) return null;
+  if ((addBlockedReason(item.kind, references) ?? "") !== "") return null;
   const alias = nextAlias(item.kind, references);
-  if (!alias) return null;
+  if (!(alias != null && alias !== "")) return null;
   const ref: StudioReference = { ref_id: refId, kind: item.kind, alias, item_id: item.item_id, start_seconds: null, end_seconds: null };
   if (item.kind === "video") ref.use_embedded_audio = false;
   return ref;
@@ -95,7 +95,7 @@ export function aliasLabels(references: readonly StudioReference[]): Map<string,
   const labels = new Map<string, string>();
   for (const ref of orderedReferences(references)) {
     counters[ref.kind] += 1;
-    if (!labels.has(ref.alias)) labels.set(ref.alias, `<${H3_TAG[ref.kind]} ${counters[ref.kind]}>`);
+    if (!labels.has(ref.alias)) labels.set(ref.alias, `<${H3_TAG[ref.kind]} ${String(counters[ref.kind])}>`);
   }
   return labels;
 }

@@ -1,6 +1,8 @@
 // The header row of the timeline (40 px). Full timeline: the sequence timecode (click to type), snapping, linked
 // selection, add marker, caption track, then zoom, fit and the track-height menu. Compact timeline (Shots workspace):
 // transport, timecode and zoom, with the caller's actions (open in Edit, collapse) at the right end.
+import { RangeCandidateDialog } from "./RangeCandidateDialog";
+import { focusOpenedControl } from "@/lib/dom";
 import { Captions, Flag, Link2, Magnet, Maximize2, Pause, Play, Rows3, SkipBack, ZoomIn, ZoomOut } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { TOOL_BUTTON, TOOL_BUTTON_ON } from "@/components/ui/look";
@@ -23,12 +25,12 @@ export function TimecodeField({ editor, className }: { editor: Editor; className
   if (draft !== null) {
     return (
       <input
-        autoFocus
+        ref={focusOpenedControl}
         value={draft}
         aria-label={t("播放頭位置（影格或時間碼）")}
         // The whole value is selected when the field opens, so what is typed replaces it
-        onFocus={(event) => event.currentTarget.select()}
-        onChange={(event) => setDraft(event.target.value)}
+        onFocus={(event) => { event.currentTarget.select(); }}
+        onChange={(event) => { setDraft(event.target.value); }}
         onBlur={commit}
         onKeyDown={(event) => {
           event.stopPropagation();
@@ -42,10 +44,10 @@ export function TimecodeField({ editor, className }: { editor: Editor; className
   return (
     <button
       type="button"
-      onClick={() => setDraft(formatTimecode(frame, editor.fps))}
+      onClick={() => { setDraft(formatTimecode(frame, editor.fps)); }}
       title={t("播放頭位置：按一下輸入影格、時間碼或 +／− 位移")}
       aria-label={t("播放頭位置 {time}", { time: formatTimecode(frame, editor.fps) })}
-      className={cn("machine h-7 rounded-md px-1.5 text-body text-brand-cyan transition-colors duration-(--duration-fast) hover:bg-raised", className)}
+      className={cn("machine h-7 shrink-0 rounded-md px-1.5 text-body whitespace-nowrap text-brand-cyan transition-colors duration-(--duration-fast) hover:bg-raised", className)}
     >
       {formatTimecode(frame, editor.fps)}
     </button>
@@ -56,7 +58,7 @@ function ZoomControls({ zoom, onZoom, onFit }: { zoom: number; onZoom: (zoom: nu
   const position = Math.round((Math.log(zoom / MIN_ZOOM) / Math.log(MAX_ZOOM / MIN_ZOOM)) * 100);
   return (
     <div className="flex shrink-0 items-center gap-1">
-      <button type="button" className={TOOL_BUTTON} aria-label={t("縮小時間軸")} title={t("縮小時間軸（-）")} disabled={zoom <= MIN_ZOOM} onClick={() => onZoom(zoom / 1.5)}>
+      <button type="button" className={TOOL_BUTTON} aria-label={t("縮小時間軸")} title={t("縮小時間軸（-）")} disabled={zoom <= MIN_ZOOM} onClick={() => { onZoom(zoom / 1.5); }}>
         <ZoomOut aria-hidden />
       </button>
       <input
@@ -64,12 +66,12 @@ function ZoomControls({ zoom, onZoom, onFit }: { zoom: number; onZoom: (zoom: nu
         min={0}
         max={100}
         value={position}
-        onChange={(event) => onZoom(MIN_ZOOM * (MAX_ZOOM / MIN_ZOOM) ** (Number(event.target.value) / 100))}
+        onChange={(event) => { onZoom(MIN_ZOOM * (MAX_ZOOM / MIN_ZOOM) ** (Number(event.target.value) / 100)); }}
         className="w-24 accent-playhead"
         aria-label={t("時間軸縮放")}
         aria-valuetext={t("每影格 {px} px", { px: zoom.toFixed(2) })}
       />
-      <button type="button" className={TOOL_BUTTON} aria-label={t("放大時間軸")} title={t("放大時間軸（=）")} disabled={zoom >= MAX_ZOOM} onClick={() => onZoom(zoom * 1.5)}>
+      <button type="button" className={TOOL_BUTTON} aria-label={t("放大時間軸")} title={t("放大時間軸（=）")} disabled={zoom >= MAX_ZOOM} onClick={() => { onZoom(zoom * 1.5); }}>
         <ZoomIn aria-hidden />
       </button>
       <button type="button" className={TOOL_BUTTON} aria-label={t("適合寬度")} title={t("適合寬度（\\）")} onClick={onFit}>
@@ -95,16 +97,17 @@ export interface TimelineHeaderProps {
 export function TimelineHeader({ editor, zoom, onZoom, onFit, captionsShown, onToggleCaptions, trackSize, onTrackSize }: TimelineHeaderProps) {
   const toggle = (on: boolean) => cn(TOOL_BUTTON, "size-8 [&_svg]:size-4", on && TOOL_BUTTON_ON);
   return (
-    <div data-keep-focus="" className="flex h-10 shrink-0 items-center gap-1.5 border-b border-line-subtle px-2">
+    <div data-keep-focus="" className="flex h-10 shrink-0 items-center gap-1.5 border-b border-line-subtle px-2 max-md:overflow-x-auto max-md:overflow-y-hidden max-md:[scrollbar-width:none]">
       <TimecodeField editor={editor} />
+      <RangeCandidateDialog editor={editor} />
       <span aria-hidden className="mx-1 h-5 w-px bg-line-subtle" />
-      <button type="button" className={toggle(editor.snapping)} aria-pressed={editor.snapping} aria-label={t("靠齊")} title={t("靠齊（S）")} onClick={() => editor.setSnapping(!editor.snapping)}>
+      <button type="button" className={toggle(editor.snapping)} aria-pressed={editor.snapping} aria-label={t("靠齊")} title={t("靠齊（S）")} onClick={() => { editor.setSnapping(!editor.snapping); }}>
         <Magnet aria-hidden />
       </button>
-      <button type="button" className={toggle(editor.linked)} aria-pressed={editor.linked} aria-label={t("連結的選取範圍")} title={t("連結的選取範圍")} onClick={() => editor.setLinked(!editor.linked)}>
+      <button type="button" className={toggle(editor.linked)} aria-pressed={editor.linked} aria-label={t("連結的選取範圍")} title={t("連結的選取範圍")} onClick={() => { editor.setLinked(!editor.linked); }}>
         <Link2 aria-hidden />
       </button>
-      <button type="button" className={toggle(false)} aria-label={t("新增標記")} title={t("新增標記（M）")} onClick={() => editor.addMarker()}>
+      <button type="button" className={toggle(false)} aria-label={t("新增標記")} title={t("新增標記（M）")} onClick={() => void editor.addMarker()}>
         <Flag aria-hidden />
       </button>
       <button type="button" className={toggle(captionsShown)} aria-pressed={captionsShown} aria-label={t("字幕軌顯示")} title={t("字幕軌顯示")} onClick={onToggleCaptions}>
@@ -122,7 +125,7 @@ export function TimelineHeader({ editor, zoom, onZoom, onFit, captionsShown, onT
               role="radio"
               aria-checked={trackSize === size}
               aria-label={t("軌道高度 {size}", { size: SIZE_LABEL[size] })}
-              onClick={() => onTrackSize(size)}
+              onClick={() => { onTrackSize(size); }}
               className={cn("pressable grid size-7 place-items-center rounded-md font-mono text-caption", trackSize === size ? "bg-brand-gradient-soft text-fg ring-1 ring-brand-blue/50 ring-inset" : "text-fg-tertiary hover:bg-raised hover:text-fg")}
             >
               {SIZE_LABEL[size]}
@@ -138,8 +141,8 @@ export function CompactTimelineHeader({ editor, zoom, onZoom, onFit, actions }: 
   const playing = usePlaying(editor.playhead);
   const { transport, timeline, totalFrames, fps } = editor;
   return (
-    <div data-keep-focus="" className="flex h-10 shrink-0 items-center gap-1.5 border-b border-line-subtle px-2">
-      <button type="button" className={cn(TOOL_BUTTON, "size-8 [&_svg]:size-4")} aria-label={t("回到序列開頭")} title={t("回到序列開頭（Home）")} onClick={() => transport.seek(0)}>
+    <div data-keep-focus="" className="flex h-10 shrink-0 items-center gap-1.5 border-b border-line-subtle px-2 max-md:overflow-x-auto max-md:overflow-y-hidden max-md:[scrollbar-width:none]">
+      <button type="button" className={cn(TOOL_BUTTON, "size-8 [&_svg]:size-4")} aria-label={t("回到序列開頭")} title={t("回到序列開頭（Home）")} onClick={() => { transport.seek(0); }}>
         <SkipBack aria-hidden />
       </button>
       <button
@@ -149,7 +152,7 @@ export function CompactTimelineHeader({ editor, zoom, onZoom, onFit, actions }: 
         aria-label={playing ? t("暫停") : t("播放序列")}
         title={playing ? t("暫停（空白鍵）") : t("播放序列（空白鍵）")}
         disabled={totalFrames === 0}
-        onClick={() => transport.toggle()}
+        onClick={() => { transport.toggle(); }}
       >
         {playing ? <Pause aria-hidden /> : <Play aria-hidden />}
       </button>

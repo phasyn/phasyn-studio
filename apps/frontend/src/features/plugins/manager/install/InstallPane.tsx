@@ -1,3 +1,4 @@
+import { isNonzeroNumber } from "@/lib/json";
 // 安裝流程在右欄的畫面：驗證中、安裝預覽（主控 dry run 回報的內容：manifest、會取代的版本、多出的權限、不相容的原因，
 // 用與已安裝的包相同的四個分頁檢視，確認後才安裝）、安裝失敗（一次說清楚原因與下一步，主控列出的問題逐項顯示）。
 import { CircleAlert, FileArchive, FolderOpen, LoaderCircle, PackageCheck, RefreshCw, X } from "lucide-react";
@@ -62,6 +63,7 @@ function confirmCopy(result: StudioPluginInstallResult): ConfirmCopy {
       return { eyebrow: t("換回舊版的預覽"), action: t("換回這個版本"), version };
     case "same":
       return { eyebrow: t("重新安裝的預覽"), action: t("重新安裝"), version };
+    case "unknown":
     default:
       return { eyebrow: t("取代目前版本的預覽"), action: t("取代目前的版本"), version };
   }
@@ -88,7 +90,7 @@ function Preview({ result, installing }: { result: StudioPluginInstallResult; in
               {t("取消")}
             </ActionButton>
             {added.length > 0 ? (
-              <button type="button" onClick={() => setTab("permissions")} className="pressable ml-auto rounded-md px-2 py-1 text-data font-medium text-warning hover:bg-raised">
+              <button type="button" onClick={() => { setTab("permissions"); }} className="pressable ml-auto rounded-md px-2 py-1 text-data font-medium text-warning hover:bg-raised">
                 {t("多要求 {count} 項權限", { count: added.length })}
               </button>
             ) : null}
@@ -125,15 +127,15 @@ function Failed({ state }: { state: Extract<InstallState, { phase: "failed" }> }
         {heading !== message ? <p>{message}</p> : null}
         <p className="machine text-caption text-fg-tertiary">
           {info.code}
-          {info.status ? ` · HTTP ${info.status}` : ""}
+          {isNonzeroNumber(info.status) ? ` · HTTP ${String(info.status)}` : ""}
         </p>
-        {info.hint && failure.issues.length === 0 ? <p className="text-caption">{info.hint}</p> : null}
+        {(info.hint != null && info.hint !== "") && failure.issues.length === 0 ? <p className="text-caption">{info.hint}</p> : null}
       </Callout>
       <IssueList issues={failure.issues} truncated={failure.truncated} tone="danger" label={t("這個包的問題")} />
       {unknown ? <RemoteUnknownNotice /> : null}
       <div className="flex flex-wrap items-center gap-2">
         {state.stage === "install" ? (
-          <ActionButton variant="secondary" icon={<RefreshCw aria-hidden />} disabledReason={installBlocked} onClick={() => install.start(new File([state.file], state.fileName))}>
+          <ActionButton variant="secondary" icon={<RefreshCw aria-hidden />} disabledReason={installBlocked} onClick={() => { install.start(new File([state.file], state.fileName)); }}>
             {t("重新驗證這個檔案")}
           </ActionButton>
         ) : null}

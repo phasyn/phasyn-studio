@@ -3,7 +3,7 @@
 // curve with every key as a point and the handles of a Bezier key. The strip is never taller than 160 px: its header
 // wraps onto a second line on a narrow panel and the curve takes what height is left.
 import { Spline, Trash2, X } from "lucide-react";
-import { useContext } from "react";
+import { use } from "react";
 import type { TimelineClip, TimelineKeyframe } from "@/api/generated/contracts";
 import { t } from "@/i18n";
 import { cn } from "@/lib/cn";
@@ -46,7 +46,7 @@ export interface KeyStripProps {
 
 export function KeyStrip({ property, owner, keyframe, wide }: KeyStripProps) {
   const panel = useClipPanel();
-  const locked = useContext(FieldLockContext);
+  const locked = use(FieldLockContext);
   const [curve, setCurve] = usePersistentFlag("studio.nle.controls.curve", true);
   const [bodyRef, , body] = useMeasuredElement<HTMLDivElement>();
   const { unit } = property;
@@ -61,7 +61,7 @@ export function KeyStrip({ property, owner, keyframe, wide }: KeyStripProps) {
       : t("第 {index} 個，共 {count} 個關鍵影格（每個屬性最多 {limit} 個）", place);
   const bezier = keyframe.bezier ?? DEFAULT_BEZIER;
 
-  const select = (frame: number) => panel.select({ property: property.key, frame });
+  const select = (frame: number) => { panel.select({ property: property.key, frame }); };
   const patch = (change: Partial<TimelineKeyframe>) => property.withKeys(patchedKeys(property.keys, keyframe.frame, change));
   /** A key at another frame, with another value, or both; the answer is the field's: true, or why it was refused. */
   const change = (from: number, to: KeyChange) => {
@@ -115,17 +115,17 @@ export function KeyStrip({ property, owner, keyframe, wide }: KeyStripProps) {
           value={keyframe.interpolation}
           options={INTERPOLATIONS}
           hint={t("從這個關鍵影格到下一個的變化方式")}
-          onChange={(interpolation) => panel.perform(patch({ interpolation }))}
+          onChange={(interpolation) => void panel.perform(patch({ interpolation }))}
           className="w-24 shrink-0"
         />
         <span className="flex shrink-0 items-center">
-          <IconButton label={t("曲線")} title={curve ? t("隱藏曲線") : t("顯示曲線")} pressed={curve} onClick={() => setCurve(!curve)}>
+          <IconButton label={t("曲線")} title={curve ? t("隱藏曲線") : t("顯示曲線")} pressed={curve} onClick={() => { setCurve(!curve); }}>
             <Spline aria-hidden />
           </IconButton>
-          <IconButton label={t("刪除這個關鍵影格")} disabledReason={locked} onClick={() => remove(keyframe)} className="hover:text-danger">
+          <IconButton label={t("刪除這個關鍵影格")} disabledReason={locked} onClick={() => { remove(keyframe); }} className="hover:text-danger">
             <Trash2 aria-hidden />
           </IconButton>
-          <IconButton label={t("取消選取這個關鍵影格")} onClick={() => panel.select(null)}>
+          <IconButton label={t("取消選取這個關鍵影格")} onClick={() => { panel.select(null); }}>
             <X aria-hidden />
           </IconButton>
         </span>
@@ -150,7 +150,7 @@ export function KeyStrip({ property, owner, keyframe, wide }: KeyStripProps) {
           />
           {keyframe.interpolation === "bezier" ? (
             <>
-              <BezierEditor value={bezier} size={body.height} locked={locked} onChange={(next) => panel.perform(patch({ bezier: next }))} />
+              <BezierEditor value={bezier} size={body.height} locked={locked} onChange={(next) => void panel.perform(patch({ bezier: next }))} />
               {wide ? <BezierFields value={bezier} onChange={(next) => panel.apply(patch({ bezier: next }))} /> : null}
             </>
           ) : null}

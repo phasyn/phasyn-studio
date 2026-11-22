@@ -43,8 +43,8 @@ function StateIcon({ bar }: { bar: GanttBar }) {
 
 function barTitle(bar: GanttBar, description: string): string {
   const lines = [description, t("開始 {startedAt}", { startedAt: formatTimestamp(bar.startedAt) }), bar.running ? t("結束 —（進行中）") : t("結束 {finishedAt}", { finishedAt: formatTimestamp(bar.finishedAt) })];
-  if (bar.componentId) lines.push(t("元件 {componentId}（{kindLabel}）", { componentId: bar.componentId, kindLabel: bar.kindLabel }));
-  if (bar.errorMessage) lines.push(tServer(bar.errorMessage));
+  if (bar.componentId != null && bar.componentId !== "") lines.push(t("元件 {componentId}（{kindLabel}）", { componentId: bar.componentId, kindLabel: bar.kindLabel }));
+  if (bar.errorMessage != null && bar.errorMessage !== "") lines.push(tServer(bar.errorMessage));
   return lines.join("\n");
 }
 
@@ -52,16 +52,16 @@ function barTitle(bar: GanttBar, description: string): string {
  * 加上品牌 utility（漸層光邊、淡漸層底）：放在 cn() 之外，因為 tailwind-merge 會把 border-brand-gradient／bg-brand-gradient-soft
  * 誤當成邊框色／底色而互相合併掉（類型框色、類型底色都要保留）。
  */
-function withBrand(base: string, ...extra: Array<string | false>): string {
+function withBrand(base: string, ...extra: (string | false)[]): string {
   return [base, ...extra.filter(Boolean)].join(" ");
 }
 
 export function RunGantt({ run, lookup, selectedStepId, onSelectStep, now, nodeLabel, className }: RunGanttProps) {
   const captionId = useId();
-  const model = useMemo(() => buildGanttModel(run, lookup, now, { nodeLabel }), [run, lookup, now, nodeLabel]);
+  const model = useMemo(() => buildGanttModel(run, lookup, now, { ...(nodeLabel === undefined ? {} : { nodeLabel }) }), [run, lookup, now, nodeLabel]);
   const [setScroller, , size] = useMeasuredElement<HTMLDivElement>();
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const barRefs = useRef(new Map<string, HTMLButtonElement>());
+  const barRefsRef = useRef(new Map<string, HTMLButtonElement>());
   const [hovered, setHovered] = useState<string | null>(null);
   const [focused, setFocused] = useState<string | null>(null);
   const [tabKey, setTabKey] = useState<string | null>(null);
@@ -69,7 +69,7 @@ export function RunGantt({ run, lookup, selectedStepId, onSelectStep, now, nodeL
   // 選取改變（例如在 DAG 點選）時，把該條捲進可見範圍（只捲這個元件的水平捲動；輪詢更新不會把畫面拉回）。
   useEffect(() => {
     const scroller = scrollRef.current;
-    const bar = selectedStepId !== null ? barRefs.current.get(selectedStepId) : undefined;
+    const bar = selectedStepId !== null ? barRefsRef.current.get(selectedStepId) : undefined;
     if (!scroller || !bar) return;
     const left = bar.offsetLeft;
     const right = left + bar.offsetWidth;
@@ -96,7 +96,7 @@ export function RunGantt({ run, lookup, selectedStepId, onSelectStep, now, nodeL
   const anyRunning = order.some((bar) => bar.running);
 
   const focusBar = (bar: GanttBar | undefined) => {
-    if (bar) barRefs.current.get(bar.stepId)?.focus();
+    if (bar) barRefsRef.current.get(bar.stepId)?.focus();
   };
   const nearestInLane = (bar: GanttBar, direction: 1 | -1): GanttBar | undefined => {
     const from = laneIndex.get(bar.laneKey) ?? 0;
@@ -184,7 +184,7 @@ export function RunGantt({ run, lookup, selectedStepId, onSelectStep, now, nodeL
                 style={{ height: lane.rows * ROW_H + LANE_PAD * 2 }}
                 title={`${lane.label}${lane.groupSource === "catalog" ? t("\nresource_group 取自目前目錄（run 沒有記錄當時的 device）") : lane.groupSource === null ? t("\n無法得知 resource_group") : ""}`}
               >
-                <span className={cn("machine truncate text-data", lane.resourceGroup ? "text-fg" : "text-fg-tertiary")}>{lane.resourceGroup ?? t("資源群組未知")}</span>
+                <span className={cn("machine truncate text-data", (lane.resourceGroup != null && lane.resourceGroup !== "") ? "text-fg" : "text-fg-tertiary")}>{lane.resourceGroup ?? t("資源群組未知")}</span>
                 <span className="truncate text-caption text-fg-tertiary">{lane.nodeLabel}</span>
               </div>
             ))}
@@ -232,23 +232,23 @@ export function RunGantt({ run, lookup, selectedStepId, onSelectStep, now, nodeL
                   <button
                     key={bar.stepId}
                     ref={(element) => {
-                      if (element) barRefs.current.set(bar.stepId, element);
-                      else barRefs.current.delete(bar.stepId);
+                      if (element) barRefsRef.current.set(bar.stepId, element);
+                      else barRefsRef.current.delete(bar.stepId);
                     }}
                     type="button"
                     tabIndex={bar.stepId === tabStop ? 0 : -1}
                     aria-pressed={selected}
                     aria-label={description}
                     title={barTitle(bar, description)}
-                    onClick={() => onSelectStep(bar.stepId)}
-                    onKeyDown={(event) => onBarKeyDown(event, bar)}
+                    onClick={() => { onSelectStep(bar.stepId); }}
+                    onKeyDown={(event) => { onBarKeyDown(event, bar); }}
                     onFocus={() => {
                       setTabKey(bar.stepId);
                       setFocused(bar.stepId);
                     }}
-                    onBlur={() => setFocused((current) => (current === bar.stepId ? null : current))}
-                    onPointerEnter={() => setHovered(bar.stepId)}
-                    onPointerLeave={() => setHovered((current) => (current === bar.stepId ? null : current))}
+                    onBlur={() => { setFocused((current) => (current === bar.stepId ? null : current)); }}
+                    onPointerEnter={() => { setHovered(bar.stepId); }}
+                    onPointerLeave={() => { setHovered((current) => (current === bar.stepId ? null : current)); }}
                     className={withBrand(
                       cn(
                         "absolute flex cursor-pointer items-center gap-1 overflow-hidden rounded-sm border px-1.5 text-left text-[11px] leading-none whitespace-nowrap transition-[background-color,border-color,box-shadow] duration-(--duration-fast)",
@@ -300,7 +300,7 @@ export function RunGantt({ run, lookup, selectedStepId, onSelectStep, now, nodeL
       {model.unmeasured.length > 0 ? (
         <div className="grid gap-1.5">
           <p className="text-caption font-semibold text-fg-secondary">
-            <T source={"未開始／未量測（{unmeasuredCount}）<0>：沒有實測起訖時間，不畫在時間軸上</0>"} values={{ unmeasuredCount: model.unmeasured.length }} slots={[<span className="font-normal text-fg-tertiary" />]} />
+            <T source={"未開始／未量測（{unmeasuredCount}）<0>：沒有實測起訖時間，不畫在時間軸上</0>"} values={{ unmeasuredCount: model.unmeasured.length }} slots={[<span key="slot-0" className="font-normal text-fg-tertiary" />]} />
           </p>
           <ul className="flex flex-wrap gap-1.5">
             {model.unmeasured.map((item) => {
@@ -310,7 +310,7 @@ export function RunGantt({ run, lookup, selectedStepId, onSelectStep, now, nodeL
                   <button
                     type="button"
                     aria-pressed={selected}
-                    onClick={() => onSelectStep(item.stepId)}
+                    onClick={() => { onSelectStep(item.stepId); }}
                     onKeyDown={(event) => {
                       if (event.key === "Escape" && selectedStepId !== null) {
                         event.preventDefault();
@@ -334,7 +334,7 @@ export function RunGantt({ run, lookup, selectedStepId, onSelectStep, now, nodeL
       ) : null}
 
       <figcaption id={captionId} className="text-caption text-fg-tertiary">
-        {t("0＝run 建立時刻（created_at{value}{value2}）；條＝步驟 started_at → finished_at（主控記錄的時戳），泳道依 Node 與 resource_group 分組。{value3}方向鍵在步驟間移動，Enter 選取，Esc 取消選取。", { value: model.originIso ? ` ${formatTimestamp(model.originIso)}` : "", value2: model.originSource === "first_start" ? t("；created_at 無法解析，改用最早的 started_at") : "", value3: anyRunning ? t("進行中的條延伸到現在（瀏覽器時鐘，與主控時鐘可能有偏差）。") : "" })}
+        {t("0＝run 建立時刻（created_at{value}{value2}）；條＝步驟 started_at → finished_at（主控記錄的時戳），泳道依 Node 與 resource_group 分組。{value3}方向鍵在步驟間移動，Enter 選取，Esc 取消選取。", { value: (model.originIso != null && model.originIso !== "") ? ` ${formatTimestamp(model.originIso)}` : "", value2: model.originSource === "first_start" ? t("；created_at 無法解析，改用最早的 started_at") : "", value3: anyRunning ? t("進行中的條延伸到現在（瀏覽器時鐘，與主控時鐘可能有偏差）。") : "" })}
       </figcaption>
     </figure>
   );

@@ -17,6 +17,7 @@ from phasyn_h3 import te_share
 from phasyn_h3.config import build_profile, default_settings
 from phasyn_h3.plan import model_manifest
 
+
 FILES: dict[str, dict[str, bytes]] = {
     "text_encoder": {
         "config.json": b'{"architectures": ["MiniMaxH3Qwen3VLHFEncoder"], "hidden_size": 5120}',
@@ -25,7 +26,10 @@ FILES: dict[str, dict[str, bytes]] = {
         "model.safetensors.index.json": b'{"metadata": {"total_size": 6144}}',
     },
     "tokenizer": {"tokenizer.json": b'{"vocab": 1}', "vocab.json": b"{}"},
-    "processor": {"preprocessor_config.json": b'{"merge_size": 2}', "tokenizer.json": b'{"vocab": 1}'},
+    "processor": {
+        "preprocessor_config.json": b'{"merge_size": 2}',
+        "tokenizer.json": b'{"vocab": 1}',
+    },
 }
 INDEX = {
     "_class_name": "MiniMaxH3Pipeline",
@@ -37,17 +41,24 @@ INDEX = {
 DIRS = {"fl2va": "FL2VA", "ref2va": "Ref2VA"}
 
 
-def _tree(root: Path, *, link_te: bool = True, overrides: dict[str, bytes] | None = None) -> Path:
+def _tree(
+    root: Path, *, link_te: bool = True, overrides: dict[str, bytes] | None = None
+) -> Path:
     """一個常見的模型資料夾樣子：Ref2VA/text_encoder 是 FL2VA 的 hard link，tokenizer／processor 是內容相同的複本；
     兩邊 model_index.json 只差 _minimax_h3 的 partition／tasks。``overrides``：Ref2VA 這邊改寫的檔（kind/name）。"""
     base = root / "MiniMax-H3"
     for variant, name in DIRS.items():
         index = {
             **INDEX,
-            "_minimax_h3": {"partition": variant, "tasks": ["ref2va"] if variant == "ref2va" else ["t2va", "fl2va"]},
+            "_minimax_h3": {
+                "partition": variant,
+                "tasks": ["ref2va"] if variant == "ref2va" else ["t2va", "fl2va"],
+            },
         }
         (base / name).mkdir(parents=True, exist_ok=True)
-        (base / name / "model_index.json").write_text(json.dumps(index), encoding="utf-8")
+        (base / name / "model_index.json").write_text(
+            json.dumps(index), encoding="utf-8"
+        )
         (base / name / "transformer").mkdir(exist_ok=True)
     for kind, files in FILES.items():
         for name, data in files.items():
@@ -71,15 +82,22 @@ def _tree(root: Path, *, link_te: bool = True, overrides: dict[str, bytes] | Non
 # ---------------------------------------------------------------- 逐檔證明（純函式）
 
 
-def test_digest_cache_reuses_large_file_digest_and_notices_rewrites(tmp_path: Path) -> None:
+def test_digest_cache_reuses_large_file_digest_and_notices_rewrites(
+    tmp_path: Path,
+) -> None:
     shard = tmp_path / "shard.safetensors"
     shard.write_bytes(b"\x05" * 1024)
     cache_dir = tmp_path / "digests"
     first = te_share.DigestCache(cache_dir, min_bytes=512)
     value = first(shard)
-    assert value == hashlib.sha256(b"\x05" * 1024).hexdigest() and first.computed_files == 1
+    assert (
+        value == hashlib.sha256(b"\x05" * 1024).hexdigest()
+        and first.computed_files == 1
+    )
     second = te_share.DigestCache(cache_dir, min_bytes=512)
-    assert second(shard) == value and second.cache_hits == 1 and second.computed_files == 0
+    assert (
+        second(shard) == value and second.cache_hits == 1 and second.computed_files == 0
+    )
     st = shard.stat()
     # 同大小覆寫、再把 mtime 改回去：ctime 仍會變。檔案時間戳是粗粒度時鐘，同一個 tick 內的覆寫看不出來，所以重寫到 ctime 變為止
     for _ in range(400):
@@ -88,24 +106,40 @@ def test_digest_cache_reuses_large_file_digest_and_notices_rewrites(tmp_path: Pa
         if shard.stat().st_ctime_ns != st.st_ctime_ns:
             break
         time.sleep(0.005)
-    assert shard.stat().st_mtime_ns == st.st_mtime_ns and shard.stat().st_ctime_ns != st.st_ctime_ns
+    assert (
+        shard.stat().st_mtime_ns == st.st_mtime_ns
+        and shard.stat().st_ctime_ns != st.st_ctime_ns
+    )
     third = te_share.DigestCache(cache_dir, min_bytes=512)
-    assert third(shard) == hashlib.sha256(b"\x06" * 1024).hexdigest() and third.computed_files == 1
+    assert (
+        third(shard) == hashlib.sha256(b"\x06" * 1024).hexdigest()
+        and third.computed_files == 1
+    )
     small = te_share.DigestCache(cache_dir, min_bytes=4096)
     small(shard)
-    assert small.computed_files == 1 and len(list(cache_dir.iterdir())) == 2  # 小檔不寫快取
+    assert (
+        small.computed_files == 1 and len(list(cache_dir.iterdir())) == 2
+    )  # 小檔不寫快取
 
 
 # ---------------------------------------------------------------- 判斷（te-uma0 的設定）
 
 
 def _settings(tmp_path: Path) -> dict[str, Any]:
-    settings = default_settings("conditioning", model_path=str(tmp_path), device_id="GPU-x")
-    settings["load"]["provider_options"] = {"variant": "fl2va", "shared_from": "ref2va", "mode": "exact"}
+    settings = default_settings(
+        "conditioning", model_path=str(tmp_path), device_id="GPU-x"
+    )
+    settings["load"]["provider_options"] = {
+        "variant": "fl2va",
+        "shared_from": "ref2va",
+        "mode": "exact",
+    }
     return settings
 
 
-def _manifest(root: Path, variant: str, shared_from: str, model_id: str | None = None) -> dict[str, Any]:
+def _manifest(
+    root: Path, variant: str, shared_from: str, model_id: str | None = None
+) -> dict[str, Any]:
     return model_manifest(
         variant=variant,
         shared_from=shared_from,
@@ -117,15 +151,21 @@ def _manifest(root: Path, variant: str, shared_from: str, model_id: str | None =
 
 
 def _manifests(root: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-    loaded = _manifest(root, "fl2va", "ref2va")  # te-uma0：variant=fl2va、shared_from=ref2va
-    shared = _manifest(root, "ref2va", "ref2va", str(loaded["model_id"]))  # 沿用已載入的身分
+    loaded = _manifest(
+        root, "fl2va", "ref2va"
+    )  # te-uma0：variant=fl2va、shared_from=ref2va
+    shared = _manifest(
+        root, "ref2va", "ref2va", str(loaded["model_id"])
+    )  # 沿用已載入的身分
     separate = _manifest(root, "ref2va", "fl2va")  # 以前的做法（另一個 model_id）
     return loaded, shared, separate
 
 
 def _decide(root: Path, **overrides: Any) -> te_share.ShareDecision:
     loaded, shared, separate = _manifests(root)
-    settings = te_share.settings_fingerprint(build_profile("conditioning", _settings(root), profile_id="t", revision=1))
+    settings = te_share.settings_fingerprint(
+        build_profile("conditioning", _settings(root), profile_id="t", revision=1)
+    )
     kwargs: dict[str, Any] = {
         "variant": "ref2va",
         "own_variant": "fl2va",
@@ -144,22 +184,36 @@ def _decide(root: Path, **overrides: Any) -> te_share.ShareDecision:
 def test_decide_shares_for_hardlinks_and_identical_sha(tmp_path: Path) -> None:
     linked = _decide(_tree(tmp_path / "linked"))
     assert linked.applied, linked.reason
-    assert linked.methods() == {"text_encoder": "inode", "tokenizer": "sha256", "processor": "sha256"}
+    assert linked.methods() == {
+        "text_encoder": "inode",
+        "tokenizer": "sha256",
+        "processor": "sha256",
+    }
     assert linked.model_index["identical"] and linked.settings["identical"]
     fact = linked.fact()
-    assert fact["proof"]["text_encoder"]["loaded"] == "MiniMax-H3/Ref2VA/text_encoder"  # relative to the model root
+    assert (
+        fact["proof"]["text_encoder"]["loaded"] == "MiniMax-H3/Ref2VA/text_encoder"
+    )  # relative to the model root
     assert fact["proof"]["text_encoder"]["other"] == "MiniMax-H3/FL2VA/text_encoder"
     assert fact["model_index"]["loaded"] == "MiniMax-H3/Ref2VA/model_index.json"
-    assert str(tmp_path) not in json.dumps(fact, ensure_ascii=False)  # the load record never names local folders
+    assert str(tmp_path) not in json.dumps(
+        fact, ensure_ascii=False
+    )  # the load record never names local folders
     assert fact["manifests"]["shared"] == fact["manifests"]["loaded"]
     assert fact["manifests"]["separate"]["model_id"] == "h3-ref2va-local"
     copied = _decide(_tree(tmp_path / "copied", link_te=False))
     assert copied.applied and copied.methods()["text_encoder"] == "sha256"
-    assert copied.hashing["computed_files"] == 2 * 8  # 兩邊各 8 個檔都讀過一次（小檔不快取）
+    assert (
+        copied.hashing["computed_files"] == 2 * 8
+    )  # 兩邊各 8 個檔都讀過一次（小檔不快取）
 
 
 def test_decide_keeps_separate_copies_when_config_differs(tmp_path: Path) -> None:
-    root = _tree(tmp_path, link_te=False, overrides={"text_encoder/config.json": b'{"hidden_size": 4096}'})
+    root = _tree(
+        tmp_path,
+        link_te=False,
+        overrides={"text_encoder/config.json": b'{"hidden_size": 4096}'},
+    )
     decision = _decide(root)
     assert not decision.applied and "config.json" in decision.reason
     assert str(tmp_path) not in json.dumps(decision.fact(), ensure_ascii=False)

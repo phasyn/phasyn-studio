@@ -1,0 +1,4 @@
+Phasyn Studio Wan native adapter
+
+Wan2.2 by the Alibaba Wan Team is separately supplied under Apache-2.0.
+This package contains checkpoint and source file identities, not upstream model weights.

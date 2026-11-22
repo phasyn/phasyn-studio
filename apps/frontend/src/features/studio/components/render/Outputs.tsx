@@ -1,5 +1,6 @@
 // What the selected run produces, in the overview: one 280 px card per item (ItemCard; a finished one shows up as soon
 // as its branch ends, the others keep rendering), or the exported video of a sequence export.
+import { AssetVideo } from "@/components/common/AssetMedia";
 import { Download } from "lucide-react";
 import { mediaUrl } from "@/api/http";
 import { GeneratingFrame } from "@/components/common/GeneratingFrame";
@@ -32,12 +33,12 @@ function ExportOutput({ item, running }: { item: QueueItem; running: boolean }) 
   const url = mediaUrl(file.node_id, file.file_id);
   const facts = joinInline([
     asset.width && asset.height ? t("{width}×{height}", { width: asset.width, height: asset.height }) : "",
-    item.record?.frames ? formatDuration(item.record.frames) : "",
+    (item.record?.frames != null && Boolean(item.record.frames)) ? formatDuration(item.record.frames, project.format.fps.num / project.format.fps.den) : "",
     formatBytes(file.size_bytes),
   ].filter(Boolean));
   return (
     <div className={cn("grid max-w-4xl min-w-0 gap-2", RISE_IN)}>
-      <video src={url} controls preload="metadata" aria-label={t("序列匯出")} className="max-h-[52vh] w-full rounded-lg border border-line-subtle bg-stage object-contain" />
+      <AssetVideo src={url} controls preload="metadata" aria-label={t("序列匯出")} className="max-h-[52vh] w-full rounded-lg border border-line-subtle bg-stage object-contain" />
       <div className="flex flex-wrap items-center gap-3">
         <a href={url} download={`${project.title}.mp4`} className={cn(buttonVariants({ variant: "secondary", size: "sm" }), "no-underline")}>
           <Download aria-hidden />

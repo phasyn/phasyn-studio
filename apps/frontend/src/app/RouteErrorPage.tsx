@@ -15,7 +15,7 @@ export function RouteErrorPage({ inline = false }: { inline?: boolean }) {
   const error = useRouteError();
   const chunk = isChunkLoadError(error);
   const message = isRouteErrorResponse(error)
-    ? `${error.status} ${error.statusText}`
+    ? `${String(error.status)} ${error.statusText}`
     : error instanceof Error
       ? error.message
       : t("未知錯誤");
@@ -28,7 +28,7 @@ export function RouteErrorPage({ inline = false }: { inline?: boolean }) {
         description={chunk ? t("可能是網路中斷，或服務剛更新、舊版的程式檔已不存在。請重新載入頁面。") : <code className="machine">{message}</code>}
         action={
           <>
-            <button type="button" className={buttonVariants({ variant: "secondary" })} onClick={() => window.location.reload()}>
+            <button type="button" className={buttonVariants({ variant: "secondary" })} onClick={() => { window.location.reload(); }}>
               {t("重新載入")}
             </button>
             <Link to={PATHS.components} className={buttonVariants({ variant: "quiet" })}>

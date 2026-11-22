@@ -33,5 +33,5 @@ export function EtaLine({ state, className }: { state: PlanEtaState; className?:
 /** The estimate of rendering `shots` together (in this order, one run). Nothing when there is nothing to render. */
 export function RenderEta({ shots, className }: { shots: readonly StudioShot[]; className?: string }) {
   const state = useRenderEta(shots);
-  return shots.length > 0 ? <EtaLine state={state} className={className} /> : null;
+  return shots.length > 0 ? <EtaLine state={state} {...(className === undefined ? {} : { className })} /> : null;
 }

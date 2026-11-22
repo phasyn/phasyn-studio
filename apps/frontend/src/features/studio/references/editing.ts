@@ -75,13 +75,13 @@ export function remapReferenceText(
     if (old && now && old.label !== now.label) tags.set(old.label, now.label);
     const oldSound = old?.soundtrack?.label ?? null;
     const nowSound = now?.soundtrack?.label ?? null;
-    if (oldSound && nowSound && oldSound !== nowSound) tags.set(oldSound, nowSound);
+    if ((oldSound != null && oldSound !== "") && (nowSound != null && nowSound !== "") && oldSound !== nowSound) tags.set(oldSound, nowSound);
   }
   if (aliases.size === 0 && tags.size === 0) return prompt;
   return prompt.replace(new RegExp(`${MENTION_SOURCE}|${H3_TAG_SOURCE}`, "g"), (match, alias: string | undefined) => {
     if (alias !== undefined) {
       const next = aliases.get(alias);
-      return next ? `@${next}` : match;
+      return (next != null && next !== "") ? `@${next}` : match;
     }
     return tags.get(match) ?? match;
   });

@@ -32,7 +32,10 @@ def source_sha256(obj: object) -> str:
     """SHA-256 of ``inspect.getsource(obj)``, or ``"unavailable:<Exception>"`` when it has no source."""
     try:
         source = inspect.getsource(obj)  # type: ignore[arg-type]
-    except (OSError, TypeError) as exc:  # builtins, C extensions, wrappers without source
+    except (
+        OSError,
+        TypeError,
+    ) as exc:  # builtins, C extensions, wrappers without source
         return f"unavailable:{type(exc).__name__}"
     return hashlib.sha256(source.encode("utf-8")).hexdigest()
 
@@ -48,6 +51,8 @@ class Pin:
 
 @dataclass(frozen=True)
 class Mismatch:
+    """A mismatch between the pinned and observed upstream evidence."""
+
     label: str
     expected: str
     actual: str  # a SHA-256, "unavailable:<Exception>" (no source) or "missing:<Exception>" (target gone)
@@ -59,7 +64,12 @@ def mismatches(pins: Iterable[Pin]) -> list[Mismatch]:
     for pin in pins:
         try:
             target = pin.target()
-        except (AttributeError, ImportError, KeyError, TypeError) as exc:  # the pinned symbol is gone
+        except (
+            AttributeError,
+            ImportError,
+            KeyError,
+            TypeError,
+        ) as exc:  # the pinned symbol is gone
             actual = f"missing:{type(exc).__name__}"
         else:
             actual = source_sha256(target)
@@ -81,7 +91,9 @@ def missing_attrs(obj: object, names: Iterable[str]) -> list[str]:
     return missing
 
 
-def distribution_problem(name: str, *, version: str | None = None, vcs_commit: str | None = None) -> str | None:
+def distribution_problem(
+    name: str, *, version: str | None = None, vcs_commit: str | None = None
+) -> str | None:
     """Why the installed distribution ``name`` does not match its pin, or ``None`` when it does.
 
     ``vcs_commit`` may be abbreviated; it is compared with the commit recorded in the
@@ -159,10 +171,15 @@ def vcs_source(name: str) -> dict[str, Any] | None:
     commit = _vcs_commit(dist)
     if commit is None:
         return None
-    return {"url": _public_url((_direct_url(dist) or {}).get("url")), "commit_id": commit}
+    return {
+        "url": _public_url((_direct_url(dist) or {}).get("url")),
+        "commit_id": commit,
+    }
 
 
-def library_versions(names: Iterable[str], *, vcs: Iterable[str] = ("diffusers",)) -> dict[str, str | None]:
+def library_versions(
+    names: Iterable[str], *, vcs: Iterable[str] = ("diffusers",)
+) -> dict[str, str | None]:
     """Installed versions of ``names`` (``None`` when missing, never guessed), for runtime identity.
 
     Each name in ``vcs`` that was installed from a VCS checkout also gets ``"<name>_commit"``.

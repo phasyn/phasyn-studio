@@ -43,7 +43,7 @@ function categoryRowId(category: EffectCategory): string {
 
 function entryTitle({ item, availability }: EffectTreeEntry): string {
   const drag = item.lands === "cut" ? t("也可以拖曳到時間軸上兩個片段之間的編輯點，或片段沒有相鄰片段的一端") : t("也可以拖曳到時間軸的片段上；放在選取的片段上時，所有選取的片段一起套用");
-  if (availability.reason) return `${t("{label}：{value}", { label: item.label, value: availability.reason })}\n${drag}`;
+  if (availability.reason != null && availability.reason !== "") return `${t("{label}：{value}", { label: item.label, value: availability.reason })}\n${drag}`;
   const clip = availability.clipName ?? "";
   if (item.lands === "cut") return `${t("{name}：按兩下或按 Enter，套用到「{clip}」的出點", { name: item.label, clip })}\n${drag}`;
   return `${t("{name}：按兩下或按 Enter，套用到「{clip}」", { name: item.label, clip })}\n${drag}`;
@@ -78,7 +78,7 @@ function EntryRow({ entry, index, selected, tabbable, reasonId, onSelect, onAppl
       data-tree-row={item.id}
       title={entryTitle(entry)}
       draggable
-      onDragStart={(event) => writeEffectDrag(event.dataTransfer, { itemId: item.id })}
+      onDragStart={(event) => { writeEffectDrag(event.dataTransfer, { itemId: item.id }); }}
       onDragEnd={endEffectDrag}
       onFocus={onSelect}
       onDoubleClick={onApply}
@@ -104,7 +104,7 @@ export function EffectTree({ label, groups, selectedId, onSelect, onToggle, onAp
     if (rowId !== undefined) document.getElementById(treeId)?.querySelector<HTMLElement>(`[data-tree-row="${CSS.escape(rowId)}"]`)?.focus();
   };
   const keys = (event: KeyboardEvent<HTMLDivElement>) => {
-    const rowId = event.target instanceof HTMLElement ? event.target.dataset.treeRow : undefined;
+    const rowId = event.target instanceof HTMLElement ? event.target.dataset["treeRow"] : undefined;
     if (rowId === undefined || event.altKey || event.ctrlKey || event.metaKey) return;
     const at = rows.indexOf(rowId);
     const group = groups.find((item) => categoryRowId(item.category) === rowId);
@@ -128,7 +128,7 @@ export function EffectTree({ label, groups, selectedId, onSelect, onToggle, onAp
         else if (group) focusRow(group.entries[0]?.item.id);
         break;
       case "ArrowLeft":
-        if (group?.open) onToggle(group.category, false);
+        if (group?.open === true) onToggle(group.category, false);
         else if (parent) focusRow(categoryRowId(parent.category));
         break;
       case "Enter":
@@ -146,12 +146,12 @@ export function EffectTree({ label, groups, selectedId, onSelect, onToggle, onAp
   return (
     // data-delete-keys: Delete pressed in the tree is not a Delete of the timeline's selection. The scroll padding keeps
     // a row that the arrow keys move to from coming to rest under its category's sticky header
-    <div id={treeId} role="tree" aria-label={label} data-delete-keys="" onKeyDown={keys} className="min-h-0 flex-1 scroll-pt-9 overflow-y-auto pb-1">
+    <div tabIndex={-1} id={treeId} role="tree" aria-label={label} data-delete-keys="" onKeyDown={keys} className="min-h-0 flex-1 scroll-pt-9 overflow-y-auto pb-1">
       {groups.map((group, groupIndex) => {
         const rowId = categoryRowId(group.category);
         return (
           <div key={group.category.id} role="presentation">
-            <div
+            <div /* eslint-disable-line jsx-a11y-x/click-events-have-key-events -- The focused row delegates its keyboard actions to the parent grid or tree. */
               ref={reveal(groupIndex)}
               role="treeitem"
               aria-level={1}
@@ -159,8 +159,8 @@ export function EffectTree({ label, groups, selectedId, onSelect, onToggle, onAp
               aria-selected={rowId === selectedId}
               tabIndex={rowId === tabStop ? 0 : -1}
               data-tree-row={rowId}
-              onFocus={() => onSelect(rowId)}
-              onClick={() => onToggle(group.category, !group.open)}
+              onFocus={() => { onSelect(rowId); }}
+              onClick={() => { onToggle(group.category, !group.open); }}
               className={cn(FOCUS_RING, CATEGORY_ROW)}
             >
               <ChevronRight aria-hidden className={cn("size-4 shrink-0 text-fg-tertiary transition-[rotate]", SPRING_SNAPPY, group.open && "rotate-90")} />
@@ -176,8 +176,8 @@ export function EffectTree({ label, groups, selectedId, onSelect, onToggle, onAp
                     selected={entry.item.id === selectedId}
                     tabbable={entry.item.id === tabStop}
                     reasonId={`${treeId}-${entry.item.id}`}
-                    onSelect={() => onSelect(entry.item.id)}
-                    onApply={() => onApply(entry.item)}
+                    onSelect={() => { onSelect(entry.item.id); }}
+                    onApply={() => { onApply(entry.item); }}
                   />
                 ))
               : null}

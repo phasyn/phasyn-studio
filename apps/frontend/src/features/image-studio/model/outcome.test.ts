@@ -16,7 +16,7 @@ function batchRun(autoLibrary = false) {
   const result = planImageRender(doc, shot, ["t0", "t1"], { routes, autoLibrary });
   if (!result.plan) throw new Error(result.problem);
   const takes: StudioImageTake[] = result.plan.branches.map((branch, index) => ({
-    take_id: `t${index}`,
+    take_id: `t${String(index)}`,
     run_id: RUN_ID,
     created_at: "2026-10-18T00:00:00Z",
     state: "rendering",
@@ -26,7 +26,7 @@ function batchRun(autoLibrary = false) {
     library_item_id: null,
     timings_ms: {},
     error: null,
-    params_snapshot: branch.snapshot as unknown as Record<string, unknown>,
+    params_snapshot: { ...branch.snapshot },
   }));
   const withTakes = { ...doc, image_shots: [{ ...shot, takes }] };
   return { doc: withTakes, takes, body: result.plan.body };
@@ -45,7 +45,7 @@ describe("中間預覽", () => {
     size_bytes: 20_000,
     note: "vae_thumbnail",
     at: `2026-10-18T00:00:${String(seq).padStart(2, "0")}Z`,
-    url: `/api/runs/${RUN_ID}/steps/dit_1/preview?seq=${seq}`,
+    url: `/api/runs/${RUN_ID}/steps/dit_1/preview?seq=${String(seq)}`,
     ...extra,
   });
 

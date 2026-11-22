@@ -12,7 +12,9 @@ import { playMotion, usePanelEnter } from "@/components/ui/motion";
 import { PanelTabs } from "@/components/workbench/PanelTabs";
 import { PanelCollapseButton } from "@/features/studio-shell";
 import { t } from "@/i18n";
-import { useRenderBlock } from "../hooks/useRenderBlock";
+import { shortcutRender, useRenderBlock } from "../hooks/useRenderBlock";
+import { shotFps } from "../model/promptRules";
+import { findRoute } from "../model/routes";
 import { insertMentionAt } from "../prompt";
 import { ReferencesPanel } from "../references";
 import { useStudio } from "../studioContext";
@@ -30,13 +32,13 @@ function ReferencesTab({ shot }: { shot: StudioShot }) {
         projectId={project.project_id}
         shotId={shot.shot_id}
         prompt={shot.prompt}
-        durationSeconds={shot.frames / 24}
+        durationSeconds={shot.frames / shotFps(findRoute(engine.routes, shot.route), project)}
         library={project.library ?? []}
         references={shot.references ?? []}
-        onLibraryChange={(library) => dispatch({ type: "setLibrary", library })}
-        onReferencesChange={(references) => dispatch({ type: "updateShot", shotId: shot.shot_id, patch: { references } })}
-        onPromptChange={(prompt) => dispatch({ type: "updateShot", shotId: shot.shot_id, patch: { prompt } })}
-        onInsertMention={(alias) => dispatch({ type: "updateShot", shotId: shot.shot_id, patch: { prompt: insertMentionAt(shot.prompt, shot.prompt.length, alias).text } })}
+        onLibraryChange={(library) => { dispatch({ type: "setLibrary", library }); }}
+        onReferencesChange={(references) => { dispatch({ type: "updateShot", shotId: shot.shot_id, patch: { references } }); }}
+        onPromptChange={(prompt) => { dispatch({ type: "updateShot", shotId: shot.shot_id, patch: { prompt } }); }}
+        onInsertMention={(alias) => { dispatch({ type: "updateShot", shotId: shot.shot_id, patch: { prompt: insertMentionAt(shot.prompt, shot.prompt.length, alias).text } }); }}
         unsupportedReason={referenceUnsupported(engine, shot.route)}
       />
     </div>
@@ -53,7 +55,7 @@ function NoShot() {
       title={project.shots.length === 0 ? t("這個專案還沒有鏡頭") : t("沒有選取鏡頭")}
       description={t("新增鏡頭後，在這裡寫 prompt、加入參考素材，再按工具列上的「渲染鏡頭」。")}
       action={
-        <Button size="sm" variant="secondary" icon={<Plus aria-hidden />} onClick={() => addShot()}>
+        <Button size="sm" variant="secondary" icon={<Plus aria-hidden />} onClick={() => { addShot(); }}>
           {t("新增鏡頭")}
         </Button>
       }
@@ -62,24 +64,27 @@ function NoShot() {
 }
 
 function ShotInspector({ shot, tab, onTab }: { shot: StudioShot; tab: InspectorTab; onTab: (tab: InspectorTab) => void }) {
-  const { renderShots, busy } = useStudio();
+  const { renderShots, busy, notify } = useStudio();
   const block = useRenderBlock(shot);
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if ((event.ctrlKey || event.metaKey) && event.key === "Enter" && !block.problem && !block.preflight && !busy) {
-      event.preventDefault();
-      void renderShots([shot.shot_id]);
-    }
+    // A field or dialog inside the panel that used Ctrl+Enter itself (prevented it) keeps it
+    if (!(event.ctrlKey || event.metaKey) || event.key !== "Enter" || event.nativeEvent.isComposing || event.defaultPrevented) return;
+    event.preventDefault();
+    const next = shortcutRender(block, busy);
+    if (next.action === "render") void renderShots([shot.shot_id]);
+    // A blocked shortcut says why, like the disabled 「渲染鏡頭」 button, instead of silently doing nothing
+    else if (next.action === "explain") notify({ tone: "warning", title: t("「{shot}」還不能渲染", { shot: shot.title }), detail: next.reason });
   };
   // 換鏡頭時整個屬性內容重新掛載（key＝鏡頭）：從右側滑入（smooth 彈簧），不硬切；輸入中的鏡頭不會重新掛載
   const slideIn = useCallback((node: HTMLDivElement | null) => {
     if (node) playMotion(node, [{ opacity: 0, transform: "translateX(12px)" }, { opacity: 1, transform: "translateX(0px)" }], { duration: "spring-smooth", easing: "spring-smooth" });
   }, []);
   return (
-    <div ref={slideIn} className="flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown}>
+    <div /* eslint-disable-line jsx-a11y-x/no-static-element-interactions -- Keyboard events from this panel’s focusable controls bubble here so navigation and dismissal share one handler. */  ref={slideIn} className="flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown}>
       {/* Each tab fills the panel; only a window too short for a tab's minimum lets the panel itself scroll */}
       <div role="tabpanel" id={`studio-inspector-panel-${tab}`} aria-labelledby={`studio-inspector-tab-${tab}`} className="flex min-h-0 flex-1 flex-col overflow-y-auto">
         {tab === "prompt" ? (
-          <PromptTab shot={shot} onShowPlugins={() => onTab("plugins")} />
+          <PromptTab shot={shot} onShowPlugins={() => { onTab("plugins"); }} />
         ) : tab === "references" ? (
           <ReferencesTab shot={shot} />
         ) : tab === "plugins" ? (
@@ -105,11 +110,11 @@ export function Inspector({ onCollapse }: { onCollapse?: () => void }) {
         idPrefix="studio-inspector"
         label={t("鏡頭設定")}
         value={tab}
-        onChange={(next) => setInspectorTab(isInspectorTab(next) ? next : "prompt")}
+        onChange={(next) => { setInspectorTab(isInspectorTab(next) ? next : "prompt"); }}
         tabs={[
           { id: "prompt", label: "Prompt", icon: PenLine },
-          { id: "references", label: t("參考"), icon: Images, count: shot?.references?.length || undefined },
-          { id: "plugins", label: t("插件"), icon: Puzzle, count: project.prompt_plugins?.length || undefined },
+          { id: "references", label: t("參考"), icon: Images, ...((shot?.references?.length != null && Boolean(shot.references.length)) ? { count: shot.references.length } : {}) },
+          { id: "plugins", label: t("插件"), icon: Puzzle, ...((project.prompt_plugins?.length != null && Boolean(project.prompt_plugins.length)) ? { count: project.prompt_plugins.length } : {}) },
           { id: "notes", label: t("備註"), icon: NotebookPen },
         ]}
         actions={onCollapse ? <PanelCollapseButton side="right" label={t("屬性面板")} onCollapse={onCollapse} /> : undefined}

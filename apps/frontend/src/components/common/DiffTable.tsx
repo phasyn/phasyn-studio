@@ -9,8 +9,8 @@ const KIND_TONE = { added: "success", removed: "warning", changed: "info" } as c
 
 export function DiffTable({
   entries,
-  beforeLabel = t("目前"),
-  afterLabel = t("草稿"),
+  beforeLabel: beforeLabelProp,
+  afterLabel: afterLabelProp,
   label,
   highlight,
 }: {
@@ -21,6 +21,8 @@ export function DiffTable({
   /** 需要特別提醒的路徑（例如 device／model_path 差異）。 */
   highlight?: (path: string) => string | null;
 }) {
+  const beforeLabel = beforeLabelProp ?? t("目前");
+  const afterLabel = afterLabelProp ?? t("草稿");
   if (entries.length === 0) return <p className="text-data text-fg-tertiary">{t("沒有差異。")}</p>;
   return (
     <TableScroll label={label}>
@@ -40,7 +42,7 @@ export function DiffTable({
               <Tr key={entry.path}>
                 <Td className="machine text-fg">
                   {entry.path || t("（根）")}
-                  {note ? <span className="mt-1 block font-sans text-caption text-warning">{note}</span> : null}
+                  {(note != null && note !== "") ? <span className="mt-1 block font-sans text-caption text-warning">{note}</span> : null}
                 </Td>
                 <Td>
                   <Badge tone={KIND_TONE[entry.kind]}>{KIND_LABEL[entry.kind]}</Badge>
